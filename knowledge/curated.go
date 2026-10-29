@@ -12,9 +12,6 @@ import (
 var curated = loadCurated()
 
 // SourceArtifact records inspected upstream bytes, not shipped detector code.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type SourceArtifact struct {
 	// Path identifies the inspected file within the pinned reference repository.
 	Path string `json:"path"`
@@ -31,9 +28,6 @@ type SourceArtifact struct {
 
 // ReviewSource records a pinned reference repository, its inspected files and
 // the limits of its use.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type ReviewSource struct {
 	// ID is the catalog key used by TopicReference.SourceID.
 	ID string `json:"id"`
@@ -62,9 +56,6 @@ type ReviewSource struct {
 
 // TopicReference selects an inspected source artifact within a curated
 // reference repository.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type TopicReference struct {
 	// SourceID selects a curated reference repository by its catalog identity.
 	SourceID string `json:"source_id"`
@@ -73,9 +64,6 @@ type TopicReference struct {
 }
 
 // ReviewExample is an authored contrast scenario, not a detector acceptance test.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type ReviewExample struct {
 	// Kind distinguishes the authored risky and benign contrast scenarios.
 	Kind string `json:"kind"`
@@ -86,9 +74,6 @@ type ReviewExample struct {
 
 // ReviewTopic contains review criteria for a concern. RelatedRules links
 // guidance, not additional detector coverage.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type ReviewTopic struct {
 	// ID is the compiled topic key used in knowledge:<topic ID> reasons.
 	ID string `json:"id"`

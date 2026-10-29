@@ -10,7 +10,6 @@ import (
 	"github.com/skarm/scout/internal/analysis/analyzer"
 	"github.com/skarm/scout/internal/analysis/engine"
 	"github.com/skarm/scout/knowledge"
-	"github.com/skarm/scout/report"
 )
 
 func TestInstructionsAreDistinctAndEvidenceBound(t *testing.T) {
@@ -51,13 +50,7 @@ func TestInstructionsAreDistinctAndEvidenceBound(t *testing.T) {
 }
 
 func TestEveryPublishedRuleHasReviewedGuidance(t *testing.T) {
-	all := append(analyzer.Builtins(), analyzer.SkillspectorPatterns()...)
-	all = append(all, analyzer.PluginSecurityRules()...)
-	all = append(all, analyzer.PythonRules()...)
-	rules := make([]report.Rule, 0, len(all)+len(engine.SignatureRules()))
-	for _, a := range all {
-		rules = append(rules, a.Rule())
-	}
+	rules := analyzer.NewCatalog(analyzer.Selection{Patterns: true, Python: true}).Rules()
 	rules = append(rules, engine.SignatureRules()...)
 	for _, r := range rules {
 		t.Run(r.ID, func(t *testing.T) {

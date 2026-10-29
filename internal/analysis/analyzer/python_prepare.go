@@ -7,8 +7,6 @@ import (
 	"github.com/skarm/scout/internal/analysis/languages/python"
 )
 
-func PythonRules() []Analyzer { return python.Rules() }
-
 // BindPython evaluates prepared Python documents once, then binds immutable
 // observations to all rule consumers before concurrent rule execution starts.
 func BindPython(ctx context.Context, checks []Analyzer, docs []document.File, candidates int, operations uint64) []Analyzer {
@@ -32,6 +30,7 @@ func BindPython(ctx context.Context, checks []Analyzer, docs []document.File, ca
 }
 
 func pythonConsumerCount(checks []Analyzer) int { return len(pythonConsumers(checks)) }
+
 func pythonConsumers(checks []Analyzer) []string {
 	var ids []string
 

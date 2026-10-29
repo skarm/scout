@@ -40,15 +40,13 @@ type Options struct {
 	Timeout time.Duration
 	// MaxQueries bounds distinct exact-coordinate advisory queries.
 	MaxQueries int
-	// MaxRequests limits network requests, including pagination and failed
-	// attempts.
+	// MaxRequests limits network requests, including pagination and failed attempts.
 	MaxRequests int
 	// MaxCacheAge bounds the age of an explicitly supplied advisory cache.
 	MaxCacheAge time.Duration
 	// Enabled selects advisory lookup; false performs no queries.
 	Enabled bool
-	// AllowNetwork permits advisory requests independently of enabling advisory
-	// lookup.
+	// AllowNetwork permits advisory requests independently of enabling advisory lookup.
 	AllowNetwork bool
 	// AllowLoopback permits explicit loopback endpoints; private non-loopback
 	// destinations remain subject to network policy.
@@ -85,8 +83,7 @@ type Cache struct {
 type ID struct {
 	// ID is the advisory identity reported by the database.
 	ID string `json:"id"`
-	// Modified retains the advisory modification timestamp reported by the
-	// database.
+	// Modified retains the advisory modification timestamp reported by the database.
 	Modified string `json:"modified,omitempty"`
 }
 
@@ -132,9 +129,6 @@ func DefaultOptions() Options {
 
 // ParseCache decodes a bounded versioned exact-query cache, rejecting
 // ambiguous JSON and invalid coordinates.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 func ParseCache(data []byte) (Cache, error) {
 	var c Cache
 	if len(data) > maxResponse {
@@ -221,9 +215,6 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 
 // Export builds a validated exact-query cache from completed or cached report
 // queries using the report query time. It does not encode JSON.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 func Export(r report.VulnerabilityReport) (Cache, error) {
 	at, err := time.Parse(time.RFC3339, r.QueriedAt)
 	if err != nil {

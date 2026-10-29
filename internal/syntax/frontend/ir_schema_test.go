@@ -19,9 +19,12 @@ func TestPythonIRRejectsUnknownAndMismatchedShapes(t *testing.T) {
 		`{"type":"Name","start":0,"end":1,"fields":null}`,
 	} {
 		t.Run(raw, func(t *testing.T) {
-			var node Node
+			node := newNode(Name, 3, 5)
 			if err := json.Unmarshal([]byte(raw), &node); err == nil {
 				t.Fatalf("accepted invalid Python IR: %s", raw)
+			}
+			if node.Kind() != Name || node.Start != 3 || node.End != 5 || len(node.fields) != 0 {
+				t.Fatal("failed decode partially replaced node")
 			}
 		})
 	}

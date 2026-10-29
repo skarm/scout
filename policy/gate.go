@@ -22,13 +22,11 @@ type Options struct {
 	FailAt report.Severity `json:"fail_at"`
 	// Approvals supplies trusted baseline entries; nil applies no approvals.
 	Approvals *baseline.Document `json:"approvals,omitempty"`
-	// AllowGlobs permits glob approvals only when explicitly selected by the
-	// operator.
+	// AllowGlobs permits glob approvals only when explicitly selected by the operator.
 	AllowGlobs bool `json:"allow_globs"`
 	// ReviewBelowThreshold requires review for unsuppressed findings below FailAt.
 	ReviewBelowThreshold bool `json:"review_below_threshold"`
-	// Scope controls declared language limitations; an empty value selects
-	// ConservativeScope.
+	// Scope controls declared language limitations; an empty value selects ConservativeScope.
 	Scope ScopePolicy `json:"scope"`
 }
 
@@ -39,8 +37,6 @@ type ScopePolicy string
 const (
 	// ConservativeScope requires review for declared limitations in supported
 	// language semantics.
-	// Part of the supported Go API for callers outside this repository.
-	//goland:noinspection GoUnnecessarilyExportedIdentifiers
 	ConservativeScope ScopePolicy = "conservative"
 	// SelectedScope accepts declared language limitations when the selected work
 	// completes. It does not waive execution gaps.

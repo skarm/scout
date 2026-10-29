@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/skarm/scout/internal/reviewpack"
 	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/knowledge"
 	"github.com/skarm/scout/report"
@@ -20,11 +21,10 @@ const (
 	// ProtocolVersion identifies the supported semantic request and response
 	// protocol.
 	ProtocolVersion = "5"
-	// PromptVersion identifies the compiled semantic instruction set.
-	PromptVersion = "scout-curated-review-instructions-v4"
+	// PromptVersion identifies instruction compatibility; PromptDigest identifies
+	// the exact instruction contents.
+	PromptVersion = reviewpack.InstructionsVersion
 	// MaxRequestBytes bounds serialized review requests at every transport boundary.
-	// Part of the supported Go API for callers outside this repository.
-	//goland:noinspection GoUnnecessarilyExportedIdentifiers
 	MaxRequestBytes = 128 << 10
 	// MaxSegments bounds excerpts in one review request.
 	MaxSegments = 64

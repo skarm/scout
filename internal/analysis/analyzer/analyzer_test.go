@@ -35,7 +35,7 @@ func TestBuiltinRules(t *testing.T) {
 		{name: "shadow", rule: "FS001", text: "/etc/shadow", matches: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, a := range analyzer.Builtins() {
+			for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 				if a.Rule().ID != tc.rule {
 					continue
 				}
@@ -83,7 +83,7 @@ func TestSurface(t *testing.T) {
 func TestBinaryAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	for _, a := range analyzer.Builtins() {
+	for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 		f := artifact.NewFile("x.pyc", []byte("Привет"), false)
 		if _, err := a.Find(ctx, prepared(ctx, f), 10); err == nil {
 			t.Fatalf("%s ignored cancellation", a.Rule().ID)
@@ -104,7 +104,7 @@ func TestInstructionRulesHaveNoPathOrBinaryExemption(t *testing.T) {
 		"PI003": "<|im_start|>system",
 	}
 	registry := map[string]analyzer.Analyzer{}
-	for _, a := range analyzer.Builtins() {
+	for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 		registry[a.Rule().ID] = a
 	}
 	for id, text := range rules {

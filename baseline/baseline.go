@@ -72,16 +72,10 @@ type Document struct {
 }
 
 // Applied is the report representation of an applied operator approval.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type Applied = report.Suppression
 
 // Result summarizes baseline matching without deleting findings from the input
 // analysis.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type Result struct {
 	// Enabled reports that baseline matching was selected.
 	Enabled bool `json:"enabled"`

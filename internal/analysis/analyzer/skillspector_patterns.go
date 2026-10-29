@@ -441,13 +441,13 @@ type familyAnalyzer struct {
 	shellFacts     shellPatternFacts
 }
 
-func SkillspectorPatterns() []Analyzer {
+func PatternRules() []Analyzer {
 	return append([]Analyzer(nil), compiledPatternCatalog()...)
 }
 
-// SkillspectorExamples are synthetic positive regression inputs, not an
+// PatternExamples are synthetic positive regression inputs, not an
 // independent quality benchmark or observed attack samples.
-func SkillspectorExamples() map[string]string {
+func PatternExamples() map[string]string {
 	out := map[string]string{}
 	for _, f := range families {
 		out[rulePrefixNVIDIA+f.id] = f.example

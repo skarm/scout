@@ -36,8 +36,8 @@ func TestValuePreservesTypedFields(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var decoded Value
-			if err := json.Unmarshal(encoded, &decoded); err != nil {
+			decoded, err := decodeValue(encoded)
+			if err != nil {
 				t.Fatalf("decode %s: %v", encoded, err)
 			}
 			again, err := json.Marshal(decoded)
@@ -106,14 +106,15 @@ func TestValueRejectsTypeConfusionAndCopiesBoundarySlices(t *testing.T) {
 }
 
 func TestValueBytesAndEmptyArraysHaveExplicitBoundaryShapes(t *testing.T) {
-	var value Value
-	if err := json.Unmarshal([]byte(`{"bytes_hex":"ff00"}`), &value); err != nil {
+	value, err := decodeValue([]byte(`{"bytes_hex":"ff00"}`))
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got, ok := value.byteSlice(); !ok || !reflect.DeepEqual(got, []byte{0xff, 0}) {
 		t.Fatal(got, ok)
 	}
-	if err := json.Unmarshal([]byte(`[]`), &value); err != nil {
+	value, err = decodeValue([]byte(`[]`))
+	if err != nil {
 		t.Fatal(err)
 	}
 	if value.Kind() != valueNodes || len(value.nodeSlice()) != 0 {
@@ -130,12 +131,8 @@ func TestValueBytesAndEmptyArraysHaveExplicitBoundaryShapes(t *testing.T) {
 
 func TestValueRejectsUnknownAndAmbiguousTransport(t *testing.T) {
 	for _, raw := range []string{`{"unknown":1}`, `{"bytes_hex":"ff","extra":1}`, `{"bytes_hex":"ff","bytes_hex":"00"}`, `{"bytes_hex":"zz"}`, `{"type":"Name","unknown":1}`, `{"type":""}`, `[1]`, `["x",null]`, `true false`} {
-		value := StringValue("unchanged")
-		if err := json.Unmarshal([]byte(raw), &value); err == nil {
+		if _, err := decodeValue([]byte(raw)); err == nil {
 			t.Fatalf("accepted %s", raw)
-		}
-		if text, ok := value.Text(); !ok || text != "unchanged" {
-			t.Fatal("failed decode partially replaced value")
 		}
 	}
 	for _, number := range []string{"", "NaN", "Infinity", "null", "+1", "1 2"} {

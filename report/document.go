@@ -155,7 +155,7 @@ func writeEncodedDocument(w io.Writer, value any) error {
 }
 
 func documentToSARIF(document Document) documentSARIF {
-	result := documentSARIF{sarif: toSARIF(Analysis{}, document.Evaluation), Properties: sarifDocumentProperties{
+	res := documentSARIF{sarif: toSARIF(Analysis{}, document.Evaluation), Properties: sarifDocumentProperties{
 		Schema:     DocumentSchema,
 		Operation:  document.Operation,
 		RunState:   document.Run.State,
@@ -165,7 +165,8 @@ func documentToSARIF(document Document) documentSARIF {
 		Comparison: document.Run.Comparison,
 	}}
 
-	result.Runs = make([]run, 0, len(document.Run.Targets))
+	res.Runs = make([]run, 0, len(document.Run.Targets))
+
 	for _, target := range document.Run.Targets {
 		analysis := documentAnalysis(document, target)
 
@@ -176,17 +177,17 @@ func documentToSARIF(document Document) documentSARIF {
 			item.Properties["targetID"] = target.ID
 			item.Properties["targetIndex"] = target.Index
 			item.Properties["targetRole"] = target.Role
-
 			item.Properties["targetLabel"] = target.Label
+
 			for i := range item.Invocations {
 				item.Invocations[i].ExecutionSuccessful = document.Run.State == RunComplete && target.State == RunComplete && analysis.Coverage.Completeness == Complete
 			}
 
-			result.Runs = append(result.Runs, item)
+			res.Runs = append(res.Runs, item)
 		}
 	}
 
-	return result
+	return res
 }
 
 func documentAnalysis(document Document, target TargetResult) Analysis {

@@ -85,6 +85,10 @@ var (
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var wildcardPermissions = stringSet("* all full any")
 
+func PermissionRules() []Analyzer {
+	return []Analyzer{permissionCheck{id: ruleNVLP1}, permissionCheck{id: ruleNVLP2}, permissionCheck{id: ruleNVLP3}, permissionCheck{id: ruleNVLP4}}
+}
+
 type permissionCheck struct {
 	id      string
 	records map[string]permissionRecord

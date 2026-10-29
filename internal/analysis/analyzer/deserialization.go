@@ -30,7 +30,7 @@ type deserialization struct {
 	patterns            []*regexp.Regexp
 }
 
-func deserializationRules() []Analyzer {
+func DeserializationPatternRules() []Analyzer {
 	makeRule := func(id, title, language string, expressions ...string) Analyzer {
 		a := deserialization{id: id, title: title, language: language}
 		for _, e := range expressions {

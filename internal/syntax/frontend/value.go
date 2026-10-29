@@ -1,4 +1,3 @@
-//goland:noinspection GoMixedReceiverTypes // JSON values marshal by value and unmarshal by pointer.
 package frontend
 
 import (
@@ -142,22 +141,6 @@ func (v Value) MarshalJSON() ([]byte, error) {
 	default:
 		return v.marshalComposite()
 	}
-}
-
-// UnmarshalJSON changes the value only after its entire field has been decoded.
-func (v *Value) UnmarshalJSON(data []byte) error {
-	if v == nil {
-		return errors.New("nil Python IR value receiver")
-	}
-
-	decoded, err := decodeValue(data)
-	if err != nil {
-		return err
-	}
-
-	*v = decoded
-
-	return nil
 }
 
 func (v Value) marshalComposite() ([]byte, error) {

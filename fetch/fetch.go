@@ -56,8 +56,6 @@ type Payload struct {
 type (
 	// Target describes one resolved download request. Resolving it does not access
 	// the network.
-	// Part of the supported Go API for callers outside this repository.
-	//goland:noinspection GoUnnecessarilyExportedIdentifiers
 	Target struct {
 		// URL is the resolved download address, including a pinned codeload URL for
 		// GitHub inputs.

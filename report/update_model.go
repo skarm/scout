@@ -126,9 +126,6 @@ type FindingChange struct {
 
 // UpdateCounts summarizes comparison observations, including changes omitted
 // by retention limits.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type UpdateCounts struct {
 	// ManifestSignals counts retained security-relevant declaration changes.
 	ManifestSignals int `json:"manifest_signals"`

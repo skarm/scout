@@ -20,8 +20,6 @@ const (
 	// MaxMessageBytes bounds one incoming JSON-RPC message in bytes.
 	MaxMessageBytes = 256 << 10
 	// MaxResponseBytes bounds one serialized MCP response in bytes.
-	// Part of the supported Go API for callers outside this repository.
-	//goland:noinspection GoUnnecessarilyExportedIdentifiers
 	MaxResponseBytes = 8 << 20
 	// MaxUploadBytes bounds the source bytes accepted by the upload tool.
 	MaxUploadBytes = 128 << 10

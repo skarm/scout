@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": "scout-reviewer-transfer-v2",
+  "adaptation_version": "scout-reviewer-transfer-v2",
   "retrieved_at": "2026-10-26",
   "upstream_repository": "https://github.com/NVIDIA/SkillSpector",
   "upstream_commit": null,
@@ -110,7 +110,7 @@
       "target": "knowledge/prompts/",
       "status": "previously_adapted_retained",
       "test": "knowledge and review prompt suites; TestReviewMaterialsMatchRuntime",
-      "notes": "Six runtime/exported modes, including dedicated TP4 tool_consistency and reassessment; protocol 5 and prompt pack v2. No inference-quality parity claim."
+      "notes": "Original adaptation recorded six runtime/exported modes, including dedicated TP4 tool_consistency and reassessment, protocol 5 and prompt pack v2. These are historical transfer details, not current pack versions. No inference-quality parity claim."
     },
     {
       "id": "RULES-GUIDANCE",

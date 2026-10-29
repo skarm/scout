@@ -300,7 +300,7 @@ func FuzzAgentConfigChecks(f *testing.F) {
 			t.Skip()
 		}
 		doc := document.Prepare(context.Background(), artifact.NewFile("config.json", []byte(text), false))
-		for _, a := range analyzer.Builtins() {
+		for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 			if !strings.HasPrefix(a.Rule().ID, "AC") && !strings.HasPrefix(a.Rule().ID, "SC") && !strings.HasPrefix(a.Rule().ID, "MC") {
 				continue
 			}
@@ -323,7 +323,7 @@ func FuzzAgentConfigChecks(f *testing.F) {
 
 func agentRule(t testing.TB, id string) analyzer.Analyzer {
 	t.Helper()
-	for _, a := range analyzer.Builtins() {
+	for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 		if a.Rule().ID == id {
 			return a
 		}

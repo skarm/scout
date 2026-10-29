@@ -58,7 +58,7 @@ func New(ctx context.Context, options Options) (*Scanner, error) {
 	}
 
 	options = cloneOptions(options)
-	catalog := selectedAnalyzers(checks)
+	catalog := analyzer.NewCatalog(analyzer.Selection{Patterns: checks.Patterns, Python: checks.Python}).Analyzers()
 
 	execution, err := configuredEngine(options, checks, catalog)
 	if err != nil {
@@ -168,20 +168,6 @@ func validateConstruction(ctx context.Context, options Options) (Checks, error) 
 	}
 
 	return checks, nil
-}
-
-func selectedAnalyzers(checks Checks) []analyzer.Analyzer {
-	catalog := analyzer.Builtins()
-	if checks.Python {
-		catalog = append(catalog, analyzer.PythonRules()...)
-	}
-
-	if checks.Patterns {
-		catalog = append(catalog, analyzer.SkillspectorPatterns()...)
-		catalog = append(catalog, analyzer.PluginSecurityRules()...)
-	}
-
-	return catalog
 }
 
 func configuredEngine(options Options, checks Checks, catalog []analyzer.Analyzer) (*engine.Engine, error) {

@@ -7,8 +7,8 @@
   },
   "after": {
     "path": "testdata/provenance/current/replay.jsonl.gz",
-    "sha256": "5dae00a9de5fb8f861661848086749ba216bd457025e5ea9f2ab6e95008444e1",
-    "uncompressed_sha256": "37d0182e200523e662a203adcf8cba4a2b39f033339911d443e0c712dc9a8257"
+    "sha256": "85a5d6ef8d1aa8f74cf2327fb888b710c304710f0219811d50e20fd27bf20eb3",
+    "uncompressed_sha256": "1616c9dff5b39efda3ae6fdd69f2ea8fad778ea3be9ac3ea4325dd6d809c51c9"
   },
   "before_inputs": 14930,
   "after_inputs": 14930,

@@ -9,12 +9,7 @@ const (
 
 //nolint:gochecknoglobals // The compiled reason catalog is immutable; exported lists are copied.
 var reasons = [...]Reason{
-	{
-		Name:       "tool_description_code_mismatch",
-		Category:   categoryToolPoisoning,
-		Mode:       ModeToolConsistency,
-		UpstreamID: "NV-TP4",
-	},
+	{Name: "tool_description_code_mismatch", Category: categoryToolPoisoning, Mode: ModeToolConsistency, UpstreamID: "NV-TP4"},
 	{Name: "instruction_override", Category: categoryPromptInjection},
 	{Name: "secret_transfer", Category: "data_exfiltration"},
 	{Name: "unapproved_execution", Category: "execution"},
@@ -39,9 +34,6 @@ var reasons = [...]Reason{
 
 // Reason binds one compiled semantic reason to its category, task and adapted
 // upstream identity. Empty Mode preserves the original general-purpose reasons.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type Reason struct {
 	// Name is the accepted semantic reason code.
 	Name string

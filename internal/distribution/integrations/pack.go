@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/skarm/scout/internal/distribution/skills"
+	"github.com/skarm/scout/internal/reviewpack"
 	"github.com/skarm/scout/knowledge"
 	"github.com/skarm/scout/report"
 )
@@ -24,11 +25,6 @@ const (
 	bundleReviewMaterials = "review-materials"
 	skillsPrefix          = "skills/"
 )
-
-const
-// Version identifies the compiled reviewer-transfer pack rather than a
-// required Scout binary version.
-version = "scout-reviewer-transfer-v4"
 
 //go:embed assets sources
 var assets embed.FS
@@ -166,9 +162,6 @@ func Files(name string) ([]file, error) {
 		path:  "LICENSE",
 		asset: "assets/LICENSE",
 	}, {
-		path:  "transfer-manifest.json",
-		asset: "sources/transfer-manifest.json",
-	}, {
 		path:  spec.skillPrefix + "skill-inspector/NOTICE",
 		asset: "assets/NOTICE",
 	}, {
@@ -178,6 +171,8 @@ func Files(name string) ([]file, error) {
 	for _, asset := range assets {
 		out = append(out, file{Path: asset.path, Data: content(asset.asset)})
 	}
+
+	out = append(out, file{Path: "transfer-manifest.json", Data: transferManifest()})
 
 	if name == bundleReviewMaterials {
 		generated, err := reviewMaterials()
@@ -315,12 +310,35 @@ func content(name string) []byte {
 	return b
 }
 
+// transferManifest adds the current bundle identity to historical provenance.
+// The original adaptation label remains separate from the exported version.
+func transferManifest() []byte {
+	var manifest map[string]json.RawMessage
+	if err := json.Unmarshal(content("sources/transfer-manifest.json"), &manifest); err != nil {
+		panic("invalid compiled transfer manifest")
+	}
+
+	version, err := json.Marshal(reviewpack.TransferVersion)
+	if err != nil {
+		panic("invalid compiled transfer version")
+	}
+
+	manifest["version"] = version
+
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		panic("invalid compiled transfer manifest")
+	}
+
+	return append(data, '\n')
+}
+
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 
 func inventory(name string, files []file) Manifest {
 	m := Manifest{
 		SchemaVersion: 1,
-		Version:       version,
+		Version:       reviewpack.TransferVersion,
 		Bundle:        name,
 		Files:         []entry{},
 		Scope:         "Packaged adapted reviewer assets, not native-engine acceptance, upstream identity or installation authorization.",

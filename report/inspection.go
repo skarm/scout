@@ -111,9 +111,6 @@ type InspectionCheck struct {
 
 // InspectionEgress records explicit permissions for the three kinds of
 // outbound data transfer.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type InspectionEgress struct {
 	// Download permits explicitly requested remote capture and selected external
 	// traversal.

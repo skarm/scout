@@ -7,13 +7,15 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-type (
-	findingPosition struct{ target, finding int }
-	runFindingHeap  struct {
-		run       *report.Run
-		positions []findingPosition
-	}
-)
+type findingPosition struct {
+	target  int
+	finding int
+}
+
+type runFindingHeap struct {
+	run       *report.Run
+	positions []findingPosition
+}
 
 func (h *runFindingHeap) Len() int           { return len(h.positions) }
 func (h *runFindingHeap) Less(i, j int) bool { return h.before(h.positions[j], h.positions[i]) }

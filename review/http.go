@@ -60,8 +60,7 @@ type HTTPProvider struct {
 type TransportError struct {
 	// Code is a stable machine-readable condition identifier.
 	Code string
-	// Status is the HTTP response status when Code is http_status; otherwise it is
-	// zero.
+	// Status is the HTTP response status when Code is http_status; otherwise it is zero.
 	Status int
 }
 
@@ -245,6 +244,7 @@ func (e chatEnvelope) completion() (Completion, error) {
 		InputTokens:  -1,
 		OutputTokens: -1,
 	}
+
 	if e.Usage != nil {
 		setCompletionUsage(&c, e.Usage.Input, e.Usage.Output)
 	}
@@ -288,6 +288,7 @@ func validateHTTPOptions(o HTTPOptions) (*url.URL, error) {
 		AllowLoopback: o.AllowLoopback,
 		RequirePath:   true,
 	})
+
 	if e, ok := errors.AsType[*netpolicy.Error](err); ok {
 		if e.Code == "invalid_url" || e.Code == "invalid_port" {
 			return nil, transportError("invalid_endpoint")

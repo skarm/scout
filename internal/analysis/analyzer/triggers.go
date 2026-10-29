@@ -42,6 +42,10 @@ var triggerMatchers = map[string]func(string) bool{
 
 type triggerCheck struct{ id string }
 
+func ActivationRules() []Analyzer {
+	return []Analyzer{triggerCheck{id: ruleNVTR1M}, triggerCheck{id: ruleNVTR2M}, triggerCheck{id: ruleNVTR3M}}
+}
+
 func (a triggerCheck) Rule() report.Rule {
 	titles := map[string]string{
 		ruleNVTR1M: "Overly broad declared trigger",

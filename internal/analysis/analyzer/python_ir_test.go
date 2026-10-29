@@ -7,6 +7,7 @@ import (
 
 	"github.com/skarm/scout/internal/analysis/analyzer"
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/languages/python"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/frontend"
 	"github.com/skarm/scout/internal/syntax/parse"
@@ -208,7 +209,7 @@ func runPythonIR(t *testing.T, root *frontend.Node, rule string) analyzer.Result
 	}
 	f := artifact.NewFile("sample.py", []byte(strings.Repeat(" ", 80)), false)
 	docs := document.PrepareAllWithRegistry(context.Background(), []artifact.File{f}, reg)
-	for _, a := range analyzer.PythonRules() {
+	for _, a := range python.Rules() {
 		if a.Rule().ID != rule {
 			continue
 		}

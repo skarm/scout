@@ -52,6 +52,8 @@ func BindGraph(checks []Analyzer, docs []document.File, g report.ComponentGraph)
 	return out
 }
 
+func ReferenceRules() []Analyzer { return []Analyzer{uninspectedReference{}} }
+
 func (uninspectedReference) Rule() report.Rule {
 	return report.Rule{
 		ID:          ruleNVSC9,

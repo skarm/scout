@@ -8,14 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
-	"github.com/skarm/scout/internal/analysis/languages/golang"
-	"github.com/skarm/scout/internal/analysis/languages/javascript"
-	"github.com/skarm/scout/internal/analysis/languages/shell"
-	"github.com/skarm/scout/internal/analysis/languages/sql"
-	"github.com/skarm/scout/internal/analysis/rendertext"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/filetype"
 
@@ -42,31 +36,14 @@ type literal struct {
 
 type opaque struct{}
 
-// Builtins returns a new registry. Fences, tests, LICENSE and hidden directories
-// do not disable rules. Findings describe matched text, not proven intent.
-func Builtins() []Analyzer {
-	rules := []Analyzer{
+// literalRules checks every captured byte stream, including examples and hidden files.
+func literalRules() []Analyzer {
+	return []Analyzer{
 		newLiteral(rulePI001, "Instruction-hierarchy override phrase", `(?i)\b(?:ignore|disregard|override)[\t ]+(?:all[\t ]+)?(?:previous|prior|system)[\t ]+(?:instructions?|prompts?|rules?)\b|(?i:игнорируй(?:те)?|проигнорируй(?:те)?)[\t ]+(?:все[\t ]+)?(?:предыдущие|системные)[\t ]+инструкции`, report.Medium, "prompt-injection", "Literal English/Russian phrases only; negation, quotation and intent require review. No automatic suppression in examples."),
 		newLiteral(ruleEX001, "Download piped to a shell", `(?im)\b(?:curl|wget)\b[^\r\n|]+\|[\t ]*(?:(?:sudo|env)[\t ]+)?(?:ba|da|z|k)?sh\b`, report.High, "remote-execution", "Single-line literal pipeline only; aliases, constructed commands and shell grammar are not analyzed. A match may be an example."),
 		newLiteral(ruleSE001, "Private-key PEM marker", `-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----`, report.High, "credential-material", "Marker only; not proof of a valid or live key. Values and source excerpts are never included in reports."),
 		newLiteral(ruleFS001, "Sensitive credential-path reference", `(?:~|\$HOME|\$\{HOME\})/\.ssh/(?:id_rsa|id_ed25519)\b|/etc/shadow\b|(?:~|\$HOME|\$\{HOME\})/\.aws/credentials\b`, report.Medium, "credential-access", "Literal path reference only, not a confirmed read or data-flow. Constructed paths require future AST analysis."),
-		opaque{},
-		moduleCheck{id: ruleSC002},
-		moduleCheck{id: ruleSC003},
 	}
-	rules = append(rules, rendertext.Rules()...)
-	// Keep descriptor ordering stable across the package split.
-	goRules := golang.Rules()
-	rules = append(rules, goRules[:4]...)
-	rules = append(rules, shell.Rules()...)
-	rules = append(rules, agentRules()...)
-	rules = append(rules, instructionRules()...)
-	rules = append(rules, javascript.Rules()...)
-	rules = append(rules, sql.Rules()...)
-	rules = append(rules, goRules[4:]...)
-	rules = append(rules, bundle.Rules()...)
-
-	return append(rules, artifactIntegrityRules()...)
 }
 
 func IsOpaqueExecutable(f artifact.File) bool {
