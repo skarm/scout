@@ -1,0 +1,8 @@
+{
+  "name": "scout-opencode",
+  "private": true,
+  "type": "module",
+  "description": "Scout tool and reviewer command for OpenCode.",
+  "license": "Apache-2.0",
+  "peerDependencies": {"@opencode-ai/plugin": "^1.19.4"}
+}

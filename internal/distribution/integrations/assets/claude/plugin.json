@@ -1,0 +1,5 @@
+{
+  "name": "scout-review",
+  "description": "Read-only, evidence-led skill/plugin security review with the trusted scout CLI.",
+  "license": "Apache-2.0"
+}

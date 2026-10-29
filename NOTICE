@@ -1,0 +1,47 @@
+Scout includes modified material from NVIDIA SkillSpector.
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+Licensed under the Apache License, Version 2.0:
+licenses/SkillSpector-Apache-2.0.txt.
+
+Selected pattern expressions, detector design, validation prompts, rule guidance,
+trigger/Unicode/context checks, offline registry posture checks, twenty-seven bundled YARA rules and the Skill Inspector
+reviewer workflow are adapted. Go implementations, bounds, evidence, severity and
+policy differ. Scout is independent, is not endorsed by NVIDIA, and is not a
+complete or accuracy-equivalent distribution of SkillSpector.
+
+Sources and deviations: docs/reference/port-manifest.md, knowledge/sources/skillspector.md,
+and integrations/sources/transfer-manifest.json. Adapted asset hashes identify
+Scout's modified bytes, not a signature or a complete upstream provenance proof.
+
+Pi/OpenCode adapters are behavior reimplementations. Exported bundles retain
+their own LICENSE/NOTICE. Bundled malware/webshell/hacktool/cryptominer rules retain their
+signature-base references and derived-pattern DRL-1.1 notice:
+https://github.com/Neo23x0/signature-base, licenses/Detection-Rule-License-1.1.txt.
+Operator-added rules retain their respective licenses.
+
+Scout also includes eight modified Cisco AI Defense skill-scanner YARA rules.
+Copyright 2026 Cisco Systems, Inc. and its affiliates.
+Licensed under Apache-2.0: licenses/Cisco-Apache-2.0.txt.
+Upstream revision: f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1.
+The expressions, categories and evidence policy are modified; upstream global
+documentation/format exclusions and domain allowlists are not imported.
+Selected hidden-content and behavior-chain concepts are independently implemented
+with Scout's captured-byte bounds. Snyk agent-scan informs tool-collision and
+capability-combination concepts only; no Snyk API client or service is bundled.
+Sources, hashes and deviations: docs/reference/hardening-2026-10-29.md and
+testdata/provenance/cisco-hardening-2026-10-29.json.
+
+Unicode 17.0.0 normalization/confusables data is used under Unicode License V3:
+licenses/Unicode-3.0.txt, https://www.unicode.org/license.txt.
+
+Go modules and native Rust dependencies retain their upstream licenses and patents.
+Dependencies are obtained through authenticated module caches, not copied into
+this repository. Binary distributions must include applicable third-party notices.
+No external Python workers are included.
+
+Shell declaration syntax uses mvdan.cc/sh/v3 v3.14.1 (Daniel Martí),
+under the BSD 3-Clause license: licenses/mvdan-sh-BSD-3-Clause.txt.
+
+Scout's original code is distributed under the MIT license in LICENSE.
+Third-party material retains its applicable licenses. This notice does not
+authorize relicensing third-party code or replace any third-party license.

@@ -1,0 +1,688 @@
+[
+  {
+    "id": "bandit",
+    "name": "Bandit",
+    "repository": "https://github.com/PyCQA/bandit",
+    "revision": "68ebe11ef79263be27ec223184b94a4fc394a622",
+    "retrieved": "2026-10-27",
+    "declared_license": "Apache-2.0",
+    "use": "original-guidance",
+    "selection_reason": "Python subprocess, deserialization, SQL and extraction distinctions.",
+    "limitations": "No Bandit plugins, confidence scores or runtime semantics are imported.",
+    "artifacts": [
+      {
+        "path": "LICENSE",
+        "url": "https://raw.githubusercontent.com/PyCQA/bandit/68ebe11ef79263be27ec223184b94a4fc394a622/LICENSE",
+        "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
+        "git_blob_sha1": "67db8588217f266eb561f75fae738656325deac9",
+        "bytes": 10142
+      },
+      {
+        "path": "bandit/plugins/injection_shell.py",
+        "url": "https://raw.githubusercontent.com/PyCQA/bandit/68ebe11ef79263be27ec223184b94a4fc394a622/bandit/plugins/injection_shell.py",
+        "sha256": "66c49c2d001bca4d12433c34f8f93b9330b168462d0bc0ffe154734dcedc27c9",
+        "git_blob_sha1": "e318eb7b9c608adbe2cabdb36e803234b60fcfe9",
+        "bytes": 26851
+      },
+      {
+        "path": "bandit/plugins/injection_sql.py",
+        "url": "https://raw.githubusercontent.com/PyCQA/bandit/68ebe11ef79263be27ec223184b94a4fc394a622/bandit/plugins/injection_sql.py",
+        "sha256": "51bdc4d629fdf3436202a1d78ff5ef0fa659b1dfab96d64aa988630e30eab655",
+        "git_blob_sha1": "704022a91bec37a26d99b6a0288aafbefa61abdf",
+        "bytes": 4878
+      },
+      {
+        "path": "bandit/plugins/yaml_load.py",
+        "url": "https://raw.githubusercontent.com/PyCQA/bandit/68ebe11ef79263be27ec223184b94a4fc394a622/bandit/plugins/yaml_load.py",
+        "sha256": "6ce7c264139c49707700020d25bbaf70790779ba3eab2332038d79e4b827c768",
+        "git_blob_sha1": "2304c1d7d2e7e13f55f552fa9bc037fcb3c5adf1",
+        "bytes": 2404
+      },
+      {
+        "path": "bandit/blacklists/calls.py",
+        "url": "https://raw.githubusercontent.com/PyCQA/bandit/68ebe11ef79263be27ec223184b94a4fc394a622/bandit/blacklists/calls.py",
+        "sha256": "40254e78109932bc4b328e042d46ee842b76428ad37147bdbf3a850d1d13d665",
+        "git_blob_sha1": "024e873a781e386ae158b8bd601cd6c4aa16ac3b",
+        "bytes": 29363
+      },
+      {
+        "path": "bandit/plugins/tarfile_unsafe_members.py",
+        "url": "https://raw.githubusercontent.com/PyCQA/bandit/68ebe11ef79263be27ec223184b94a4fc394a622/bandit/plugins/tarfile_unsafe_members.py",
+        "sha256": "f952acad2d3a21d1f835f6d74e9862e9de0052d92310b240b992077d0c932b0f",
+        "git_blob_sha1": "499a6678915a757ce5c88d34369a99ef62e2be7c",
+        "bytes": 3929
+      }
+    ]
+  },
+  {
+    "id": "cisco",
+    "name": "Cisco AI Defense Skill Scanner",
+    "repository": "https://github.com/cisco-ai-defense/skill-scanner",
+    "revision": "f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1",
+    "retrieved": "2026-10-27",
+    "declared_license": "Apache-2.0 (repository LICENSE; individual rule provenance remains separate)",
+    "use": "original-guidance",
+    "selection_reason": "Agent-specific injection, exfiltration, supply-chain, tool and resource threats.",
+    "limitations": "This original-guidance transfer imports no signatures, regexes, YARA, suppression lists or judge prompts. A separate 2026-10-29 adapted detector transfer is documented in docs/reference/hardening-2026-10-29.md and its provenance receipt.",
+    "artifacts": [
+      {
+        "path": "LICENSE",
+        "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/LICENSE",
+        "sha256": "6f8bdae6c2bf096c697839ce3b6305d0c2aab22c14fb761b94c9962a79ae5998",
+        "git_blob_sha1": "0cb862a19f00c36d4670130d507baa00bb6c0311",
+        "bytes": 653
+      },
+      {
+        "path": "docs/architecture/threat-taxonomy.md",
+        "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/docs/architecture/threat-taxonomy.md",
+        "sha256": "13f396e249d85ac741132074b87a0e12efd6c83545163cfc6b679cd71399e23c",
+        "git_blob_sha1": "e77eadab115c51376eb7fc6c95f4b0f51ca05bbd",
+        "bytes": 13296
+      },
+      {
+        "path": "skill_scanner/data/packs/core/signatures/prompt_injection.yaml",
+        "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/signatures/prompt_injection.yaml",
+        "sha256": "e9f577dcdcdce11ad881dd3643dfc5c7264400e92ab1b742c32db4bbfbbe55e1",
+        "git_blob_sha1": "ef9614942460c8b94f6a42385e08738b7d00e5c8",
+        "bytes": 3923
+      },
+      {
+        "path": "skill_scanner/data/packs/core/signatures/data_exfiltration.yaml",
+        "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/signatures/data_exfiltration.yaml",
+        "sha256": "6c252eb0e747eb80d331bb09d916af0b1331f4e0af6a85bea889f490b06fd4d5",
+        "git_blob_sha1": "8a5527130c88ee15f9a7b92ae282ba716ddcd742",
+        "bytes": 8661
+      },
+      {
+        "path": "skill_scanner/data/packs/core/signatures/supply_chain.yaml",
+        "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/signatures/supply_chain.yaml",
+        "sha256": "792fff9e32ed3dbd4fc5c4da817193a1e2f98296e0cfb94db9d141c292683db5",
+        "git_blob_sha1": "32ffea7b99e9c281e37e4371d4c265b23155eef2",
+        "bytes": 491
+      },
+      {
+        "path": "skill_scanner/data/packs/core/signatures/unauthorized_tool_use.yaml",
+        "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/signatures/unauthorized_tool_use.yaml",
+        "sha256": "71bc171df64448f50de11741103b031bbd46dd5be237cf697c65db4b01a9be9d",
+        "git_blob_sha1": "b52469fcc022e9923015c8990ce4ae076828a758",
+        "bytes": 2573
+      },
+      {
+        "path": "skill_scanner/data/packs/core/signatures/resource_abuse.yaml",
+        "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/signatures/resource_abuse.yaml",
+        "sha256": "cdcc59f45e173dba0950c47c7308432ba1c5f80dfaeb9f46b802a3f78d2b7a69",
+        "git_blob_sha1": "7a7271f6d233d51eaad12979559842df2f5286ce",
+        "bytes": 1251
+      },
+      {
+        "path": "skill_scanner/data/packs/core/signatures/obfuscation.yaml",
+        "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/signatures/obfuscation.yaml",
+        "sha256": "4d9f3135849e1439965834fccce24102573a76ee8e34ad20fd76850e64260404",
+        "git_blob_sha1": "cccdb87abb47d4e8a0aefb96dfba442cf6aac0d2",
+        "bytes": 1881
+      },
+      {
+        "path": "skill_scanner/data/packs/promptguard/signatures/markdown_exfiltration.yaml",
+        "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/promptguard/signatures/markdown_exfiltration.yaml",
+        "sha256": "0f85d47e2962237af97542562945f8bb6cc2696837f24b8baec96c72a541d0ee",
+        "git_blob_sha1": "60e2a4629ee9b34eb0752500c152a6f0d603a72b",
+        "bytes": 8313
+      }
+    ]
+  },
+  {
+    "id": "codeql",
+    "name": "CodeQL query repository",
+    "repository": "https://github.com/github/codeql",
+    "revision": "ee9ff23a0fcd7353c3516374fe20d9d3e3feea99",
+    "retrieved": "2026-10-27",
+    "declared_license": "MIT; CodeQL CLI/engine licensed separately",
+    "use": "original-guidance",
+    "selection_reason": "Language-specific source/sink distinctions and mitigations.",
+    "limitations": "Only selected query help files were inspected; the recursive tree response was truncated. No full inventory or CodeQL execution claim.",
+    "artifacts": [
+      {
+        "path": "LICENSE",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/LICENSE",
+        "sha256": "66056d06b874e3eb6a22f5fff297e1676a23dc43e8c8b81279c1ef33a6a270df",
+        "git_blob_sha1": "d7e60ca2fa32f4463c43b49713cd3d2bc2ddf379",
+        "bytes": 1074
+      },
+      {
+        "path": "go/ql/src/Security/CWE-078/CommandInjection.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/go/ql/src/Security/CWE-078/CommandInjection.qhelp",
+        "sha256": "16ebe6977a51e4cc619540ff6e46b06105076aead87cb0d70d38e7ae3dffa75b",
+        "git_blob_sha1": "b59730db0cf1442b3b846319b01c868dc9ffa5ed",
+        "bytes": 2149
+      },
+      {
+        "path": "go/ql/src/Security/CWE-918/RequestForgery.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/go/ql/src/Security/CWE-918/RequestForgery.qhelp",
+        "sha256": "429b50d95b0c50c681027291aa8b9963ed559805c91c2008d515115ec08905b1",
+        "git_blob_sha1": "c9937e5669f724f8d076bdf4f2fe1866d770219f",
+        "bytes": 1939
+      },
+      {
+        "path": "javascript/ql/src/Security/CWE-078/CommandInjection.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/javascript/ql/src/Security/CWE-078/CommandInjection.qhelp",
+        "sha256": "1d94f2cfcad71137bd2cd3bc66f389982899299ff0ebef34028758a0d78c4032",
+        "git_blob_sha1": "301f803eff722c1cc760ac00d0c98fe0956d9fb4",
+        "bytes": 120
+      },
+      {
+        "path": "javascript/ql/src/Security/CWE-078/CommandInjection.inc.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/javascript/ql/src/Security/CWE-078/CommandInjection.inc.qhelp",
+        "sha256": "b9ed38bcf217bdcf00c488a634fa889c4fd7e1b036e0a3dd3cab6ebbecedf08b",
+        "git_blob_sha1": "063c7ac346497b8c1159864d8de1d6a5ae75332b",
+        "bytes": 2445
+      },
+      {
+        "path": "javascript/ql/src/Security/CWE-094/CodeInjection.inc.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/javascript/ql/src/Security/CWE-094/CodeInjection.inc.qhelp",
+        "sha256": "e12a98ea3c4e62da83aee83ce34203899c694ef16f733a5e4a8c27f1d9d39127",
+        "git_blob_sha1": "7f06ac78f94ff277e00f5a621bd9f3bb6f90d795",
+        "bytes": 2181
+      },
+      {
+        "path": "javascript/ql/src/Security/CWE-915/PrototypePollutingAssignment.inc.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/javascript/ql/src/Security/CWE-915/PrototypePollutingAssignment.inc.qhelp",
+        "sha256": "4f2b835f2d2c8447960389dc8781ce971d1e1b266a86e399c2572a3d9851db79",
+        "git_blob_sha1": "bb0cd344070839e09e3a122ca8928dfa2b9d915a",
+        "bytes": 2988
+      },
+      {
+        "path": "javascript/ql/src/Security/CWE-918/RequestForgeryRecommendation.inc.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/javascript/ql/src/Security/CWE-918/RequestForgeryRecommendation.inc.qhelp",
+        "sha256": "d19f1ede0f145fc7bdce3436e8fa6c8de91876b72643e5d7c8675a4a35ee50cb",
+        "git_blob_sha1": "0b45485a5a98f99475667e24f02b7ce4b6b6dec6",
+        "bytes": 734
+      },
+      {
+        "path": "python/ql/src/Security/CWE-022/PathInjection.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/python/ql/src/Security/CWE-022/PathInjection.qhelp",
+        "sha256": "5aec9a904e3881bb62320f868d8bbdca86bb4189d966964bd35a2f036785e6bf",
+        "git_blob_sha1": "53653abb12e6548453742a4ef6fb3609ec409045",
+        "bytes": 2936
+      },
+      {
+        "path": "csharp/ql/src/Security Features/CWE-502/UnsafeDeserialization.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/csharp/ql/src/Security%20Features/CWE-502/UnsafeDeserialization.qhelp",
+        "sha256": "c19f8b6520bdd36aa8cfb50c38f84b7525102cb6ed519cfb0400fabd95649aa4",
+        "git_blob_sha1": "4cc76003fbf884977b6a1337737153d717eeaff2",
+        "bytes": 1612
+      },
+      {
+        "path": "java/ql/src/Security/CWE/CWE-502/UnsafeDeserialization.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/java/ql/src/Security/CWE/CWE-502/UnsafeDeserialization.qhelp",
+        "sha256": "a1626f7139fd15ff7538a9ba3908e80fa7accf2410e7fdc69afa4b8e7946bf8c",
+        "git_blob_sha1": "a6d2d9936a5f5d259e5ab7099820e5310627a34c",
+        "bytes": 8797
+      },
+      {
+        "path": "cpp/ql/src/Security/CWE/CWE-134/UncontrolledFormatString.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/cpp/ql/src/Security/CWE/CWE-134/UncontrolledFormatString.qhelp",
+        "sha256": "864ab1383e2cc69541773131439400edb5fec32df25f98082a04d9ff2e87ff62",
+        "git_blob_sha1": "aec75e161fb45690b1ffdd6019a7d2e9a544779f",
+        "bytes": 1078
+      },
+      {
+        "path": "javascript/ql/src/Security/CWE-089/SqlInjection.inc.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/javascript/ql/src/Security/CWE-089/SqlInjection.inc.qhelp",
+        "git_blob_sha1": "9fb1f9a39ed85269327c91e99d20bdd067450c1f",
+        "sha256": "2f7c332e863daf03b5baf5e0e160413c0eceb65154e4453fb389a6327a819c66",
+        "bytes": 3085
+      },
+      {
+        "path": "javascript/ql/src/Security/CWE-089/SqlInjection.qhelp",
+        "url": "https://raw.githubusercontent.com/github/codeql/ee9ff23a0fcd7353c3516374fe20d9d3e3feea99/javascript/ql/src/Security/CWE-089/SqlInjection.qhelp",
+        "git_blob_sha1": "cdbc98667df5e96ca5204cc1e209042c88f4d855",
+        "sha256": "8e10cf57abcd3b4f00f5e6946e7c12bc2c4ef70eadca70e4f14dbc6d81287be2",
+        "bytes": 116
+      }
+    ]
+  },
+  {
+    "id": "devskim",
+    "name": "Microsoft DevSkim",
+    "repository": "https://github.com/microsoft/DevSkim",
+    "revision": "bd81f6967d84b3ef1dbce9e466dc28e124f56289",
+    "retrieved": "2026-10-27",
+    "declared_license": "MIT",
+    "use": "original-guidance",
+    "selection_reason": "Cross-language TLS, deserialization, XML and cryptographic review criteria.",
+    "limitations": "ManualReview and lexical rules do not prove exploitability; original patterns and fixes are not imported.",
+    "artifacts": [
+      {
+        "path": "LICENSE.txt",
+        "url": "https://raw.githubusercontent.com/microsoft/DevSkim/bd81f6967d84b3ef1dbce9e466dc28e124f56289/LICENSE.txt",
+        "sha256": "ad0cf28f3381ca9bb0bf101d127402d44c17bfa0991e1a00bff7ae6679e9dada",
+        "git_blob_sha1": "8cb179cdb69492ba3b8285e61a67fc1fbfe82cb2",
+        "bytes": 1095
+      },
+      {
+        "path": "rules/default/security/TLS/tls_go.json",
+        "url": "https://raw.githubusercontent.com/microsoft/DevSkim/bd81f6967d84b3ef1dbce9e466dc28e124f56289/rules/default/security/TLS/tls_go.json",
+        "sha256": "18646ee81278f9f4b5ec29686876af712f7698db71c87f37d86e23c9ab4994e1",
+        "git_blob_sha1": "b1be6c7d5b9699e93c15571a8c0df1d053b72625",
+        "bytes": 1596
+      },
+      {
+        "path": "rules/default/security/TLS/tls_javascript.json",
+        "url": "https://raw.githubusercontent.com/microsoft/DevSkim/bd81f6967d84b3ef1dbce9e466dc28e124f56289/rules/default/security/TLS/tls_javascript.json",
+        "sha256": "b9abd203888e4ce43b2481ac8a770b0b15581d783e92f466d741e261797b039e",
+        "git_blob_sha1": "2451e3b3d4f43284c75507e3dbd9d8eb83b5bee9",
+        "bytes": 1510
+      },
+      {
+        "path": "rules/default/security/api/deserialization.json",
+        "url": "https://raw.githubusercontent.com/microsoft/DevSkim/bd81f6967d84b3ef1dbce9e466dc28e124f56289/rules/default/security/api/deserialization.json",
+        "sha256": "31174483df6f13846b0e31054f9091312181d2cf2e56e87cc2b58ec4627a8abf",
+        "git_blob_sha1": "fb597f0050c6230a65c38eaba292ae7fe67ceb96",
+        "bytes": 12496
+      },
+      {
+        "path": "rules/default/security/xml/external_entities.json",
+        "url": "https://raw.githubusercontent.com/microsoft/DevSkim/bd81f6967d84b3ef1dbce9e466dc28e124f56289/rules/default/security/xml/external_entities.json",
+        "sha256": "f1f8eb4e3b0f65cf26213bcf8fa78326a19b60c2d84856592dba611e9d2a47fa",
+        "git_blob_sha1": "15fccc073013f4f0ba75b65af0f91b89e9484667",
+        "bytes": 13790
+      },
+      {
+        "path": "rules/default/security/cryptography/random.json",
+        "url": "https://raw.githubusercontent.com/microsoft/DevSkim/bd81f6967d84b3ef1dbce9e466dc28e124f56289/rules/default/security/cryptography/random.json",
+        "sha256": "8d5232a9fa3006b1d4534c59cb14f31a4725f2e337d96d463b0884e535ae4ae3",
+        "git_blob_sha1": "24b4c39204cc609890621a21abba3660decf5291",
+        "bytes": 5927
+      }
+    ]
+  },
+  {
+    "id": "gitleaks",
+    "name": "Gitleaks",
+    "repository": "https://github.com/gitleaks/gitleaks",
+    "revision": "5f6ec56cfa6f8c67648d863582c7ae2f206d5c1c",
+    "retrieved": "2026-10-27",
+    "declared_license": "MIT",
+    "use": "original-guidance",
+    "selection_reason": "Secret indicators, redaction and contextual false positives.",
+    "limitations": "No secret regexes or allowlists are imported. At the pinned revision README says feature complete and security-patches-only, pointing to Betterleaks.",
+    "artifacts": [
+      {
+        "path": "LICENSE",
+        "url": "https://raw.githubusercontent.com/gitleaks/gitleaks/5f6ec56cfa6f8c67648d863582c7ae2f206d5c1c/LICENSE",
+        "sha256": "e3884b252b3bfc045e55be43a34d1e80da070bc6f804ac95bf4660e97d62ebc6",
+        "git_blob_sha1": "3c270b36c539ca8fbc4cc1017d3cbb7be1e44bbc",
+        "bytes": 1069
+      },
+      {
+        "path": "README.md",
+        "url": "https://raw.githubusercontent.com/gitleaks/gitleaks/5f6ec56cfa6f8c67648d863582c7ae2f206d5c1c/README.md",
+        "sha256": "65e87e68f4a16aefa1f1fba55b2e7a9b9bc8716393b7ddb013fc7c7bef4e4bc1",
+        "git_blob_sha1": "6bdd5d960fd9f81a5221819509c4e9f5cb7d251e",
+        "bytes": 29328
+      },
+      {
+        "path": "config/gitleaks.toml",
+        "url": "https://raw.githubusercontent.com/gitleaks/gitleaks/5f6ec56cfa6f8c67648d863582c7ae2f206d5c1c/config/gitleaks.toml",
+        "sha256": "e163e53b9e7e8a8511e77271e2b323ed057759542a6d988258afe3a1fa329caf",
+        "git_blob_sha1": "256f64790ea6d954f0041024be2938089ae1e7a7",
+        "bytes": 97731
+      }
+    ]
+  },
+  {
+    "id": "gosec",
+    "name": "gosec",
+    "repository": "https://github.com/securego/gosec",
+    "revision": "ff25931a2edda1c6bee86cea092aefca3c0c04c4",
+    "retrieved": "2026-10-27",
+    "declared_license": "Apache-2.0",
+    "use": "original-guidance",
+    "selection_reason": "Go process, network, filesystem, archive, SQL and TLS review criteria.",
+    "limitations": "Go AST/SSA rules are not copied or executed; no gosec coverage claim.",
+    "artifacts": [
+      {
+        "path": "LICENSE.txt",
+        "url": "https://raw.githubusercontent.com/securego/gosec/ff25931a2edda1c6bee86cea092aefca3c0c04c4/LICENSE.txt",
+        "sha256": "2be0a81f30d2b73cb3b5182b969175245042158735fcc8af133929212c772e78",
+        "git_blob_sha1": "1756c7821626446859e1a11c54789a2b38ec79c6",
+        "bytes": 9138
+      },
+      {
+        "path": "rules/subproc.go",
+        "url": "https://raw.githubusercontent.com/securego/gosec/ff25931a2edda1c6bee86cea092aefca3c0c04c4/rules/subproc.go",
+        "sha256": "4dba0abbcc6c033c2acc0737acb77550a2f1b78bf9961c9facd54db1aae16cce",
+        "git_blob_sha1": "0dd274749e7fa293f86dcb18cd6471be9023ccc4",
+        "bytes": 3940
+      },
+      {
+        "path": "rules/ssrf.go",
+        "url": "https://raw.githubusercontent.com/securego/gosec/ff25931a2edda1c6bee86cea092aefca3c0c04c4/rules/ssrf.go",
+        "sha256": "6430b9a87252309bc82298b9a907b15d053e1bce230996f2529889cf101a027a",
+        "git_blob_sha1": "c89cbc274cd3559486ca80294a5d3fa2aeeaf341",
+        "bytes": 1550
+      },
+      {
+        "path": "rules/archive.go",
+        "url": "https://raw.githubusercontent.com/securego/gosec/ff25931a2edda1c6bee86cea092aefca3c0c04c4/rules/archive.go",
+        "sha256": "a7b90e45df214b2ed19115dac0cf7f4e5828dba519c5bce7754ac779f0be1f7a",
+        "git_blob_sha1": "e1c241c1651af178b7aefb5b1ba4bbe7d34a83f9",
+        "bytes": 2503
+      },
+      {
+        "path": "rules/directory_traversal.go",
+        "url": "https://raw.githubusercontent.com/securego/gosec/ff25931a2edda1c6bee86cea092aefca3c0c04c4/rules/directory_traversal.go",
+        "sha256": "9158eb708a2ef84b5abed311bf25d34f2e91c87e72232de46153b77ec4f1b9ac",
+        "git_blob_sha1": "d18bfd4e407954bf6bbe3cbba1032ea28409bf69",
+        "bytes": 1505
+      },
+      {
+        "path": "rules/sql.go",
+        "url": "https://raw.githubusercontent.com/securego/gosec/ff25931a2edda1c6bee86cea092aefca3c0c04c4/rules/sql.go",
+        "sha256": "32e08d6659aee406cb339d39193b4742161626496a6ea4c73742e6e10111c6d3",
+        "git_blob_sha1": "f6377b1f92dd841561e7faa40aa5d40736d835a1",
+        "bytes": 12958
+      },
+      {
+        "path": "rules/tls_config.go",
+        "url": "https://raw.githubusercontent.com/securego/gosec/ff25931a2edda1c6bee86cea092aefca3c0c04c4/rules/tls_config.go",
+        "sha256": "a0db682859b407ca63b94196fa6ed6957edc45467e29a85d8ca459abcadbe573",
+        "git_blob_sha1": "d71bd0da8e57fbebf32b603812296aeccd91d0ed",
+        "bytes": 3313
+      }
+    ]
+  },
+  {
+    "id": "mcp",
+    "name": "Model Context Protocol specification and security documentation",
+    "repository": "https://github.com/modelcontextprotocol/specification",
+    "revision": "54b91cdb8f21825ce586c452704f319d49866ef8",
+    "retrieved": "2026-10-27",
+    "declared_license": "LICENSE describes Apache-2.0/MIT transition; non-spec documentation CC-BY-4.0",
+    "use": "reference-only",
+    "selection_reason": "Protocol-specific token, session, tool metadata and consent boundaries.",
+    "limitations": "Original summaries only; no specification or documentation text imported. Guidance targets inspected 2026-07-28 files, not every host implementation.",
+    "artifacts": [
+      {
+        "path": "LICENSE",
+        "url": "https://raw.githubusercontent.com/modelcontextprotocol/specification/54b91cdb8f21825ce586c452704f319d49866ef8/LICENSE",
+        "sha256": "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a",
+        "git_blob_sha1": "4a93985763241755401a10678395303de4e720ba",
+        "bytes": 12227
+      },
+      {
+        "path": "docs/docs/2026-07-28/tutorials/security/security_best_practices.mdx",
+        "url": "https://raw.githubusercontent.com/modelcontextprotocol/specification/54b91cdb8f21825ce586c452704f319d49866ef8/docs/docs/2026-07-28/tutorials/security/security_best_practices.mdx",
+        "sha256": "0d859ba68bbab6148907ef2bf7b2e169a1b9a2cbe1e8731d7c0d47e15ed37f23",
+        "git_blob_sha1": "142414ce0db2e5d40f86ea6f9d8e3b0ce46c75f8",
+        "bytes": 42581
+      },
+      {
+        "path": "docs/specification/2026-07-28/server/tools.mdx",
+        "url": "https://raw.githubusercontent.com/modelcontextprotocol/specification/54b91cdb8f21825ce586c452704f319d49866ef8/docs/specification/2026-07-28/server/tools.mdx",
+        "sha256": "ed550806a58eb7744b858fb9f26001aa5e55dac9e2babe88317cc81d9d4c490d",
+        "git_blob_sha1": "449020f54a6582122607b4869129bec5f1035f37",
+        "bytes": 23788
+      }
+    ]
+  },
+  {
+    "id": "njsscan",
+    "name": "njsscan",
+    "repository": "https://github.com/ajinabraham/njsscan",
+    "revision": "4137df39e743e07e912a31ca7dab19633f40324a",
+    "retrieved": "2026-10-27",
+    "declared_license": "LGPL-3.0 license text; repository README advertises LGPL-3.0+",
+    "use": "reference-only",
+    "selection_reason": "Node child_process and vm threat cross-checks.",
+    "limitations": "No rules, patterns or examples imported. Its Semgrep-based implementation is not a JS/TS frontend in Scout.",
+    "artifacts": [
+      {
+        "path": "LICENSE",
+        "url": "https://raw.githubusercontent.com/ajinabraham/njsscan/4137df39e743e07e912a31ca7dab19633f40324a/LICENSE",
+        "sha256": "a5681bf9b05db14d86776930017c647ad9e6e56ff6bbcfdf21e5848288dfaf1b",
+        "git_blob_sha1": "153d416dc8d2d60076698ec3cbfce34d91436a03",
+        "bytes": 7651
+      },
+      {
+        "path": "njsscan/rules/semantic_grep/exec/exec_os_command.yaml",
+        "url": "https://raw.githubusercontent.com/ajinabraham/njsscan/4137df39e743e07e912a31ca7dab19633f40324a/njsscan/rules/semantic_grep/exec/exec_os_command.yaml",
+        "sha256": "e44b222f14440423c4adf179fb5a471fbaec8039ef59f9fbea39f75272455eea",
+        "git_blob_sha1": "bfb937cd8095f2282c823a1014aefdc4bc255953",
+        "bytes": 1653
+      },
+      {
+        "path": "njsscan/rules/semantic_grep/eval/eval_vm_injection.yaml",
+        "url": "https://raw.githubusercontent.com/ajinabraham/njsscan/4137df39e743e07e912a31ca7dab19633f40324a/njsscan/rules/semantic_grep/eval/eval_vm_injection.yaml",
+        "sha256": "8aa2ea13f8727d93239073c75638d2823ba2befbcc1ecbbee3e8c523d8b7c130",
+        "git_blob_sha1": "88146a99bc1b920e05ff5c06a3bc1ceba3e31200",
+        "bytes": 11622
+      }
+    ]
+  },
+  {
+    "id": "owasp-mcp",
+    "name": "OWASP MCP Top 10",
+    "repository": "https://github.com/OWASP/www-project-mcp-top-10",
+    "revision": "165fe0f78ef104459237b4a8e0f6e78db9b02391",
+    "retrieved": "2026-10-27",
+    "declared_license": "Inconsistent: LICENSE.md says CC-BY-SA-4.0; index.md says CC-BY-NC-SA-4.0",
+    "use": "reference-only",
+    "selection_reason": "Cross-check of agent/tool threat categories.",
+    "limitations": "Taxonomy reference only; no prose, templates or rules imported. License inconsistency retained rather than resolved by assumption.",
+    "artifacts": [
+      {
+        "path": "LICENSE.md",
+        "url": "https://raw.githubusercontent.com/OWASP/www-project-mcp-top-10/165fe0f78ef104459237b4a8e0f6e78db9b02391/LICENSE.md",
+        "sha256": "f9d5222c36c096ec0222ba65bbdde11891d47e20a3721e7f152d70c184fc3ba0",
+        "git_blob_sha1": "9ef8bfabe2d0025e2d2e61a24fe3f3ac37333d71",
+        "bytes": 1410
+      },
+      {
+        "path": "index.md",
+        "url": "https://raw.githubusercontent.com/OWASP/www-project-mcp-top-10/165fe0f78ef104459237b4a8e0f6e78db9b02391/index.md",
+        "sha256": "4d65ec4917c33b9196b2bc7d15c89935c2084509dbbadf2ec4debf9dcfac7ded",
+        "git_blob_sha1": "1b50e5c0a51fb3cfef2fb9c1fe3137807e1f57da",
+        "bytes": 6868
+      }
+    ]
+  },
+  {
+    "id": "owasp-sql",
+    "repository": "https://github.com/OWASP/CheatSheetSeries",
+    "revision": "9d41c054686e35fb56070b4b6271ae2829edea6a",
+    "retrieved": "2026-10-27",
+    "name": "OWASP SQL and Database Security Cheat Sheets",
+    "declared_license": "CC-BY-SA-4.0 (LICENSE.md)",
+    "use": "reference-only",
+    "selection_reason": "SQL parameter boundaries, stored procedures, database least privilege and credential handling.",
+    "limitations": "Original Scout criteria and scenarios only; no OWASP prose, example programs or rule templates copied.",
+    "artifacts": [
+      {
+        "path": "LICENSE.md",
+        "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/9d41c054686e35fb56070b4b6271ae2829edea6a/LICENSE.md",
+        "git_blob_sha1": "31f26300fe110a9d9df6d1f0e8a53dc41383b7a4",
+        "sha256": "2b47ecdd5078e948395bc5980226933854228ff688f10d1dd059208be4956084",
+        "bytes": 18637
+      },
+      {
+        "path": "cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.md",
+        "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/9d41c054686e35fb56070b4b6271ae2829edea6a/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.md",
+        "git_blob_sha1": "0eaaccf24478fbf809ceabb685e5f881ec445194",
+        "sha256": "5597b04e2a6f280e1b33a3a01c1f01884fa04fd9679168e2606fab22b6a6058b",
+        "bytes": 9956
+      },
+      {
+        "path": "cheatsheets/Query_Parameterization_Cheat_Sheet.md",
+        "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/9d41c054686e35fb56070b4b6271ae2829edea6a/cheatsheets/Query_Parameterization_Cheat_Sheet.md",
+        "git_blob_sha1": "66045657b06f4996ba74d3fbb523690ba351af05",
+        "sha256": "d449b1cc14cf0b2ed21d83716eded31e8b155ca1cc5a6cc4c1b2f8acf9ffd4b6",
+        "bytes": 7713
+      },
+      {
+        "path": "cheatsheets/Database_Security_Cheat_Sheet.md",
+        "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/9d41c054686e35fb56070b4b6271ae2829edea6a/cheatsheets/Database_Security_Cheat_Sheet.md",
+        "git_blob_sha1": "ac8164c80fea3bccd551d2d191e3c63dd63d5826",
+        "sha256": "b5ad6125f2f908949df3a7866daa03a9f8487e94ea84f384eb852948375f15e2",
+        "bytes": 9362
+      }
+    ]
+  },
+  {
+    "id": "postgres-sql",
+    "repository": "https://github.com/postgres/postgres",
+    "revision": "dc7efdf14f67283359923348e843a8c571aff3e0",
+    "retrieved": "2026-10-27",
+    "name": "PostgreSQL 18 documentation",
+    "declared_license": "PostgreSQL License (COPYRIGHT)",
+    "use": "reference-only",
+    "selection_reason": "Dialect-specific RLS, SECURITY DEFINER, COPY, TRUNCATE, logging and timeout semantics.",
+    "limitations": "Selected documentation at a pinned REL_18_STABLE revision; do not project PostgreSQL semantics onto other engines or infer live role/configuration state.",
+    "artifacts": [
+      {
+        "path": "COPYRIGHT",
+        "url": "https://raw.githubusercontent.com/postgres/postgres/dc7efdf14f67283359923348e843a8c571aff3e0/COPYRIGHT",
+        "git_blob_sha1": "0a397648dcd3c2177acc58bd7daecd11ad64be62",
+        "sha256": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd",
+        "bytes": 1198
+      },
+      {
+        "path": "doc/src/sgml/ddl.sgml",
+        "url": "https://raw.githubusercontent.com/postgres/postgres/dc7efdf14f67283359923348e843a8c571aff3e0/doc/src/sgml/ddl.sgml",
+        "git_blob_sha1": "ddd7096f6b2acfae4187626badc21e1eebed460d",
+        "sha256": "ce1919d9236f2e71672660e1a347146472e966e4d19b77fde5ae345dd1db6ec7",
+        "bytes": 212910
+      },
+      {
+        "path": "doc/src/sgml/plpgsql.sgml",
+        "url": "https://raw.githubusercontent.com/postgres/postgres/dc7efdf14f67283359923348e843a8c571aff3e0/doc/src/sgml/plpgsql.sgml",
+        "git_blob_sha1": "5492a66f7eedcaff9d9413a74d35b6d1aee5c614",
+        "sha256": "43d705adbded343336341fd3e34ea8940432e8a8211f737d36ba3041ad0a4a51",
+        "bytes": 232749
+      },
+      {
+        "path": "doc/src/sgml/ref/copy.sgml",
+        "url": "https://raw.githubusercontent.com/postgres/postgres/dc7efdf14f67283359923348e843a8c571aff3e0/doc/src/sgml/ref/copy.sgml",
+        "git_blob_sha1": "5413bb0e12d775eff36d111aaac9c62e1ed596d4",
+        "sha256": "f32b634e64a849c1ec96fb6804aef39917ddf57c32eafe780a5871cdec24dbf2",
+        "bytes": 48505
+      },
+      {
+        "path": "doc/src/sgml/ref/create_function.sgml",
+        "url": "https://raw.githubusercontent.com/postgres/postgres/dc7efdf14f67283359923348e843a8c571aff3e0/doc/src/sgml/ref/create_function.sgml",
+        "git_blob_sha1": "3f6e579c8307bd8b0a4930159fa5331c41618079",
+        "sha256": "cfc79ae72e900ae6899a12315db8e305faf39de73ae466a9993bfee5213bcc13",
+        "bytes": 37703
+      },
+      {
+        "path": "doc/src/sgml/ref/truncate.sgml",
+        "url": "https://raw.githubusercontent.com/postgres/postgres/dc7efdf14f67283359923348e843a8c571aff3e0/doc/src/sgml/ref/truncate.sgml",
+        "git_blob_sha1": "9d846f88c9f604eaf591f474549a67cd01b201da",
+        "sha256": "b58be92169029b60049f8405e9488964f9d8e7abcd27316ad3e5def15331055e",
+        "bytes": 7817
+      },
+      {
+        "path": "doc/src/sgml/config.sgml",
+        "url": "https://raw.githubusercontent.com/postgres/postgres/dc7efdf14f67283359923348e843a8c571aff3e0/doc/src/sgml/config.sgml",
+        "git_blob_sha1": "5129299a7490bf27b3c95c783a489f47bb279776",
+        "sha256": "d862c2c981bd0145b3c64b66ba367f84b6451d8929000286903a0e9347f24034",
+        "bytes": 580819
+      }
+    ]
+  },
+  {
+    "id": "scorecard",
+    "name": "OpenSSF Scorecard",
+    "repository": "https://github.com/ossf/scorecard",
+    "revision": "1e241c40276078445b30a97e603d7e63a0092ce9",
+    "retrieved": "2026-10-27",
+    "declared_license": "Apache-2.0",
+    "use": "original-guidance",
+    "selection_reason": "CI trust boundaries, pinned dependencies, token permissions and opaque artifacts.",
+    "limitations": "Offline evidence cannot establish repository settings, branch protection, signer identity or maintenance status.",
+    "artifacts": [
+      {
+        "path": "LICENSE",
+        "url": "https://raw.githubusercontent.com/ossf/scorecard/1e241c40276078445b30a97e603d7e63a0092ce9/LICENSE",
+        "sha256": "61324beb8841ff62645c758ff5b121164592ec163056dda34d76a0526a0b3b5e",
+        "git_blob_sha1": "18f7f43fde86f7ef648559da1e3b2ba46c167f90",
+        "bytes": 11355
+      },
+      {
+        "path": "docs/checks.md",
+        "url": "https://raw.githubusercontent.com/ossf/scorecard/1e241c40276078445b30a97e603d7e63a0092ce9/docs/checks.md",
+        "sha256": "56125223e8801b6ec268f129fcc65cc64a058010ad6ee6d60615be783511ffaa",
+        "git_blob_sha1": "8c90adfd46675102d6e516c13b40110d3e7163e2",
+        "bytes": 46173
+      }
+    ]
+  },
+  {
+    "id": "semgrep",
+    "name": "Semgrep Community Edition rules",
+    "repository": "https://github.com/semgrep/semgrep-rules",
+    "revision": "16b9e6d45f10649f6a531ec4838ed9924372c3bc",
+    "retrieved": "2026-10-27",
+    "declared_license": "Semgrep Rules License v1.0",
+    "use": "evaluated-only",
+    "selection_reason": "Evaluated as a broad rule catalog; executable rule import deferred.",
+    "limitations": "Only README and license pointer inspected. No rule content imported, no rule-level coverage or reuse permission asserted.",
+    "artifacts": [
+      {
+        "path": "LICENSE",
+        "url": "https://raw.githubusercontent.com/semgrep/semgrep-rules/16b9e6d45f10649f6a531ec4838ed9924372c3bc/LICENSE",
+        "sha256": "1a6466ae5f1c68631bbd13e3f1aa8f380d84219853c08f0456b853fccfacee1d",
+        "git_blob_sha1": "cd16fded1a1e713f65d43654bb64d0c47c997fbf",
+        "bytes": 92
+      },
+      {
+        "path": "README.md",
+        "url": "https://raw.githubusercontent.com/semgrep/semgrep-rules/16b9e6d45f10649f6a531ec4838ed9924372c3bc/README.md",
+        "sha256": "af9762fd137fcc026972243cc9baa6a82351fc8f41193ab99b96ebb4dde09981",
+        "git_blob_sha1": "598d34378cadc92e3b89a9ace72322921b037865",
+        "bytes": 3520
+      }
+    ]
+  },
+  {
+    "id": "shellcheck",
+    "name": "ShellCheck",
+    "repository": "https://github.com/koalaman/shellcheck",
+    "revision": "919d37c4d77a7ce16cfc76ebdd781dd6e8081fa5",
+    "retrieved": "2026-10-27",
+    "declared_license": "GPL-3.0 license text; inspect upstream notices for file-specific terms",
+    "use": "reference-only",
+    "selection_reason": "Shell argument boundaries, expansion and destructive-command review.",
+    "limitations": "No Haskell implementations, diagnostic prose or test cases imported. Quoting prevents splitting/globbing, not arbitrary shell execution or option injection.",
+    "artifacts": [
+      {
+        "path": "LICENSE",
+        "url": "https://raw.githubusercontent.com/koalaman/shellcheck/919d37c4d77a7ce16cfc76ebdd781dd6e8081fa5/LICENSE",
+        "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+        "git_blob_sha1": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+        "bytes": 35149
+      },
+      {
+        "path": "README.md",
+        "url": "https://raw.githubusercontent.com/koalaman/shellcheck/919d37c4d77a7ce16cfc76ebdd781dd6e8081fa5/README.md",
+        "sha256": "7bb0c6431e2f8a1702ad9a1bc1665953f0218256a2511e87e24d6ccd480032c7",
+        "git_blob_sha1": "5f8f0d5ba3a077d99499b9b5d515250be9fdb336",
+        "bytes": 21164
+      },
+      {
+        "path": "src/ShellCheck/Checks/Commands.hs",
+        "url": "https://raw.githubusercontent.com/koalaman/shellcheck/919d37c4d77a7ce16cfc76ebdd781dd6e8081fa5/src/ShellCheck/Checks/Commands.hs",
+        "sha256": "3ad4cebb975befc3e4b22a07ee9b40ce73ef5254bf4bdb7d5b656fa0fde11eb1",
+        "git_blob_sha1": "8c4db99eb2914b1b59358de38d8a977aeec583ca",
+        "bytes": 75943
+      },
+      {
+        "path": "src/ShellCheck/Analytics.hs",
+        "url": "https://raw.githubusercontent.com/koalaman/shellcheck/919d37c4d77a7ce16cfc76ebdd781dd6e8081fa5/src/ShellCheck/Analytics.hs",
+        "sha256": "ad2440e71e02831054e391332a1b0311c162ce1424b459e2fb0f9813470abf3e",
+        "git_blob_sha1": "c68af802ccba1c0f09c2fc1ac008ad191560d2ed",
+        "bytes": 280762
+      }
+    ]
+  }
+]

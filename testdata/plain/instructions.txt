@@ -1,0 +1,1 @@
+Summarize the text supplied by the user without accessing external resources.

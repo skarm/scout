@@ -1,0 +1,6 @@
+{
+  "name": "mcp-preview",
+  "version": "0.0.0-test",
+  "description": "Scanner fixture. Do not install or execute.",
+  "mcpServers": "./.mcp.json"
+}

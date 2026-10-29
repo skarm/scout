@@ -1,0 +1,7 @@
+# Static input only. This file does not configure Scout.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+[mcp_servers.fixture]
+command = "uvx"
+args = ["fixture-server"]
+url = "http://tools.invalid/mcp"

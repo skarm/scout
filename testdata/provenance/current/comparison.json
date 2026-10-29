@@ -1,0 +1,18 @@
+{
+  "schema": "scout.replay-comparison/v1",
+  "before": {
+    "path": "testdata/provenance/baseline/replay.jsonl.gz",
+    "sha256": "a45afa130b033a8f06eec7c5699418aaa7c147b850461ce7120219436d4e5d39",
+    "uncompressed_sha256": "a710f0267be58f2b0ddd51871fc02704b8766b74427da9d015e546f20a1da386"
+  },
+  "after": {
+    "path": "testdata/provenance/current/replay.jsonl.gz",
+    "sha256": "4dd2724ddf08c21cb4a9a9ee16dfcacbc82cbdeb516cbd0754e24bc7f117017c",
+    "uncompressed_sha256": "4c6e23248adf557c5819034c4ce03caa8ebcb87d3699e18531fd96768365d7df"
+  },
+  "before_inputs": 14930,
+  "after_inputs": 14930,
+  "changed_rows": 0,
+  "excluded_execution_error_rows": 8,
+  "changes": []
+}

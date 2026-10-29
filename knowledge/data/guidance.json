@@ -1,0 +1,3032 @@
+{
+  "NV-P1": {
+    "explanation": "Instructions attempt to replace higher-priority rules or safety constraints.",
+    "remediation": "Remove unauthorized hierarchy overrides and keep artifact content separate from trusted policy.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A quoted example or a defensive prohibition is not an instruction to obey."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-P2": {
+    "explanation": "Invisible characters or concealed text may carry instructions that a human reviewer does not see.",
+    "remediation": "Inspect comments and invisible code points, remove hidden directives, and make required instructions visibly reviewable.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Ordinary emoji ZWJ and short subdivision-flag sequences are not hidden instructions by themselves."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-P3": {
+    "explanation": "Instructions may cause user data or conversation context to be transmitted beyond the requested task.",
+    "remediation": "Remove unauthorized transfers; document purpose, recipient, minimization and explicit consent for necessary telemetry.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A documented authorized transfer can be legitimate; a URL alone does not prove a leak."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-P4": {
+    "explanation": "Content may covertly steer responses or prioritize a third party over user preferences.",
+    "remediation": "Make recommendations and steering constraints explicit and relevant to the stated task.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "An openly scoped domain-specific recommendation is not necessarily covert manipulation."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-P5": {
+    "explanation": "Operational instructions may cause physical harm or deploy harmful software if followed.",
+    "remediation": "Remove harmful operational directions; require specialist safeguards and appropriate human control for high-risk tasks.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Security education, quotation and warnings require context, not an automatic malicious-intent verdict."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P5",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-P6": {
+    "explanation": "Instructions request direct disclosure of privileged prompts or internal rules.",
+    "remediation": "Remove requests for privileged instruction text and prevent unrelated disclosure in responses.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Requests about a public user-authored template are not necessarily requests for privileged instructions."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P6",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-P7": {
+    "explanation": "Transformation or narrative requests may indirectly extract privileged instructions.",
+    "remediation": "Apply the same confidentiality boundaries to summaries, translations, encodings and indirect representations.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Translating a public document is not privileged prompt extraction."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P7",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-P8": {
+    "explanation": "Tools, storage or network operations may be used to disclose privileged instructions.",
+    "remediation": "Keep privileged prompts out of tool outputs, logs, files and unrelated requests.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A public template variable is not automatically the harness system prompt."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P8",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-E1": {
+    "explanation": "A transmission construct may send data to an external receiver; the source and authorization determine the risk.",
+    "remediation": "Verify recipient ownership, scope, necessity and allowed data; remove unauthorized payloads.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Network communication or telemetry is not inherently exfiltration."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "E1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-E2": {
+    "explanation": "Environment reads or enumeration can collect credentials beyond the needed subset.",
+    "remediation": "Read only explicitly required keys, isolate access and avoid leaking secrets in logs or unrelated requests.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Reading one authorized service credential can be normal authentication."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "E2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-E3": {
+    "explanation": "Broad filesystem enumeration can discover private files and credentials.",
+    "remediation": "Use explicit user-approved roots and restrict discovery to files needed for the task.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A file-search utility can legitimately enumerate its documented input tree."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "E3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-E4": {
+    "explanation": "Conversation history or session content may leave its intended trust boundary.",
+    "remediation": "Minimize conversation data, require explicit purpose-bound consent and avoid secondary logging or export.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "An explicitly requested export to a user-owned destination may be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "E4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-E5": {
+    "explanation": "Cloud upload operations can move workspace or sensitive content into an unrelated bucket.",
+    "remediation": "Check destination ownership and access policy, scope the uploaded files and exclude credentials.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized backup is not automatically exfiltration."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "E5",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-PE1": {
+    "explanation": "Broad permission declarations can authorize unrelated high-impact operations.",
+    "remediation": "Replace wildcards with the smallest justified capabilities and document their purpose.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A declaration is not proof of effective host privileges; review the actual host policy."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "PE1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-PE2": {
+    "explanation": "Privilege elevation increases the impact of untrusted commands.",
+    "remediation": "Remove unnecessary elevation, constrain inputs and require explicit approval for justified elevation.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Administrative maintenance may require elevation within an independently authorized scope."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "PE2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-PE3": {
+    "explanation": "Credential-store paths may expose secrets unrelated to a skill.",
+    "remediation": "Avoid opportunistic credential reads; use narrowly authorized credential access and keep values out of output.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A path mentioned in a defensive example is not a confirmed file read."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "PE3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SC1": {
+    "explanation": "Mutable or underspecified dependency declarations can resolve to different unreviewed code.",
+    "remediation": "Resolve and review exact versions and source identity; preserve lock data and integrity evidence.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A version range is not an installed version and does not itself establish a known CVE."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SC2": {
+    "explanation": "Fetching and immediately executing code can bypass review of installed behavior.",
+    "remediation": "Review and pin the fetched content, verify integrity and separate download from any authorized execution.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A quoted installer example is not proof that the scanner or host executes it."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SC3": {
+    "explanation": "Encoding combined with execution may conceal the actual program from review.",
+    "remediation": "Prefer readable code; decode under limits for inspection and never execute decoded input to inspect it.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Base64 for ordinary data or a compiler output is not automatically malicious."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SC4": {
+    "explanation": "A database advisory matched an exact supported package coordinate.",
+    "remediation": "Check affected ranges and patched versions, verify actual resolved dependency and applicability, then update or mitigate.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Database matching is not proof of installation, reachability or successful exploitation."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SC5": {
+    "explanation": "A package matches a historical maintenance-concern list.",
+    "remediation": "Verify current maintenance and security status using authoritative project records before replacing or accepting it.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A historical entry may be outdated and must not be represented as current verified abandonment."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC5",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SC6": {
+    "explanation": "A dependency name resembles a popular package and may be a typo or impersonation.",
+    "remediation": "Verify spelling, publisher, registry and repository against the intended upstream before installation.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Similarity is not proof of typosquatting; legitimate packages can have similar names."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC6",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SC7": {
+    "explanation": "Image-signature or registry-verification controls are explicitly disabled.",
+    "remediation": "Keep approved image verification and registry TLS controls enabled and use reviewed immutable image identities.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "The literal flag --disable-content-trust=false retains its control and is not this bypass signal; this does not certify the image."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC7",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-EA1": {
+    "explanation": "An unrestricted tool grant can allow actions outside the task.",
+    "remediation": "Use explicit narrowly scoped tool grants and enforce boundaries in the host, not only prose.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A mention of tools is not an effective grant."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "EA1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-EA2": {
+    "explanation": "High-impact actions are requested without meaningful human approval.",
+    "remediation": "Add confirmation for destructive or irreversible operations and bound autonomous work.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Low-impact automation in an authorized scope is not automatically unsafe."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "EA2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-EA3": {
+    "explanation": "Instructions broaden the agent's task beyond the declared purpose.",
+    "remediation": "Constrain actions and data access to the requested task and remove unrelated delegated work.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "An expected implementation detail is not scope creep."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "EA3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-EA4": {
+    "explanation": "Unbounded retries, API use, compute or storage can exhaust resources or cause costs.",
+    "remediation": "Set deadlines, attempt limits, quotas and circuit breakers at the controlling layer.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A text description of a long-running service is not proof that all safeguards are absent."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "EA4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-OH1": {
+    "explanation": "Unvalidated generated output may be inserted into a more powerful execution context.",
+    "remediation": "Use typed parsing, explicit validation, parameterized queries and non-shell APIs; encode for the destination context.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A string kept as inert data is not execution or injection by itself."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "OH1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-OH2": {
+    "explanation": "Output may cross a trust domain without a new authorization or validation boundary.",
+    "remediation": "Preserve provenance and validate/redact output at each cross-context handoff.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A deliberate authorized data exchange can be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "OH2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-OH3": {
+    "explanation": "Output length or generation rate may be unbounded.",
+    "remediation": "Limit retained and generated output, rate and continuation count; surface truncation rather than declaring completeness.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Absence of a local limit does not prove that the host has none."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "OH3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-MP1": {
+    "explanation": "Untrusted instructions may persist in agent memory across interactions.",
+    "remediation": "Keep durable policy separate from untrusted notes, validate changes and isolate users and sessions.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "User-approved storage of ordinary task data is not automatically memory poisoning."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "MP1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-MP2": {
+    "explanation": "Padding or repeated content may displace relevant context and safety instructions.",
+    "remediation": "Bound input and manage context by trusted priority; do not silently drop important inspection tasks.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Formatting whitespace can be benign; a threshold is a signal rather than intent proof."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "MP2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-MP3": {
+    "explanation": "Agent memory or configuration may be changed without appropriate authority.",
+    "remediation": "Protect critical instructions, validate state mutations and make authorized changes reviewable.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "An explicitly requested preference update may be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "MP3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-TM1": {
+    "explanation": "Tool arguments may expand operation scope or bypass a safety check.",
+    "remediation": "Validate flags and parameters, prefer safe defaults and reject uncontrolled shell interpretation.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A dangerous-capability flag in documentation is not confirmed execution."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TM1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-TM2": {
+    "explanation": "A sequence of individually permitted tools may cross a combined security boundary.",
+    "remediation": "Check data provenance and authorization at every step, constrain chaining and require approval for high-impact combinations.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Multiple tool calls alone are not an attack chain."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TM2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-TM3": {
+    "explanation": "Disabled TLS/authentication or broad filesystem permissions weaken defaults.",
+    "remediation": "Enable certificate validation, authentication and least-privilege file modes; review exceptions explicitly.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A test fixture may intentionally show unsafe settings without activating them."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TM3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-TM4": {
+    "explanation": "Privileged workloads or host mounts can expose node-level resources.",
+    "remediation": "Drop unnecessary capabilities, host namespaces and hostPath mounts; use least-privilege workload settings.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A declaration does not prove cluster deployment or host compromise."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TM4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-RA1": {
+    "explanation": "Self-modification may replace reviewed code or instructions after approval.",
+    "remediation": "Keep installed extension code read-only and route updates through a fresh review.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A documented updater with a separately reviewed update gate can be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "RA1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-RA2": {
+    "explanation": "Startup, cron or daemon configuration may create persistence beyond the current task.",
+    "remediation": "Remove unauthorized persistence and require explicit consent, ownership and removal procedures for background activity.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "An explicitly requested service is not automatically a backdoor."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "RA2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-TR1": {
+    "explanation": "A literal instruction requests invocation for broad classes of user tasks; this is not structural trigger resolution.",
+    "remediation": "Use narrow task-specific triggers and explicit scope or negative examples.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A documented constrained invocation context can remove the collision risk."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TR1",
+        "relationship": "related family only; legacy literal detector differs from upstream metadata rule"
+      }
+    ]
+  },
+  "NV-TR2": {
+    "explanation": "A literal instruction requests shadowing a built-in tool; actual loader precedence is not established.",
+    "remediation": "Use a clear namespace and check conflicts with the selected harness and installed components.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Lexical overlap is not proof that the actual loader prioritizes this skill."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TR2",
+        "relationship": "related family only; legacy literal detector differs from upstream metadata rule"
+      }
+    ]
+  },
+  "NV-TR3": {
+    "explanation": "A literal instruction conceals or redirects a user task; this legacy identifier is NOT the upstream metadata keyword-bait detector.",
+    "remediation": "Remove hidden redirection and make actions and recipients explicit to the user.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A general assistant mode explicitly selected by the user is not automatically deceptive."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TR3",
+        "relationship": "related family only; legacy literal detector differs from upstream metadata rule"
+      }
+    ]
+  },
+  "PY-AST1": {
+    "explanation": "A supported exec call can execute arbitrary Python code.",
+    "remediation": "Replace execution with structured data parsing or explicit operations; do not treat removing __builtins__ as a security sandbox.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Dynamic execution of trusted fixed code still needs review but is not proof of an attack."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-AST2": {
+    "explanation": "A supported eval call interprets expressions rather than inert data.",
+    "remediation": "Use a format-specific parser or bounded literal-only parser where appropriate; never evaluate untrusted expressions.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A fixed internal expression is different from a user-controlled expression."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-AST3": {
+    "explanation": "Dynamic imports may load code outside a reviewed static dependency set.",
+    "remediation": "Use explicit imports or a validated allowlist of module identities and sources.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Plugin discovery can legitimately import known trusted modules."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-AST4": {
+    "explanation": "Subprocess calls can execute external commands with process privileges.",
+    "remediation": "Use explicit argument lists, disable shell interpretation where possible, validate inputs and constrain privileges.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A documented compiler or deployment invocation may be necessary."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-AST5": {
+    "explanation": "OS shell or exec-family calls can execute commands with the process's authority.",
+    "remediation": "Prefer explicit non-shell process APIs and constrain executable paths and arguments.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A shell capability is not alone proof of injection."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST5",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-AST6": {
+    "explanation": "Dynamic compilation can conceal the code later passed to execution.",
+    "remediation": "Prefer static reviewed code or structured data; trace any generated code to its execution point.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Compiling for analysis without execution is not equivalent to executing the target."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST6",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-AST7": {
+    "explanation": "Dynamic reflection can select an unintended capability at runtime.",
+    "remediation": "Constrain permitted attribute names and objects; prefer explicit access for sensitive operations.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Benign dispatch tables and known safe attributes may be intentional."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST7",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-AST8": {
+    "explanation": "Network or encoded data may be combined with an execution sink.",
+    "remediation": "Break the untrusted-data-to-code chain and use a typed non-executable format.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A static signal is not proof that the chain is reachable or that the source is hostile."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST8",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-AST9": {
+    "explanation": "Reflection may disguise a known execution function.",
+    "remediation": "Review the resolved callable and input source rather than trusting its indirect spelling; restrict reflective access.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Making a dangerous call explicit does not make it safe."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST9",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-TT1": {
+    "explanation": "A supported source expression is passed directly to a sensitive sink.",
+    "remediation": "Validate and authorize source data for the sink and use safer typed APIs.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A legitimate purpose-bound transfer may have the same structural shape."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TT1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-TT2": {
+    "explanation": "Data propagates through local variables before reaching a sensitive sink.",
+    "remediation": "Inspect the entire supported source-transform-sink chain and constrain the data and destination.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Assignments are not sanitizers; an authorized transfer is not automatically exfiltration."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TT2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-TT3": {
+    "explanation": "Credentials or environment values reach a network argument in the supported analysis.",
+    "remediation": "Verify the intended authentication endpoint and fields; remove unrelated credential transmission.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Normal authentication can use a token in an HTTP request."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TT3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-TT4": {
+    "explanation": "File contents reach a network argument in the supported analysis.",
+    "remediation": "Limit readable/uploaded files, verify destination and require explicit authorization.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A user-requested file upload may be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TT4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PY-TT5": {
+    "explanation": "External input reaches a supported code or shell execution sink.",
+    "remediation": "Treat external input as data, avoid dynamic code execution and validate process arguments.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Reachability and actual execution require additional evidence."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TT5",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "YR1": {
+    "explanation": "A retained YARA-X rule matched a malware-associated byte pattern.",
+    "remediation": "Inspect the complete rule condition and all evidence; isolate suspicious content and verify origin before use.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A signature can match a sample, documentation or benign overlap; it is not a runtime trace."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "YR1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "YR2": {
+    "explanation": "A retained YARA-X rule matched a webshell-associated byte pattern.",
+    "remediation": "Review exposed execution endpoints and provenance; remove unauthorized remote control code.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A forensic sample can legitimately contain the pattern."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "YR2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "YR3": {
+    "explanation": "A retained YARA-X rule matched mining-associated indicators.",
+    "remediation": "Check authorization, resource usage and source; remove unauthorized mining behavior.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Indicators in threat-intelligence text do not establish mining activity."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "YR3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "YR4": {
+    "explanation": "A retained YARA-X rule matched offensive-tool or exploit-associated indicators.",
+    "remediation": "Confirm the intended authorized security task and limit scope and privileges.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Security research tooling is not necessarily malicious."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "YR4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-LP1": {
+    "explanation": "Observed capability hints exceed explicit declared permissions in the captured scope.",
+    "remediation": "Align truthful declarations with necessary behavior and enforce real boundaries in the harness.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Lexical observations are not a complete behavior analysis or effective permission calculation."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "LP1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-LP2": {
+    "explanation": "A wildcard declaration grants or requests broadly scoped capabilities.",
+    "remediation": "Replace blanket access with justified narrow permissions.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Whether the host honors the declaration remains a separate question."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "LP2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-LP3": {
+    "explanation": "Capabilities are observed but no readable permission declaration is available.",
+    "remediation": "Document the necessary capabilities and independently check effective host authorization.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Missing declarations are unknown scope, not proof of unauthorized runtime access."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "LP3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-LP4": {
+    "explanation": "A declared capability has no corresponding observed use in the supported inspection.",
+    "remediation": "Remove unnecessary declarations or provide a reviewable justification and implementation.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "An unobserved use may exist in unsupported or external code."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "LP4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-TP1": {
+    "explanation": "Hidden instructions in descriptions or metadata may influence an agent outside visible intent.",
+    "remediation": "Make metadata reviewable and remove unauthorized behavioral directives from descriptive fields.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Quoted attack examples may be legitimate but do not grant a blanket exemption."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TP1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-TP2": {
+    "explanation": "Invisible or confusable identifier characters may mislead a reviewer or tool selector.",
+    "remediation": "Use unambiguous identifiers, show exact code points and reject deceptive naming in the trusted host.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Ordinary multilingual text is not itself deceptive."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TP2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-TP3": {
+    "explanation": "Parameter descriptions/defaults may contain instructions unrelated to the tool contract.",
+    "remediation": "Keep parameter metadata descriptive and validate requested data scope before use.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A parameter name alone does not establish malicious collection."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TP3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-TP4": {
+    "explanation": "Described tool purpose and observed implementation may disagree.",
+    "remediation": "Make descriptions accurate and remove unapproved behavior; review both declaration and implementation.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Incomplete prose is not necessarily a contradictory statement."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TP4",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-AS1": {
+    "explanation": "Agent configuration access may reveal credentials or private settings.",
+    "remediation": "Restrict access to explicitly approved settings and never enumerate credential stores opportunistically.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "An authorized configuration migration tool may need specific settings."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AS1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-AS2": {
+    "explanation": "MCP configuration access may expose endpoints, tokens or peer tools.",
+    "remediation": "Scope configuration access and protect credentials and unrelated integrations.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Reading a bundled public example differs from reading host configuration."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AS2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-AS3": {
+    "explanation": "Enumerating other installed skills may expose unrelated instructions or secrets.",
+    "remediation": "Restrict extension access to its own reviewed resources unless the user explicitly authorizes discovery.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A user-requested inventory operation may be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AS3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-AR1": {
+    "explanation": "Instructions suppress refusal and demand unconditional compliance.",
+    "remediation": "Preserve the consuming agent's right to reject unsafe or unauthorized actions.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A quoted jailbreak or prohibition is not itself a live command to comply."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AR1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-AR2": {
+    "explanation": "Instructions remove warnings or hide important risk information.",
+    "remediation": "Preserve meaningful user-facing safety disclosure without unnecessary boilerplate.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A request for concise formatting is not automatically a request to hide material risk."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AR2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-AR3": {
+    "explanation": "Instructions attempt to nullify the agent's governing safety policy.",
+    "remediation": "Remove policy overrides and keep untrusted task data below trusted instructions.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Discussion of policy behavior can be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AR3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SSRF1": {
+    "explanation": "A metadata-service address may expose temporary cloud credentials.",
+    "remediation": "Block unnecessary metadata access, constrain outbound destinations and validate redirects at connection time.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "An authorized cloud diagnostic can legitimately inspect metadata within its approved scope."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SSRF1",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SSRF2": {
+    "explanation": "A request to loopback or private infrastructure may cross a network trust boundary.",
+    "remediation": "Validate destination policy and resolved addresses, including redirects, and restrict internal reachability.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A documented local MCP endpoint is not automatically SSRF."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SSRF2",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "NV-SSRF3": {
+    "explanation": "An untrusted or dynamically constructed request target can redirect access.",
+    "remediation": "Parse and allowlist destinations, revalidate resolved addresses and restrict redirects.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A dynamic host with a verified allowlist is different from arbitrary caller-controlled access."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SSRF3",
+        "relationship": "adapted guidance; detector coverage is independently documented"
+      }
+    ]
+  },
+  "PI001": {
+    "explanation": "Instructions attempt to replace higher-priority rules or safety constraints.",
+    "remediation": "Remove unauthorized hierarchy overrides and keep artifact content separate from trusted policy.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A quoted example or a defensive prohibition is not an instruction to obey."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P1",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "EX001": {
+    "explanation": "Fetching and immediately executing code can bypass review of installed behavior.",
+    "remediation": "Review and pin the fetched content, verify integrity and separate download from any authorized execution.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A quoted installer example is not proof that the scanner or host executes it."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC2",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "FS001": {
+    "explanation": "Credential-store paths may expose secrets unrelated to a skill.",
+    "remediation": "Avoid opportunistic credential reads; use narrowly authorized credential access and keep values out of output.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A path mentioned in a defensive example is not a confirmed file read."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "PE3",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "GO001": {
+    "explanation": "Subprocess calls can execute external commands with process privileges.",
+    "remediation": "Use explicit argument lists, disable shell interpretation where possible, validate inputs and constrain privileges.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A documented compiler or deployment invocation may be necessary."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST4",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "GO002": {
+    "explanation": "Credential-store paths may expose secrets unrelated to a skill.",
+    "remediation": "Avoid opportunistic credential reads; use narrowly authorized credential access and keep values out of output.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A path mentioned in a defensive example is not a confirmed file read."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "PE3",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "GO003": {
+    "explanation": "Credentials or environment values reach a network argument in the supported analysis.",
+    "remediation": "Verify the intended authentication endpoint and fields; remove unrelated credential transmission.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Normal authentication can use a token in an HTTP request."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TT3",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "GO004": {
+    "explanation": "Credentials or environment values reach a network argument in the supported analysis.",
+    "remediation": "Verify the intended authentication endpoint and fields; remove unrelated credential transmission.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Normal authentication can use a token in an HTTP request."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TT3",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "SH001": {
+    "explanation": "Fetching and immediately executing code can bypass review of installed behavior.",
+    "remediation": "Review and pin the fetched content, verify integrity and separate download from any authorized execution.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A quoted installer example is not proof that the scanner or host executes it."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC2",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "SH002": {
+    "explanation": "Credentials or environment values reach a network argument in the supported analysis.",
+    "remediation": "Verify the intended authentication endpoint and fields; remove unrelated credential transmission.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Normal authentication can use a token in an HTTP request."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TT3",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "SH003": {
+    "explanation": "A supported eval, source or shell-command construct introduces dynamic execution or sourcing capability.",
+    "remediation": "Prefer explicit non-shell process APIs and constrain executable paths and arguments.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A shell capability is not alone proof of injection."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AST5",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "SH004": {
+    "explanation": "Credential-store paths may expose secrets unrelated to a skill.",
+    "remediation": "Avoid opportunistic credential reads; use narrowly authorized credential access and keep values out of output.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A path mentioned in a defensive example is not a confirmed file read."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "PE3",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "PI002": {
+    "explanation": "Instructions remove warnings or hide important risk information.",
+    "remediation": "Preserve meaningful user-facing safety disclosure without unnecessary boilerplate.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A request for concise formatting is not automatically a request to hide material risk."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "AR2",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "AG001": {
+    "explanation": "High-impact actions are requested without meaningful human approval.",
+    "remediation": "Add confirmation for destructive or irreversible operations and bound autonomous work.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Low-impact automation in an authorized scope is not automatically unsafe."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "EA2",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "AG002": {
+    "explanation": "Fetching and immediately executing code can bypass review of installed behavior.",
+    "remediation": "Review and pin the fetched content, verify integrity and separate download from any authorized execution.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A quoted installer example is not proof that the scanner or host executes it."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC2",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "AC001": {
+    "explanation": "High-impact actions are requested without meaningful human approval.",
+    "remediation": "Add confirmation for destructive or irreversible operations and bound autonomous work.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Low-impact automation in an authorized scope is not automatically unsafe."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "EA2",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "AC002": {
+    "explanation": "A wildcard declaration grants or requests broadly scoped capabilities.",
+    "remediation": "Replace blanket access with justified narrow permissions.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Whether the host honors the declaration remains a separate question."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "LP2",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "AC003": {
+    "explanation": "A supported configuration declares a command lifecycle hook; it can introduce execution independent of a skill invocation.",
+    "remediation": "Review the handler, activation event, arguments, access and dependencies; remove unneeded automatic execution.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A declared hook may be a necessary documented operation; declaration does not prove activation or malicious persistence."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "RA2",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "SC001": {
+    "explanation": "Mutable or underspecified dependency declarations can resolve to different unreviewed code.",
+    "remediation": "Resolve and review exact versions and source identity; preserve lock data and integrity evidence.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A version range is not an installed version and does not itself establish a known CVE."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC1",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "PL001": {
+    "explanation": "Instructions request direct disclosure of privileged prompts or internal rules.",
+    "remediation": "Remove requests for privileged instruction text and prevent unrelated disclosure in responses.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Requests about a public user-authored template are not necessarily requests for privileged instructions."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P6",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "MP001": {
+    "explanation": "Untrusted instructions may persist in agent memory across interactions.",
+    "remediation": "Keep durable policy separate from untrusted notes, validate changes and isolate users and sessions.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "User-approved storage of ordinary task data is not automatically memory poisoning."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "MP1",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "DE001": {
+    "explanation": "Instructions may cause user data or conversation context to be transmitted beyond the requested task.",
+    "remediation": "Remove unauthorized transfers; document purpose, recipient, minimization and explicit consent for necessary telemetry.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A documented authorized transfer can be legitimate; a URL alone does not prove a leak."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P3",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "PI003": {
+    "explanation": "Instructions attempt to replace higher-priority rules or safety constraints.",
+    "remediation": "Remove unauthorized hierarchy overrides and keep artifact content separate from trusted policy.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A quoted example or a defensive prohibition is not an instruction to obey."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P1",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "OSV001": {
+    "explanation": "A database advisory matched an exact supported package coordinate.",
+    "remediation": "Check affected ranges and patched versions, verify actual resolved dependency and applicability, then update or mitigate.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Database matching is not proof of installation, reachability or successful exploitation."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "SC4",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "NV-TR1M": {
+    "explanation": "An overly short or common activation trigger may invoke the skill unintentionally.",
+    "remediation": "Use narrow task-specific triggers and explicit scope or negative examples.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A documented constrained invocation context can remove the collision risk."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TR1",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "NV-TR2M": {
+    "explanation": "A trigger can shadow a built-in command or trusted tool.",
+    "remediation": "Use a clear namespace and check conflicts with the selected harness and installed components.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "Lexical overlap is not proof that the actual loader prioritizes this skill."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TR2",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "NV-TR3M": {
+    "explanation": "A generic trigger may try to activate on most user inputs.",
+    "remediation": "Replace blanket activation with task-specific conditions and user-controlled invocation.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A general assistant mode explicitly selected by the user is not automatically deceptive."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "TR3",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "SE001": {
+    "explanation": "A private-key PEM marker is present; validity and live use are not established.",
+    "remediation": "Check whether real key material is exposed; remove and rotate exposed live keys through the trusted secret-management process.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "Test markers and public examples are not necessarily live secrets."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/analyzer.go:SE001",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "BI001": {
+    "explanation": "An opaque executable or bytecode payload was captured and this profile cannot establish its behavior.",
+    "remediation": "Obtain reviewable source and provenance or submit it to an approved dedicated inspection; do not execute it to inspect it.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "A binary can be legitimate, but its unknown behavior is still a coverage gap."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/analyzer.go:BI001",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "SC002": {
+    "explanation": "A Go module replacement points at local content outside ordinary module resolution.",
+    "remediation": "Review and capture the replacement source explicitly; never read the referenced host path automatically.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "Local development replacements may be intentional."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/supply.go:SC002",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "SC003": {
+    "explanation": "A Go module is replaced by a different module identity.",
+    "remediation": "Verify the replacement publisher, source, version and integrity against the intended dependency.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "An explicitly reviewed maintained fork may be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/supply.go:SC003",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "MC001": {
+    "explanation": "A non-loopback MCP URL uses unencrypted HTTP.",
+    "remediation": "Use an authenticated confidential transport appropriate for the deployment and review any controlled exception.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "This declaration does not prove a connection or remote-server behavior."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/agent.go:MC001",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "MC002": {
+    "explanation": "A credential-like literal occurs in a supported configuration field.",
+    "remediation": "Move live secrets to operator-controlled credential facilities, rotate exposed secrets and avoid packaging credentials.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "A placeholder may be a false positive; do not infer validity from string shape."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/agent.go:MC002",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "MC003": {
+    "explanation": "A tool schema asks for highly sensitive material or conversation context.",
+    "remediation": "Minimize requested inputs and justify each sensitive field against the tool purpose and user authorization.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "A consented diagnostic or key-management task may legitimately need sensitive inputs."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/agent.go:MC003",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "NV-PE4": {
+    "explanation": "A host container-management socket is referenced.",
+    "remediation": "Remove unnecessary socket access and use a least-privilege broker with explicit permitted operations.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "A reference in a defensive document is not confirmed host control."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/skillspector_patterns.go:NV-PE4",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "NV-PE5": {
+    "explanation": "A runtime flag requests weakened isolation or expanded host access.",
+    "remediation": "Keep isolation enabled and document tightly scoped exceptions with independent authorization.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "A declaration is not evidence that a container actually ran."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/skillspector_patterns.go:NV-PE5",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "NV-P9": {
+    "explanation": "A large run of whitespace may hide instructions or consume inspection context.",
+    "remediation": "Keep instructions visible and bounded; review content on both sides of the padding.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "Long formatting whitespace can be accidental or benign."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/skillspector_patterns.go:NV-P9",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "NV-EA5": {
+    "explanation": "An instruction selects a different external model or provider.",
+    "remediation": "Require an explicit operator-controlled routing decision and inspect data sent to the selected service.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "Documented provider configuration is not necessarily a bypass."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/skillspector_patterns.go:NV-EA5",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "NV-SC7M": {
+    "explanation": "A mutable container tag may resolve to different unreviewed bytes on the next installation.",
+    "remediation": "Resolve and review immutable image digests and verify approved source and signature policy.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "A digest pin is provenance, not proof that the image is safe."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/skillspector_patterns.go:NV-SC7M",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "NV-SC10": {
+    "explanation": "A dependency source is replaced, aliased, remote, local or registry-specific.",
+    "remediation": "Resolve the actual intended source and exact content explicitly before review; do not silently query a public registry as if it were authoritative.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "A documented private registry or reviewed fork may be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/sources.go:NV-SC10",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "YR5": {
+    "explanation": "A trusted operator rule matched; its name/category is not a security verdict.",
+    "remediation": "Review the actual rule condition and captured byte evidence before taking action.",
+    "review_checks": [
+      "Inspect the cited bytes and declared scope; distinguish capability, configuration and actual execution.",
+      "Check independent authorization and provenance; artifact self-attestation is not sufficient."
+    ],
+    "benign_considerations": [
+      "Pattern matches can occur in ordinary files or samples."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/engine/signatures.go:YR5",
+        "relationship": "scout-original; no upstream equivalence asserted"
+      }
+    ]
+  },
+  "SSD-1": {
+    "explanation": "Apparently helpful instructions redirect the consuming agent across its authority boundary.",
+    "remediation": "Remove indirect hierarchy overrides and keep artifact data below trusted policy.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "Role-play or educational examples need contextual review."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_security_discovery.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SSD-1",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SSD-2": {
+    "explanation": "Novel wording or obfuscation communicates an attack without an obvious literal signature.",
+    "remediation": "Make task intent explicit and remove instructions that evade authorization boundaries.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "Unusual phrasing alone is not an attack."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_security_discovery.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SSD-2",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SSD-3": {
+    "explanation": "Natural-language directions request private-data collection or disclosure outside the authorized task.",
+    "remediation": "Minimize collection and require explicit purpose-bound consent and a trusted recipient.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "Authorized user-requested export can be legitimate."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_security_discovery.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SSD-3",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SSD-4": {
+    "explanation": "A sequence gradually normalizes unsafe actions or escalates permission.",
+    "remediation": "Review the complete sequence and require authorization at each trust-boundary transition.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "An ordinary multi-step task is not automatically deceptive."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_security_discovery.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SSD-4",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SDI-1": {
+    "explanation": "Observed operations contradict the captured stated purpose.",
+    "remediation": "Make declarations truthful and remove unapproved behavior.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "An expected implementation detail is not a mismatch."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_developer_intent.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SDI-1",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SDI-2": {
+    "explanation": "An observed capability is not justified by the declared task.",
+    "remediation": "Remove unnecessary capabilities or explicitly constrain and justify them.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "A necessary and documented capability is not this mismatch alone."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_developer_intent.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SDI-2",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SDI-3": {
+    "explanation": "Observed operations exceed an explicit permission declaration.",
+    "remediation": "Align the declared capability boundary with justified behavior and enforce effective restrictions.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "Missing permission metadata is unknown, not an empty grant."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_developer_intent.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SDI-3",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SDI-4": {
+    "explanation": "Comments or docstrings actively contradict security-relevant operations.",
+    "remediation": "Correct misleading documentation and investigate the conflicting operation.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "Incomplete or imprecise comments alone are not an active contradiction."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_developer_intent.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SDI-4",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SQP-1": {
+    "explanation": "A trigger description may cause unintended invocation through broad or ambiguous activation.",
+    "remediation": "Use narrow task-specific activation and negative examples.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "A domain-specific trigger or constrained invocation context can be appropriate."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_quality_policy.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SQP-1",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SQP-2": {
+    "explanation": "A sensitive operation lacks disclosure in the available relevant context.",
+    "remediation": "Document and appropriately confirm sensitive or destructive actions.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "Unavailable context is not proof that a warning is absent elsewhere."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_quality_policy.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SQP-2",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "SQP-3": {
+    "explanation": "An imposed language or locale lacks the required user choice or stated justification.",
+    "remediation": "Offer opt-in or document and justify the scoped locale requirement.",
+    "review_checks": [
+      "Require cited context supporting this specific semantic category, not just a keyword.",
+      "Apply the category scope and counterexamples; evidence gaps are not negative evidence."
+    ],
+    "benign_considerations": [
+      "Region-specific tools can legitimately specify a locale."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/semantic_quality_policy.py",
+        "symbol": "ANALYZER_PROMPT",
+        "upstream_id": "SQP-3",
+        "relationship": "adapted semantic rubric; different output protocol and no numerical confidence claim"
+      }
+    ]
+  },
+  "PY-AST10": {
+    "explanation": "A supported unsafe Python deserializer is called.",
+    "remediation": "Use non-executable formats or explicit safe loaders; review source trust.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/behavioral_ast.py",
+        "symbol": "AST10",
+        "upstream_id": "AST10",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "PY-TT6": {
+    "explanation": "External or file content reaches a supported unsafe Python deserializer.",
+    "remediation": "Remove unsafe deserialization or establish a narrow, explicit trusted-data boundary.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/behavioral_taint_tracking.py",
+        "symbol": "TT6",
+        "upstream_id": "TT6",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-DS1": {
+    "explanation": "PHP unserialize can instantiate objects from input.",
+    "remediation": "Prefer JSON or explicitly restricted primitive formats.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/static_patterns_deserialization.py",
+        "symbol": "DS1",
+        "upstream_id": "DS1",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-DS2": {
+    "explanation": "Ruby Marshal load/restore can instantiate executable object graphs.",
+    "remediation": "Use a safe primitive format for untrusted input.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/static_patterns_deserialization.py",
+        "symbol": "DS2",
+        "upstream_id": "DS2",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-DS3": {
+    "explanation": "Ruby YAML/Psych/Oj load uses potentially unsafe deserialization.",
+    "remediation": "Use a safe loader with an explicit permitted-type policy.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/static_patterns_deserialization.py",
+        "symbol": "DS3",
+        "upstream_id": "DS3",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-DS4": {
+    "explanation": "A supported unsafe JavaScript serializer is referenced.",
+    "remediation": "Use JSON.parse with schema validation instead of executable serialization.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/static_patterns_deserialization.py",
+        "symbol": "DS4",
+        "upstream_id": "DS4",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-BH1": {
+    "explanation": "A bundled lifecycle handler declares conditional execution or event delivery.",
+    "remediation": "Review event reach, handler type, destinations and loader activation.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/bundled_execution_surface.py",
+        "symbol": "BH1",
+        "upstream_id": "BH1",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-BH2": {
+    "explanation": "A supported hook declaration directly sends a sensitive event body or selected file content to a remote destination.",
+    "remediation": "Remove automatic transfer or require explicit narrow user authorization.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/bundled_execution_surface.py",
+        "symbol": "BH2",
+        "upstream_id": "BH2",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-BH3": {
+    "explanation": "Bundled permission modes, broad grants, MCP approvals or execution/traffic overrides require review. Severity is per declaration: whole-tool/root grants are critical, acceptEdits medium, and auto low with an ignored_by_supported_project_surface context signal.",
+    "remediation": "Keep permissions narrow and inspect environment and endpoint overrides.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution.",
+      "The auto mode is recognized but ignored on the modeled project settings surface; do not infer that it activates or broadens host permissions."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/bundled_execution_surface.py",
+        "symbol": "BH3",
+        "upstream_id": "BH3",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-BH4": {
+    "explanation": "A bundled settings field declares an automatically invoked command.",
+    "remediation": "Inspect the command and its local or remote implementation before activation.",
+    "review_checks": [
+      "Inspect original source evidence, supported shapes and the detector limitation.",
+      "Confirm activation, data provenance and authorization; a declaration is not proof of execution."
+    ],
+    "benign_considerations": [
+      "A documented, authorized workflow or inert example can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/bundled_execution_surface.py",
+        "symbol": "BH4",
+        "upstream_id": "BH4",
+        "relationship": "adapted bounded Go implementation; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-AE2": {
+    "explanation": "Filename, content signature or language hints conflict.",
+    "remediation": "Review byte-derived type and all candidate languages.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/artifact_integrity.py",
+        "symbol": "AE2",
+        "upstream_id": "AE2",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-AE3": {
+    "explanation": "NUL bytes appear in otherwise readable instruction-capable text.",
+    "remediation": "Remove hidden binary/control content and inspect the original representation.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/artifact_integrity.py",
+        "symbol": "AE3",
+        "upstream_id": "AE3",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-AE4": {
+    "explanation": "Format controls or mixed-script tokens may hide instructions.",
+    "remediation": "Inspect Unicode source bytes and their reconstructed security views.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/artifact_integrity.py",
+        "symbol": "AE4",
+        "upstream_id": "AE4",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-AE5": {
+    "explanation": "Instruction text exceeds a selected reconstruction budget.",
+    "remediation": "Reduce the artifact or inspect the omitted source independently; retain incomplete status.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/artifact_integrity.py",
+        "symbol": "AE5",
+        "upstream_id": "AE5",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-AE6": {
+    "explanation": "Inter-character separators spell a security-relevant instruction word.",
+    "remediation": "Inspect the reconstructed instruction and remove obfuscation.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/artifact_integrity.py",
+        "symbol": "AE6",
+        "upstream_id": "AE6",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-SC8": {
+    "explanation": "Python bytecode/cache content is bundled.",
+    "remediation": "Prefer auditable source and independently analyze any retained bytecode.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/static_patterns_supply_chain.py",
+        "symbol": "SC8",
+        "upstream_id": "SC8",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-SC9": {
+    "explanation": "A declared local component or handler was not captured for inspection.",
+    "remediation": "Obtain and inspect the exact implementation before activation.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/static_patterns_supply_chain.py",
+        "symbol": "SC9",
+        "upstream_id": "SC9",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-RP1": {
+    "explanation": "An update adds permission declarations.",
+    "remediation": "Review every new capability against the intended purpose.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/mcp_rug_pull.py",
+        "symbol": "RP1",
+        "upstream_id": "RP1",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-RP2": {
+    "explanation": "An update adds or removes trigger declarations.",
+    "remediation": "Verify activation remains narrow and aligned with user intent.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/mcp_rug_pull.py",
+        "symbol": "RP2",
+        "upstream_id": "RP2",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "NV-RP3": {
+    "explanation": "An update changes parameters or their type/default metadata.",
+    "remediation": "Review input flow and parameter defaults before updating.",
+    "review_checks": [
+      "Inspect the cited original bytes, scope and the detector limitation.",
+      "Confirm activation, data provenance and explicit authorization; no execution is inferred."
+    ],
+    "benign_considerations": [
+      "Legitimate formatting, authorized capabilities and inert examples can match."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/nodes/analyzers/mcp_rug_pull.py",
+        "symbol": "RP3",
+        "upstream_id": "RP3",
+        "relationship": "adapted bounded Go logic; not full behavioral parity"
+      }
+    ]
+  },
+  "MCP-PACKAGE-VERSION": {
+    "explanation": "Registry metadata declares an unavailable or mutable package version. An exact version string does not attest package bytes or installation.",
+    "remediation": "Review the original registry record and independently establish ownership, package identity and transport requirements before installation.",
+    "review_checks": [
+      "Distinguish registry_assertion from evidence_unavailable; missing facts remain info, not high-risk claims.",
+      "Inspect captured source references and scope limits. No registry, repository or package endpoint is contacted."
+    ],
+    "benign_considerations": [
+      "An intentionally private deployment, development record or incomplete registry snapshot may have missing metadata."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/mcp_registry.py",
+        "symbol": "posture_findings",
+        "upstream_id": "MCP-PACKAGE-VERSION",
+        "relationship": "Adapted bounded offline record analysis; no registry acquisition or history parity."
+      }
+    ]
+  },
+  "MCP-PACKAGE-SHA256": {
+    "explanation": "Registry metadata lacks a content digest or supplies a value outside the supported SHA-256 grammar. A correctly shaped digest is still only an assertion.",
+    "remediation": "Review the original registry record and independently establish ownership, package identity and transport requirements before installation.",
+    "review_checks": [
+      "Distinguish registry_assertion from evidence_unavailable; missing facts remain info, not high-risk claims.",
+      "Inspect captured source references and scope limits. No registry, repository or package endpoint is contacted."
+    ],
+    "benign_considerations": [
+      "An intentionally private deployment, development record or incomplete registry snapshot may have missing metadata."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/mcp_registry.py",
+        "symbol": "posture_findings",
+        "upstream_id": "MCP-PACKAGE-SHA256",
+        "relationship": "Adapted bounded offline record analysis; no registry acquisition or history parity."
+      }
+    ]
+  },
+  "MCP-REPOSITORY": {
+    "explanation": "The registry record supplies no nonempty repository URL string. Missing ownership context is unavailable evidence, not proof of malicious ownership. A supplied string is not independently validated ownership.",
+    "remediation": "Review the original registry record and independently establish ownership, package identity and transport requirements before installation.",
+    "review_checks": [
+      "Distinguish registry_assertion from evidence_unavailable; missing facts remain info, not high-risk claims.",
+      "Inspect captured source references and scope limits. No registry, repository or package endpoint is contacted."
+    ],
+    "benign_considerations": [
+      "An intentionally private deployment, development record or incomplete registry snapshot may have missing metadata."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/mcp_registry.py",
+        "symbol": "posture_findings",
+        "upstream_id": "MCP-REPOSITORY",
+        "relationship": "Adapted bounded offline record analysis; no registry acquisition or history parity."
+      }
+    ]
+  },
+  "MCP-OFFICIAL-STATUS": {
+    "explanation": "The official-status field is missing, wrong-typed, or differs from active. This is untrusted captured metadata, not a live registry lookup.",
+    "remediation": "Review the original registry record and independently establish ownership, package identity and transport requirements before installation.",
+    "review_checks": [
+      "Distinguish registry_assertion from evidence_unavailable; missing facts remain info, not high-risk claims.",
+      "Inspect captured source references and scope limits. No registry, repository or package endpoint is contacted."
+    ],
+    "benign_considerations": [
+      "An intentionally private deployment, development record or incomplete registry snapshot may have missing metadata."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/mcp_registry.py",
+        "symbol": "posture_findings",
+        "upstream_id": "MCP-OFFICIAL-STATUS",
+        "relationship": "Adapted bounded offline record analysis; no registry acquisition or history parity."
+      }
+    ]
+  },
+  "MCP-PLAIN-HTTP": {
+    "explanation": "A captured registry remote declares plaintext HTTP. The scanner does not connect, resolve the service, or prove transmitted content.",
+    "remediation": "Review the original registry record and independently establish ownership, package identity and transport requirements before installation.",
+    "review_checks": [
+      "Distinguish registry_assertion from evidence_unavailable; missing facts remain info, not high-risk claims.",
+      "Inspect captured source references and scope limits. No registry, repository or package endpoint is contacted."
+    ],
+    "benign_considerations": [
+      "An intentionally private deployment, development record or incomplete registry snapshot may have missing metadata."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/NVIDIA/SkillSpector/blob/d7338f58200a9ae2a24810cee08911ab68b107a7/src/skillspector/mcp_registry.py",
+        "symbol": "posture_findings",
+        "upstream_id": "MCP-PLAIN-HTTP",
+        "relationship": "Adapted bounded offline record analysis; no registry acquisition or history parity."
+      }
+    ]
+  },
+  "HI001": {
+    "explanation": "Hidden HTML or a comment contains an instruction override, sensitive-data directive or execution instruction.",
+    "remediation": "Remove concealed directives or make authorized instructions visible and scoped.",
+    "review_checks": [
+      "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
+      "Check purpose, authorization, source-to-sink arguments and incomplete-analysis diagnostics; do not infer execution from co-occurrence."
+    ],
+    "benign_considerations": [
+      "Hidden UI, defensive quotations and demonstrations require review; a match is not proof of agent compliance."
+    ],
+    "sources": [
+      {
+        "symbol": "internal/analysis/rendertext/render.go",
+        "relationship": "Original bounded Scout implementation; external concept comparison is documented in docs/reference/hardening-2026-10-29.md."
+      }
+    ]
+  },
+  "RX001": {
+    "explanation": "A rendered image or link URL interpolates a lexically sensitive value.",
+    "remediation": "Keep credentials and private context out of rendered URLs; use explicit authorized data transfer.",
+    "review_checks": [
+      "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
+      "Check purpose, authorization, source-to-sink arguments and incomplete-analysis diagnostics; do not infer execution from co-occurrence."
+    ],
+    "benign_considerations": [
+      "Templates may be inert documentation; the scanner does not render content, substitute variables or fetch URLs."
+    ],
+    "sources": [
+      {
+        "symbol": "internal/analysis/rendertext/render.go",
+        "relationship": "Original bounded Scout implementation; external concept comparison is documented in docs/reference/hardening-2026-10-29.md."
+      }
+    ]
+  },
+  "NV-AE7": {
+    "explanation": "A sequence of variation selectors can encode bytes invisible during ordinary review.",
+    "remediation": "Inspect escaped code points and the bounded decoded representation; remove unauthorized hidden payloads.",
+    "review_checks": [
+      "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
+      "Check purpose, authorization, source-to-sink arguments and incomplete-analysis diagnostics; do not infer execution from co-occurrence."
+    ],
+    "benign_considerations": [
+      "Single emoji/ideograph selectors are ordinary Unicode. Repeated selectors are a carrier signal, not proof of malicious content."
+    ],
+    "sources": [
+      {
+        "symbol": "internal/analysis/securitytext/carriers.go",
+        "relationship": "Original bounded Scout implementation; external concept comparison is documented in docs/reference/hardening-2026-10-29.md."
+      }
+    ]
+  },
+  "NET001": {
+    "explanation": "A literal network call targets a host absent from the nearest skill visible declarations.",
+    "remediation": "Review why this destination is needed and disclose authorized network behavior; a declaration grants no trust.",
+    "review_checks": [
+      "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
+      "Check purpose, authorization, source-to-sink arguments and incomplete-analysis diagnostics; do not infer execution from co-occurrence."
+    ],
+    "benign_considerations": [
+      "A missing declaration is a review signal, not a malicious-domain verdict; authenticated legitimate APIs may match."
+    ],
+    "sources": [
+      {
+        "symbol": "internal/analysis/bundle/bundle_surfaces.go",
+        "relationship": "Original bounded Scout implementation; external concept comparison is documented in docs/reference/hardening-2026-10-29.md."
+      }
+    ]
+  },
+  "SC004": {
+    "explanation": "An installation manifest declares an executable lifecycle or build entry point.",
+    "remediation": "Review the entry point and captured related implementation before installation; remove unnecessary automatic execution.",
+    "review_checks": [
+      "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
+      "Check purpose, authorization, source-to-sink arguments and incomplete-analysis diagnostics; do not infer execution from co-occurrence."
+    ],
+    "benign_considerations": [
+      "Build, setup and packaging hooks are common legitimate behavior. Their presence alone does not establish a harmful action."
+    ],
+    "sources": [
+      {
+        "symbol": "internal/analysis/bundle/bundle_surfaces.go",
+        "relationship": "Original bounded Scout implementation; external concept comparison is documented in docs/reference/hardening-2026-10-29.md."
+      }
+    ]
+  },
+  "XF001": {
+    "explanation": "A bounded captured local call chain carries sensitive data to a network API, or downloaded body bytes to an execution API.",
+    "remediation": "Remove unauthorized flows; verify local imports, function calls, data transformations and the actual sink arguments.",
+    "review_checks": [
+      "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
+      "Check purpose, authorization, source-to-sink arguments and incomplete-analysis diagnostics; do not infer execution from co-occurrence."
+    ],
+    "benign_considerations": [
+      "Legitimate authentication or an explicitly authorized bootstrap can match. No runtime execution, dependency resolution or general type checking is performed."
+    ],
+    "sources": [
+      {
+        "symbol": "internal/analysis/bundle/bundle_flow.go",
+        "relationship": "Original bounded Scout implementation; external concept comparison is documented in docs/reference/hardening-2026-10-29.md."
+      }
+    ]
+  },
+  "TC001": {
+    "explanation": "Captured tool declarations reuse an identifier that may collide in a shared tool namespace.",
+    "remediation": "Resolve tool identity and server ownership; qualify names and review conflicting definitions.",
+    "review_checks": [
+      "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
+      "Check purpose, authorization, source-to-sink arguments and incomplete-analysis diagnostics; do not infer execution from co-occurrence."
+    ],
+    "benign_considerations": [
+      "Separate runtime namespaces may intentionally reuse a tool name; captured declarations alone do not prove effective shadowing."
+    ],
+    "sources": [
+      {
+        "symbol": "internal/analysis/bundle/bundle_surfaces.go",
+        "relationship": "Original bounded Scout implementation; external concept comparison is documented in docs/reference/hardening-2026-10-29.md."
+      }
+    ]
+  },
+  "TC002": {
+    "explanation": "One nearest skill scope combines sensitive-data access and network-call capabilities.",
+    "remediation": "Review whether those capabilities are necessary and whether private data could leave the requested task scope.",
+    "review_checks": [
+      "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
+      "Check purpose, authorization, source-to-sink arguments and incomplete-analysis diagnostics; do not infer execution from co-occurrence."
+    ],
+    "benign_considerations": [
+      "Independent capabilities do not establish data flow. This signal remains separate from High source-to-sink findings."
+    ],
+    "sources": [
+      {
+        "symbol": "internal/analysis/bundle/bundle_flow.go",
+        "relationship": "Original bounded Scout implementation; external concept comparison is documented in docs/reference/hardening-2026-10-29.md."
+      }
+    ]
+  }
+}

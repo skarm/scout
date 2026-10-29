@@ -1,0 +1,108 @@
+name: Scout Go and native checks
+
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['v[0-9]*']
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' || github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    name: Lint all supported build variants
+    if: github.event_name != 'push' || !github.event.deleted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+          cache: false
+      - name: Authenticate dependencies and install the pinned linter
+        run: |
+          make deps
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+      - name: Lint platform matrix and native build
+        env:
+          GOPROXY: 'off'
+          GOTOOLCHAIN: local
+        run: make lint
+
+  native:
+    name: Full native engines
+    if: github.event_name != 'push' || !github.event.deleted
+    uses: ./.github/workflows/native-validation.yml
+
+  core:
+    name: Reduced build regressions
+    if: github.event_name != 'push' || !github.event.deleted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+          cache: false
+      - name: Validate workflows and Bash steps
+        env:
+          GOTOOLCHAIN: local
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+      - name: Authenticate module dependencies
+        run: |
+          go mod download
+          go mod verify
+      - name: Core tests and race checks from module cache
+        env:
+          GOPROXY: 'off'
+          GOTOOLCHAIN: local
+        run: |
+          go test -vet=off -mod=readonly -tags=coreonly ./...
+          go test -vet=off -mod=readonly -tags=coreonly -race ./...
+      - name: Real embedded parsers
+        env:
+          GOPROXY: 'off'
+        run: go test -vet=off -mod=readonly ./internal/syntax/frontend
+      - name: Version injection without VCS metadata
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          GOPROXY: 'off'
+          GOTOOLCHAIN: local
+          GOFLAGS: '-buildvcs=false'
+        run: |
+          make build-core BIN_DIR="$RUNNER_TEMP/scout-bin"
+          test "$("$RUNNER_TEMP/scout-bin/scout-core" version)" = "$VERSION"
+
+  host-adapters:
+    name: Pi and OpenCode adapter glue
+    if: github.event_name != 'push' || !github.event.deleted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          check-latest: false
+      - name: Host adapter boundary tests
+        run: node --test internal/distribution/integrations/host_test.mjs

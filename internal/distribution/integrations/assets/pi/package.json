@@ -1,0 +1,10 @@
+{
+  "name": "scout-pi",
+  "private": true,
+  "type": "module",
+  "description": "Trusted scout tool and source-aware skill/plugin reviewer for Pi.",
+  "license": "Apache-2.0",
+  "keywords": ["pi-package", "security", "agent-skills"],
+  "pi": {"extensions": ["./extensions/scout.ts"], "skills": ["./skills"]},
+  "peerDependencies": {"@earendil-works/pi-coding-agent": "^1.4.0", "typebox": "^1.4.3"}
+}

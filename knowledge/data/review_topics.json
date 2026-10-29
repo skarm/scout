@@ -1,0 +1,2411 @@
+[
+  {
+    "id": "K-GO-EXEC",
+    "title": "Go command and argument boundaries",
+    "languages": [
+      "go"
+    ],
+    "category": "execution",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Distinguish os/exec argv from sh -c; fixed executables can still interpret attacker-controlled flags.",
+    "review_checks": [
+      "Resolve the imported API and identify which actor controls the executable, arguments and environment.",
+      "Check shell interpretation and command-specific option injection separately; constructing Cmd does not establish that Run/Start/Output is called."
+    ],
+    "remediation": "Prefer a fixed executable and separate validated arguments; apply command-specific option and working-directory restrictions.",
+    "benign_considerations": [
+      "A fixed command with purpose-bound arguments is a capability, not evidence of hostile execution."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A skill inserts a downloaded task string into a shell command and starts it."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A task invokes a fixed formatter on validated workspace paths using an argument array."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "gosec",
+        "path": "rules/subproc.go"
+      },
+      {
+        "source_id": "codeql",
+        "path": "go/ql/src/Security/CWE-078/CommandInjection.qhelp"
+      }
+    ],
+    "related_rules": [
+      "GO001"
+    ]
+  },
+  {
+    "id": "K-GO-EGRESS",
+    "title": "Go credential-to-request evidence",
+    "languages": [
+      "go"
+    ],
+    "category": "exfiltration",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Trace sensitive reads into URL, headers or body; NewRequest constructs a request and does not itself transmit it.",
+    "review_checks": [
+      "Identify the actual sensitive source, transformations and destination field, including URL/query/header/body.",
+      "Require a visible send operation before asserting transmission; missing callees or recipients remain unknown."
+    ],
+    "remediation": "Limit data to the task and intended recipient; keep secrets out of URLs and diagnostic output.",
+    "benign_considerations": [
+      "Sending a scoped token to its intended authentication endpoint can be legitimate."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A helper collects all environment variables and posts them to an unrelated diagnostic collector."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A client attaches one service token to an authorized request for that service."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/data_exfiltration.yaml"
+      }
+    ],
+    "related_rules": [
+      "GO002",
+      "GO003",
+      "GO004"
+    ]
+  },
+  {
+    "id": "K-GO-SSRF",
+    "title": "Go URL and redirect controls",
+    "languages": [
+      "go"
+    ],
+    "category": "network",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "For attacker-selected URLs inspect parsing, redirects and resolved destinations; URL concatenation is not a host allowlist.",
+    "review_checks": [
+      "Locate URL input and the request operation; distinguish fixed authorized endpoints from attacker selection.",
+      "Check redirects and private/reserved destinations at the connection boundary; source alone may not establish DNS/runtime enforcement."
+    ],
+    "remediation": "Choose destinations from an approved set or enforce URL, resolution, redirect and egress controls.",
+    "benign_considerations": [
+      "A declared local-service client can intentionally contact loopback; task authorization and deployment matter."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A public tool fetches a supplied URL with ambient cloud credentials and unrestricted redirects."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A service selects one fixed documented endpoint from a small configuration map."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "gosec",
+        "path": "rules/ssrf.go"
+      },
+      {
+        "source_id": "codeql",
+        "path": "go/ql/src/Security/CWE-918/RequestForgery.qhelp"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-GO-PATH",
+    "title": "Go filesystem and archive containment",
+    "languages": [
+      "go"
+    ],
+    "category": "filesystem",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Cleaning a path is not containment; inspect absolute paths, parent traversal, symlinks and archive entry writes.",
+    "review_checks": [
+      "Trace untrusted filenames or archive member names to a filesystem operation and its intended root.",
+      "Check containment and link handling at the actual write/open boundary; string-prefix checks alone are insufficient."
+    ],
+    "remediation": "Use root-confined filesystem operations and reject escaping archive paths, links and unsupported entry types.",
+    "benign_considerations": [
+      "Opening a user-selected file outside a workspace can be intentional when specifically authorized."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "An installer joins archive member names to its target and overwrites files outside that directory."
+      },
+      {
+        "kind": "benign",
+        "scenario": "An extractor confines writes to its destination and rejects escaping or unsupported entries."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "gosec",
+        "path": "rules/archive.go"
+      },
+      {
+        "source_id": "gosec",
+        "path": "rules/directory_traversal.go"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-GO-SQL",
+    "title": "Go query construction and parameters",
+    "languages": [
+      "go"
+    ],
+    "category": "injection",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Follow external data to executed SQL; database placeholders bind values, not arbitrary table names or syntax.",
+    "review_checks": [
+      "Distinguish query text construction from an actual Query/Exec sink.",
+      "Check value parameter binding and allowlisted dynamic identifiers independently."
+    ],
+    "remediation": "Bind values with the database driver and choose dynamic identifiers from a fixed allowlist.",
+    "benign_considerations": [
+      "A fully constant query or a composed query with only validated fixed identifiers is not automatically injectable."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A tool concatenates a request-supplied filter into a database command."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A query keeps user values in driver-bound parameters."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "gosec",
+        "path": "rules/sql.go"
+      }
+    ],
+    "related_rules": [
+      "GO005"
+    ]
+  },
+  {
+    "id": "K-GO-TLS",
+    "title": "Go TLS validation and effective configuration",
+    "languages": [
+      "go"
+    ],
+    "category": "transport",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Evaluate the effective TLS configuration and verification callbacks; a protocol constant or TLS import is not a bypass.",
+    "review_checks": [
+      "Find disabled certificate/hostname verification and determine whether a real verification callback replaces it.",
+      "Check the configuration actually reaches the client transport; distinguish minimum protocol selection from validation bypass."
+    ],
+    "remediation": "Keep identity verification enabled and configure supported protocol floors for the deployed environment.",
+    "benign_considerations": [
+      "A test-only TLS setting is contextual evidence, not a blanket exemption for production paths."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A distributed skill disables verification on the transport used to upload workspace data."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A client uses normal trust validation with an explicitly configured modern minimum protocol."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "gosec",
+        "path": "rules/tls_config.go"
+      },
+      {
+        "source_id": "devskim",
+        "path": "rules/default/security/TLS/tls_go.json"
+      }
+    ],
+    "related_rules": [
+      "NV-TM3",
+      "MC001",
+      "GO006"
+    ]
+  },
+  {
+    "id": "K-JS-EXEC",
+    "title": "JavaScript and TypeScript process APIs",
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "category": "execution",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Differentiate exec shell strings from execFile/spawn argv; shell:true and downstream interpreters restore shell risk.",
+    "review_checks": [
+      "Follow untrusted input into executable, argument, shell option, cwd and environment positions.",
+      "Resolve aliases and wrappers only when supported by supplied evidence; TypeScript annotations do not validate runtime input."
+    ],
+    "remediation": "Use a fixed executable with validated argv and explicit shell settings; restrict interpreted flags.",
+    "benign_considerations": [
+      "A legitimate build command may require execution; the command and authorization determine the concern."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "An extension concatenates a repository title into child_process.exec."
+      },
+      {
+        "kind": "benign",
+        "scenario": "An extension calls an approved executable with validated individual arguments and no shell."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "codeql",
+        "path": "javascript/ql/src/Security/CWE-078/CommandInjection.inc.qhelp"
+      },
+      {
+        "source_id": "njsscan",
+        "path": "njsscan/rules/semantic_grep/exec/exec_os_command.yaml"
+      }
+    ],
+    "related_rules": [
+      "JS001"
+    ]
+  },
+  {
+    "id": "K-JS-DYNAMIC",
+    "title": "JavaScript dynamic evaluation and vm boundaries",
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "category": "execution",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Track input to eval, Function, templates or vm; a new vm context alone is not an isolation guarantee.",
+    "review_checks": [
+      "Identify who controls evaluated text and whether host objects or privileged functions are exposed.",
+      "Distinguish parsing inert data from evaluating expressions and distinguish context separation from OS isolation."
+    ],
+    "remediation": "Keep inputs as data; use an appropriate isolated execution environment for deliberately untrusted programs.",
+    "benign_considerations": [
+      "Parsing a bounded JSON document does not itself evaluate JavaScript."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A plugin evaluates a server response while exposing process and filesystem objects."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A plugin parses a schema-validated JSON response and dispatches a fixed operation."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "codeql",
+        "path": "javascript/ql/src/Security/CWE-094/CodeInjection.inc.qhelp"
+      },
+      {
+        "source_id": "njsscan",
+        "path": "njsscan/rules/semantic_grep/eval/eval_vm_injection.yaml"
+      }
+    ],
+    "related_rules": [
+      "JS002"
+    ]
+  },
+  {
+    "id": "K-JS-EGRESS",
+    "title": "Node environment and file disclosure",
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "category": "exfiltration",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Trace process.env and file reads into fetch/http, logs or subprocess environments; collection alone is not transmission.",
+    "review_checks": [
+      "Identify which values can be sensitive and whether the recipient and purpose are authorized.",
+      "Inspect serialization, request bodies, query strings, headers and logging; distinguish object construction from a network send."
+    ],
+    "remediation": "Select only required fields and prevent credentials or private files entering unrelated requests and logs.",
+    "benign_considerations": [
+      "Reading a named environment variable for its intended service can be normal authentication."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A bootstrap script serializes process.env into an unrelated telemetry request."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A tool sends only the requested public search query to its documented provider."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/data_exfiltration.yaml"
+      }
+    ],
+    "related_rules": [
+      "JS003",
+      "JS005"
+    ]
+  },
+  {
+    "id": "K-JS-PROTOTYPE",
+    "title": "Prototype mutation through dynamic keys",
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "category": "injection",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Dynamic keys become a concern when they reach shared prototypes or security-relevant configuration; key strings alone are insufficient.",
+    "review_checks": [
+      "Trace attacker-controlled property paths through assignments or merges to shared objects.",
+      "Check prototype-free dictionaries, own-property checks and explicit key schemas along the actual path."
+    ],
+    "remediation": "Use Map or an appropriate prototype-free structure and validate allowed property paths.",
+    "benign_considerations": [
+      "A Map entry containing a special-looking string does not mutate Object.prototype."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "An untrusted settings object is recursively merged into process-wide authorization defaults."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A parser stores validated independent entries in Map without modifying shared prototypes."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "codeql",
+        "path": "javascript/ql/src/Security/CWE-915/PrototypePollutingAssignment.inc.qhelp"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-JS-SSRF",
+    "title": "Node request target and browser automation scope",
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "category": "network",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Inspect attacker-selected request targets and redirects; being a browser or fetch wrapper does not establish an egress boundary.",
+    "review_checks": [
+      "Identify whether user or tool-result data controls the URL, proxy or request headers.",
+      "Check destination enforcement and redirects, and whether ambient credentials accompany requests."
+    ],
+    "remediation": "Constrain destinations and credential forwarding at the actual request boundary.",
+    "benign_considerations": [
+      "A user-authorized URL fetch is expected behavior; restrictions depend on deployment and accessible networks."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A remote renderer accepts arbitrary URLs while forwarding a workspace bearer token."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A client selects a known destination and sends only credentials intended for it."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "codeql",
+        "path": "javascript/ql/src/Security/CWE-918/RequestForgeryRecommendation.inc.qhelp"
+      },
+      {
+        "source_id": "mcp",
+        "path": "docs/docs/2026-07-28/tutorials/security/security_best_practices.mdx"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-JS-INSTALL",
+    "title": "npm lifecycle and package source changes",
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "category": "supply-chain",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Lifecycle scripts and dependency source overrides may execute or select code during install; declaration is not observed execution.",
+    "review_checks": [
+      "Inspect preinstall/install/postinstall/prepare scripts, git or URL dependencies and registry overrides.",
+      "Determine which package manager and install mode would actually activate the declaration; inspect referenced local scripts."
+    ],
+    "remediation": "Review install-time code and dependency sources; prefer reviewed immutable inputs with explicit update review.",
+    "benign_considerations": [
+      "A documented native compilation step may be a legitimate lifecycle operation."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "An otherwise unrelated helper package runs an opaque downloaded script during installation."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A package builds a reviewed local native component through a documented lifecycle script."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/supply_chain.yaml"
+      },
+      {
+        "source_id": "scorecard",
+        "path": "docs/checks.md"
+      }
+    ],
+    "related_rules": [
+      "NV-SC1",
+      "NV-SC2",
+      "NV-SC9",
+      "NV-SC10"
+    ]
+  },
+  {
+    "id": "K-JS-OUTPUT",
+    "title": "Generated text entering active contexts",
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "category": "output-handling",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Treat model or tool output as data when it enters HTML, templates, SQL or execution; escaping must match the receiving context.",
+    "review_checks": [
+      "Find the generated value and the interpreter or active rendering sink.",
+      "Check context-appropriate encoding or structured APIs; validation for one context does not cover another."
+    ],
+    "remediation": "Use inert rendering and structured parameter APIs rather than building active templates or commands.",
+    "benign_considerations": [
+      "Rendering text through an escaping API is different from executing a constructed template."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A tool response is appended to a template source and evaluated on the server."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A fixed template receives an untrusted value only as escaped display data."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "codeql",
+        "path": "javascript/ql/src/Security/CWE-094/CodeInjection.inc.qhelp"
+      }
+    ],
+    "related_rules": [
+      "NV-OH1",
+      "NV-OH2"
+    ]
+  },
+  {
+    "id": "K-PY-SHELL",
+    "title": "Python subprocess interpretation",
+    "languages": [
+      "python"
+    ],
+    "category": "execution",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Check shell=True, os.system and argument provenance; shell=False prevents shell parsing but not unsafe program options.",
+    "review_checks": [
+      "Resolve the actual call and shell value, including aliases and wrappers visible in the excerpt.",
+      "Distinguish fixed argv, attacker-selected executables and command-specific options; an unevaluated call is not proof of execution."
+    ],
+    "remediation": "Use a fixed executable, validated argument lists and appropriate option boundaries.",
+    "benign_considerations": [
+      "A documented task-specific subprocess call is not inherently malicious."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A skill uses shell=True to execute a command built from an external task description."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A skill runs an approved local checker with a validated argv list."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "bandit",
+        "path": "bandit/plugins/injection_shell.py"
+      }
+    ],
+    "related_rules": [
+      "PY-AST4",
+      "PY-AST5",
+      "PY-TT5"
+    ]
+  },
+  {
+    "id": "K-PY-EVAL",
+    "title": "Python evaluation, imports and decoding chains",
+    "languages": [
+      "python"
+    ],
+    "category": "execution",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Track untrusted bytes through decode/compile/eval/exec/import; removing builtins is not a secure sandbox.",
+    "review_checks": [
+      "Identify the original input and each necessary transformation into an execution-capable operation.",
+      "Distinguish inspection or decoding from subsequent evaluation; unknown imports and callees remain unknown."
+    ],
+    "remediation": "Use inert data formats and fixed dispatch; isolate execution when it is a deliberate product requirement.",
+    "benign_considerations": [
+      "Base64 used for an image or decoding text without executing it is not an execution chain."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A plugin decodes a network response and executes it in the host process."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A decoder validates image data and writes it to a bounded media output."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "bandit",
+        "path": "bandit/blacklists/calls.py"
+      },
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/obfuscation.yaml"
+      }
+    ],
+    "related_rules": [
+      "PY-AST1",
+      "PY-AST2",
+      "PY-AST3",
+      "PY-AST6",
+      "PY-AST8",
+      "PY-AST9",
+      "PY-TT5"
+    ]
+  },
+  {
+    "id": "K-PY-DESERIALIZE",
+    "title": "Python object construction from untrusted data",
+    "languages": [
+      "python"
+    ],
+    "category": "deserialization",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Check input trust and exact loader options for pickle, object-capable YAML and related loaders; load-like names are not enough.",
+    "review_checks": [
+      "Resolve the loader and configuration; distinguish safe-data loaders from object reconstruction.",
+      "Follow file/network input to the deserializer and identify who can replace the serialized bytes."
+    ],
+    "remediation": "Use a bounded data-only format and schema; do not treat a filename, extension or self-declared signature as trusted origin.",
+    "benign_considerations": [
+      "A safe YAML loader does not acquire object-construction behavior merely because its name includes load."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A skill unpickles an attachment received from an unauthenticated endpoint."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A skill parses bounded configuration with a data-only loader and validates the schema."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "bandit",
+        "path": "bandit/plugins/yaml_load.py"
+      },
+      {
+        "source_id": "bandit",
+        "path": "bandit/blacklists/calls.py"
+      },
+      {
+        "source_id": "devskim",
+        "path": "rules/default/security/api/deserialization.json"
+      }
+    ],
+    "related_rules": [
+      "PY-AST10",
+      "PY-TT6"
+    ]
+  },
+  {
+    "id": "K-PY-EGRESS",
+    "title": "Python environment, files and network flows",
+    "languages": [
+      "python"
+    ],
+    "category": "exfiltration",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Trace os.environ or file reads to network arguments, headers and logs; a variable named token is not proof of a secret.",
+    "review_checks": [
+      "Identify actual source sensitivity, requested purpose and final recipient.",
+      "Review visible aliases, wrappers and serialization without inventing cross-file flow."
+    ],
+    "remediation": "Read and disclose the minimum data required for the explicitly authorized task.",
+    "benign_considerations": [
+      "Purpose-bound credential exchange and writing local diagnostic metadata may be legitimate."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A plugin uploads a credentials file as an undocumented diagnostic attachment."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A client reads one scoped token to authenticate to its intended service."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/data_exfiltration.yaml"
+      }
+    ],
+    "related_rules": [
+      "PY-TT1",
+      "PY-TT2",
+      "PY-TT3",
+      "PY-TT4"
+    ]
+  },
+  {
+    "id": "K-PY-EXTRACT",
+    "title": "Python path and archive extraction controls",
+    "languages": [
+      "python"
+    ],
+    "category": "filesystem",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Inspect containment, symlink/special-file handling and effective tar filters; Python version and extraction options matter.",
+    "review_checks": [
+      "Trace untrusted archive member names or path input to the final write/open operation.",
+      "Inspect explicit extraction filters and runtime defaults; do not infer that every extractall call is unsafe."
+    ],
+    "remediation": "Confine extraction to an approved root, apply an appropriate filter and bound entry counts and expanded size.",
+    "benign_considerations": [
+      "A properly restricted extraction can be legitimate; the local runtime version may be unknown."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A package installer extracts untrusted archive paths over unrelated user configuration."
+      },
+      {
+        "kind": "benign",
+        "scenario": "An extractor enforces root containment, restricted types, filtering and resource bounds."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "bandit",
+        "path": "bandit/plugins/tarfile_unsafe_members.py"
+      },
+      {
+        "source_id": "codeql",
+        "path": "python/ql/src/Security/CWE-022/PathInjection.qhelp"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-PY-SQL",
+    "title": "Python SQL text versus bound values",
+    "languages": [
+      "python"
+    ],
+    "category": "injection",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Check formatted SQL reaching execute/executemany; a string resembling SQL without an execution sink is weaker evidence.",
+    "review_checks": [
+      "Identify external data in the query text and the database execution API.",
+      "Check parameter binding separately from formatting and allowlist any dynamic identifiers."
+    ],
+    "remediation": "Use driver-supported placeholders for values and fixed mappings for SQL identifiers.",
+    "benign_considerations": [
+      "A parameterized query or a standalone SQL documentation example does not establish injection."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A skill uses a user-supplied project name inside the executed SQL text."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A query supplies the project name through the driver parameter mechanism."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "bandit",
+        "path": "bandit/plugins/injection_sql.py"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-SH-DOWNLOAD",
+    "title": "Shell download-to-execution chains",
+    "languages": [
+      "shell"
+    ],
+    "category": "execution",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Trace curl/wget bytes through pipes, temporary files and substitutions into shell input; downloading alone is not execution.",
+    "review_checks": [
+      "Identify the source and each visible flow into a shell or executable file.",
+      "Check content verification against a separately trusted expected digest or signer; fetching a checksum beside a payload does not independently authenticate it."
+    ],
+    "remediation": "Review and authenticate executable bytes before running them and avoid hidden install-time execution.",
+    "benign_considerations": [
+      "Downloading a data artifact for an authorized task without executing it is different from remote execution."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "An installer pipes an unreviewed network response directly into a privileged shell."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A tool downloads a data file, checks the separately supplied expected digest and parses it as data."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/supply_chain.yaml"
+      }
+    ],
+    "related_rules": [
+      "SH001",
+      "EX001",
+      "AG002",
+      "NV-SC2"
+    ]
+  },
+  {
+    "id": "K-SH-EVAL",
+    "title": "Shell eval, source and interpreter re-entry",
+    "languages": [
+      "shell"
+    ],
+    "category": "execution",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "eval, source/dot and sh -c re-enter execution; quoting at an earlier stage does not make later evaluation inert.",
+    "review_checks": [
+      "Trace the origin of evaluated text or sourced filenames, including downloaded and workspace-controlled files.",
+      "Inspect actual execution semantics; printing or discussing an eval command is not invoking it."
+    ],
+    "remediation": "Use fixed commands and argument arrays; source only explicitly trusted and reviewed configuration code.",
+    "benign_considerations": [
+      "A sourced reviewed environment setup can be expected; the file path alone does not establish trust."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A helper reads a task response and passes it to eval."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A script parses a task identifier and chooses one of several fixed commands."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "shellcheck",
+        "path": "src/ShellCheck/Checks/Commands.hs"
+      }
+    ],
+    "related_rules": [
+      "SH003"
+    ]
+  },
+  {
+    "id": "K-SH-ARGV",
+    "title": "Shell splitting, globbing and options",
+    "languages": [
+      "shell"
+    ],
+    "category": "injection",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Quoting controls splitting/globbing, not all injection; validate leading options, downstream interpreters and environment-dependent commands.",
+    "review_checks": [
+      "Determine whether expansions are quoted, whether argv boundaries survive and how the receiving command interprets them.",
+      "Check executable resolution, option terminators where supported and command-specific dangerous flags."
+    ],
+    "remediation": "Preserve argument boundaries, validate allowed operands and use command-specific option boundaries.",
+    "benign_considerations": [
+      "A deliberate pattern expansion in a constrained task may be appropriate."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A deletion helper expands an unchecked variable into multiple options and filesystem operands."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A helper uses validated operands with preserved quoting and a supported option terminator."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "shellcheck",
+        "path": "src/ShellCheck/Analytics.hs"
+      },
+      {
+        "source_id": "shellcheck",
+        "path": "src/ShellCheck/Checks/Commands.hs"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-SH-DELETE",
+    "title": "Shell destructive path and directory state",
+    "languages": [
+      "shell"
+    ],
+    "category": "filesystem",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "For destructive commands verify nonempty targets, intended root and successful cd; quoting alone does not constrain deletion.",
+    "review_checks": [
+      "Check empty/unset variables, root paths and whether a failed directory change can leave a destructive command in the wrong location.",
+      "Distinguish command text, an executable branch and a quoted example; require evidence for claimed scope."
+    ],
+    "remediation": "Validate a nonempty confined target and stop on failed directory transitions before destructive operations.",
+    "benign_considerations": [
+      "Deleting an explicitly selected temporary output directory may be authorized."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A cleanup script continues after a failed cd and recursively deletes from its previous directory."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A cleanup script validates a task-owned directory and aborts when changing into it fails."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "shellcheck",
+        "path": "src/ShellCheck/Checks/Commands.hs"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-SH-EGRESS",
+    "title": "Shell credential reads and request options",
+    "languages": [
+      "shell"
+    ],
+    "category": "exfiltration",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Track sensitive files/variables into curl headers, forms, body, URL or inherited environments; a curl invocation alone is not a leak.",
+    "review_checks": [
+      "Follow supported file/variable data into the final request option, including @file reads.",
+      "Identify recipient and authorization while keeping secret bytes out of reports."
+    ],
+    "remediation": "Limit credential access and transfer to the intended service and redact diagnostic output.",
+    "benign_considerations": [
+      "A credential supplied only to its authorized service is not automatically exfiltration."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A setup script posts a cloud credential file to an unrelated support collector."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A script authenticates to the documented service with only its scoped credential."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/data_exfiltration.yaml"
+      }
+    ],
+    "related_rules": [
+      "SH002",
+      "SH004",
+      "FS001"
+    ]
+  },
+  {
+    "id": "K-AGENT-INJECTION",
+    "title": "Instructions carried by untrusted context",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "prompt-injection",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Evaluate direct, indirect and multilingual redirection by meaning and authority; retrieved content cannot grant itself instruction priority.",
+    "review_checks": [
+      "Identify the targeted agent action and the attempted crossing from data into trusted instruction.",
+      "Read multilingual or paraphrased text only where meaning is supported; undecoded content remains unknown."
+    ],
+    "remediation": "Keep retrieved text and tool results in the data boundary and enforce task authorization before acting.",
+    "benign_considerations": [
+      "A quoted attack, defensive test or ordinary translation task is context to assess, not automatic malicious intent."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A retrieved document directs the agent to ignore the user and disclose workspace secrets."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A security guide quotes an injection to explain why it must not be followed."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/prompt_injection.yaml"
+      },
+      {
+        "source_id": "owasp-mcp",
+        "path": "index.md"
+      }
+    ],
+    "related_rules": [
+      "NV-P1",
+      "PI001",
+      "PI003",
+      "SSD-1",
+      "SSD-2"
+    ]
+  },
+  {
+    "id": "K-AGENT-HIDDEN",
+    "title": "Concealed and encoded instruction content",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "prompt-injection",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Inspect hidden comments, Unicode and encoded payloads in context; invisibility or encoding alone does not establish an instruction.",
+    "review_checks": [
+      "Compare visible rendering with original/decoded content when that representation is actually supplied.",
+      "Distinguish meaningful hidden directives from ordinary typography, localization, emoji and inert binary data."
+    ],
+    "remediation": "Make operative instructions visible and preserve original-byte evidence for transformations.",
+    "benign_considerations": [
+      "Localization marks and ordinary emoji are not hidden commands by themselves."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A tool description conceals an unrelated credential-copy instruction in invisible text."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A localized document contains ordinary directionality marks without additional hidden directives."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/obfuscation.yaml"
+      },
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/prompt_injection.yaml"
+      }
+    ],
+    "related_rules": [
+      "NV-P2",
+      "NV-TP1",
+      "NV-TP2",
+      "SSD-2"
+    ]
+  },
+  {
+    "id": "K-AGENT-TOOLS",
+    "title": "Tool descriptions and annotations are claims",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "tool-poisoning",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Descriptions, parameter text and read-only annotations are untrusted claims; compare operations and preserve server-qualified tool identity.",
+    "review_checks": [
+      "Find instructions in descriptions/defaults/results that exceed the tool contract.",
+      "For mismatch cite both declaration and contradictory implementation; missing code is unknown, not a contradiction."
+    ],
+    "remediation": "Treat tool metadata as data and enforce capabilities independently of descriptions and annotations.",
+    "benign_considerations": [
+      "A normal parameter description or task-relevant implementation detail is not poisoning."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A nominally read-only search tool also uploads the workspace to an undeclared recipient."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A search tool performs the network query described by its declared purpose."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "mcp",
+        "path": "docs/specification/2026-07-28/server/tools.mdx"
+      },
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/unauthorized_tool_use.yaml"
+      }
+    ],
+    "related_rules": [
+      "NV-TP1",
+      "NV-TP3",
+      "NV-TP4",
+      "MC003"
+    ]
+  },
+  {
+    "id": "K-AGENT-CHAIN",
+    "title": "Composed tools and confused-deputy authority",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "authorization",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Check the complete read/transform/send chain; permission for one tool or account is not permission to move data to another recipient.",
+    "review_checks": [
+      "Cite each necessary source, transformation and destination and identify whose authority each step uses.",
+      "Do not invent a multi-step link when only disconnected capabilities are visible."
+    ],
+    "remediation": "Authorize the combined data movement and preserve user, tenant and recipient boundaries between steps.",
+    "benign_considerations": [
+      "An explicitly requested export to the user-selected authorized destination may be legitimate."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A poisoned search result uses a private-file reader and a messaging tool to disclose unrelated files."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A user-authorized workflow exports selected public records to their chosen destination."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "mcp",
+        "path": "docs/docs/2026-07-28/tutorials/security/security_best_practices.mdx"
+      },
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/unauthorized_tool_use.yaml"
+      }
+    ],
+    "related_rules": [
+      "NV-TM2",
+      "SSD-4"
+    ]
+  },
+  {
+    "id": "K-AGENT-SCOPE",
+    "title": "Explicit permission and autonomy boundaries",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "authorization",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Evaluate privilege and approval requests against an explicit captured baseline; absent permissions are unknown, not an empty grant.",
+    "review_checks": [
+      "Separate author-declared permissions, effective host enforcement and actual user authorization.",
+      "Check wildcard grants, privilege escalation and irreversible operations against task necessity."
+    ],
+    "remediation": "Use least privilege and retain appropriate authorization for high-impact actions.",
+    "benign_considerations": [
+      "A capability required and authorized for the task is not a scope violation merely because it is powerful."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "An agent helper silently requests unrestricted filesystem and shell authority for a read-only lookup."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A narrowly scoped helper requests only the capability needed for the explicitly authorized operation."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/unauthorized_tool_use.yaml"
+      },
+      {
+        "source_id": "mcp",
+        "path": "docs/docs/2026-07-28/tutorials/security/security_best_practices.mdx"
+      },
+      {
+        "source_id": "owasp-mcp",
+        "path": "index.md"
+      }
+    ],
+    "related_rules": [
+      "NV-EA1",
+      "NV-EA2",
+      "NV-PE1",
+      "NV-LP1",
+      "NV-LP2",
+      "AC001",
+      "AC002",
+      "AG001",
+      "SDI-3"
+    ]
+  },
+  {
+    "id": "K-AGENT-PERSIST",
+    "title": "Persistent instructions and delayed changes",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "persistence",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Look for instructions or code that changes future agent memory, hooks or startup state beyond the task; filenames alone do not prove loading.",
+    "review_checks": [
+      "Identify the intended persistence mechanism and visible write or activation evidence.",
+      "Distinguish a captured declaration from an effective host loader and from merely discussing configuration."
+    ],
+    "remediation": "Keep persistent changes explicit, reviewable, purpose-bound and subject to user authorization.",
+    "benign_considerations": [
+      "A user-requested project configuration update can intentionally persist."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A one-off helper installs a hidden startup action that rewrites future agent instructions."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A user asks to save a documented project preference in the expected configuration file."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/prompt_injection.yaml"
+      },
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/supply_chain.yaml"
+      }
+    ],
+    "related_rules": [
+      "NV-MP1",
+      "NV-MP3",
+      "NV-RA1",
+      "NV-RA2",
+      "MP001",
+      "AC003"
+    ]
+  },
+  {
+    "id": "K-AGENT-RENDER",
+    "title": "Exfiltration through rendering and links",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "exfiltration",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Sensitive data in generated image/resource URLs may cross a boundary when fetched; links need interaction and rendering behavior must be established.",
+    "review_checks": [
+      "Trace private input into a URL, resource reference or encoded output field.",
+      "Distinguish automatic resource fetch, a clickable link and a nonrendered example; do not assert a request occurred without evidence."
+    ],
+    "remediation": "Keep sensitive context out of external resource URLs and constrain automatic rendering/fetch behavior.",
+    "benign_considerations": [
+      "A static public image and a template using only public data do not establish disclosure."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A skill tells the model to embed private notes in a remote image URL that the host automatically fetches."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A response includes a fixed public documentation link with no private context in it."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/promptguard/signatures/markdown_exfiltration.yaml"
+      }
+    ],
+    "related_rules": [
+      "NV-P3",
+      "NV-E4",
+      "DE001",
+      "SSD-3"
+    ]
+  },
+  {
+    "id": "K-AGENT-SECRETS",
+    "title": "Secret indicators, logging and reports",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "secrets",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "A secret-shaped literal is an indicator, not proof of a live credential; preserve redaction and assess recipient, privilege and exposure.",
+    "review_checks": [
+      "Distinguish test placeholders, public identifiers, private keys and possibly live credentials using supplied context only.",
+      "Check logs, errors, generated reports and environment dumps as possible disclosure paths; never verify a credential by using it."
+    ],
+    "remediation": "Remove sensitive literals, rotate exposed credentials through the owner process and minimize/redact logs.",
+    "benign_considerations": [
+      "An explicit inert placeholder can explain a match but cannot exempt adjacent real credentials."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A package includes a private credential and prints it in an installation error."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A documentation example uses an unmistakable inert placeholder and no real secret."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "gitleaks",
+        "path": "config/gitleaks.toml"
+      },
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/data_exfiltration.yaml"
+      }
+    ],
+    "related_rules": [
+      "SE001",
+      "MC002",
+      "NV-E2",
+      "NV-PE3"
+    ]
+  },
+  {
+    "id": "K-AGENT-SOURCES",
+    "title": "Dependency identities and source overrides",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "supply-chain",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Inspect registry, git, URL and local source overrides plus install hooks; an exact version can still refer to unreviewed or redirected content.",
+    "review_checks": [
+      "Identify the package coordinate, source selection and any install-time execution.",
+      "Distinguish local development overrides from undeclared remote source changes and inspect referenced components when available."
+    ],
+    "remediation": "Review source changes explicitly and bind reviewed inputs to immutable identities and appropriate integrity checks.",
+    "benign_considerations": [
+      "An intentional documented local replacement is not evidence that its author is malicious."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "An update redirects a dependency from its expected registry to an unrelated source with a new install hook."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A project intentionally uses a documented local workspace module that is included in review."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/supply_chain.yaml"
+      },
+      {
+        "source_id": "scorecard",
+        "path": "docs/checks.md"
+      }
+    ],
+    "related_rules": [
+      "SC001",
+      "SC002",
+      "SC003",
+      "NV-SC1",
+      "NV-SC10"
+    ]
+  },
+  {
+    "id": "K-AGENT-PROVENANCE",
+    "title": "Integrity, signer identity and mutable references",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "supply-chain",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "A digest checks expected bytes only if the expectation is trusted; pins and signatures alone do not prove safe behavior or authorized signer identity.",
+    "review_checks": [
+      "Separate content integrity, signer verification, trusted identity and behavior review.",
+      "Inspect mutable tags, disabled verification and missing or opaque components without treating a well-shaped digest as an attestation."
+    ],
+    "remediation": "Pin reviewed content and verify applicable provenance against an independently trusted expectation.",
+    "benign_considerations": [
+      "A mutable development reference can be intentional but leaves future resolved bytes unestablished."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A package disables verification and treats its own declared checksum as proof of safety."
+      },
+      {
+        "kind": "benign",
+        "scenario": "An operator verifies reviewed bytes against a separately trusted expected digest."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "scorecard",
+        "path": "docs/checks.md"
+      },
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/supply_chain.yaml"
+      }
+    ],
+    "related_rules": [
+      "NV-SC7",
+      "NV-SC7M",
+      "MCP-PACKAGE-SHA256",
+      "MCP-PACKAGE-VERSION"
+    ]
+  },
+  {
+    "id": "K-CI-UNTRUSTED",
+    "title": "CI event data and privileged execution",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "ci-security",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Check whether untrusted pull-request code or event expressions enter jobs with write tokens, secrets or privileged release context.",
+    "review_checks": [
+      "Trace event text and checked-out revisions into script execution; separate trigger identity from the code actually run.",
+      "Check token/secret availability and isolation across build artifacts, caches and privileged follow-up jobs."
+    ],
+    "remediation": "Separate untrusted builds from privileged release jobs and keep untrusted values out of script source.",
+    "benign_considerations": [
+      "An untrusted build with restricted authority is not equivalent to executing it in a privileged release context."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A privileged workflow checks out an attacker-selected revision and runs its install script with secrets."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A restricted build runs untrusted code without release credentials, with reviewed promotion boundaries."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "scorecard",
+        "path": "docs/checks.md"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-CI-TOKEN",
+    "title": "CI token scope and dependency pins",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "ci-security",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Check effective workflow/job permissions and immutable action inputs; offline files cannot establish organization policy or branch protection.",
+    "review_checks": [
+      "Review explicit permissions, inherited defaults and third-party action references at the relevant job.",
+      "Treat missing settings as unknown and a full commit pin as integrity control, not a safety verdict."
+    ],
+    "remediation": "Grant only necessary token scopes and review immutable action/dependency revisions before promotion.",
+    "benign_considerations": [
+      "A release job may legitimately need write access when its trigger and approval boundary are appropriate."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "An untrusted test job receives broad write permissions and runs a mutable third-party action."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A restricted test job grants read-only scope and uses reviewed immutable action references."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "scorecard",
+        "path": "docs/checks.md"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-TRANSPORT-TLS",
+    "title": "TLS, transport and verification bypasses",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "transport",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Plaintext endpoints and disabled verification require context; inspect the active setting and threat boundary rather than a keyword alone.",
+    "review_checks": [
+      "Identify actual transport use, identity verification and whether sensitive data crosses a network boundary.",
+      "Distinguish a disabled guard from a false-like value, unused sample or an effective replacement verification mechanism."
+    ],
+    "remediation": "Use authenticated encrypted transport and retain certificate/hostname verification for sensitive remote traffic.",
+    "benign_considerations": [
+      "A loopback service under an explicit local trust model differs from a public plaintext endpoint."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A remote tool sends credentials over plaintext or disables identity checks on its active transport."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A remote tool validates the intended service identity before sending scoped credentials."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "devskim",
+        "path": "rules/default/security/TLS/tls_javascript.json"
+      },
+      {
+        "source_id": "mcp",
+        "path": "docs/docs/2026-07-28/tutorials/security/security_best_practices.mdx"
+      }
+    ],
+    "related_rules": [
+      "NV-TM3",
+      "MC001",
+      "MCP-PLAIN-HTTP",
+      "JS006"
+    ]
+  },
+  {
+    "id": "K-MCP-AUTH",
+    "title": "MCP token audiences and proxy consent",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "authorization",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Check token audience, principal and per-client consent; possession of a bearer token does not authorize use at another service.",
+    "review_checks": [
+      "Locate token validation and determine whether tokens are issued for the receiving MCP service.",
+      "Inspect proxy consent and privilege scope; generic successful authentication is not proof of downstream authorization."
+    ],
+    "remediation": "Validate intended audience and principal, avoid token passthrough and keep consent bound to the relevant client and task.",
+    "benign_considerations": [
+      "A deliberately configured delegated credential flow is not equivalent to accepting arbitrary upstream tokens."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A proxy accepts a token issued for another API and silently uses shared privileges for an unrelated client."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A server validates its intended token audience and obtains explicit consent for the downstream action."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "mcp",
+        "path": "docs/docs/2026-07-28/tutorials/security/security_best_practices.mdx"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-MCP-STATE",
+    "title": "MCP state handles and session ownership",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "authorization",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "A session or task handle is not authentication; inspect principal/tenant binding on every protected operation.",
+    "review_checks": [
+      "Check authorization of operations using session/task identifiers and binding to authenticated users.",
+      "Distinguish randomness, identity verification and access control; an unpredictable handle alone does not establish all three."
+    ],
+    "remediation": "Authenticate protected requests and bind state server-side to the authorized principal and scope.",
+    "benign_considerations": [
+      "An opaque identifier used only after a separate access check is not inherently a vulnerability."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A service allows any connected caller to resume another user task using only a copied handle."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A service checks the authenticated user owns the task before reading or resuming it."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "mcp",
+        "path": "docs/docs/2026-07-28/tutorials/security/security_best_practices.mdx"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-AGENT-RESOURCE",
+    "title": "Unbounded work, loops and expansion",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "resource-abuse",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Inspect retry, recursion, archive expansion and API/tool budgets; a loop is not unbounded when effective limits are visible.",
+    "review_checks": [
+      "Identify attacker-controlled repetition or size and the resources/costs it consumes.",
+      "Check effective time, item, depth, output and expanded-size bounds plus cancellation and failure behavior."
+    ],
+    "remediation": "Apply explicit resource budgets and stop or report incomplete work when a limit is reached.",
+    "benign_considerations": [
+      "A bounded retry with cancellation and a task-relevant budget can be legitimate."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A skill directs indefinite recursive tool calls and ignores cancellation or budget exhaustion."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A workflow limits attempts, elapsed time and output and reports when the budget prevents completion."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/resource_abuse.yaml"
+      }
+    ],
+    "related_rules": [
+      "NV-EA4",
+      "NV-OH3",
+      "NV-MP2"
+    ]
+  },
+  {
+    "id": "K-AGENT-OPAQUE",
+    "title": "Opaque components and incomplete inspection",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "inspection",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Missing referenced files, bytecode or native payloads leave behavior unknown; a clean text scan cannot attest their internals.",
+    "review_checks": [
+      "Identify the captured component, loader relationship and unsupported or omitted representations.",
+      "Preserve incomplete coverage without inferring that every binary is malicious or that no text finding means safe."
+    ],
+    "remediation": "Capture and inspect relevant components with appropriate bounded analysis; report remaining unsupported behavior explicitly.",
+    "benign_considerations": [
+      "A legitimate native dependency may be opaque to this profile and require separate review."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A package installs an unavailable binary and claims that scanning its README proves the binary safe."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A report identifies the native component and explicitly states that its behavior was not inspected."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "scorecard",
+        "path": "docs/checks.md"
+      },
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/supply_chain.yaml"
+      }
+    ],
+    "related_rules": [
+      "BI001",
+      "NV-SC8",
+      "NV-SC9"
+    ]
+  },
+  {
+    "id": "K-AGENT-INTENT",
+    "title": "Purpose, claims and implementation evidence",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "intent",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "A supported mismatch needs both the claim and contradictory behavior; incomplete descriptions and expected implementation details are not contradictions.",
+    "review_checks": [
+      "Cite the declared purpose or explicit permission baseline and the conflicting operation.",
+      "Consider the legitimate task, active negation and incomplete context; do not infer an author mental state."
+    ],
+    "remediation": "Align capability and disclosure with task scope and enforce actual host permissions independently.",
+    "benign_considerations": [
+      "Network access in a web-search tool can be an expected implementation detail."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A tool declares that it only reads local metadata while visibly writing a persistent startup hook."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A documented export tool writes the explicitly selected output as part of its declared task."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "mcp",
+        "path": "docs/specification/2026-07-28/server/tools.mdx"
+      },
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/unauthorized_tool_use.yaml"
+      }
+    ],
+    "related_rules": [
+      "SDI-1",
+      "SDI-2",
+      "SDI-4",
+      "NV-TP4"
+    ]
+  },
+  {
+    "id": "K-AGENT-OUTPUT",
+    "title": "Output crossing into a stronger trust domain",
+    "languages": [
+      "agnostic"
+    ],
+    "category": "output-handling",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Model, tool and document output remains untrusted at rendering, execution, persistence and cross-agent boundaries.",
+    "review_checks": [
+      "Trace the output into the receiving interpreter, tool or persistent store.",
+      "Identify the new authorization and validation boundary; changing format or sender does not create trust."
+    ],
+    "remediation": "Validate data for its receiving context and reauthorize consequential actions before forwarding or executing it.",
+    "benign_considerations": [
+      "Displaying inert quoted text is different from using that text as instructions or program input."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A tool result is treated as a new system instruction and used to execute unrelated commands."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A tool result is displayed as quoted task data and cannot change host policy."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "cisco",
+        "path": "skill_scanner/data/packs/core/signatures/prompt_injection.yaml"
+      },
+      {
+        "source_id": "mcp",
+        "path": "docs/specification/2026-07-28/server/tools.mdx"
+      }
+    ],
+    "related_rules": [
+      "NV-OH1",
+      "NV-OH2"
+    ]
+  },
+  {
+    "id": "K-OTHER-OBJECTS",
+    "title": "Other languages: deserialization and XML entities",
+    "languages": [
+      "other"
+    ],
+    "category": "deserialization",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "For Java/.NET and XML parsers inspect exact APIs, object/type activation and entity resolvers; do not project Python semantics onto another language.",
+    "review_checks": [
+      "Identify the actual language/runtime, API options and attacker control over serialized or XML data.",
+      "Check whether object activation or external entity resolution is enabled and reaches a sensitive boundary."
+    ],
+    "remediation": "Prefer bounded data-only formats, explicit type schemas and disabled external entity resolution where not required.",
+    "benign_considerations": [
+      "A data-only parser with restricted types is not equivalent to arbitrary object deserialization."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A service activates arbitrary runtime types or fetches external entities from an untrusted document."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A service accepts a bounded data schema with external resolution and arbitrary type activation disabled."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "devskim",
+        "path": "rules/default/security/api/deserialization.json"
+      },
+      {
+        "source_id": "devskim",
+        "path": "rules/default/security/xml/external_entities.json"
+      },
+      {
+        "source_id": "codeql",
+        "path": "csharp/ql/src/Security Features/CWE-502/UnsafeDeserialization.qhelp"
+      },
+      {
+        "source_id": "codeql",
+        "path": "java/ql/src/Security/CWE/CWE-502/UnsafeDeserialization.qhelp"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-OTHER-CRYPTO",
+    "title": "Other languages: random values and format interpreters",
+    "languages": [
+      "other"
+    ],
+    "category": "injection",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Check whether random values secure credentials and whether external strings control format interpreters; ordinary randomization and printing differ.",
+    "review_checks": [
+      "Identify a security-sensitive use of random output rather than reporting every non-cryptographic generator.",
+      "For native format APIs distinguish a fixed format with data arguments from attacker-controlled format text."
+    ],
+    "remediation": "Use a cryptographic generator for security tokens and fixed format strings with separate data arguments.",
+    "benign_considerations": [
+      "Simulation randomness and inert text output do not require the same guarantees as session secrets or format interpreters."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A native helper uses untrusted text as a printf-style format, or generates bearer secrets with predictable randomness."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A helper uses a fixed display format and generates security tokens with an appropriate cryptographic source."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "devskim",
+        "path": "rules/default/security/cryptography/random.json"
+      },
+      {
+        "source_id": "codeql",
+        "path": "cpp/ql/src/Security/CWE/CWE-134/UncontrolledFormatString.qhelp"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-SQL-PARAMS",
+    "title": "SQL values, identifiers and ORM escape hatches",
+    "languages": [
+      "sql",
+      "javascript",
+      "typescript"
+    ],
+    "category": "database-security",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Bind data values at the actual execution sink; placeholders do not bind identifiers, sort syntax or raw ORM fragments. Previously stored input is still untrusted.",
+    "review_checks": [
+      "Trace external or previously stored input into executed SQL, including raw-query ORM APIs and JavaScript template construction.",
+      "Verify the actual driver binding API; string interpolation before prepare is still SQL text. Map allowed identifiers and sort directions independently."
+    ],
+    "remediation": "Keep data in driver-bound parameters and select query structure from fixed application-owned choices; do not rely on generic quote stripping.",
+    "benign_considerations": [
+      "A parameterized value, fixed query text or correctly allowlisted identifier does not establish injection; LIKE wildcard behavior is a separate business rule."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "An agent builds a raw SQL template from a stored project label before passing the completed string to prepare."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A service binds the label as data and maps a requested sort key to one of its predefined columns."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "owasp-sql",
+        "path": "cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.md"
+      },
+      {
+        "source_id": "codeql",
+        "path": "javascript/ql/src/Security/CWE-089/SqlInjection.inc.qhelp"
+      }
+    ],
+    "related_rules": [
+      "JS004"
+    ]
+  },
+  {
+    "id": "K-SQL-DYNAMIC",
+    "title": "Dynamic SQL and privileged stored routines",
+    "languages": [
+      "sql"
+    ],
+    "category": "database-security",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Binding a stored-procedure call does not secure SQL assembled inside it; inspect inner EXECUTE and definer privileges, identifier handling and search_path.",
+    "review_checks": [
+      "Follow values through stored-routine parameters into any inner dynamic SQL and use dialect-specific value binding/identifier handling.",
+      "For PostgreSQL SECURITY DEFINER inspect the owner, writable search_path entries and EXECUTE grants; do not equate routine creation with invocation."
+    ],
+    "remediation": "Bind inner query values, constrain identifiers, minimize routine privileges and fix a trusted namespace resolution path.",
+    "benign_considerations": [
+      "A routine with fixed SQL and a deliberate reviewed privilege boundary can be legitimate; definer syntax alone is not an exploit."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A broadly executable owner-privileged routine concatenates caller text into EXECUTE and resolves objects in a caller-writable schema."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A narrow routine binds values, selects allowed identifiers and limits execution privileges with trusted object resolution."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "owasp-sql",
+        "path": "cheatsheets/Query_Parameterization_Cheat_Sheet.md"
+      },
+      {
+        "source_id": "postgres-sql",
+        "path": "doc/src/sgml/plpgsql.sgml"
+      },
+      {
+        "source_id": "postgres-sql",
+        "path": "doc/src/sgml/ref/create_function.sgml"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-SQL-AUTHORITY",
+    "title": "Database roles, tenants and row-level security",
+    "languages": [
+      "sql"
+    ],
+    "category": "database-security",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Parameterization does not authorize rows; check tenant/role boundaries and effective RLS. PostgreSQL superusers/BYPASSRLS bypass RLS; owners normally do unless FORCE applies.",
+    "review_checks": [
+      "Identify the effective principal, tenant restriction and database/application policy for the actual operation; absent live role state remains unknown.",
+      "For PostgreSQL inspect enabled RLS, applicable policies and owner/superuser/BYPASSRLS behavior; a tenant column or policy declaration alone is not enforcement."
+    ],
+    "remediation": "Use task-scoped roles and enforced row/tenant access checks; verify the effective execution role instead of trusting a read-only description.",
+    "benign_considerations": [
+      "An explicitly authorized cross-tenant administrator operation can require broad access; query scope must be assessed against its real task."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A tenant lookup accepts another tenant identifier under an owner role that bypasses the expected row policy."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A service enforces the authenticated tenant with an appropriate restricted role and verified row-access controls."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "owasp-sql",
+        "path": "cheatsheets/Database_Security_Cheat_Sheet.md"
+      },
+      {
+        "source_id": "postgres-sql",
+        "path": "doc/src/sgml/ddl.sgml"
+      }
+    ],
+    "related_rules": [
+      "SQL002"
+    ]
+  },
+  {
+    "id": "K-SQL-DESTRUCTIVE",
+    "title": "Destructive SQL, migrations and transaction scope",
+    "languages": [
+      "sql"
+    ],
+    "category": "database-security",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment",
+      "intent",
+      "tool_consistency"
+    ],
+    "prompt_hint": "Review UPDATE/DELETE/DROP/TRUNCATE against explicit scope and recovery; WHERE or a transaction alone does not guarantee safety, and rollback/implicit-commit behavior is dialect-specific.",
+    "review_checks": [
+      "Check the authorized database/schema/rows, predicates, CASCADE effects, triggers and concurrent locking before claiming bounded mutation.",
+      "For PostgreSQL TRUNCATE account for ACCESS EXCLUSIVE locks, dependent tables and transaction behavior; do not apply these facts to every SQL engine."
+    ],
+    "remediation": "Make consequential migrations explicit, constrain targets and verify a suitable rollback/recovery plan and lock budget for the actual engine.",
+    "benign_considerations": [
+      "A deliberate reviewed migration or full reset of a task-owned temporary database is not malicious merely because it removes data."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A read-only reporting skill truncates shared tables with CASCADE before producing its report."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A user-authorized migration names its targets, reviews dependent effects and uses an engine-appropriate recovery procedure."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "postgres-sql",
+        "path": "doc/src/sgml/ref/truncate.sgml"
+      },
+      {
+        "source_id": "owasp-sql",
+        "path": "cheatsheets/Database_Security_Cheat_Sheet.md"
+      }
+    ],
+    "related_rules": [
+      "SQL001"
+    ]
+  },
+  {
+    "id": "K-SQL-IO",
+    "title": "Database file access, exports and OS execution",
+    "languages": [
+      "sql"
+    ],
+    "category": "database-security",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Distinguish SQL server-side COPY/PROGRAM from client-side export and STDIN/STDOUT; engine features, effective roles and data recipients determine authority.",
+    "review_checks": [
+      "Trace selected rows or filesystem paths into server/client export, linked-server operations or OS commands and identify the machine and principal involved.",
+      "For PostgreSQL COPY PROGRAM inspect command provenance and execution privileges; ordinary COPY TO STDOUT is data transfer, not automatically an OS command or unauthorized leak."
+    ],
+    "remediation": "Disable unneeded server file/program capabilities, constrain exports to authorized data/recipients and preserve database-versus-client trust boundaries.",
+    "benign_considerations": [
+      "An explicitly requested bounded export can be legitimate; the token COPY alone does not prove host file access or command execution."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A reporting tool uses privileged database program execution to run an unrelated shell command or export private tables to an undeclared receiver."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A restricted client exports only the authorized result through its documented client stream."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "postgres-sql",
+        "path": "doc/src/sgml/ref/copy.sgml"
+      },
+      {
+        "source_id": "owasp-sql",
+        "path": "cheatsheets/Database_Security_Cheat_Sheet.md"
+      }
+    ],
+    "related_rules": [
+      "SQL003"
+    ]
+  },
+  {
+    "id": "K-SQL-SECRETS",
+    "title": "Database credentials, query logs and result disclosure",
+    "languages": [
+      "sql"
+    ],
+    "category": "database-security",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "Prepared queries can still leak parameters/results through logs, errors and dumps; database connection secrets and transport identity require separate controls.",
+    "review_checks": [
+      "Inspect DSNs, embedded passwords, parameter/result logging, diagnostic errors and backup/export destinations without testing credentials.",
+      "For PostgreSQL distinguish statement logging from bound-parameter logging and its length settings; unknown deployment configuration is not a proved disclosure."
+    ],
+    "remediation": "Protect connection credentials and transport identity, minimize result access and redact sensitive query parameters and diagnostic output.",
+    "benign_considerations": [
+      "A synthetic example DSN or redacted aggregate log is different from a live credential or private row dump."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A helper prints its password-bearing connection string and all bound customer parameters into public CI logs."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A client keeps scoped credentials in protected configuration and logs only redacted operational metadata."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "owasp-sql",
+        "path": "cheatsheets/Database_Security_Cheat_Sheet.md"
+      },
+      {
+        "source_id": "postgres-sql",
+        "path": "doc/src/sgml/config.sgml"
+      }
+    ],
+    "related_rules": []
+  },
+  {
+    "id": "K-SQL-LIMITS",
+    "title": "Database query, lock and result budgets",
+    "languages": [
+      "sql"
+    ],
+    "category": "database-security",
+    "coverage": "review-guidance-only",
+    "modes": [
+      "discovery",
+      "assessment",
+      "proposal_assessment"
+    ],
+    "prompt_hint": "A row LIMIT does not bound scan cost or lock waits; check statement/lock/transaction budgets, result bytes and cancellation at the effective session.",
+    "review_checks": [
+      "Identify caller-controlled query shape, result size and transaction/lock lifetime rather than treating every join or scan as resource abuse.",
+      "Check effective timeout values, including disabled/overridden settings, client cancellation and server enforcement; PostgreSQL timeout names are not portable guarantees."
+    ],
+    "remediation": "Use appropriate query, lock, transaction and result budgets and release resources when a task is cancelled or a bound is exceeded.",
+    "benign_considerations": [
+      "A bounded authorized maintenance query can be expensive by design; missing config in a snippet leaves enforcement unknown."
+    ],
+    "examples": [
+      {
+        "kind": "risk",
+        "scenario": "A public tool accepts unrestricted generated SQL, waits indefinitely on locks and serializes unbounded private results."
+      },
+      {
+        "kind": "benign",
+        "scenario": "A scoped reporting task enforces appropriate server/client timeouts, result bounds and cancellation."
+      }
+    ],
+    "sources": [
+      {
+        "source_id": "postgres-sql",
+        "path": "doc/src/sgml/config.sgml"
+      }
+    ],
+    "related_rules": [
+      "SQL004"
+    ]
+  }
+]

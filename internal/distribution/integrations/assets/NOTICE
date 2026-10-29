@@ -1,0 +1,16 @@
+Scout reviewer integrations and instruction materials
+Copyright (c) 2026 scout contributors.
+
+Includes modified workflow material from NVIDIA SkillSpector, especially
+skills/skill-inspector/SKILL.md and the documented Pi/OpenCode integrations.
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+Licensed under the Apache License, Version 2.0 (included as LICENSE).
+
+Changes: Go scanner invocation, strict policy/completeness handling, named targets,
+explicit per-capability consent, clean subprocess environment, bounded summaries,
+retained nonzero-exit reports, whole-plugin/update review and no implicit installation.
+This is not an NVIDIA-endorsed product. No exact full upstream revision is claimed.
+Source mappings and verification limits are in transfer-manifest.json.
+
+Host SDKs are provided by the host, not redistributed in this package. No npm
+install/lifecycle scripts or external Python workers are shipped.

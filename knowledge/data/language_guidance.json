@@ -1,0 +1,275 @@
+{
+  "GO005": {
+    "explanation": "Constructing query text with variable data can change SQL syntax.",
+    "remediation": "Bind values separately using driver parameters; allowlist structural identifiers.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://go.dev/doc/database/sql-injection",
+        "symbol": "K-GO-SQL",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "GO006": {
+    "explanation": "InsecureSkipVerify bypasses normal TLS certificate and hostname verification.",
+    "remediation": "Keep certificate verification enabled and configure an explicit trust store when needed.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://pkg.go.dev/crypto/tls#Config",
+        "symbol": "K-GO-TLS",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "JS001": {
+    "explanation": "A child_process shell API interprets command text.",
+    "remediation": "Prefer execFile or spawn with a fixed executable, argument array and shell disabled.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://nodejs.org/api/child_process.html",
+        "symbol": "K-JS-EXEC",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "JS002": {
+    "explanation": "Dynamic evaluation gives strings code authority.",
+    "remediation": "Use a data parser and explicit operations instead of evaluating input as code.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://nodejs.org/api/vm.html",
+        "symbol": "K-JS-DYNAMIC",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "JS003": {
+    "explanation": "Credential values reach a selected network argument in the bounded flow model.",
+    "remediation": "Confirm the authorized destination and fields; remove unrelated credential transmission.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://nodejs.org/api/http.html",
+        "symbol": "K-JS-EGRESS",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "JS004": {
+    "explanation": "Variable interpolation changes query text before a query API receives it.",
+    "remediation": "Use parameter binding; allowlist identifiers and SQL structure.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://go.dev/doc/database/sql-injection",
+        "symbol": "K-SQL-PARAMS",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "JS005": {
+    "explanation": "The file API names a sensitive credential store.",
+    "remediation": "Use narrowly authorized credential access and keep values out of output.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://nodejs.org/api/fs.html",
+        "symbol": "K-JS-EGRESS",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "JS006": {
+    "explanation": "The code explicitly disables TLS peer certificate verification.",
+    "remediation": "Enable certificate verification and configure trusted roots.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://nodejs.org/api/tls.html",
+        "symbol": "K-TRANSPORT-TLS",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "SQL001": {
+    "explanation": "The statement can remove schema/data or modify rows without a WHERE clause.",
+    "remediation": "Verify explicit authorization, target scope, backup and transaction policy.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://www.postgresql.org/docs/current/sql-truncate.html",
+        "symbol": "K-SQL-DESTRUCTIVE",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "SQL002": {
+    "explanation": "The declaration broadens privileges or bypasses normal row security.",
+    "remediation": "Use restricted roles and explicitly review any privilege elevation.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://www.postgresql.org/docs/current/ddl-rowsecurity.html",
+        "symbol": "K-SQL-AUTHORITY",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "SQL003": {
+    "explanation": "The statement requests database-server filesystem or program access.",
+    "remediation": "Prefer an authorized bounded client stream; remove unnecessary server file/program capabilities.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://www.postgresql.org/docs/current/sql-copy.html",
+        "symbol": "K-SQL-IO",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "SQL004": {
+    "explanation": "The session removes an execution or lock-wait timeout.",
+    "remediation": "Set finite execution/lock limits together with caller cancellation and result caps.",
+    "review_checks": [
+      "Inspect the cited original bytes, actual data source and API arguments.",
+      "Check authorization and the detector limitation before deciding."
+    ],
+    "benign_considerations": [
+      "Authorized maintenance, authentication or controlled test code can legitimately match; a capability is not proof of malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://www.postgresql.org/docs/current/runtime-config-client.html",
+        "symbol": "K-SQL-LIMITS",
+        "relationship": "original Scout bounded detector and guidance; not an upstream detector port"
+      }
+    ]
+  },
+  "PI004": {
+    "explanation": "A bounded combination of instruction signals requests authority replacement, sensitive-data delivery or persistence across sessions. It requires contextual review and does not establish malicious intent.",
+    "remediation": "Remove unauthorized hierarchy overrides and keep artifact content separate from trusted policy.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A quoted example or a defensive prohibition is not an instruction to obey."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P1",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "DE002": {
+    "explanation": "A bounded combination of instruction signals requests authority replacement, sensitive-data delivery or persistence across sessions. It requires contextual review and does not establish malicious intent.",
+    "remediation": "Remove unauthorized transfers; document purpose, recipient, minimization and explicit consent for necessary telemetry.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "A documented authorized transfer can be legitimate; a URL alone does not prove a leak."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "P3",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  },
+  "MP002": {
+    "explanation": "A bounded combination of instruction signals requests authority replacement, sensitive-data delivery or persistence across sessions. It requires contextual review and does not establish malicious intent.",
+    "remediation": "Keep durable policy separate from untrusted notes, validate changes and isolate users and sessions.",
+    "review_checks": [
+      "Inspect the cited original bytes and the detector limitation; do not infer runtime execution.",
+      "Check declared purpose, authorization, data scope and the benign interpretation before deciding."
+    ],
+    "benign_considerations": [
+      "User-approved storage of ordinary task data is not automatically memory poisoning."
+    ],
+    "sources": [
+      {
+        "url": "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/src/skillspector/nodes/analyzers/pattern_defaults.py",
+        "symbol": "DEFAULT_EXPLANATIONS / DEFAULT_REMEDIATIONS",
+        "upstream_id": "MP1",
+        "relationship": "guidance analogy only; not a port of the upstream detector"
+      }
+    ]
+  }
+}

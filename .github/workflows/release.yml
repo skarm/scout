@@ -1,0 +1,137 @@
+name: Scout release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  version:
+    name: Validate release tag
+    if: github.event_name != 'push' || !github.event.deleted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require a version tag for automatic publication
+        if: github.event_name == 'push'
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          number='(0|[1-9][0-9]*)'
+          prerelease='(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)'
+          build='[0-9A-Za-z-]+'
+          pattern="^v$number\.$number\.$number(-$prerelease(\.$prerelease)*)?(\+$build(\.$build)*)?$"
+          if [[ ${#VERSION} -gt 128 || ! "$VERSION" =~ $pattern ]]; then
+            echo 'Expected a version tag such as v1.2.3 or v1.2.3-rc.1' >&2
+            exit 1
+          fi
+
+  build:
+    name: Test and build all three platforms
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Package verified candidates
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      source-sha: ${{ steps.source.outputs.sha }}
+    env:
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record the checked-out source commit (including annotated tags)
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: native-candidate-*
+          path: .work/candidates
+      - name: Package macOS, Linux and Windows archives with SHA-256
+        run: go run -mod=readonly ./internal/dev/releasepack --version "$VERSION" --candidates .work/candidates --output .work/release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: .work/release
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish all assets together
+    needs: package
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ github.ref_name }}
+      BUILD_SHA: ${{ needs.package.outputs.source-sha }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Verify archive checksums
+        working-directory: release-assets
+        run: |
+          archives=("scout-$VERSION-macos-arm64.tar.gz" "scout-$VERSION-linux-amd64.tar.gz" "scout-$VERSION-windows-amd64.zip")
+          for archive in "${archives[@]}"; do
+            test -s "$archive"
+          done
+          test "$(wc -l < SHA256SUMS)" -eq 3
+          diff -u <(printf '%s\n' "${archives[@]}" | sort) <(cut -c 67- SHA256SUMS | sort)
+          sha256sum --check --strict SHA256SUMS
+      - name: Upload to a draft and publish after all uploads succeed
+        run: |
+          set -euo pipefail
+          verify_tag() {
+            local actual
+            actual="$(gh api "repos/$GH_REPO/commits/refs/tags/$VERSION" --jq '.sha')"
+            if [[ "$actual" != "$BUILD_SHA" ]]; then
+              echo 'Release tag no longer points to the checked-out build commit' >&2
+              return 1
+            fi
+          }
+          verify_tag
+          assets=(
+            "release-assets/scout-$VERSION-macos-arm64.tar.gz"
+            "release-assets/scout-$VERSION-linux-amd64.tar.gz"
+            "release-assets/scout-$VERSION-windows-amd64.zip"
+            'release-assets/SHA256SUMS'
+          )
+          prerelease=false
+          [[ "${VERSION%%+*}" != *-* ]] || prerelease=true
+          if gh release view "$VERSION" --json isDraft --jq '.isDraft' > release-state.txt; then
+            if [[ "$(cat release-state.txt)" != true ]]; then
+              echo 'Refusing to replace assets in an already published release' >&2
+              exit 1
+            fi
+            gh release upload "$VERSION" "${assets[@]}" --clobber
+          else
+            gh release create "$VERSION" "${assets[@]}" --verify-tag --draft --prerelease="$prerelease" --generate-notes --title "$VERSION"
+          fi
+          verify_tag
+          gh release edit "$VERSION" --draft=false --prerelease="$prerelease"

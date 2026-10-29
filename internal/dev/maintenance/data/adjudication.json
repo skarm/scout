@@ -1,0 +1,141 @@
+{
+  "reasons": {
+    "resolved": {
+      "disposition": "no_longer_differs",
+      "meaning": "Family delta disappeared; this alone is not a bug-fix or quality claim."
+    },
+    "component": {
+      "disposition": "contract_difference",
+      "meaning": "Internal component consumes supplied findings/views/AST/budgets or observes one suboperation. A whole-engine scan of captured text is not the same function call."
+    },
+    "refused": {
+      "disposition": "input_boundary",
+      "meaning": "Rejected path/byte limits are excluded from detector agreement and successful-negative counts."
+    },
+    "taxonomy": {
+      "disposition": "taxonomy_difference",
+      "meaning": "A documented counterpart is actually present at the same single input file. Related signals are not proof of equivalent source-to-sink inference, severity or verdict."
+    },
+    "type_context": {
+      "disposition": "contract_difference",
+      "meaning": "Upstream explicit Python file_type/AST is supplied for a non-Python artifact name. Raw replay does not inject that parser/type fact."
+    },
+    "known_gap": {
+      "disposition": "confirmed_remaining_detection_gap",
+      "scout_code": "internal/analysis/languages/shell/patterns.go",
+      "meaning": "Individually inspected Bash fetch-to-execution input still lacks SC2: constructed fetch URL or process substitution. This is retained as a detector gap, not accepted as harmless or counted as a successful negative."
+    },
+    "python": {
+      "disposition": "documented_scope_difference",
+      "scout_code": "internal/analysis/languages/python/python.go",
+      "meaning": "Resolved same-file bounded IR with ordered overwrites, explicit imports, isolated method receivers and selected calls. Selected literal/aliased containers, vararg forwarding, comprehensions and direct global/nonlocal effects are modeled. No import invention, union of overwritten sources, backwards cyclic fixpoint or arbitrary cross-method invocation-order invention. Unsupported/budget evidence is retained separately."
+    },
+    "shell_truth": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/languages/shell/patterns.go",
+      "meaning": "Selected concrete unsafe arguments, defaults and workload declarations; standalone --force/--skip-validation and unrelated chained commands are insufficient. Python uses resolved calls and bounded evaluation; unsupported grammar is not completion. Shell quotes, glob expansion, statements and octal bits retain their distinct meanings."
+    },
+    "credential": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/skillspector_patterns.go",
+      "meaning": "Credential/privilege actions or supported capability declarations. Bare credential-store names, OAuth nouns/lifecycle/persistence, /etc/passwd identity maps, ignore-file entries and syntactic path construction are not automatically secret access. Concrete keyring reads/exports, bound token disclosure and supported sensitive file reads are covered. No blanket documentation exemption."
+    },
+    "network": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/skillspector_patterns.go",
+      "meaning": "Selected network/body/environment/filesystem/SSRF signals; command-local ownership, source types and concrete destinations matter. Separate curl and --data sentences, arbitrary home enumeration and host-language continuations are not proven network transfers. Literal signals still include data/examples and require review."
+    },
+    "prompt": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/prompt_precision.go",
+      "meaning": "Bounded raw/Unicode/reconstructed instruction signals. Code identifier boundaries and narrow formatting headings differ from extraction; explicit privileged requests and heading-as-command framing remain signals. Strict known emoji/tag exemptions, bounded marker grammar and layout thresholds intentionally differ from upstream prepared views and contextual heuristics."
+    },
+    "agency": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/skillspector_patterns.go",
+      "meaning": "Concrete wildcard/autonomy/scope/resource/provider signals, not every including-but-not-limited-to clause or licence mutation. Model frontmatter requires the YAML parser. Bare CLI names/model-like data and ordinary configuration prose do not establish external provider selection."
+    },
+    "output": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/output_precision.go",
+      "meaning": "Selected execution/output crossings and unbounded-output signals. Python checks execution arguments rather than metadata strings. A narrowly recognized JS regexp.exec is excluded; ambiguous JS stays a review signal. General SQL/type inference and all web-framework sinks are outside this bounded detector."
+    },
+    "memory": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/context_stuffing.go",
+      "meaning": "Selected memory/state adoption and repetition signals with independent raw-byte evidence. Repeated data values may receive a medium review signal; sample/example labels do not grant trust. Hardware/state vocabulary, paragraph ownership and thresholds differ from upstream context filtering."
+    },
+    "agent": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/languages/shell/patterns.go",
+      "meaning": "Selected self-modification/persistence/snooping/refusal actions. Actual cp/mv/install destinations and command-word boundaries matter; mkdir is not dir and installation is not enumeration. Bare peer-SKILL paths, inferred remote repository identity and all prose variants are not equivalent to an observed read. Literal review signals can also occur in examples."
+    },
+    "supply": {
+      "disposition": "documented_scope_difference",
+      "scout_code": "internal/analysis/analyzer/sources.go",
+      "meaning": "Offline selected source/config/encoding/dependency/integrity checks. Source strings, package-name neighbours, decoding and execution are distinct signals; decoded children are independently inspected. Bounded shell config generation is not a POSIX interpreter: Bash syntax projection observes functions/branches/loops/case, selected tee outputs and generated package TOML/YAML/XML. Dynamic command effects, arbitrary outputs and execution semantics remain incomplete. Incomplete scope never becomes an allow."
+    },
+    "integrity": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/artifact_integrity.go",
+      "meaning": "Scout retains raw/derived namespace and completeness evidence with its own binary/archive/text limits. Runtime views, opaque references, UTF-16/legacy encodings, excluded paths, canonical magic and deadline-injected state differ. Concealment signals are review heuristics, not proof that text is malicious."
+    },
+    "hooks": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/bundled_surface.go",
+      "meaning": "Namespace-scoped hook/permission evidence with strict closed upload proof. Exotic curl-only URL normalization, malformed/control-bearing headers and injected workflow limits do not establish the same closed proof. Hook capability/incomplete inspection remains independently reported."
+    },
+    "permissions": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/permissions.go",
+      "meaning": "Nearest captured skill/plugin namespace and lexical capability hints. Missing declarations use LP3; wildcard declarations use LP2. Permission strings are not host enforcement; arbitrary scoped allowed-tools strings do not prove coverage of all code capabilities."
+    },
+    "updates": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/update/manifests.go",
+      "meaning": "Prior/current manifest comparison is a separate Scout API; a raw current-only replay cannot provide history. Mutable execution has dedicated Scout checks. A wildcard in a skill own version field alone is not an unpinned dependency."
+    },
+    "tools": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/semantic/tool_consistency.go",
+      "meaning": "Static tool metadata checks plus optional explicitly configured semantic description/behavior review. Provider responses, injected model budgets and prior runtime state are not raw-file input. No live model is enabled by this offline replay."
+    },
+    "triggers": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/triggers.go",
+      "meaning": "Parsed structural trigger checks use NV-TR*M; older literal TR* signals remain separately identified. A missing structural family ID is not proof that activation or coverage was established."
+    },
+    "deserialization": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/analysis/analyzer/deserialization.go",
+      "meaning": "Selected parsed and literal deserialization capabilities; supported Python source-to-sink observations are separate. No arbitrary dynamic type or cross-file inference."
+    },
+    "yara": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "internal/signatures/backend_native.go",
+      "meaning": "Pinned bundled YARA-X rules and explicit trusted ExtraRules. Custom test rule directories, fake severity/category/cache/load failures and injected match caps are additional operator/runtime inputs, not bytes of the scanned files. Built-in prompt prohibitions and ransomware instances are post-filtered without suppressing later affirmative evidence."
+    },
+    "offline_service": {
+      "disposition": "accepted_design_or_scope_difference",
+      "scout_code": "osv/osv.go",
+      "meaning": "OSV lookup is explicitly configured and network-disabled by default. Upstream fake lookup responses, locked-version maps, service failures and fallback databases are not replayed as file contents; they are covered by Scout service/API tests, not asserted equal here."
+    }
+  },
+  "row_columns": [
+    "observation",
+    "test_site",
+    "input",
+    "module",
+    "function",
+    "before_missing",
+    "before_extra",
+    "after_missing",
+    "after_extra",
+    "coverage",
+    "decision",
+    "diagnostics",
+    "delta_decisions",
+    "in_before",
+    "error"
+  ]
+}

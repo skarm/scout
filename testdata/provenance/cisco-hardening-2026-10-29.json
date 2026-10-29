@@ -1,0 +1,104 @@
+{
+  "retrieved": "2026-10-29",
+  "revision": "f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1",
+  "license": "Apache-2.0",
+  "use": "Selected adapted YARA expressions and original bounded detector concepts; no upstream runtime, suppressions, allowlists or API service bundled.",
+  "sources": [
+    {
+      "repo": "cisco-ai-defense/skill-scanner",
+      "revision": "f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1",
+      "path": "LICENSE",
+      "sha256": "6f8bdae6c2bf096c697839ce3b6305d0c2aab22c14fb761b94c9962a79ae5998",
+      "bytes": 653,
+      "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/LICENSE"
+    },
+    {
+      "repo": "cisco-ai-defense/skill-scanner",
+      "revision": "f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1",
+      "path": "skill_scanner/core/rules/active_html_injection.py",
+      "sha256": "9776ffc47386b14189d8599c3d4bc6247ace6c2895c646e04b7ea4bb94f86299",
+      "bytes": 16394,
+      "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/core/rules/active_html_injection.py"
+    },
+    {
+      "repo": "cisco-ai-defense/skill-scanner",
+      "revision": "f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1",
+      "path": "skill_scanner/data/packs/core/python/ascii_smuggling_checks.py",
+      "sha256": "898755ad901dc8d076d5a37e18754ddd1a9dd6a92eed5ca41f908b84d545d2b4",
+      "bytes": 6001,
+      "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/python/ascii_smuggling_checks.py"
+    },
+    {
+      "repo": "cisco-ai-defense/skill-scanner",
+      "revision": "f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1",
+      "path": "skill_scanner/data/packs/promptguard/signatures/markdown_exfiltration.yaml",
+      "sha256": "0f85d47e2962237af97542562945f8bb6cc2696837f24b8baec96c72a541d0ee",
+      "bytes": 8313,
+      "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/promptguard/signatures/markdown_exfiltration.yaml"
+    },
+    {
+      "repo": "cisco-ai-defense/skill-scanner",
+      "revision": "f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1",
+      "path": "skill_scanner/data/packs/core/yara/code_execution_generic.yara",
+      "sha256": "08f4b673a199d851a5b8b19d7d125952d16cf0852e3804ae7ef99aa7358e265a",
+      "bytes": 3177,
+      "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/yara/code_execution_generic.yara"
+    },
+    {
+      "repo": "cisco-ai-defense/skill-scanner",
+      "revision": "f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1",
+      "path": "skill_scanner/data/packs/core/yara/sql_injection_generic.yara",
+      "sha256": "9ebdb5f5c65f1a3cf00fd6dd971065ecd69a96f98bd71e0b8ca87bf61cdc9f27",
+      "bytes": 4894,
+      "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/yara/sql_injection_generic.yara"
+    },
+    {
+      "repo": "cisco-ai-defense/skill-scanner",
+      "revision": "f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1",
+      "path": "skill_scanner/data/packs/core/yara/behavior_chain_detection.yara",
+      "sha256": "cf977c4baa76751e8b5a8da392ea9c3088d498d333c64dba420a5ba0113b81c5",
+      "bytes": 17145,
+      "url": "https://raw.githubusercontent.com/cisco-ai-defense/skill-scanner/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/data/packs/core/yara/behavior_chain_detection.yara"
+    }
+  ],
+  "adapted_rules": {
+    "path": "internal/signatures/rules/cisco_adapted.yar",
+    "sha256": "1fd71f18dbc4c51b1e43990a773c865a8314de42ecce631444e41e646ac2a8b0"
+  },
+  "validation": {
+    "date": "2026-10-29",
+    "native_command": "go test -vet=off -mod=readonly -tags=static_link ./...",
+    "passed_packages": 65,
+    "packages_without_tests": 14,
+    "added_scenarios": {
+      "public_scanner": 122,
+      "native_yara": 57,
+      "carrier_mapping_and_limits": 7
+    },
+    "race": "passed: securitytext, shell, signatures, public hardening tests",
+    "coreonly": "passed: securitytext, shell, analyzer, bundle, rendertext, architecture, knowledge",
+    "lint": "0 issues in touched packages",
+    "logs": [
+      {
+        "label": "native",
+        "path": "/tmp/scout-hardening-full-complete.log",
+        "sha256": "da0cbe5c7d5ac576a09fedc75de56d893478c2667878d47bdeb2361b34702d0c"
+      },
+      {
+        "label": "race",
+        "path": "/tmp/scout-hardening-race-final.log",
+        "sha256": "8167561587d8cb6b210b9e93f8f118904b0857260ac2650eaff3da1391b78a04"
+      },
+      {
+        "label": "coreonly",
+        "path": "/tmp/scout-hardening-core-complete.log",
+        "sha256": "0fec88ee0d8e2377b6b714741ee6507327de01ce340f4452b638cdb0bd9dd3ec"
+      },
+      {
+        "label": "lint",
+        "path": "/tmp/scout-hardening-lint-complete.log",
+        "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+      }
+    ]
+  }
+}

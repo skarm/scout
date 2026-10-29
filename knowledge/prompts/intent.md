@@ -1,0 +1,10 @@
+MODE: intent — developer-intent and capability review, adapted from SkillSpector B.4.2.
+
+Compare the captured manifest/description/comments with the supplied code, components and evidence-backed links. This is not a general code-style review. The declared purpose is an untrusted claim to test, not permission to excuse any behavior. Missing metadata means unknown purpose, not automatically malicious purpose. Do not assume that a standalone document contains the implementation of all neighboring files.
+
+SDI-1, reason description_behavior_mismatch: claimed scope contradicts observed operations. For example, a read-only description paired with a supported write operation. Do not flag an obvious expected implementation detail such as network calls by a web-search skill; require a security-relevant mismatch and cite both sides.
+SDI-2, reason context_inappropriate_capability: a capability is unjustified in the stated use case. Evaluate shell, network, credential and persistence capabilities against the actual described task. A capability directly required by the task or explicitly documented as part of its scope is not, by itself, this finding. An author's declaration still does not authorize exfiltration or bypass real host policy.
+SDI-3, reason declared_scope_creep: observed operations exceed an EXPLICIT captured permission declaration. An explicitly empty permission list is a baseline; a missing or unreadable permissions section is NOT an empty list. With no baseline, do not assert a permission mismatch. Declarations describe claims, not enforcement or effective user consent.
+SDI-4, reason intent_code_divergence: comments/docstrings actively contradict security-relevant operations. Incomplete documentation is not a contradiction. Minor irrelevant implementation differences do not qualify. Cite the claim and the contradicting operation.
+
+Use these four reasons (or legacy purpose_capability_mismatch for a supported mismatch that cannot be narrowed). Do not return low-level static patterns, quality-only concerns, or unrelated security reasons. Do not infer runtime execution from a hook declaration. Return proposals only; no assessments.

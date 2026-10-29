@@ -1,0 +1,241 @@
+{
+  "P3": [
+    {
+      "expression": "(?:send|transmit|upload|post|forward)\\s+(?:the\\s+)?(?:conversation|context|chat|history|messages?)\\s+to",
+      "source": "static_patterns_prompt_injection.py:P3_PATTERNS",
+      "adaptation": "direct RE2 translation; original byte coordinates"
+    },
+    {
+      "expression": "(?:send|transmit|upload|post)\\s+(?:all\\s+)?(?:user\\s+)?(?:data|information|input|files?)\\s+to\\s+(?:https?://|external)",
+      "source": "static_patterns_prompt_injection.py:P3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "(?:copy|extract|collect)\\s+(?:the\\s+)?(?:conversation|context|session)\\s+(?:and\\s+)?(?:send|upload|transmit)",
+      "source": "static_patterns_prompt_injection.py:P3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "(?:call|notify|ping|hit)\\s+(?:this\\s+)?(?:webhook|endpoint|url|api)\\s+with\\s+(?:the\\s+)?(?:user|conversation|context)",
+      "source": "static_patterns_prompt_injection.py:P3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "include\\s+(?:the\\s+)?(?:full\\s+)?(?:conversation|context|history)\\s+in\\s+(?:the\\s+)?(?:request|payload|body)",
+      "source": "static_patterns_prompt_injection.py:P3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "(?:silently|quietly|secretly|covertly)\\s+(?:send|transmit|log|record)",
+      "source": "static_patterns_prompt_injection.py:P3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "without\\s+(?:telling|informing|notifying)\\s+(?:the\\s+)?user[^\\n]{0,512}(?:send|transmit|upload)",
+      "source": "static_patterns_prompt_injection.py:P3_PATTERNS",
+      "adaptation": "512-byte-ish regex character bound; not unbounded cross-line matching"
+    }
+  ],
+  "P4": [
+    {
+      "expression": "always\\s+(?:recommend|suggest|prefer|choose|use)\\s+(?:\\w+\\s+){0,3}(?:over|instead\\s+of|rather\\s+than)",
+      "source": "static_patterns_prompt_injection.py:P4_PATTERNS",
+      "adaptation": "RE2 ASCII word class differs from Python Unicode word class"
+    },
+    {
+      "expression": "never\\s+(?:recommend|suggest|mention|tell|warn|inform)\\s+(?:the\\s+)?(?:user|them)",
+      "source": "static_patterns_prompt_injection.py:P4_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "(?:prioritize|prefer)\\s+(?:\\w+\\s+){0,3}(?:over|above)\\s+(?:user\\s+)?(?:safety|security|privacy|preferences?)",
+      "source": "static_patterns_prompt_injection.py:P4_PATTERNS",
+      "adaptation": "RE2 ASCII word class"
+    },
+    {
+      "expression": "(?:subtly|gradually|slowly)\\s+(?:steer|guide|push|nudge)\\s+(?:the\\s+)?(?:user|conversation)",
+      "source": "static_patterns_prompt_injection.py:P4_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "(?:without\\s+)?(?:the\\s+)?user\\s+(?:knowing|realizing|noticing)[^\\n]{0,512}(?:change|modify|alter|influence)",
+      "source": "static_patterns_prompt_injection.py:P4_PATTERNS",
+      "adaptation": "bounded same-line context"
+    },
+    {
+      "expression": "(?:gain|build|establish)\\s+(?:the\\s+)?(?:user(?:'s)?)\\s+trust\\s+(?:and\\s+then|before|so\\s+that)",
+      "source": "static_patterns_prompt_injection.py:P4_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "(?:appear|seem|act)\\s+(?:helpful|friendly|trustworthy)\\s+(?:while|but|then)",
+      "source": "static_patterns_prompt_injection.py:P4_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "(?:always|never)\\s+include\\s+(?:this|the\\s+following)\\s+in\\s+(?:every|all)\\s+(?:response|output|reply)",
+      "source": "static_patterns_prompt_injection.py:P4_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "append\\s+(?:this|the\\s+following)\\s+to\\s+(?:every|all|each)\\s+(?:response|message|output)",
+      "source": "static_patterns_prompt_injection.py:P4_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    }
+  ],
+  "E2": [
+    {
+      "expression": "os\\s*\\.\\s*environ\\s*\\.\\s*copy\\s*\\(\\s*\\)",
+      "source": "static_patterns_data_exfiltration.py:E2_PYTHON_FALLBACK_PATTERNS",
+      "adaptation": "literal fallback only; not the upstream AST alias extension"
+    },
+    {
+      "expression": "\\{\\s*\\*\\*\\s*os\\s*\\.\\s*environ\\s*\\}",
+      "source": "static_patterns_data_exfiltration.py:E2_PYTHON_FALLBACK_PATTERNS",
+      "adaptation": "literal fallback only"
+    },
+    {
+      "expression": "os\\s*\\.\\s*environ\\s*\\[\\s*['\"][^'\"\\n]*(?:KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL)[^'\"\\n]*['\"]\\s*\\]",
+      "source": "static_patterns_data_exfiltration.py:E2_PYTHON_FALLBACK_PATTERNS",
+      "adaptation": "literal expression, no proof that value is transmitted"
+    },
+    {
+      "expression": "os\\s*\\.\\s*environ\\s*\\.\\s*get\\s*\\([^)]{0,512}(?:KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL)",
+      "source": "static_patterns_data_exfiltration.py:E2_PYTHON_FALLBACK_PATTERNS",
+      "adaptation": "bounded lexical expression"
+    },
+    {
+      "expression": "process\\.env\\s*\\[\\s*['\"][^'\"\\n]*(?:KEY|SECRET|TOKEN|PASSWORD)[^'\"\\n]*['\"]\\s*\\]",
+      "source": "static_patterns_data_exfiltration.py:E2_OTHER_PATTERNS",
+      "adaptation": "lexical JavaScript fallback, not a JS AST"
+    },
+    {
+      "expression": "Object\\.keys\\s*\\(\\s*process\\.env\\s*\\)",
+      "source": "static_patterns_data_exfiltration.py:E2_OTHER_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "collect\\s+(?:all\\s+)?(?:environment\\s+variables?|env\\s+vars?)",
+      "source": "static_patterns_data_exfiltration.py:E2_OTHER_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    }
+  ],
+  "SC1": [
+    {
+      "expression": "install\\s+(?:the\\s+)?latest\\s+(?:version\\s+)?(?:of\\s+)?(?:all\\s+)?(?:packages?|dependencies)",
+      "source": "static_patterns_supply_chain.py:SC1_PATTERNS",
+      "adaptation": "instruction-only; manifest exact versions handled structurally"
+    },
+    {
+      "expression": "(?:don't|do\\s+not)\\s+(?:pin|lock|specify)\\s+(?:package\\s+)?versions?",
+      "source": "static_patterns_supply_chain.py:SC1_PATTERNS",
+      "adaptation": "direct RE2 translation; negation/quotation needs review"
+    }
+  ],
+  "SC2": [
+    {
+      "expression": "(?:curl|wget)\\s+[^|\\n]{0,512}\\|\\s*(?:sudo\\s+)?(?:python3?|node|ruby|perl)\\b",
+      "source": "static_patterns_supply_chain.py:SC2_PATTERNS",
+      "adaptation": "bounded same-line lexical signal, no process execution proof"
+    },
+    {
+      "expression": "(?:curl\\s+[^&\\n]{0,512}-o|wget\\s+[^&\\n]{0,512}-O)\\s+\\S+\\s*&&\\s*(?:sudo\\s+)?(?:ba)?sh",
+      "source": "static_patterns_supply_chain.py:SC2_PATTERNS",
+      "adaptation": "bounded lexical download-then-run"
+    },
+    {
+      "expression": "eval\\s*\\(\\s*(?:await\\s+)?fetch\\s*\\(",
+      "source": "static_patterns_supply_chain.py:SC2_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "new\\s+Function\\s*\\([^)]{0,512}fetch\\s*\\(",
+      "source": "static_patterns_supply_chain.py:SC2_PATTERNS",
+      "adaptation": "bounded expression"
+    }
+  ],
+  "SC3": [
+    {
+      "expression": "marshal\\.loads\\s*\\(",
+      "source": "static_patterns_supply_chain.py:SC3_PATTERNS",
+      "adaptation": "bytecode loading capability is not proof of execution"
+    },
+    {
+      "expression": "(?:exec|eval)\\s*\\(\\s*(?:base64\\.)?b64decode\\s*\\(",
+      "source": "static_patterns_supply_chain.py:SC3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "exec\\s*\\(\\s*(?:zlib|gzip)\\.decompress\\s*\\(",
+      "source": "static_patterns_supply_chain.py:SC3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "new\\s+Function\\s*\\(\\s*atob\\s*\\(",
+      "source": "static_patterns_supply_chain.py:SC3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "exec\\s*\\(\\s*bytearray\\.fromhex\\s*\\(",
+      "source": "static_patterns_supply_chain.py:SC3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    },
+    {
+      "expression": "decode\\s+(?:this|the)\\s+(?:base64|hex)\\s+(?:and\\s+)?(?:run|execute)",
+      "source": "static_patterns_supply_chain.py:SC3_PATTERNS",
+      "adaptation": "direct RE2 translation"
+    }
+  ],
+  "P5": [
+    {
+      "expression": "add\\s+(?:a\\s+)?(?:dash|pinch|bit|drop|amount)\\s+of\\s+(cyanide|arsenic|ricin|botulinum|strychnine|thallium|polonium|sarin|vx gas|mustard gas|anthrax|deadly nightshade|aconite|hemlock|oleander)",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    },
+    {
+      "expression": "(?:include|incorporate|mix\\s+in|stir\\s+in)\\s+(?:some\\s+)?(cyanide|arsenic|ricin|botulinum|strychnine|thallium|polonium|sarin|vx gas|mustard gas|anthrax|deadly nightshade|aconite|hemlock|oleander)",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    },
+    {
+      "expression": "for\\s+(?:every|each|all)\\s+(?:recipe|dish|meal|food).*?add.*?(cyanide|arsenic|ricin|botulinum|strychnine|thallium|polonium|sarin|vx gas|mustard gas|anthrax|deadly nightshade|aconite|hemlock|oleander)",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    },
+    {
+      "expression": "mix\\s+bleach\\s+(?:and|with)\\s+ammonia",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    },
+    {
+      "expression": "mix\\s+ammonia\\s+(?:and|with)\\s+bleach",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    },
+    {
+      "expression": "(?:drink|consume|ingest)\\s+(?:the\\s+)?(?:bleach|antifreeze|drain\\s+cleaner)",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    },
+    {
+      "expression": "(?:you\\s+should|try\\s+to|please)\\s+(?:hurt|harm|injure)\\s+yourself",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    },
+    {
+      "expression": "(?:cut|burn|starve)\\s+yourself",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    },
+    {
+      "expression": "(?:instructions?\\s+(?:for|to|on)\\s+)?(?:make|build|create)\\s+(?:a\\s+)?(?:bomb|explosive|weapon)",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    },
+    {
+      "expression": "(?:how\\s+to\\s+)?(?:poison|kill|murder)\\s+(?:someone|a\\s+person|people)",
+      "source": "static_patterns_harmful_content.py:DANGEROUS_ACTIONS@d7338f58200a9ae2a24810cee08911ab68b107a7",
+      "adaptation": "Bounded Go RE2 action signal; confidence is not treated as a calibrated probability."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+.git
+.idea
+.vscode
+.codegraph
+.DS_Store
+/cache
+/bin
+*.test
+/coverage.out
+/coverage.html
+/.cov
+/vendor
+/artifacts
+/.cache
+/.work

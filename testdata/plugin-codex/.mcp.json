@@ -1,0 +1,11 @@
+{
+  "mcp_servers": {
+    "local": {
+      "command": "npx",
+      "args": ["@example/fixture-only@latest"]
+    },
+    "remote": {
+      "url": "http://example.invalid/mcp"
+    }
+  }
+}

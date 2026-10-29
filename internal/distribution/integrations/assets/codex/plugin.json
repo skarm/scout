@@ -1,0 +1,6 @@
+{
+  "name": "scout-review",
+  "version": "0.0.0-dev",
+  "description": "Evidence-led security review for skills and harness plugins.",
+  "skills": "./skills/"
+}

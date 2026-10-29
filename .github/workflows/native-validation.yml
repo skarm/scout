@@ -1,0 +1,235 @@
+name: Native engine validation (not automatic publication)
+
+# Dependencies are pinned; this job receives no publication credentials.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-native-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-amd64
+          - runner: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: '1'
+      GOTOOLCHAIN: local
+      GOFLAGS: '-mod=readonly -tags=static_link'
+      GOPROXY: https://proxy.golang.org
+      GOSUMDB: sum.golang.org
+      GONOSUMDB: ''
+      GOPRIVATE: ''
+      GONOPROXY: ''
+      PKG_CONFIG_PATH: ''
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+    steps:
+      - name: Checkout reviewed scanner sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select exact Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+          cache: false
+      - name: Select Node.js for host adapter tests
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          check-latest: false
+      - name: Create output and record tools
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/native-evidence" "$RUNNER_TEMP/candidate"
+          echo "SCOUT_NATIVE_CACHE=$RUNNER_TEMP/scout-native" >> "$GITHUB_ENV"
+          test "$(go env GOOS)-$(go env GOARCH)" = '${{ matrix.target }}'
+          go version | tee "$RUNNER_TEMP/native-evidence/go-version.txt"
+          cc --version > "$RUNNER_TEMP/native-evidence/cc-version.txt"
+          pkg-config --version > "$RUNNER_TEMP/native-evidence/pkg-config-version.txt"
+      - name: Acquire and authenticate Go modules (never turn off sumdb)
+        run: |
+          set -euo pipefail
+          go mod download -json > "$RUNNER_TEMP/native-evidence/module-downloads.json"
+          go mod tidy
+          go mod verify
+          git diff --exit-code -- go.mod go.sum
+          cp go.mod go.sum "$RUNNER_TEMP/native-evidence/"
+          go list -m -json all > "$RUNNER_TEMP/native-evidence/modules.json"
+          echo 'GOPROXY=off' >> "$GITHUB_ENV"
+      - name: Download and verify pinned prebuilt C API
+        run: |
+          set -euo pipefail
+          make native-deps 2>&1 | tee "$RUNNER_TEMP/native-evidence/native-deps.log"
+          go run -mod=readonly ./internal/dev/builddeps -- pkg-config --modversion yara_x_capi \
+            > "$RUNNER_TEMP/native-evidence/yara-x-version.txt"
+          go run -mod=readonly ./internal/dev/builddeps -- pkg-config --static --libs yara_x_capi \
+            > "$RUNNER_TEMP/native-evidence/native-link-flags.txt"
+          go run -mod=readonly ./internal/dev/builddeps -- pkg-config --variable=prefix yara_x_capi \
+            > "$RUNNER_TEMP/native-evidence/native-prefix.txt"
+          cp internal/dev/builddeps/bottle.go "$RUNNER_TEMP/native-evidence/native-bottle-pins.go.txt"
+      - name: Full native tests, not coreonly
+        run: |
+          set -euo pipefail
+          go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -count=1 -timeout=10m ./... 2>&1 | tee "$RUNNER_TEMP/native-evidence/tests.log"
+          go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -race -count=3 -timeout=15m ./... 2>&1 | tee "$RUNNER_TEMP/native-evidence/race.log"
+      - name: Mandatory source-bound acceptance after cleanup
+        run: |
+          set -euo pipefail
+          make clean
+          test ! -e .work
+          test ! -e bin/scout
+          test ! -e bin/scout-core
+          test ! -e bin/scout-dev
+          go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -tags=static_link,acceptance -run TestCurrentAcceptance -count=1 ./tests/acceptance \
+            2>&1 | tee "$RUNNER_TEMP/native-evidence/acceptance.log"
+      - name: Build and verify a single binary
+        run: |
+          set -euo pipefail
+          go run -mod=readonly ./internal/dev/builddeps -- go build -trimpath -ldflags="-X github.com/skarm/scout.buildVersionOverride=$VERSION" \
+            -o "$RUNNER_TEMP/candidate/scout" ./cmd/scout
+          test "$("$RUNNER_TEMP/candidate/scout" version)" = "$VERSION"
+          "$RUNNER_TEMP/candidate/scout" capabilities > "$RUNNER_TEMP/native-evidence/capabilities.json"
+          go run -mod=readonly ./internal/dev/builddeps -- go run -ldflags="-X github.com/skarm/scout.buildVersionOverride=$VERSION" \
+            ./cmd/scout-dev releasecheck --binary "$RUNNER_TEMP/candidate/scout" \
+            > "$RUNNER_TEMP/native-evidence/releasecheck.json"
+      - name: Host adapters with the native binary
+        env:
+          SCOUT_TEST_BIN: ${{ runner.temp }}/candidate/scout
+        run: node --test internal/distribution/integrations/host_test.mjs
+      - name: Record candidate checksum
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/candidate"
+          shasum -a 256 scout > scout.sha256
+      - name: Upload diagnostic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-evidence-${{ matrix.target }}
+          path: ${{ runner.temp }}/native-evidence
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload candidate only after every gate passes
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-candidate-${{ matrix.target }}
+          path: ${{ runner.temp }}/candidate
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Full native engines (windows-amd64)
+    runs-on: windows-2025
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CGO_ENABLED: '1'
+      GOTOOLCHAIN: local
+      GOFLAGS: '-mod=readonly -tags=static_link'
+      GOPROXY: https://proxy.golang.org
+      GOSUMDB: sum.golang.org
+      GONOSUMDB: ''
+      GOPRIVATE: ''
+      GONOPROXY: ''
+      CARGO_BUILD_JOBS: '2'
+      CARGO_TERM_COLOR: never
+      CGO_LDFLAGS: '-static -static-libgcc -static-libstdc++'
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+    steps:
+      - name: Preserve pinned source bytes and support long dependency paths
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+          git config --global core.longpaths true
+      - name: Checkout reviewed scanner sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate PowerShell script syntax before building dependencies
+        run: |
+          Get-ChildItem -LiteralPath .github/scripts -Filter '*.ps1' -File | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -ne 0) { throw ($parseErrors | Out-String) }
+          }
+      - name: Checkout pinned YARA-X v1.22.0 sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: VirusTotal/yara-x
+          ref: e27597f2c05e13fe1c2bb459781aef8899afc485
+          path: .work/yara-x
+          persist-credentials: false
+      - name: Select exact Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+          cache: false
+      - name: Install native GNU compiler and pkgconf
+        id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: UCRT64
+          release: false
+          update: true
+          cache: false
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf
+      - name: Select native GNU tools for CGO and Rust
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $bin = Join-Path $env:MSYS2_LOCATION 'ucrt64/bin'
+          foreach ($tool in @('gcc.exe', 'g++.exe', 'ar.exe', 'pkg-config.exe')) {
+            if (-not (Test-Path "$bin/$tool")) { throw "Missing runner tool: $bin/$tool" }
+          }
+          $bin | Add-Content $env:GITHUB_PATH
+          "CC=$bin/gcc.exe" | Add-Content $env:GITHUB_ENV
+          "CXX=$bin/g++.exe" | Add-Content $env:GITHUB_ENV
+          "CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=$bin/gcc.exe" | Add-Content $env:GITHUB_ENV
+          "AR=$bin/ar.exe" | Add-Content $env:GITHUB_ENV
+          if ((go env GOOS) -ne 'windows' -or (go env GOARCH) -ne 'amd64') { throw 'Wrong build target' }
+      - name: Build pinned static C API with locked Rust dependencies
+        run: ./.github/scripts/prepare-windows-native.ps1
+      - name: Test, build, inspect linkage and exercise native selftests
+        run: ./.github/scripts/windows-candidate.ps1
+      - name: Upload diagnostic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-evidence-windows-amd64
+          path: ${{ runner.temp }}/native-evidence
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload candidate only after every gate passes
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-candidate-windows-amd64
+          path: ${{ runner.temp }}/candidate
+          if-no-files-found: error
+          retention-days: 14

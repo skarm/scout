@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "go run \"${CLAUDE_PLUGIN_ROOT}/scripts/handler.go\""
+          }
+        ]
+      }
+    ]
+  }
+}

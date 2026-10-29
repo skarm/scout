@@ -1,0 +1,2682 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-27",
+  "upstream_repository": "https://github.com/NVIDIA/SkillSpector",
+  "upstream_commit": "d7338f58200a9ae2a24810cee08911ab68b107a7",
+  "upstream_version": "2.12.0",
+  "scout_version": "0.20.0-preview",
+  "scout_rules": "0.18.0",
+  "collected_cases": 15668,
+  "scope": "Unmodified upstream pytest plus captured analyzer-boundary raw/UTF-8 engine replay. Not assertion-by-assertion Go port, full CLI replay of inline inputs, verdict/severity equivalence, live-provider evaluation or independent quality measurement.",
+  "upstream_outcomes": {
+    "passed": 15619,
+    "skipped": 45,
+    "xfailed": 4,
+    "failed": 0
+  },
+  "observed_outcomes_equal_uninstrumented_for_each_testcase": true,
+  "source_files_verified": 464,
+  "installed_package_files_verified": 127,
+  "runtime": {
+    "python": "3.14.10",
+    "yara": "4.5.4",
+    "analyzers": [
+      "artifact_integrity",
+      "behavioral_ast",
+      "behavioral_taint_tracking",
+      "bundled_execution_surface",
+      "mcp_least_privilege",
+      "mcp_rug_pull",
+      "mcp_tool_poisoning",
+      "semantic_developer_intent",
+      "semantic_quality_policy",
+      "semantic_security_discovery",
+      "static_patterns_agent_snooping",
+      "static_patterns_anti_refusal",
+      "static_patterns_data_exfiltration",
+      "static_patterns_deserialization",
+      "static_patterns_excessive_agency",
+      "static_patterns_harmful_content",
+      "static_patterns_memory_poisoning",
+      "static_patterns_output_handling",
+      "static_patterns_privilege_escalation",
+      "static_patterns_prompt_injection",
+      "static_patterns_rogue_agent",
+      "static_patterns_ssrf",
+      "static_patterns_supply_chain",
+      "static_patterns_system_prompt_leakage",
+      "static_patterns_tool_misuse",
+      "static_yara",
+      "structured_skill_roles"
+    ],
+    "load_errors": {}
+  },
+  "capture": {
+    "collected_tests": 15668,
+    "observations": 110415,
+    "unique_inputs": 14930,
+    "tests_with_observations": 9300,
+    "excluded_observations": 80,
+    "outcomes": {
+      "skipped": 49,
+      "passed": 15619
+    },
+    "excluded_reasons": {
+      "over_capture_limit": 30,
+      "path_not_a_scout_artifact_path": 50
+    }
+  },
+  "boundaries": 229,
+  "capture_errors": [],
+  "replay": {
+    "unique_inputs": 14930,
+    "default_workers": 6,
+    "default_deadline_seconds": 5,
+    "before_binary_sha256": "2ca2da21f2bc7268a24904907e0227f10e4090e5299fb52223cb4299b5d029a9",
+    "full_after_binary_sha256": "58e47873b970ee077928dd19a1992f1efe82de291d0629423196c41c15d8a613",
+    "delta_after_binary_sha256": "4896493865cd9a5d06c0c43a485fbb1aa3eb144d8b73334a6deba4b24c55707b",
+    "resource_retry": {
+      "inputs": 26,
+      "seconds": 30,
+      "workers": 1,
+      "scanner_errors": 0,
+      "incomplete_allowed": 0
+    },
+    "last_change_incremental_replay": {
+      "inputs": 692,
+      "predicate": "raw filler/escape or any extraction diagnostic; four-codepoint extension only",
+      "intersecting_resource_inputs_retried": 8,
+      "merge_order": [
+        "full_after",
+        "delta",
+        "prior_resource_retry_for_non_delta_inputs",
+        "delta_resource_retry"
+      ]
+    },
+    "final_summary": {
+      "scanned_inputs": 14930,
+      "differing_observations": 6691,
+      "missing_observation_counts": {
+        "SC10": 123,
+        "SC9": 37,
+        "AE2": 30,
+        "AST7": 1,
+        "AST1": 4,
+        "TT3": 53,
+        "TT1": 6,
+        "TT5": 5,
+        "TT2": 4,
+        "TT4": 2,
+        "TT6": 1,
+        "PE3": 411,
+        "BH1": 4,
+        "BH2": 6,
+        "PE2": 27,
+        "SC2": 157,
+        "TM1": 1593,
+        "E1": 68,
+        "E2": 9,
+        "EA1": 13,
+        "RP1": 14,
+        "MP3": 1,
+        "P2": 36,
+        "SC3": 43,
+        "RA2": 158,
+        "EA2": 19,
+        "MP2": 4,
+        "SC4": 16,
+        "SC1": 6,
+        "AE4": 5,
+        "AST4": 14,
+        "EA4": 5,
+        "E3": 4,
+        "TM2": 23,
+        "E5": 1,
+        "AS3": 69,
+        "PE4": 1,
+        "PE5": 4,
+        "EA3": 60,
+        "TR3": 1,
+        "P3": 8,
+        "PE1": 2,
+        "TM3": 47,
+        "YR1": 23,
+        "YR4": 16,
+        "YR2": 3,
+        "YR3": 2,
+        "P1": 3,
+        "AE5": 2,
+        "P4": 4,
+        "AE6": 66,
+        "E4": 2,
+        "P9": 2,
+        "LP1": 19,
+        "LP4": 5,
+        "RP3": 1,
+        "TP4": 4,
+        "TP1": 1,
+        "EA5": 32,
+        "OH1": 12,
+        "P8": 2,
+        "TM4": 3,
+        "RA1": 1,
+        "P6": 50
+      },
+      "extra_observation_counts": {
+        "SC10": 50,
+        "TR2": 2,
+        "E1": 74,
+        "E2": 75,
+        "P6": 689,
+        "P1": 114,
+        "AE3": 5,
+        "EA2": 131,
+        "AST5": 10,
+        "AST1": 3,
+        "AST2": 1,
+        "AE6": 15,
+        "TT2": 17,
+        "TT5": 3,
+        "TT3": 23,
+        "TT4": 2,
+        "PE3": 15,
+        "BH2": 16,
+        "BH3": 6,
+        "BH1": 11,
+        "TM1": 926,
+        "RA1": 4,
+        "MP2": 212,
+        "AE2": 20,
+        "LP3": 32,
+        "SSRF2": 6,
+        "MP3": 55,
+        "P3": 10,
+        "P2": 28,
+        "SC3": 138,
+        "YR4": 11,
+        "AS3": 112,
+        "AR2": 18,
+        "SC2": 27,
+        "TM2": 23,
+        "SC8": 3,
+        "AST4": 1,
+        "OH1": 166,
+        "OH3": 12,
+        "TM3": 6,
+        "SC7": 5,
+        "PE4": 6,
+        "SSRF1": 7,
+        "AR1": 2,
+        "AR3": 2,
+        "AS1": 2,
+        "AS2": 2,
+        "RA2": 2,
+        "SC1": 6,
+        "YR1": 2,
+        "AE4": 2,
+        "P9": 16,
+        "P4": 2,
+        "TM4": 12,
+        "PE1": 6,
+        "EA1": 1,
+        "EA4": 3,
+        "OH2": 2,
+        "SC6": 2,
+        "P7": 2,
+        "P8": 2
+      },
+      "positive_observation_counts": {
+        "SC10": 280,
+        "PE2": 49,
+        "PE3": 436,
+        "AST5": 14,
+        "LP3": 6,
+        "TR2": 1,
+        "P5": 13,
+        "E1": 207,
+        "E2": 55,
+        "SC9": 37,
+        "P1": 461,
+        "YR4": 159,
+        "AE2": 42,
+        "YR1": 217,
+        "P9": 244,
+        "AE3": 5,
+        "AST1": 64,
+        "AST2": 6,
+        "AST3": 3,
+        "AST4": 41,
+        "AST6": 3,
+        "AST7": 16,
+        "AST9": 12,
+        "AST8": 5,
+        "AST10": 14,
+        "TT3": 196,
+        "TT4": 14,
+        "TT5": 78,
+        "TT6": 10,
+        "TT1": 7,
+        "TT2": 15,
+        "BH1": 95,
+        "BH2": 54,
+        "BH3": 36,
+        "BH4": 10,
+        "TM1": 3351,
+        "RA1": 125,
+        "SC2": 355,
+        "EA1": 14,
+        "EA2": 126,
+        "MP2": 100,
+        "RP1": 14,
+        "MP3": 566,
+        "AE6": 172,
+        "P2": 146,
+        "P6": 1581,
+        "P7": 16,
+        "P8": 20,
+        "SC3": 74,
+        "AS3": 190,
+        "RA2": 378,
+        "TM2": 44,
+        "SC4": 16,
+        "SC1": 8,
+        "AE4": 18,
+        "SC8": 1,
+        "OH1": 130,
+        "AS1": 21,
+        "EA4": 8,
+        "E3": 4,
+        "OH3": 8,
+        "AS2": 9,
+        "PE1": 13,
+        "TM3": 58,
+        "SSRF2": 3,
+        "E5": 8,
+        "SC7": 5,
+        "PE4": 9,
+        "PE5": 23,
+        "SSRF1": 8,
+        "SSRF3": 1,
+        "EA3": 60,
+        "AR1": 44,
+        "AR2": 76,
+        "AR3": 13,
+        "DS1": 6,
+        "DS2": 4,
+        "DS3": 4,
+        "DS4": 4,
+        "P3": 36,
+        "P4": 12,
+        "TR3": 1,
+        "YR2": 7,
+        "YR3": 9,
+        "AE5": 2,
+        "E4": 2,
+        "TM4": 18,
+        "LP1": 19,
+        "LP4": 8,
+        "LP2": 2,
+        "RP3": 1,
+        "TP4": 4,
+        "TP3": 4,
+        "TP2": 4,
+        "TP1": 5,
+        "MCP-OFFICIAL-STATUS": 21,
+        "MCP-PLAIN-HTTP": 4,
+        "MCP-REPOSITORY": 13,
+        "MCP-PACKAGE-VERSION": 13,
+        "MCP-PACKAGE-SHA256": 4,
+        "EA5": 32,
+        "OH2": 2,
+        "MP1": 5,
+        "SC5": 4,
+        "SC6": 2
+      },
+      "public_or_direct_missing_counts": {
+        "SC10": 123,
+        "SC9": 37,
+        "AE2": 30,
+        "AST7": 1,
+        "AST1": 4,
+        "TT3": 53,
+        "TT1": 6,
+        "TT5": 5,
+        "TT2": 4,
+        "TT4": 2,
+        "TT6": 1,
+        "PE3": 411,
+        "BH1": 4,
+        "BH2": 6,
+        "PE2": 27,
+        "SC2": 157,
+        "E1": 68,
+        "E2": 5,
+        "EA1": 13,
+        "TM1": 535,
+        "RP1": 14,
+        "MP3": 1,
+        "P2": 36,
+        "SC3": 43,
+        "RA2": 158,
+        "EA2": 19,
+        "MP2": 4,
+        "SC4": 6,
+        "SC1": 6,
+        "AE4": 5,
+        "AST4": 14,
+        "EA4": 5,
+        "E3": 4,
+        "TM2": 11,
+        "E5": 1,
+        "AS3": 69,
+        "PE4": 1,
+        "PE5": 4,
+        "EA3": 60,
+        "TR3": 1,
+        "P3": 8,
+        "PE1": 2,
+        "TM3": 38,
+        "YR1": 23,
+        "YR4": 16,
+        "YR2": 3,
+        "YR3": 2,
+        "P1": 3,
+        "AE5": 2,
+        "P4": 4,
+        "AE6": 66,
+        "E4": 2,
+        "P9": 2,
+        "LP1": 19,
+        "LP4": 5,
+        "RP3": 1,
+        "TP4": 4,
+        "TP1": 1,
+        "EA5": 16,
+        "OH1": 7,
+        "P8": 1,
+        "TM4": 3,
+        "RA1": 1,
+        "P6": 25
+      },
+      "public_or_direct_extra_counts": {
+        "SC10": 48,
+        "TR2": 1,
+        "E2": 9,
+        "P6": 307,
+        "P1": 114,
+        "AE3": 5,
+        "EA2": 16,
+        "AST5": 10,
+        "AST1": 3,
+        "AST2": 1,
+        "AE6": 15,
+        "TT2": 17,
+        "TT5": 3,
+        "TT3": 23,
+        "TT4": 2,
+        "BH2": 16,
+        "BH3": 6,
+        "BH1": 11,
+        "RA1": 4,
+        "TM1": 399,
+        "MP2": 212,
+        "AE2": 20,
+        "E1": 9,
+        "LP3": 32,
+        "SSRF2": 6,
+        "MP3": 55,
+        "P3": 10,
+        "P2": 28,
+        "YR4": 11,
+        "AS3": 112,
+        "AR2": 18,
+        "SC2": 12,
+        "SC8": 3,
+        "AST4": 1,
+        "SSRF1": 7,
+        "AR1": 2,
+        "AR3": 2,
+        "OH1": 47,
+        "OH3": 2,
+        "AS1": 2,
+        "AS2": 2,
+        "RA2": 2,
+        "SC1": 2,
+        "SC3": 45,
+        "YR1": 2,
+        "TM2": 4,
+        "AE4": 2,
+        "P9": 16,
+        "P4": 2
+      },
+      "replay_errors": {
+        "input byte limit": 1,
+        "unsupported captured path": 7
+      },
+      "decisions": {
+        "review": 9695,
+        "allow": 3679,
+        "block": 1548,
+        "": 8
+      },
+      "coverage": {
+        "partial": 7639,
+        "complete": 7283,
+        "": 8
+      }
+    },
+    "before_summary": {
+      "scanned_inputs": 14930,
+      "differing_observations": 7652,
+      "missing_observation_counts": {
+        "SC10": 266,
+        "SC9": 37,
+        "YR1": 200,
+        "P9": 183,
+        "AE2": 30,
+        "AST9": 7,
+        "AST7": 12,
+        "AST1": 4,
+        "TT3": 89,
+        "TT4": 11,
+        "TT1": 6,
+        "TT5": 5,
+        "TT2": 7,
+        "TT6": 3,
+        "PE3": 422,
+        "BH1": 4,
+        "BH2": 10,
+        "PE2": 27,
+        "TM1": 2237,
+        "SC2": 157,
+        "E1": 97,
+        "E2": 9,
+        "EA1": 13,
+        "EA2": 60,
+        "MP2": 95,
+        "RP1": 14,
+        "MP3": 103,
+        "AE6": 142,
+        "P2": 36,
+        "SC3": 43,
+        "RA2": 362,
+        "P6": 132,
+        "SC4": 16,
+        "SC1": 6,
+        "AE4": 5,
+        "AST4": 14,
+        "AS3": 71,
+        "EA4": 5,
+        "E3": 4,
+        "TM2": 23,
+        "E5": 1,
+        "PE4": 1,
+        "PE5": 4,
+        "EA3": 60,
+        "TR3": 1,
+        "P3": 8,
+        "PE1": 2,
+        "TM3": 47,
+        "YR4": 16,
+        "YR2": 3,
+        "YR3": 2,
+        "P1": 22,
+        "AE5": 2,
+        "P4": 4,
+        "E4": 2,
+        "AR3": 1,
+        "LP4": 5,
+        "LP1": 19,
+        "RP3": 1,
+        "TP4": 4,
+        "TP1": 1,
+        "EA5": 32,
+        "OH1": 12,
+        "P8": 2,
+        "TM4": 3,
+        "RA1": 1
+      },
+      "extra_observation_counts": {
+        "TR2": 2,
+        "E1": 63,
+        "E2": 75,
+        "P6": 687,
+        "P1": 83,
+        "AE3": 5,
+        "AST5": 4,
+        "AST1": 2,
+        "AST7": 1,
+        "AST2": 1,
+        "AE6": 5,
+        "TT5": 3,
+        "TT3": 23,
+        "TT2": 14,
+        "BH2": 16,
+        "BH3": 6,
+        "BH1": 11,
+        "RA1": 4,
+        "SC10": 3,
+        "TM1": 418,
+        "AE2": 20,
+        "LP3": 32,
+        "SSRF2": 6,
+        "EA2": 66,
+        "MP3": 37,
+        "P3": 10,
+        "P2": 28,
+        "YR4": 11,
+        "AS3": 112,
+        "AR2": 18,
+        "SC2": 27,
+        "SC8": 3,
+        "AST4": 1,
+        "RA2": 3,
+        "OH1": 166,
+        "OH3": 12,
+        "P9": 9,
+        "PE4": 6,
+        "SSRF1": 7,
+        "AR1": 2,
+        "AR3": 1,
+        "MP2": 2,
+        "AS1": 2,
+        "AS2": 2,
+        "SC1": 6,
+        "SC3": 138,
+        "PE3": 4,
+        "YR1": 2,
+        "TM2": 23,
+        "AE4": 2,
+        "P4": 2,
+        "EA1": 1,
+        "EA4": 3,
+        "OH2": 2,
+        "P7": 2,
+        "P8": 2,
+        "TM3": 6,
+        "SC7": 5,
+        "TM4": 12,
+        "PE1": 6,
+        "SC6": 2
+      },
+      "positive_observation_counts": {
+        "SC10": 280,
+        "PE2": 49,
+        "PE3": 436,
+        "AST5": 14,
+        "LP3": 6,
+        "TR2": 1,
+        "P5": 13,
+        "E2": 55,
+        "E1": 207,
+        "SC9": 37,
+        "P1": 461,
+        "YR4": 159,
+        "AE2": 42,
+        "YR1": 217,
+        "P9": 244,
+        "AE3": 5,
+        "AST1": 64,
+        "AST2": 6,
+        "AST3": 3,
+        "AST4": 41,
+        "AST6": 3,
+        "AST7": 16,
+        "AST9": 12,
+        "AST8": 5,
+        "AST10": 14,
+        "TT3": 196,
+        "TT4": 14,
+        "TT5": 78,
+        "TT6": 10,
+        "TT1": 7,
+        "TT2": 15,
+        "BH1": 95,
+        "BH2": 54,
+        "BH3": 36,
+        "BH4": 10,
+        "TM1": 3351,
+        "RA1": 125,
+        "SC2": 355,
+        "EA1": 14,
+        "EA2": 126,
+        "MP2": 100,
+        "RP1": 14,
+        "MP3": 566,
+        "AE6": 172,
+        "P2": 146,
+        "P6": 1581,
+        "P7": 16,
+        "P8": 20,
+        "SC3": 74,
+        "AS3": 190,
+        "RA2": 378,
+        "TM2": 44,
+        "SC4": 16,
+        "SC1": 8,
+        "AE4": 18,
+        "SC8": 1,
+        "OH1": 130,
+        "AS1": 21,
+        "EA4": 8,
+        "E3": 4,
+        "OH3": 8,
+        "AS2": 9,
+        "PE1": 13,
+        "TM3": 58,
+        "SSRF2": 3,
+        "E5": 8,
+        "SC7": 5,
+        "PE4": 9,
+        "PE5": 23,
+        "SSRF1": 8,
+        "SSRF3": 1,
+        "EA3": 60,
+        "AR1": 44,
+        "AR2": 76,
+        "AR3": 13,
+        "DS1": 6,
+        "DS2": 4,
+        "DS3": 4,
+        "DS4": 4,
+        "P3": 36,
+        "P4": 12,
+        "TR3": 1,
+        "YR2": 7,
+        "YR3": 9,
+        "AE5": 2,
+        "E4": 2,
+        "TM4": 18,
+        "LP2": 2,
+        "LP4": 8,
+        "LP1": 19,
+        "RP3": 1,
+        "TP1": 5,
+        "TP2": 4,
+        "TP3": 4,
+        "TP4": 4,
+        "MCP-OFFICIAL-STATUS": 21,
+        "MCP-REPOSITORY": 13,
+        "MCP-PLAIN-HTTP": 4,
+        "MCP-PACKAGE-VERSION": 13,
+        "MCP-PACKAGE-SHA256": 4,
+        "EA5": 32,
+        "OH2": 2,
+        "MP1": 5,
+        "SC5": 4,
+        "SC6": 2
+      },
+      "public_or_direct_missing_counts": {
+        "SC10": 266,
+        "SC9": 37,
+        "YR1": 200,
+        "P9": 183,
+        "AE2": 30,
+        "AST9": 7,
+        "AST7": 12,
+        "AST1": 4,
+        "TT3": 89,
+        "TT4": 11,
+        "TT1": 6,
+        "TT5": 5,
+        "TT2": 7,
+        "TT6": 3,
+        "PE3": 422,
+        "BH1": 4,
+        "BH2": 10,
+        "PE2": 27,
+        "TM1": 1011,
+        "SC2": 157,
+        "E1": 97,
+        "E2": 5,
+        "EA1": 13,
+        "EA2": 60,
+        "MP2": 95,
+        "RP1": 14,
+        "MP3": 103,
+        "AE6": 142,
+        "P2": 36,
+        "SC3": 43,
+        "RA2": 362,
+        "P6": 66,
+        "SC4": 6,
+        "SC1": 6,
+        "AE4": 5,
+        "AST4": 14,
+        "AS3": 71,
+        "EA4": 5,
+        "E3": 4,
+        "TM2": 11,
+        "E5": 1,
+        "PE4": 1,
+        "PE5": 4,
+        "EA3": 60,
+        "TR3": 1,
+        "P3": 8,
+        "PE1": 2,
+        "TM3": 38,
+        "YR4": 16,
+        "YR2": 3,
+        "YR3": 2,
+        "P1": 22,
+        "AE5": 2,
+        "P4": 4,
+        "E4": 2,
+        "AR3": 1,
+        "LP4": 5,
+        "LP1": 19,
+        "RP3": 1,
+        "TP4": 4,
+        "TP1": 1,
+        "EA5": 16,
+        "OH1": 7,
+        "P8": 1,
+        "TM4": 3,
+        "RA1": 1
+      },
+      "public_or_direct_extra_counts": {
+        "TR2": 1,
+        "E2": 9,
+        "P6": 306,
+        "P1": 83,
+        "AE3": 5,
+        "AST5": 4,
+        "AST1": 2,
+        "AST7": 1,
+        "AST2": 1,
+        "AE6": 5,
+        "TT5": 3,
+        "TT3": 23,
+        "TT2": 14,
+        "BH2": 16,
+        "BH3": 6,
+        "BH1": 11,
+        "RA1": 4,
+        "SC10": 3,
+        "TM1": 146,
+        "AE2": 20,
+        "E1": 6,
+        "LP3": 32,
+        "SSRF2": 6,
+        "MP3": 37,
+        "P3": 10,
+        "P2": 28,
+        "YR4": 11,
+        "AS3": 112,
+        "AR2": 18,
+        "SC2": 12,
+        "SC8": 3,
+        "AST4": 1,
+        "RA2": 3,
+        "P9": 9,
+        "SSRF1": 7,
+        "AR1": 2,
+        "AR3": 1,
+        "OH1": 47,
+        "OH3": 2,
+        "MP2": 2,
+        "AS1": 2,
+        "AS2": 2,
+        "SC1": 2,
+        "SC3": 45,
+        "YR1": 2,
+        "TM2": 4,
+        "AE4": 2,
+        "P4": 2
+      },
+      "replay_errors": {
+        "scanner returned an error": 24,
+        "input file count limit": 7,
+        "unsupported captured path": 1
+      },
+      "decisions": {
+        "review": 9312,
+        "block": 1093,
+        "allow": 4517,
+        "": 8
+      },
+      "coverage": {
+        "partial": 7607,
+        "complete": 7291,
+        "failed": 24,
+        "": 8
+      }
+    },
+    "remaining_observations_status": "Candidates retained with primary/internal boundary kind; not all individually adjudicated. Refusals/incomplete are not clean negatives."
+  },
+  "tests": {
+    "native": true,
+    "core": true,
+    "native_race": true,
+    "native_vet": true,
+    "selftests": 18,
+    "host_tests": 16,
+    "releasecheck": true,
+    "platform": "darwin/arm64",
+    "fixture_cli_pairs": 148,
+    "fixture_cli_errors": 0,
+    "live_providers": false
+  },
+  "test_files": [
+    {
+      "path": "tests/integration/test_agent_cli_live.py",
+      "sha256": "458b96bad9839b25e2ce79f7a4b12361b0a2b8da20d8af7634b3c6828295ed87",
+      "collected_cases": 5,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "skipped": 5
+      }
+    },
+    {
+      "path": "tests/integration/test_graph.py",
+      "sha256": "7781f956c7f0566df35af1efbde117e0dd9a94c7c542f489534f975dabcfc02e",
+      "collected_cases": 52,
+      "tests_with_observations": 50,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 52
+      }
+    },
+    {
+      "path": "tests/integration/test_graph_scanner.py",
+      "sha256": "a4675416d3e8d08721b1406b2c9e1e68e5bc3d202a0a42abe7b2b8fdef549921",
+      "collected_cases": 6,
+      "tests_with_observations": 6,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 6
+      }
+    },
+    {
+      "path": "tests/integration/test_meta_analyzer_use_llm.py",
+      "sha256": "1913f93b9d1af6e08e1a1385c7349064123f76f96552e5e26856ff4ac71cb9f8",
+      "collected_cases": 3,
+      "tests_with_observations": 3,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 3
+      }
+    },
+    {
+      "path": "tests/integration/test_opaque_reference_reporting.py",
+      "sha256": "4cadf4af2071a485130651d23b4c043bdfe4363c0c2d53100d1383bc0fd2b0d5",
+      "collected_cases": 56,
+      "tests_with_observations": 47,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 55,
+        "skipped": 1
+      }
+    },
+    {
+      "path": "tests/integration/test_ransomware_rule.py",
+      "sha256": "3192f5b0d6e5765eeca8d201af3ce0215fcb5efdc82a89593e52e5458c77eea6",
+      "collected_cases": 112,
+      "tests_with_observations": 112,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 112
+      }
+    },
+    {
+      "path": "tests/integration/test_stream_invoke_parity.py",
+      "sha256": "10a2eb4156bcaf5686d0c60d8a6ec87ed0a43f37fe15739ac2d3612c08194913",
+      "collected_cases": 1,
+      "tests_with_observations": 1,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 1
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_artifact_integrity_bounds.py",
+      "sha256": "3e6781e9e53d9358cd7400e651dab47a9e3855cf555730bcf215f085b1cc913f",
+      "collected_cases": 3,
+      "tests_with_observations": 3,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 3
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_behavioral_ast.py",
+      "sha256": "7927abd7bfdebac67b64c0be109a51b62dd868878eadaa242fe9867c1732bfcd",
+      "collected_cases": 127,
+      "tests_with_observations": 122,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 127
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_behavioral_taint_tracking.py",
+      "sha256": "e8761ef538f7d17727a93cfd77a37652cb6dcae4de596ffa4c2d6b0b508ab39a",
+      "collected_cases": 301,
+      "tests_with_observations": 269,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 301
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_binary_and_pe3_filtering.py",
+      "sha256": "2a284d3846d7d7365ab5a25215b568cbdb01e64faaccfadc98421805669fca6b",
+      "collected_cases": 42,
+      "tests_with_observations": 13,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 42
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_bundled_execution_surface.py",
+      "sha256": "2db5f2fa542c3d44aeacb69fee7f9a4e519ad8363ea2cd35fbbc084713a8d445",
+      "collected_cases": 181,
+      "tests_with_observations": 181,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 181
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_chmod_regex_backtracking.py",
+      "sha256": "1f0d27bc5516f63e746346ea291ddb334f836da5f3b5bbfd8cae3a6db8ad7c72",
+      "collected_cases": 10,
+      "tests_with_observations": 10,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 10
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_cli_companion_documentation.py",
+      "sha256": "4685364193e1cc96158be7818ad15f4f795c31c5b6d82f5cdd738427b93b499e",
+      "collected_cases": 188,
+      "tests_with_observations": 188,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 188
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_command_wrapper_without_command.py",
+      "sha256": "de813a69147150ffa92eaa8f137391deb9a4cb0fab3119c2146c94765abc5079",
+      "collected_cases": 29,
+      "tests_with_observations": 3,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 29
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_common.py",
+      "sha256": "ca8f12cfeb28302da033cfb6ad95d3ec298bd821839f7f969ecd04ea12585a0d",
+      "collected_cases": 18,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 18
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_dependency_source_budget_behavior.py",
+      "sha256": "2dbecdf977da357bd6f54c94be2cf3272653f05974f925717e993b8cc0bdb71d",
+      "collected_cases": 10,
+      "tests_with_observations": 1,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 10
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_dependency_source_budget_configuration.py",
+      "sha256": "cd21874dd7a7f03d619cef47e658608b0d0c31c96a50e764b9973466ac676035",
+      "collected_cases": 12,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 12
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_dependency_source_review_regressions.py",
+      "sha256": "44277fb3bb3efb6d3d4c6306db793a95ed16b0ceb6fee4266cc7512fb58d9392",
+      "collected_cases": 31,
+      "tests_with_observations": 24,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 31
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_dependency_sources.py",
+      "sha256": "5c15cbca125a7adf21824b2f9edf53ebabedb2277a9ec065b80e6f1d55f0fe00",
+      "collected_cases": 305,
+      "tests_with_observations": 305,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 305
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_documentation_reconstruction.py",
+      "sha256": "abeb95dd711dde5b2bcd9f8d411c14e85aa85408d8e344802c8d93d5187fab44",
+      "collected_cases": 274,
+      "tests_with_observations": 251,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 274
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_e1_command_boundaries.py",
+      "sha256": "75cc40bf04598f4b1f844425876e2b75789d930e8e123f9c7a7b5fd13e3eb977",
+      "collected_cases": 227,
+      "tests_with_observations": 225,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 227
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_ea1_wildcard_line_boundary.py",
+      "sha256": "603a8ee18112b0544d1c9d8e06a2f9f02de6cf50c66695a9d9cac67d7cb394c6",
+      "collected_cases": 8,
+      "tests_with_observations": 8,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 8
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_eval_command_strings.py",
+      "sha256": "c695c135c4f2adb496fcebe04ab6b54865da403519ec0db8182241eda4c7fd1c",
+      "collected_cases": 31,
+      "tests_with_observations": 30,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 31
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_excessive_agency_prohibitions.py",
+      "sha256": "8ae0cd0d042e191928cb894cc4671540ac7c1c853bd2c7186b3ba04920d6a760",
+      "collected_cases": 26,
+      "tests_with_observations": 26,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 26
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_host_language_shell_ownership.py",
+      "sha256": "d7a89ef94a949633b99c128fdb5b1ba5a1ee1c7f9beab56e2988d8d28111bec5",
+      "collected_cases": 86,
+      "tests_with_observations": 5,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 86
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_json_container_indentation.py",
+      "sha256": "1ef427b6fa65475b78a5613a31677d2d54a44dc4e0aebcf5f46ed26d54e607c1",
+      "collected_cases": 92,
+      "tests_with_observations": 59,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 92
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_json_container_ownership.py",
+      "sha256": "50e0f895b3a4dba991763b64b5d74e8679eb24e8cb8df8f0f03ba5d91b203e26",
+      "collected_cases": 71,
+      "tests_with_observations": 29,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 71
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_json_owned_runtime_bounds.py",
+      "sha256": "9b744d8d0bfd0f313311d3c8517325aebb4d0a67e0734ce3c0fc4ee0cc33ecb4",
+      "collected_cases": 19,
+      "tests_with_observations": 12,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 19
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_json_quote_scan_runtime.py",
+      "sha256": "1fec12449bcbe70dbacafcdc8ba6ad0c3be6edd6f6fb3597cdb030e4686c4786",
+      "collected_cases": 16,
+      "tests_with_observations": 13,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 16
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_json_recovery_context.py",
+      "sha256": "f1fb9068caae4ac501ce7b0a77281d10fe9e91c141e8d62d04b3cf3cfe9fc7c2",
+      "collected_cases": 28,
+      "tests_with_observations": 28,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 28
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_make_documentation_reconstruction.py",
+      "sha256": "9e563a388dbc1bf901589089033af98a6ca3678192a1ffb6d9e1179385639f9f",
+      "collected_cases": 66,
+      "tests_with_observations": 66,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 66
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_markdown_ownership_composition.py",
+      "sha256": "0366370eb89327ca202a2aeb7f44776464038936c469d8595b7e3233599e5d1c",
+      "collected_cases": 36,
+      "tests_with_observations": 36,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 36
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_markdown_table_boundaries.py",
+      "sha256": "fc784508fb2cdc803e50a5c4749226142e5c4bcf75d2b0f12cdb9e6abb9e866d",
+      "collected_cases": 116,
+      "tests_with_observations": 76,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 116
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_markdown_table_separator_rows.py",
+      "sha256": "1b6c8d6cc3a606461324e2d5e70428a47f627a21b748c01af00faf9cce246717",
+      "collected_cases": 34,
+      "tests_with_observations": 34,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 34
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_mcp_rug_pull.py",
+      "sha256": "63b8cb37fc45d3f9458bbc1bbfd5ee9d562dcb7034d85b6715c39ff0abd35ef8",
+      "collected_cases": 17,
+      "tests_with_observations": 2,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 17
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_mp2_regex_backtracking.py",
+      "sha256": "f43b6d122866ecd5c1e7765ef90eb5bff6200a40f90632fba28c0e19cae93a78",
+      "collected_cases": 8,
+      "tests_with_observations": 8,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 8
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_mp3_hardware_state.py",
+      "sha256": "21035ef111abfdf56db7e1c17f2e5e5f7968f2c19de55b8e1ee7abc3a5ddcd5a",
+      "collected_cases": 248,
+      "tests_with_observations": 248,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 248
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_mp3_timestamp_context.py",
+      "sha256": "85ff84127142bbd1866275a552f3100c5ba9184ae6ec92f2f2075f49e7e010ab",
+      "collected_cases": 346,
+      "tests_with_observations": 346,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 346
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_multiline_prompt_spacing.py",
+      "sha256": "42b32943d5256ffedcce90e6a80b34e4bb141548abebae30ac599b053341f016",
+      "collected_cases": 69,
+      "tests_with_observations": 32,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 69
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_p2_reference_comments.py",
+      "sha256": "1bc26e5ee02843dca2939aa6ab7466590c712d6f531439a1b082c6a9e86224c1",
+      "collected_cases": 109,
+      "tests_with_observations": 105,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 109
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_p6_identifier_boundaries.py",
+      "sha256": "b1c213b8d7b346dcc6533fc9ae83c578ecbb342408b0b7e7448216ec6e28c0c8",
+      "collected_cases": 310,
+      "tests_with_observations": 310,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 310
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_parameter_expansion_reconstruction.py",
+      "sha256": "483aa699a9079b3273a24c4ec5830e5cf857f4279ca2b9acb6ae70375dab4b2f",
+      "collected_cases": 48,
+      "tests_with_observations": 4,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 48
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_pe3_credential_type_label.py",
+      "sha256": "9ccb46a634cbd97d9d7e97e2250805ff6e53de0d8ff2fabc9bede782d745178b",
+      "collected_cases": 21,
+      "tests_with_observations": 21,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 21
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_pe3_ignore_file_entries.py",
+      "sha256": "d24530b1509f9bc78bad5a3e8faf3227eb07f63921f515cfaa11e1dc6184ba58",
+      "collected_cases": 85,
+      "tests_with_observations": 85,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 85
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_perl_print_ownership.py",
+      "sha256": "8978d802f325b658c88c659ed6a5acd64f807cef520d6c4526aaf0184fdfd056",
+      "collected_cases": 162,
+      "tests_with_observations": 123,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 162
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_powershell_embedded_completeness.py",
+      "sha256": "794bf5da6b1b65c00d6b0246910241f2a3b9d0b9db175c817b6fa167416c83ca",
+      "collected_cases": 20,
+      "tests_with_observations": 20,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 20
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_prohibition_review_regressions.py",
+      "sha256": "2fd99a48ee97555e012fbba0bb613bc527e8e6c416a914c13f2c73d482a4dc83",
+      "collected_cases": 442,
+      "tests_with_observations": 442,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 442
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_prose_shell_context.py",
+      "sha256": "c70e01934b9fa0e4a0597f1713d92c5737fd92263411b1b05534b2597920873b",
+      "collected_cases": 153,
+      "tests_with_observations": 108,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 153
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_python_ast_columns.py",
+      "sha256": "1163d29ba65319b7fd375478692ae478b0d4d480ec8bfbf79cc8a2c4ebe427ce",
+      "collected_cases": 74,
+      "tests_with_observations": 74,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 74
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_python_shell_cached_imports.py",
+      "sha256": "9ad9280ab0a5432cd58829074c9d889d4f4b75b4761d5d983d98e7518187534e",
+      "collected_cases": 55,
+      "tests_with_observations": 37,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 55
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_python_string_marker_ownership.py",
+      "sha256": "5dcadb2da4f8064a6ec46022619fd8621d367f9e0356922cf6dbf93948205895",
+      "collected_cases": 57,
+      "tests_with_observations": 37,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 57
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_registry.py",
+      "sha256": "fa03cf1420e50147061a4a6617f0f7e50c91c468f4856cdc8c58f214fbc24cf9",
+      "collected_cases": 3,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 3
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_runtime_brace_limits.py",
+      "sha256": "45d0c175f84bfc1ef44716d08ec307e59cc552a99c3574db0088dc6f5bfef1ce",
+      "collected_cases": 120,
+      "tests_with_observations": 120,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 120
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_runtime_reconstruction_workflow.py",
+      "sha256": "ce8953a758c8312948695b0d5b171a774669a598fdabcf7bc12e24854b425cda",
+      "collected_cases": 16,
+      "tests_with_observations": 16,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 16
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_sc2_command_boundaries.py",
+      "sha256": "bfc74030c09855dd9da718aab0509eb9abe6803e543768e343d1ca6156fd1d5b",
+      "collected_cases": 190,
+      "tests_with_observations": 190,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 190
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_sc4_reporting.py",
+      "sha256": "89e71d5b68b946349bfe82e43caa9f214d73a554ac2a8e4faa992dc32e72a003",
+      "collected_cases": 85,
+      "tests_with_observations": 6,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 85
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_sc8_shipped_bytecode.py",
+      "sha256": "f46bf1c99d98bdcc6aeb92f4ea829cd5c0787d4adf236fb2011fbcbf4d987005",
+      "collected_cases": 19,
+      "tests_with_observations": 9,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 19
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_security_reconstruction.py",
+      "sha256": "c04c5a0b054126b0f38ecb96aa2b4a38f4d55dd7500f6fc3ae91c820ce0d0a7f",
+      "collected_cases": 912,
+      "tests_with_observations": 878,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 912
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_security_text_predicate_cache.py",
+      "sha256": "6b7e0bd94e912366bf0b394640b421057517572dd73614bba5a69025cbc285fc",
+      "collected_cases": 74,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 74
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_semantic_developer_intent.py",
+      "sha256": "4eebb0829a9c96c92b48d43881041b39b84a61a19ae7ee71d1735afe70aa314b",
+      "collected_cases": 29,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 29
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_semantic_security_discovery.py",
+      "sha256": "06649f28def4cb4f848b910b3e20d015d310b303a05577fe80cdb1901c472ad0",
+      "collected_cases": 35,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 35
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_shared_python_ast.py",
+      "sha256": "5351596ed690487e95d75d18d0e0f0c1b414842b8ce4c42604139fd13818cdb0",
+      "collected_cases": 25,
+      "tests_with_observations": 14,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 25
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_shell_assignment_quotes.py",
+      "sha256": "264677adca97a929a6e03d2e5ed7aa0a4d2773b8e64cfb0a5ceadaa1bec34436",
+      "collected_cases": 31,
+      "tests_with_observations": 3,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 31
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_skill_installation_patterns.py",
+      "sha256": "c17fddda90ff3a577783a3839f0ca9c8aa0e86efb9db2660d5053bb50b387ad6",
+      "collected_cases": 309,
+      "tests_with_observations": 309,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 309
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_budget_configuration.py",
+      "sha256": "aff1e0389e99115daea2cf8d80d7a135af724b42a963fbca87e64f3e0c342e66",
+      "collected_cases": 17,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 17
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_code_blank_lines.py",
+      "sha256": "22fb001469a1caa962dccd35ac414953f913a1a1eeb495cd734d9dd618808411",
+      "collected_cases": 38,
+      "tests_with_observations": 38,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 38
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_false_positive_controls.py",
+      "sha256": "2c1c3e53ec57e2f4805af58d5bdbc4c1c4e11ce268bda749d38f3d843c04b3ac",
+      "collected_cases": 14,
+      "tests_with_observations": 14,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 14
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_parse_limit_literals.py",
+      "sha256": "80b13ff5840c8ca1e1697048e2eef1a077887154474fdb940cf88b453287ecbb",
+      "collected_cases": 40,
+      "tests_with_observations": 3,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 40
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_patterns.py",
+      "sha256": "a1aee387030347f58b323f2cc71e84d6bdf7406c4764dc0cded177f9a8311a02",
+      "collected_cases": 245,
+      "tests_with_observations": 224,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 245
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_patterns_anti_refusal.py",
+      "sha256": "2f2b645507eb8ae780396c5524c32665be2c2155c697b45d9cdcf28b6c8f62ae",
+      "collected_cases": 118,
+      "tests_with_observations": 118,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 114,
+        "skipped": 4
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_patterns_deserialization.py",
+      "sha256": "87e464fe221969c41faf6aa8e4f1bbcd50a3eda66b06c9b53abf8488023ec140",
+      "collected_cases": 16,
+      "tests_with_observations": 16,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 16
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_patterns_supply_chain_lockfiles.py",
+      "sha256": "a419d9d332a9b2542ffede622ed50106ab2f4cde65b054d5b75cd7db02a9a8c1",
+      "collected_cases": 12,
+      "tests_with_observations": 7,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 12
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_runner_filtering.py",
+      "sha256": "5d0a784ac1fbbd50c6de11f1ecaf8ca91ed432ae6833c914acb18d1bfcc64a4c",
+      "collected_cases": 195,
+      "tests_with_observations": 162,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 195
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_static_yara.py",
+      "sha256": "7dfca045c6ca629374d2e50e611ad3e8b7c4af961e3675a98c7a50be0b3d55d7",
+      "collected_cases": 353,
+      "tests_with_observations": 315,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 353
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_structured_skill_roles.py",
+      "sha256": "a93c3746048fdaf7443cb132f49fcb6ce589d57c79114e60419e5ce3b31591e9",
+      "collected_cases": 4,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 4
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_tm1_assignment_final_state.py",
+      "sha256": "eac54c01ad332cb657ef0a4550c9445535855b1a00a19092e0c5e5d3f91666a8",
+      "collected_cases": 43,
+      "tests_with_observations": 43,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 43
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_tm1_lexical_abstention.py",
+      "sha256": "2fe01e89864f1184d705b868034c81bb28b3fe42a98aa3bd67df625d430cc2bd",
+      "collected_cases": 161,
+      "tests_with_observations": 161,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 161
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_tm1_window_identity.py",
+      "sha256": "822adf836eb62c7c7e667e676f86305c4b44d643c251b55a2f53204c1b01cecd",
+      "collected_cases": 75,
+      "tests_with_observations": 27,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 75
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_token_gap_fast_paths.py",
+      "sha256": "7c245faf6ee5815fcc73860d82079d54abe7ef9a7c3219febcb6c2968395bc86",
+      "collected_cases": 271,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 271
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_tool_misuse_python_ast.py",
+      "sha256": "ab136836a815b4b93f5b9acc2747346f003aa06f818760a1b185bfdccbc9000b",
+      "collected_cases": 182,
+      "tests_with_observations": 182,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 182
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_whitespace_padding.py",
+      "sha256": "2c83009d5f3c7b65ff146805140e5602bbee79056ae4a1b957ade9e0ff0ea1f2",
+      "collected_cases": 77,
+      "tests_with_observations": 11,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 77
+      }
+    },
+    {
+      "path": "tests/nodes/analyzers/test_yara_prompt_prohibitions.py",
+      "sha256": "b89539ad98c4e80ca6484a38e01600982ab4a66a63f6a8d8f7fb0d6908c2a821",
+      "collected_cases": 16,
+      "tests_with_observations": 14,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 16
+      }
+    },
+    {
+      "path": "tests/nodes/test_analysis_completeness.py",
+      "sha256": "c02931c11661e7268d32eb1e4f8701ef9e58cf2f34600acf2de72b152518ebfa",
+      "collected_cases": 5,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 5
+      }
+    },
+    {
+      "path": "tests/nodes/test_as3_source_identity.py",
+      "sha256": "d60a2a128e161dc0c31961ddd6e21a8fca223d134cc79ddf7d63c2441cda14ed",
+      "collected_cases": 26,
+      "tests_with_observations": 25,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 26
+      }
+    },
+    {
+      "path": "tests/nodes/test_build_context.py",
+      "sha256": "08862aa5251bcb5930a948865f9f7a19a635799fd39f5a5566402274bb76018f",
+      "collected_cases": 147,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 147
+      }
+    },
+    {
+      "path": "tests/nodes/test_deduplicate.py",
+      "sha256": "4859a0c3a37ba34c79191e6e5d62ba0b21da561b7c33f78e771d046bdf7521e9",
+      "collected_cases": 45,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 45
+      }
+    },
+    {
+      "path": "tests/nodes/test_explicit_exclusions.py",
+      "sha256": "219fa05214af90258f861ab4caa38ab418c87ecccb738fa5dd9b0f49bdac1649",
+      "collected_cases": 28,
+      "tests_with_observations": 9,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 28
+      }
+    },
+    {
+      "path": "tests/nodes/test_finalize_inspection_ledger.py",
+      "sha256": "91d61dcac637208a5d3914d5247e35a26f5b722e24f4f4b690bb302989f08a65",
+      "collected_cases": 152,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 152
+      }
+    },
+    {
+      "path": "tests/nodes/test_json_quote_scan_end_to_end.py",
+      "sha256": "30617760363551f261f864e95518d952344df30f504ce1294f7542825c28b5ff",
+      "collected_cases": 8,
+      "tests_with_observations": 8,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 8
+      }
+    },
+    {
+      "path": "tests/nodes/test_llm_analyzer_base.py",
+      "sha256": "0451da8fa0c34e7fe4afce867a9dfe1613c5cf7b6e390242d627c0c51587e6a9",
+      "collected_cases": 296,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 296
+      }
+    },
+    {
+      "path": "tests/nodes/test_meta_analyzer.py",
+      "sha256": "52ee4304a5e2b13b0158bee097a4f2253bb28e434ce18c14d3941a3a65085a6e",
+      "collected_cases": 46,
+      "tests_with_observations": 1,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 46
+      }
+    },
+    {
+      "path": "tests/nodes/test_meta_analyzer_fallback.py",
+      "sha256": "7f00d12685195324bdf2fc6e5f05215287886704f5a9feb606bb20f23e1c52b4",
+      "collected_cases": 22,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 22
+      }
+    },
+    {
+      "path": "tests/nodes/test_nested_artifacts.py",
+      "sha256": "f4955a2d8059d21433a8ae23f4747de8fca00ca46dd36e09c8b29e01d7051d11",
+      "collected_cases": 102,
+      "tests_with_observations": 20,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 102
+      }
+    },
+    {
+      "path": "tests/nodes/test_oms.py",
+      "sha256": "32c2af7f924c8d73d0ca39f1606fdd66d337d7a88b265ec3533731d96121a0ae",
+      "collected_cases": 36,
+      "tests_with_observations": 36,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 36
+      }
+    },
+    {
+      "path": "tests/nodes/test_python_execution_surface_end_to_end.py",
+      "sha256": "148157ebc91132de7f9a67ac0cdc3f7bd33698b3a8f998d44ba1b52038979d59",
+      "collected_cases": 25,
+      "tests_with_observations": 25,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 25
+      }
+    },
+    {
+      "path": "tests/nodes/test_report.py",
+      "sha256": "b9b77f9f3d584db757b46a2050f2f03cc7d2c05d85a4486e95e7e72d0715699e",
+      "collected_cases": 148,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 148
+      }
+    },
+    {
+      "path": "tests/nodes/test_report_archive_provenance.py",
+      "sha256": "2f34c43cdbe5a3f31106d8fa2131bdacdebae7681743cd467bfd61c8d8dde6f4",
+      "collected_cases": 8,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 8
+      }
+    },
+    {
+      "path": "tests/nodes/test_report_occurrence_columns.py",
+      "sha256": "f98ef71f8674b7ed97ac535c9cfe75f567c9a6f9cd24f34e787249c389f98b38",
+      "collected_cases": 12,
+      "tests_with_observations": 5,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 12
+      }
+    },
+    {
+      "path": "tests/nodes/test_report_provenance_boundary.py",
+      "sha256": "87a93bd800f97087aa3ad424a7170971929f513417adf26a99ccb1109f20d679",
+      "collected_cases": 6,
+      "tests_with_observations": 3,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 6
+      }
+    },
+    {
+      "path": "tests/nodes/test_report_sanitizer.py",
+      "sha256": "9db1c47e03ec6ba3bf1a56d19e9284ca392e3ff0cf8c7adffaa3263d3b8ca501",
+      "collected_cases": 443,
+      "tests_with_observations": 10,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 443
+      }
+    },
+    {
+      "path": "tests/nodes/test_resolve_input.py",
+      "sha256": "22a0bdc9b2b7e75683491346e1ee5520b4c858f7a59dea1470802b92d0225094",
+      "collected_cases": 13,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 13
+      }
+    },
+    {
+      "path": "tests/nodes/test_sarif_rules_and_empty_findings.py",
+      "sha256": "13382870376aa6952b5a91c420b241b20395b69a5887f69e3718a56a34eb3343",
+      "collected_cases": 55,
+      "tests_with_observations": 1,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 55
+      }
+    },
+    {
+      "path": "tests/nodes/test_sarif_security_severity.py",
+      "sha256": "930735ceafc63455087367074abf19940856cef771eba655460a5e1b9c5b6bb8",
+      "collected_cases": 14,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 14
+      }
+    },
+    {
+      "path": "tests/nodes/test_security_end_to_end.py",
+      "sha256": "1926e24307027ddf0b4917f4f10c7d80ee8b9a26bfb68909f908cb3338e4ccb5",
+      "collected_cases": 152,
+      "tests_with_observations": 148,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 152
+      }
+    },
+    {
+      "path": "tests/nodes/test_security_remediation.py",
+      "sha256": "0889280087eac54532ac5c86323bbf56b322d08e7b3b0ef21c001580af2585d1",
+      "collected_cases": 505,
+      "tests_with_observations": 249,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 505
+      }
+    },
+    {
+      "path": "tests/nodes/test_semantic_quality_policy.py",
+      "sha256": "4ed5bf6619f9c8d2eaf4bdbdd51a6a73cde690ee9100bb3bbd53f47a3a38bc67",
+      "collected_cases": 43,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 43
+      }
+    },
+    {
+      "path": "tests/nodes/test_transitive_analyzer_deadlines.py",
+      "sha256": "3e1c558bf290d088d45c227a2d5e8e9eab3a089f0163bcc2942b99fe55f7c9fc",
+      "collected_cases": 15,
+      "tests_with_observations": 2,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 15
+      }
+    },
+    {
+      "path": "tests/provider/test_opencode_cli.py",
+      "sha256": "0406a66442aa7c55dddc322f7f0982617b5c7fde4a10861666b165fade38e471",
+      "collected_cases": 46,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 46
+      }
+    },
+    {
+      "path": "tests/provider/test_provider_endpoint.py",
+      "sha256": "ea17f728e8944a08d48cc49bba177d12d709c55555571e9611c33f61f1bf2d8c",
+      "collected_cases": 4,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "skipped": 4
+      }
+    },
+    {
+      "path": "tests/test_batch_scan_reports.py",
+      "sha256": "0fd534eefebfe348ed32f96e7a34913256004078cf62a682399618668b61c1c9",
+      "collected_cases": 159,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 159
+      }
+    },
+    {
+      "path": "tests/test_batch_scan_security.py",
+      "sha256": "3b7dd3fa65ec9e8867bbceaee0ea034c9c88c43792f6b643af09188ba1a15be8",
+      "collected_cases": 94,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 94
+      }
+    },
+    {
+      "path": "tests/test_bundled_execution_surface_acceptance.py",
+      "sha256": "863a0c44e34fd2e281339a100c61a25e4f8002a8e42363017c0ed56d1bab574b",
+      "collected_cases": 15,
+      "tests_with_observations": 11,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 15
+      }
+    },
+    {
+      "path": "tests/test_inspection_ledger.py",
+      "sha256": "86387f2e1c3693023a88e9d3816c636d57fd68a7c81a1bbf9cd7cbbf8f250b8d",
+      "collected_cases": 13,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 13
+      }
+    },
+    {
+      "path": "tests/test_mcp_least_privilege.py",
+      "sha256": "c1c1ea194c53a6e09dd2a8f5d8c8cc2195369aa4c0cef56824bd6fe751880430",
+      "collected_cases": 61,
+      "tests_with_observations": 40,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 61
+      }
+    },
+    {
+      "path": "tests/test_mcp_rug_pull.py",
+      "sha256": "897f3e650189c02ef0f2d2e76accfe4ab01ac84340bcd4e5ed4f123f56e92eae",
+      "collected_cases": 15,
+      "tests_with_observations": 11,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 15
+      }
+    },
+    {
+      "path": "tests/test_mcp_tool_poisoning.py",
+      "sha256": "bb8513c7022e22cad5c9e1fe5365011e491c1bf4e4f2d469ea140a03b6189ff5",
+      "collected_cases": 111,
+      "tests_with_observations": 28,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 111
+      }
+    },
+    {
+      "path": "tests/test_models.py",
+      "sha256": "ec6e842433b3ec73cb2c72cb386f0e656a98c1ef847629cb1a940fb6052cb3c1",
+      "collected_cases": 4,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 4
+      }
+    },
+    {
+      "path": "tests/test_multi_skill.py",
+      "sha256": "9bfaa2ee1a5c967e4b9e87ad8ddf00b3f0824099533100888f484d081fc1e687",
+      "collected_cases": 37,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 37
+      }
+    },
+    {
+      "path": "tests/test_primary_input_completeness.py",
+      "sha256": "7bf45a4d1793b900d9283c361884f5322a155dda9221cdaf0fb4a2df8770bcca",
+      "collected_cases": 51,
+      "tests_with_observations": 50,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 51
+      }
+    },
+    {
+      "path": "tests/test_prompt_leakage_context_regressions.py",
+      "sha256": "a9aa2a3d2c73de6ce3f9908f4982530d93bcb7dbfb31a0097c588c364f037a1c",
+      "collected_cases": 16,
+      "tests_with_observations": 16,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 16
+      }
+    },
+    {
+      "path": "tests/test_prompt_leakage_headings.py",
+      "sha256": "70d39b535fe9fed04261935866b5c507185b2710d4658af56459bed920065d80",
+      "collected_cases": 12,
+      "tests_with_observations": 12,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 12
+      }
+    },
+    {
+      "path": "tests/test_python_ast.py",
+      "sha256": "48093115e4e28d60949680779acc3e4518ab4e0da9b0f7874aaf83ff903cb272",
+      "collected_cases": 410,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 394,
+        "skipped": 16
+      }
+    },
+    {
+      "path": "tests/test_reference_destination_kinds.py",
+      "sha256": "7bfffa0d57b5c35dc2f455e0c1e38f27fc27a47c7ac2eb1799545ee634719233",
+      "collected_cases": 43,
+      "tests_with_observations": 12,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 43
+      }
+    },
+    {
+      "path": "tests/test_reference_destinations.py",
+      "sha256": "ad0e91979ded46a2b4d5fb48b29ccbc24f8761aeb8505124a10ba930ed175d8a",
+      "collected_cases": 134,
+      "tests_with_observations": 56,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 134
+      }
+    },
+    {
+      "path": "tests/test_semantic_runtime.py",
+      "sha256": "5f2e51cd07ed7479eb7b5483d525e9a0260d672f00928379c4cc126d78e2b663",
+      "collected_cases": 8,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 8
+      }
+    },
+    {
+      "path": "tests/test_structured_skill.py",
+      "sha256": "06eba0bcd482bb1202467e1d112481d30a51aa0214e98f1ae84feba3d08d47dc",
+      "collected_cases": 15,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 15
+      }
+    },
+    {
+      "path": "tests/unit/test_agent_cli.py",
+      "sha256": "01164cdb82bf499f4f22497a5da961406ec764112b1317388bce4ee9e8888389",
+      "collected_cases": 85,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 84,
+        "skipped": 1
+      }
+    },
+    {
+      "path": "tests/unit/test_anthropic_provider.py",
+      "sha256": "5010ce3b18556fa494d4f1ebbcb654cfc2558eb6f738e637472c1c7abab152e3",
+      "collected_cases": 26,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 26
+      }
+    },
+    {
+      "path": "tests/unit/test_anthropic_proxy_provider.py",
+      "sha256": "54df490439653f62952eeed181b3052092fb94a07dbf6cfe2913d346ce0970cd",
+      "collected_cases": 31,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 31
+      }
+    },
+    {
+      "path": "tests/unit/test_baseline_coverage.py",
+      "sha256": "0cc46883bf358b73dcc48dd6f9a8bd02aeef700dd51a4dd03554dc7bd465b4f2",
+      "collected_cases": 21,
+      "tests_with_observations": 21,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 21
+      }
+    },
+    {
+      "path": "tests/unit/test_baseline_mcp.py",
+      "sha256": "7c948a92f925d3144ca278c0461f1099b159d60005757d715273a4eb6b18cf87",
+      "collected_cases": 1,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "skipped": 1
+      }
+    },
+    {
+      "path": "tests/unit/test_bedrock_provider.py",
+      "sha256": "1b6edd2210d3c008cf1b19d9468c5bfd1746659924a51448e64c610af88bc89f",
+      "collected_cases": 67,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 67
+      }
+    },
+    {
+      "path": "tests/unit/test_cleanup.py",
+      "sha256": "8cf50c536271063c7c39972750b14dceee664094868f1a8308ee22a40d7e55be",
+      "collected_cases": 17,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 17
+      }
+    },
+    {
+      "path": "tests/unit/test_cli.py",
+      "sha256": "5f71f361752abda4777e2d7c72360dae38fdade6c681ee29952ff388368e8a65",
+      "collected_cases": 414,
+      "tests_with_observations": 37,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 414
+      }
+    },
+    {
+      "path": "tests/unit/test_cli_subprocess.py",
+      "sha256": "4dad9bb8e433a8676444f9e8bc075161384a55aea0f6e0a988ce3918fc0a6b04",
+      "collected_cases": 25,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 25
+      }
+    },
+    {
+      "path": "tests/unit/test_compare_scan_accuracy.py",
+      "sha256": "081cfd8baaefaf45cd01d7611dc8f998de2af39ec375a254af800dda77feb115",
+      "collected_cases": 29,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 29
+      }
+    },
+    {
+      "path": "tests/unit/test_constants.py",
+      "sha256": "dc68358522d5d9afb1e03f6626972f9e2f81eeee4e20cf0e040606f0a95f0d3d",
+      "collected_cases": 18,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 18
+      }
+    },
+    {
+      "path": "tests/unit/test_create_github_release.py",
+      "sha256": "89dab647ac4cc271bda5f71af0dac81ba69787a5469e05588e6cee78d1a7b754",
+      "collected_cases": 6,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 6
+      }
+    },
+    {
+      "path": "tests/unit/test_defensive_language_reporting.py",
+      "sha256": "f3950e67f150a576a952f8362dd81d4fc0bb20e25feaee6e21cb32692702d0bf",
+      "collected_cases": 50,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 50
+      }
+    },
+    {
+      "path": "tests/unit/test_gemini_provider.py",
+      "sha256": "8f6d58ff42e55d66ac7b4c76f3520b45d44beddddcfdc1f2c172dc2fe5313ec2",
+      "collected_cases": 51,
+      "tests_with_observations": 1,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 51
+      }
+    },
+    {
+      "path": "tests/unit/test_github_release_workflow.py",
+      "sha256": "7b9249102ea8487d1cd602be9a0e28354efa6ddc008225f6ff24a4a711ed4cb2",
+      "collected_cases": 5,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 5
+      }
+    },
+    {
+      "path": "tests/unit/test_graph_proxy.py",
+      "sha256": "b816d383e11cb22567578504b6ca9e36095ea5d9bc17e1e62ee24a7387589813",
+      "collected_cases": 4,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 4
+      }
+    },
+    {
+      "path": "tests/unit/test_inference_usage.py",
+      "sha256": "a98b2c975529168934226e3bdb3a4a45c6ccbd375e98a52bbfce47993b7c8e58",
+      "collected_cases": 24,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 24
+      }
+    },
+    {
+      "path": "tests/unit/test_input_handler.py",
+      "sha256": "31ed22746c673aef455dd17306434b91aba108566d18baa6353ccf8b6cb62dad",
+      "collected_cases": 71,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 69,
+        "skipped": 2
+      }
+    },
+    {
+      "path": "tests/unit/test_input_handler_bounds.py",
+      "sha256": "826f28a78b0844baa4c89e6d057eb140fe75952c4f12935941decae2f4be1a32",
+      "collected_cases": 44,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 44
+      }
+    },
+    {
+      "path": "tests/unit/test_input_handler_ssrf.py",
+      "sha256": "deef29b1559a328f9cb197d6505e944f66b63c6d2190120283ebf32e52363bd1",
+      "collected_cases": 24,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 24
+      }
+    },
+    {
+      "path": "tests/unit/test_llm_provenance.py",
+      "sha256": "8c7b76efe0e97c9141305c73e1080d544ab32b49a0c6285b1ea86d8ba1b22586",
+      "collected_cases": 38,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 38
+      }
+    },
+    {
+      "path": "tests/unit/test_llm_utils.py",
+      "sha256": "9931fdfa2c7f913b1a72fa91029a50e00d19b859b89d7adaa93c8abdc032623a",
+      "collected_cases": 70,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 70
+      }
+    },
+    {
+      "path": "tests/unit/test_mcp_registry.py",
+      "sha256": "05c04c315889515295ae5c373b03b23ca4f92b90d759d57a582d60108ac538ae",
+      "collected_cases": 68,
+      "tests_with_observations": 33,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 68
+      }
+    },
+    {
+      "path": "tests/unit/test_mcp_server.py",
+      "sha256": "2496e883244bcb84cc6b8bdef8e12e34e7f798fcde1ad903dc0da70f46c517af",
+      "collected_cases": 90,
+      "tests_with_observations": 13,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 87,
+        "skipped": 3
+      }
+    },
+    {
+      "path": "tests/unit/test_model_capabilities.py",
+      "sha256": "0cbcd9c9163acbce73d1ae53e0bde6c602edbf4a5017d4cafbf0a3fb894b37c5",
+      "collected_cases": 127,
+      "tests_with_observations": 1,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 127
+      }
+    },
+    {
+      "path": "tests/unit/test_model_info.py",
+      "sha256": "cae3abd07fbd0bc5215ddb8a0e13cae16f5d370cf91fc69da6bcf0cf138293da",
+      "collected_cases": 12,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "skipped": 3,
+        "passed": 9
+      }
+    },
+    {
+      "path": "tests/unit/test_new_providers.py",
+      "sha256": "b3b90f171f4147a43b425502136758857fa12f6f7958601493506f752ead3fa4",
+      "collected_cases": 42,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 42
+      }
+    },
+    {
+      "path": "tests/unit/test_osv_client.py",
+      "sha256": "956cdb13007da49784686d44b8d4a27d97cb8352016681f9c79900689cdb3e39",
+      "collected_cases": 36,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 36
+      }
+    },
+    {
+      "path": "tests/unit/test_patterns.py",
+      "sha256": "d7b567cb202dbfdb53f4d356c62648a813d377d3e4701036ba8d61179da137f7",
+      "collected_cases": 290,
+      "tests_with_observations": 290,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 290
+      }
+    },
+    {
+      "path": "tests/unit/test_patterns_new.py",
+      "sha256": "1b0012183eabe260ac4030217089304c1b5249861c547f487ca30eacb3ce5e51",
+      "collected_cases": 851,
+      "tests_with_observations": 656,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 851
+      }
+    },
+    {
+      "path": "tests/unit/test_prohibition_context.py",
+      "sha256": "eedbaf0bc565e8026d709e36f43acf3ee5a0679243e2be6021394ea7cfa5c2b2",
+      "collected_cases": 136,
+      "tests_with_observations": 84,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 136
+      }
+    },
+    {
+      "path": "tests/unit/test_prompt_leakage_context_regressions.py",
+      "sha256": "411e65d3dc19f7342ed37421fe3e151d653bbd2a9227a5a1a10515360c55912c",
+      "collected_cases": 124,
+      "tests_with_observations": 123,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 124
+      }
+    },
+    {
+      "path": "tests/unit/test_prompt_leakage_headings.py",
+      "sha256": "eaf83216d068f6439b6c043c75a14a373134b231d40940f072bc07d5e8cd8ab7",
+      "collected_cases": 46,
+      "tests_with_observations": 46,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 46
+      }
+    },
+    {
+      "path": "tests/unit/test_prompt_leakage_independent_controls.py",
+      "sha256": "57c175383c3a61cc3301a417e3bc75025a3fb34a757c088640a211259fefa053",
+      "collected_cases": 16,
+      "tests_with_observations": 16,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 16
+      }
+    },
+    {
+      "path": "tests/unit/test_prompt_leakage_prepared_review.py",
+      "sha256": "4e6898b6799a37989165bd2566630562ab4176b1716ad30354e4201fa79ad33e",
+      "collected_cases": 41,
+      "tests_with_observations": 41,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 41
+      }
+    },
+    {
+      "path": "tests/unit/test_providers.py",
+      "sha256": "dcb7011b68a332b9c2c25e9aeba0fcfc58781326b2007a9528d819c25a362d0e",
+      "collected_cases": 173,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 164,
+        "skipped": 9
+      }
+    },
+    {
+      "path": "tests/unit/test_registry_settings.py",
+      "sha256": "3a9cfb08eda438a2baa8dbaa29a937b512759d4d6bb7566bf52dfeae4db00666",
+      "collected_cases": 18,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 18
+      }
+    },
+    {
+      "path": "tests/unit/test_reviewer_nits.py",
+      "sha256": "5bcdd9af6d9d9ec959b601dad0115e79900d03e8d9fa4201c3881d01f46bc482",
+      "collected_cases": 11,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 11
+      }
+    },
+    {
+      "path": "tests/unit/test_sarif.py",
+      "sha256": "ea2ac205e72216c00c203d1894ae126b1ad623c6e7e8624e75634a553bd93663",
+      "collected_cases": 9,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 9
+      }
+    },
+    {
+      "path": "tests/unit/test_static_runner_prepared_context.py",
+      "sha256": "3a87da5f642d362b9bc36800d2e9beeb69acb35acae3e618fd90bfff183182fa",
+      "collected_cases": 27,
+      "tests_with_observations": 8,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 27
+      }
+    },
+    {
+      "path": "tests/unit/test_static_scan_credentials.py",
+      "sha256": "d1a2e775bc5eedb088cf53ebc6be00ba8daf545019a5e9fdf58328e0bfdcf4d8",
+      "collected_cases": 18,
+      "tests_with_observations": 16,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 18
+      }
+    },
+    {
+      "path": "tests/unit/test_suppression.py",
+      "sha256": "e7f4a8296cfc7f3e0b66f2b1e8ea452a06196dd95f98e593908e60d6374d9a96",
+      "collected_cases": 159,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 159
+      }
+    },
+    {
+      "path": "tests/unit/test_tp4_openai_http.py",
+      "sha256": "31b8fbbaee4a77ac112eb821884b490c258a57f872e7e944712c42ca4d6a5268",
+      "collected_cases": 51,
+      "tests_with_observations": 18,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 51
+      }
+    },
+    {
+      "path": "tests/unit/test_transitive.py",
+      "sha256": "f10a7dbeb95e39dbb07b98927c38575e987f29b1fae7554a204711ac395b2c7f",
+      "collected_cases": 27,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 27
+      }
+    },
+    {
+      "path": "tests/unit/test_wheel_contents.py",
+      "sha256": "dc6a1ca75e59f56c095b6ce72e9686a009b2c9f54f8c61fcc0d34ebcd1731201",
+      "collected_cases": 1,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 1
+      }
+    },
+    {
+      "path": "tests/unit/test_yara_rop_chain.py",
+      "sha256": "fa0725f20742be4c66e955352638092d6c7f9296181f91376af7ad95f1593279",
+      "collected_cases": 3,
+      "tests_with_observations": 0,
+      "phase_outcomes_including_xfail_as_skipped": {
+        "passed": 3
+      }
+    }
+  ],
+  "artifacts": {
+    "observations": {
+      "path": "artifacts/upstream-suite/0.20/observations.jsonl.gz",
+      "sha256": "a4a59be1bfb9a042f48f6e140c156ae8d433099e10d28fabac7c284446973c5d",
+      "bytes": 6667869,
+      "uncompressed_sha256": "4da66f3afb0ced64bd42915eb2f89ef40fc4d7ff2a7d1ebd9ad61c53862fc041"
+    },
+    "collection": {
+      "path": "artifacts/upstream-suite/0.20/collection.json.gz",
+      "sha256": "ef44577c0b7194df44edf492918284813c662a693cd2e165436bd02e7f56dcb6",
+      "bytes": 254853,
+      "uncompressed_sha256": "d9031ed4df50ced71faa5f2bd26d586898ca0d128ebf282dcdd9789e1c4f9036"
+    },
+    "test_index": {
+      "path": "artifacts/upstream-suite/0.20/test-index.json.gz",
+      "sha256": "5ce02864ff13efd6523e430c76986c2bd3b20d6384fdc3b89b3d4f76d2480e89",
+      "bytes": 5529014,
+      "uncompressed_sha256": "f7158cf084be1d4a5f95f06080ec66a21e2cdf33b78683a68125018012f98c26"
+    },
+    "test_status": {
+      "path": "artifacts/upstream-suite/0.20/test-status.jsonl.gz",
+      "sha256": "6281b2308b74cd25446ee85c4645ea1a688d2475bc9691b3468cb151cd4250c3",
+      "bytes": 875542,
+      "uncompressed_sha256": "6d5a77ea3c1883cd8b0a2d48af8936f8896557af29cd873eca2bd930ec0e7cfc"
+    },
+    "replay_index": {
+      "path": "artifacts/upstream-suite/0.20/replay-index.json.gz",
+      "sha256": "906da4547fd576782a6968e6862b685559d0b00e210442981485ef436a6611a6",
+      "bytes": 5408793,
+      "uncompressed_sha256": "ea9c1d60cd74c0c97089b6683fac3cc4fa212f073de596ab7ee26f4b8959536e"
+    },
+    "replay_inputs": {
+      "path": "artifacts/upstream-suite/0.20/replay-inputs.jsonl.gz",
+      "sha256": "d91462dbe6513a9a43ab2e91849a93db0c06dd3f21ef63dd47708050a4c3f299",
+      "bytes": 3908083,
+      "uncompressed_sha256": "8f0f081b9abab6063cee88d8aebb307f2754c16f8c7a6e17257af16c97f1c39c"
+    },
+    "before": {
+      "path": "artifacts/upstream-suite/0.20/before.jsonl.gz",
+      "sha256": "0f3b0751c1bfe7ea7269ffcc7217d92efec225eb8b5d840849728c7bce1c4f01",
+      "bytes": 4195672,
+      "uncompressed_sha256": "56a7bffe3fd1f2d13c2394086e5e4b71a0f6d2222750b3898194f68da6cce4fc"
+    },
+    "first_full_after": {
+      "path": "artifacts/upstream-suite/0.20/first-full-after.jsonl.gz",
+      "sha256": "18ba0575120f1e93dc9ac64723f0f3ed5f21e206a1b3ca9ae59ce845072caae3",
+      "bytes": 5640867,
+      "uncompressed_sha256": "d388ce5b5fb2a0e6a4ab10dc4b3169daad1fa9086d7dc362ecc2f38f63ad5199"
+    },
+    "final_after": {
+      "path": "artifacts/upstream-suite/0.20/final-after.jsonl.gz",
+      "sha256": "cb7cfcbb638671db3aac752d6059d6c5cd9f16db0651016b4949bb04b5584bfe",
+      "bytes": 5644045,
+      "uncompressed_sha256": "65a6522a64f559743bc86cbae351cb51d620ed8fd18e5b8424f774aef5303f8a"
+    },
+    "differences": {
+      "path": "artifacts/upstream-suite/0.20/differences.json.gz",
+      "sha256": "f060ad9c7054655ba5658958644e2bdd41974a5f391f542e7fe4cd547c27fdc5",
+      "bytes": 742478,
+      "uncompressed_sha256": "ae46902259b6a736512f1287dde0554e34b6fd7944e7541794fb1e674c336792"
+    },
+    "before_differences": {
+      "path": "artifacts/upstream-suite/0.20/before-differences.json.gz",
+      "sha256": "ac6ea292799a4603f7bbc3da7d3f3587653b7a29f2b42dca428c0e3c9f5be557",
+      "bytes": 878833,
+      "uncompressed_sha256": "241d0e6b799631f496077f161d4484563b3b61965205eeaed8e3c58d89843015"
+    },
+    "baseline_junit": {
+      "path": "artifacts/upstream-suite/0.20/baseline-junit.xml.gz",
+      "sha256": "8496985d72f53ee54683bf332474cdb5792f0d8ac9859ddc2f33d60e535ed5b0",
+      "bytes": 219184,
+      "uncompressed_sha256": "468c805620d2d30dafbb00fe1605532299af8c22f1515c2f6e1388e917d77ebb"
+    },
+    "capture_junit": {
+      "path": "artifacts/upstream-suite/0.20/capture-junit.xml.gz",
+      "sha256": "69c6c965a04c72db192ff05d3b01d53127d8c67de8780449ec9a38f5bbfe9a8a",
+      "bytes": 220269,
+      "uncompressed_sha256": "4707075bbbfc82805c5d1f9d779a48abade9582186d0fa6115a1b37d7cdf0745"
+    },
+    "resource_retry": {
+      "path": "artifacts/upstream-suite/0.20/resource-retry.jsonl.gz",
+      "sha256": "7775d5994ff5cb42233194dc5828abcda3a3b5daa9c3c151578078dfbd132b36",
+      "bytes": 7262,
+      "uncompressed_sha256": "5539ac90c722307ec39a233add4c8174ca591f6a1b2ede9ecf5db056984b578f"
+    },
+    "delta_selection": {
+      "path": "artifacts/upstream-suite/0.20/delta-selection.json.gz",
+      "sha256": "3796f17287a4004a63612e1598876ab0b814c7729ca9153753278df43e81f9ae",
+      "bytes": 28189,
+      "uncompressed_sha256": "a967d6e74580271371b4cbad30633baf88fee339f71057743fadf893ceec2c72"
+    },
+    "delta_results": {
+      "path": "artifacts/upstream-suite/0.20/delta-results.jsonl.gz",
+      "sha256": "5f9d79e21d537d2a72b0bc71e243aaf207208e62bec11daac9604d05f42ef4b7",
+      "bytes": 403171,
+      "uncompressed_sha256": "3c418710d2d97849d670bddb6d6a097fff6d524c5d541809472e4d6142b7e659"
+    },
+    "delta_resource_results": {
+      "path": "artifacts/upstream-suite/0.20/delta-resource-results.jsonl.gz",
+      "sha256": "03eba85888b5752ead03c0acfb9d631fa8d0682a87740d635d67d128bb8c3532",
+      "bytes": 3381,
+      "uncompressed_sha256": "6a87dbe3562af5907ba1d85af3a3dd15d4f3d7cf34f1e4ba647809d10448e876"
+    },
+    "blobs": {
+      "path": "artifacts/upstream-suite/0.20/capture-blobs.tar",
+      "sha256": "dad21a7efec8c0abd86b151f4e26da11e9726d161ac01bb0e69cd0af5b64115c",
+      "bytes": 11540480
+    },
+    "runtime.json": {
+      "path": "artifacts/upstream-suite/0.20/runtime.json",
+      "sha256": "45ecdb9183cd1626ed99462ef9c4489fe7bdeee0db4a842e3b462b0d03a6b447",
+      "bytes": 7989
+    },
+    "capture-summary.json": {
+      "path": "artifacts/upstream-suite/0.20/capture-summary.json",
+      "sha256": "80a459d927ac3d3a8f51facf6da51d6900be8706adfed7ea1bae062cbfeaa33e",
+      "bytes": 14285
+    },
+    "capture-command.json": {
+      "path": "artifacts/upstream-suite/0.20/capture-command.json",
+      "sha256": "0595699810ba783d1f101987591cbf09e20d123926094121944a2568b1e67100",
+      "bytes": 1449
+    },
+    "baseline-command.json": {
+      "path": "artifacts/upstream-suite/0.20/baseline-command.json",
+      "sha256": "a25f2b3ef035ba5808756e9f70deb9a1375b184e8e929ae8558f6ad8a7472d3f",
+      "bytes": 1338
+    },
+    "before-summary.json": {
+      "path": "artifacts/upstream-suite/0.20/before-summary.json",
+      "sha256": "6caee1b128f9260670e03e0393deeb6a2c0a43722de6dc3694c8fa0276c97e66",
+      "bytes": 5703
+    },
+    "final-summary.json": {
+      "path": "artifacts/upstream-suite/0.20/final-summary.json",
+      "sha256": "37fcf232d2f03fdc58a39af751e323ad6048f95a6fc46c818dcaf6960ce63cf9",
+      "bytes": 5589
+    },
+    "native-tests.log": {
+      "path": "artifacts/upstream-suite/0.20/native-tests.log",
+      "sha256": "30cac218b51e386bcc2dd11ae8b526b4d370049a9a6e7cd9bd6829a4835b6da5",
+      "bytes": 4836
+    },
+    "core-tests.log": {
+      "path": "artifacts/upstream-suite/0.20/core-tests.log",
+      "sha256": "4ec2e10bd248c71ace180f51281dccd74d37cab068cff0142f4b4b5db48ac0de",
+      "bytes": 2427
+    },
+    "race.log": {
+      "path": "artifacts/upstream-suite/0.20/race.log",
+      "sha256": "dbe1b6dad259aeb82add12ada52d40aaa2dd000be837374cc9add1a8d376d3ab",
+      "bytes": 4810
+    },
+    "vet.log": {
+      "path": "artifacts/upstream-suite/0.20/vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "host.log": {
+      "path": "artifacts/upstream-suite/0.20/host.log",
+      "sha256": "5ae34dd233feac16c558045adc1d19e3b797a9b2efb1681e062c149b6915feb8",
+      "bytes": 1462
+    },
+    "release.json": {
+      "path": "artifacts/upstream-suite/0.20/release.json",
+      "sha256": "ea4d04df5f0440a2e1e890f86b57abc9e3f6edc191f6d444d0775b83c0c6257e",
+      "bytes": 2930
+    },
+    "selftest.json": {
+      "path": "artifacts/upstream-suite/0.20/selftest.json",
+      "sha256": "fe88fa5057be5567a64fd8d04d06a79d27f99ad84ae2f331b5c5820d6422ed39",
+      "bytes": 1405
+    },
+    "corpus.json": {
+      "path": "artifacts/upstream-suite/0.20/corpus.json",
+      "sha256": "3126b42f21a7d5471aad4c6a9ade896a158ee73f558c027c85f23c2a1579bfe4",
+      "bytes": 10629
+    },
+    "network-probe.py": {
+      "path": "artifacts/upstream-suite/0.20/network-probe.py",
+      "sha256": "6cfa80fca22f6214512744bef181db9b20cb88866429f58839fca856f0d98a18",
+      "bytes": 458
+    },
+    "unix-probe.py": {
+      "path": "artifacts/upstream-suite/0.20/unix-probe.py",
+      "sha256": "cb533c9ab26596f27f2c2f666d0d6a16390c1b69bc2143819ee3fbb7a7e275ff",
+      "bytes": 403
+    },
+    "pytest-install.log": {
+      "path": "artifacts/upstream-suite/0.20/pytest-install.log",
+      "sha256": "84a31d8d5ee10a6886b5d29ec99ac4c7d97baeb22d205e19ae8794ad510d96d3",
+      "bytes": 594
+    },
+    "pytest-download.log": {
+      "path": "artifacts/upstream-suite/0.20/pytest-download.log",
+      "sha256": "d5efe66c9f31d9ca124faaa7d8a4c08c1041df6c137cd358f78a7ecd12420e97",
+      "bytes": 345
+    },
+    "baseline-stdout.log": {
+      "path": "artifacts/upstream-suite/0.20/baseline-stdout.log",
+      "sha256": "46660f822f0c1741585017f1b61e683976da91ce62b67e0b780c3cd2bc26c359",
+      "bytes": 21491
+    },
+    "capture-stdout.log": {
+      "path": "artifacts/upstream-suite/0.20/capture-stdout.log",
+      "sha256": "d1e1d9f8f10452942d40f637401595c95430e88c39c678c711089f88cd99b44c",
+      "bytes": 21491
+    },
+    "observed-capture-plugin.py": {
+      "path": "artifacts/upstream-suite/0.20/observed-capture-plugin.py",
+      "sha256": "a53f313a83b84691a6439545d51d5629a3b3e4baa219020a53f300c72e4dde3e",
+      "bytes": 8297
+    },
+    "fixture_comparison.json": {
+      "path": "artifacts/upstream-suite/0.20/fixture-comparison.json.gz",
+      "sha256": "17830d55ada5a03b501a04d384b6b32a7c2ddb8d285d1eb1feb37a9e88f17d52",
+      "bytes": 44605,
+      "uncompressed_sha256": "d521af44215344503f2371c847534d38dbb6890a8bf7b6200921a0c9851e29b2"
+    },
+    "fixture_fixture-coverage.json": {
+      "path": "artifacts/upstream-suite/0.20/fixture-fixture-coverage.json.gz",
+      "sha256": "980770b4afc92c5215c0a150e995a71fd7f67bd45d4e27d6cbfbda6d54412f9a",
+      "bytes": 3649,
+      "uncompressed_sha256": "4b129359c7a99e915e34cce7624b2b80833fa918d692cf2b8e0bd985c9341c6f"
+    },
+    "fixture_environment.json": {
+      "path": "artifacts/upstream-suite/0.20/fixture-environment.json.gz",
+      "sha256": "0916bf7686b32b3a78a9ada709f336094a6c0171fd644ef352c90743dfafa0a3",
+      "bytes": 2298,
+      "uncompressed_sha256": "aa9818c432c9b76ea43ff204a9d3661791da6b58a6ff7d8f2b553964b9073ea0"
+    },
+    "fixture_corpus.json": {
+      "path": "artifacts/upstream-suite/0.20/fixture-corpus.json.gz",
+      "sha256": "c9e4601ca60ff309e5d2c4282e367dd13684f2298d4c9058a3980119ded0f1c8",
+      "bytes": 20998,
+      "uncompressed_sha256": "b9e8e3ef74562f1ad42e30a60ca37630f7485af47ed2578de3e4decd33b87a32"
+    },
+    "fixture_reports": {
+      "path": "artifacts/upstream-suite/0.20/fixture-reports.tar.gz",
+      "sha256": "1ad439709b9111cc281c5f78059bbc9ef96b2d19916b5e75610364271a34f083",
+      "bytes": 16809470
+    },
+    "inventory-race.log": {
+      "path": "artifacts/upstream-suite/0.20/inventory-race.log",
+      "sha256": "835046392ac1cc870f7dc2860fa01f5a11d4a16a792df0456a4996627f4646a6",
+      "bytes": 119
+    }
+  },
+  "tools": {
+    "tools/compare_upstream_suite.py": "223956a5ac15596adc9495ee4f888ac1a16a93ab79083c318697d000160f0a9e",
+    "tools/upstream_suite_capture.py": "a53f313a83b84691a6439545d51d5629a3b3e4baa219020a53f300c72e4dde3e",
+    "tools/run_upstream_suite.py": "13370e1c70df61cd3ddc7a1932e55d50755824215ffd7c8b203343f12f03cbf3",
+    "upstream_suite_replay_test.go": "c01c861f243df2329d5099948731dcfeaaea61f3f99c95990315258e9459cdc9",
+    "upstream_suite_inventory_test.go": "c1b880d7f3ef0d69d5e7882b58df549a30d370ba2f7ff5c6e86eaa570c7cd53b"
+  }
+}

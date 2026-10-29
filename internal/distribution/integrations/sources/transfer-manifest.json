@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "version": "scout-reviewer-transfer-v2",
+  "retrieved_at": "2026-10-26",
+  "upstream_repository": "https://github.com/NVIDIA/SkillSpector",
+  "upstream_commit": null,
+  "upstream_tree_enumerated": false,
+  "scope": "Identified installable skill, Pi tool, OpenCode tool/command, internal checking materials and local packaging. Not an exhaustive checkout/functional-parity attestation.",
+  "source_access": "Original adaptations used public rendered/cached views when direct retrieval failed. A complete pinned comparison snapshot was subsequently obtained; see comparison_reference.",
+  "entries": [
+    {
+      "id": "SI-GOAL",
+      "source": "skills/skill-inspector/SKILL.md#Goal",
+      "target": "internal/distribution/skills/skill-inspector/SKILL.md#Goal",
+      "status": "adapted",
+      "test": "TestSkillWorkflowObligations",
+      "notes": "Two independent static/source review lines and score-not-verdict retained."
+    },
+    {
+      "id": "SI-BOUNDARY",
+      "source": "skills/skill-inspector/SKILL.md#Operating-Rules",
+      "target": "internal/distribution/skills/skill-inspector/SKILL.md#Operating-rules",
+      "status": "adapted",
+      "test": "TestSkillWorkflowObligations",
+      "notes": "Nonexecution, no silent installs, source evidence, no reputation-based downgrade; explicit egress added."
+    },
+    {
+      "id": "SI-WORKFLOW",
+      "source": "skills/skill-inspector/SKILL.md#Review-Workflow",
+      "target": "internal/distribution/skills/skill-inspector/SKILL.md#Review-workflow",
+      "status": "adapted",
+      "test": "TestSkillWorkflowObligations",
+      "notes": "All six stages retained; commands/flags/report fields use scout. Target aliases are operator-controlled."
+    },
+    {
+      "id": "SI-DIMENSIONS",
+      "source": "skills/skill-inspector/SKILL.md#Review-Workflow",
+      "target": "internal/distribution/skills/skill-inspector/references/review-checklist.md",
+      "status": "adapted",
+      "test": "TestSkillWorkflowObligations",
+      "notes": "All ten source-review dimensions retained; whole-plugin and updates added."
+    },
+    {
+      "id": "SI-RUBRIC",
+      "source": "skills/skill-inspector/SKILL.md#Review-Workflow",
+      "target": "internal/distribution/skills/skill-inspector/SKILL.md#6.-Produce-the-combined-recommendation",
+      "status": "intentional_difference",
+      "test": "TestSkillWorkflowObligations",
+      "notes": "Verdict labels retained; missing/partial/manual-only checks cannot authorize automatic installation; scanner policy never overwritten by prose."
+    },
+    {
+      "id": "SI-SCORE",
+      "source": "skills/skill-inspector/SKILL.md#Score-Interpretation",
+      "target": "internal/distribution/skills/skill-inspector/SKILL.md#Score-interpretation",
+      "status": "intentional_difference",
+      "test": "TestSkillWorkflowObligations",
+      "notes": "Bands retained as reference only; authoritative decision and completeness take precedence."
+    },
+    {
+      "id": "SI-REPORT",
+      "source": "skills/skill-inspector/SKILL.md#Report-Style",
+      "target": "internal/distribution/skills/skill-inspector/references/report-template.md",
+      "status": "adapted",
+      "test": "TestSkillWorkflowObligations",
+      "notes": "Language matching, evidence, independent lines, bottom line, diagnosis/guardrails; no mandatory emoji/tables."
+    },
+    {
+      "id": "SI-FALLBACK",
+      "source": "skills/skill-inspector/SKILL.md#Manual-Fallback",
+      "target": "internal/distribution/skills/skill-inspector/SKILL.md#Manual-fallback",
+      "status": "adapted",
+      "test": "TestSkillWorkflowObligations",
+      "notes": "Explicit no-scanner status, read-only review, no fabricated findings or automatic install approval."
+    },
+    {
+      "id": "PI-TOOL",
+      "source": "extensions/skillspector.ts",
+      "target": "internal/distribution/integrations/assets/pi/scout.ts",
+      "status": "behavior_reimplementation",
+      "test": "Pi SDK-contract registration and actual CLI transport tests",
+      "notes": "Official registration contract; no Python/uv. Named targets, per-capability approval, clean env. Nonzero reports retained."
+    },
+    {
+      "id": "PI-PACKAGE",
+      "source": "package.json; docs/PI_EXTENSION.md",
+      "target": "internal/distribution/integrations/assets/pi/package.json",
+      "status": "adapted",
+      "test": "TestBundleLayoutsAndImportPaths",
+      "notes": "Host-provided SDK; also ships reviewer skill. No dependency install hooks."
+    },
+    {
+      "id": "OC-TOOL",
+      "source": "docs/OPENCODE_EXTENSION.md; OpenCode packages/plugin/src/tool.ts",
+      "target": "internal/distribution/integrations/assets/opencode/scout_scan.ts",
+      "status": "documented_behavior_reimplementation",
+      "test": "OpenCode SDK-contract ask gate and actual CLI transport tests",
+      "notes": "Original OpenCode tool source was not fetched. Tool registration, per-capability ask, bounded results implemented from documented behavior; no exact-file parity claim."
+    },
+    {
+      "id": "OC-COMMAND",
+      "source": "docs/OPENCODE_EXTENSION.md",
+      "target": "internal/distribution/integrations/assets/opencode/scout.md",
+      "status": "documented_behavior_reimplementation",
+      "test": "TestBundleLayoutsAndImportPaths",
+      "notes": "/scout uses a literal target alias and trusted reviewer skill; no shell interpolation. /skillspector name intentionally not registered."
+    },
+    {
+      "id": "LLM-PROMPTS",
+      "source": "src/skillspector/nodes/analyzers/semantic_*.py; nodes/meta_analyzer.py",
+      "target": "knowledge/prompts/",
+      "status": "previously_adapted_retained",
+      "test": "knowledge and review prompt suites; TestReviewMaterialsMatchRuntime",
+      "notes": "Six runtime/exported modes, including dedicated TP4 tool_consistency and reassessment; protocol 5 and prompt pack v2. No inference-quality parity claim."
+    },
+    {
+      "id": "RULES-GUIDANCE",
+      "source": "src/skillspector/nodes/analyzers/",
+      "target": "knowledge/data/; internal/analysis/analyzer/",
+      "status": "previously_adapted_retained",
+      "test": "knowledge/analyzer suites; TestReviewMaterialsMatchRuntime",
+      "notes": "153 guidance entries and 137 descriptors including five offline registry posture checks. Guidance counts do not establish detector equivalence."
+    },
+    {
+      "id": "YARA-X",
+      "source": "src/skillspector/yara_rules/",
+      "target": "internal/signatures/",
+      "status": "native_acceptance_verified",
+      "test": "macOS arm64 0.17 native tests/vet/race, 18 selftests and releasecheck; Linux arm64 0.16 preserved separately",
+      "notes": "All 27 bundled SkillSpector malware/agent/webshell/hacktool/cryptominer rules on YARA-X. DRL/Unicode notices retained. No external pack or engine parity claim."
+    },
+    {
+      "id": "FULL-REPO",
+      "source": "entire upstream tree at one commit",
+      "target": "docs/reference/port-manifest.md",
+      "status": "full_fixture_static_differential_verified_partial_port",
+      "test": "All 52 pinned upstream fixture files covered as full directories and individual file inputs; 148 paired CLI cases, including registry mode and expected malformed-record rejections.",
+      "notes": "Offline registry posture and scanner-generated-name AE2 gaps fixed. Remaining family/file differences are classified. This covers the fixture inventory, not all upstream tests/inline variants, registry acquisition/history, cryptographic verification, live models or whole-product parity."
+    }
+  ],
+  "primary_sources": [
+    "https://github.com/NVIDIA/SkillSpector/blob/main/skills/skill-inspector/SKILL.md",
+    "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/extensions/skillspector.ts",
+    "https://raw.githubusercontent.com/NVIDIA/SkillSpector/main/package.json",
+    "https://github.com/NVIDIA/SkillSpector/blob/main/docs/PI_EXTENSION.md",
+    "https://github.com/NVIDIA/SkillSpector/blob/main/docs/OPENCODE_EXTENSION.md",
+    "https://raw.githubusercontent.com/badlogic/pi-mono/main/packages/coding-agent/docs/extensions.md",
+    "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/plugin/src/tool.ts",
+    "https://opencode.ai/docs/custom-tools/",
+    "https://opencode.ai/docs/commands/",
+    "https://developers.openai.com/plugins/build/plugins"
+  ],
+  "upstream_provenance_scope": "upstream_commit and upstream_tree_enumerated describe original adaptation provenance, not the later comparison checkout. Original adaptations cannot be retroactively pinned.",
+  "comparison_reference": {
+    "repository": "https://github.com/NVIDIA/SkillSpector",
+    "commit": "d7338f58200a9ae2a24810cee08911ab68b107a7",
+    "version": "2.12.0",
+    "verified_at": "2026-10-26",
+    "tree_enumerated": true,
+    "file_count": 464,
+    "full_scanner_executed": true,
+    "isolated_helpers_executed": [
+      "artifacts.security_text_views",
+      "nodes.analyzers.prohibition_context.is_directly_prohibited"
+    ],
+    "report": "docs/reference/port-manifest.md",
+    "inventory": "testdata/provenance/upstream-inventory.json",
+    "execution_mode": "static_only_network_denied_no_llm",
+    "case_count": 148,
+    "live_llm_executed": false,
+    "verification": "testdata/provenance/differential-0.19.json",
+    "fixture_file_count": 52,
+    "all_fixture_files_covered": true
+  },
+  "detector_transfer": {
+    "engine_version": "0.19.0-preview",
+    "scan_schema": "0.15",
+    "semantic_protocol": "5",
+    "source_commit": "d7338f58200a9ae2a24810cee08911ab68b107a7",
+    "scope": "Bounded core detector transfer; no whole-product parity attestation.",
+    "report": "docs/reference/port-manifest.md",
+    "verification": "testdata/provenance/differential-0.19.json"
+  }
+}
