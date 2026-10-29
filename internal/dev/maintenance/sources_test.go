@@ -74,31 +74,3 @@ func TestSourceDownloadRejectsRedirectsStatusAndCancellation(t *testing.T) {
 		t.Fatal("cancelled source download ran")
 	}
 }
-
-func TestVerifyUpstreamBindsCommitInventoryPathsAndEverySourceByte(t *testing.T) {
-	root, upstream := t.TempDir(), t.TempDir()
-	data := []byte("pinned source")
-	maintenanceFile(t, upstream, "source.py", data)
-	inventory := func(path, sha string, count int, commit string) object {
-		return object{
-			"Commit":     commit,
-			"file_count": count,
-			"Files": []any{object{
-				"Path":   path,
-				"SHA256": sha,
-				"Bytes":  len(data),
-			}},
-		}
-	}
-	name := "testdata/provenance/upstream-inventory.json"
-	maintenanceJSON(t, root, name, inventory("source.py", digest(data), 1, upstreamCommit))
-	if got, err := verifyUpstream(root, upstream); err != nil || got.FileCount != 1 {
-		t.Fatal("valid pinned inventory rejected")
-	}
-	for _, value := range []object{inventory("source.py", digest(data), 1, "main"), inventory("source.py", digest(data), 2, upstreamCommit), inventory("../outside", digest(data), 1, upstreamCommit), inventory("missing.py", digest(data), 1, upstreamCommit), inventory("source.py", strings.Repeat("0", 64), 1, upstreamCommit)} {
-		maintenanceJSON(t, root, name, value)
-		if _, err := verifyUpstream(root, upstream); err == nil {
-			t.Fatal("modified or incomplete source inventory accepted")
-		}
-	}
-}

@@ -102,7 +102,7 @@ jobs:
       - name: Build and verify a single binary
         run: |
           set -euo pipefail
-          go run -mod=readonly ./internal/dev/builddeps -- go build -trimpath -ldflags="-X github.com/skarm/scout.buildVersionOverride=$VERSION" \
+          go run -mod=readonly ./internal/dev/builddeps -- go build -trimpath -ldflags="-s -w -X github.com/skarm/scout.buildVersionOverride=$VERSION" \
             -o "$RUNNER_TEMP/candidate/scout" ./cmd/scout
           test "$("$RUNNER_TEMP/candidate/scout" version)" = "$VERSION"
           "$RUNNER_TEMP/candidate/scout" capabilities > "$RUNNER_TEMP/native-evidence/capabilities.json"

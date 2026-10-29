@@ -245,6 +245,11 @@ func TestNativeProgressInterruptsWorkBetweenInputReads(t *testing.T) {
 				cancel()
 				if tree != nil {
 					tree.Close()
+					// A Go timer can run after native parsing finishes. That
+					// attempt did not exercise cancellation; retry it.
+					if mode == "cancel" {
+						continue
+					}
 					t.Fatal("interrupted parse returned a tree")
 				}
 				fastest = min(fastest, elapsed)
@@ -264,6 +269,36 @@ func TestNativeProgressInterruptsWorkBetweenInputReads(t *testing.T) {
 	defer tree.Close()
 	if tree.RootNode().HasError() || tree.RootNode().EndByte() != 17 {
 		t.Fatal("cancelled request contaminated the next tree")
+	}
+}
+
+func TestFlatTreeDeadlineAndReuse(t *testing.T) {
+	// Flat repetitions exercise tree balancing as well as parsing. Sweep the
+	// deadline across both phases; testdata/lifecycle.c also cancels balancing
+	// deterministically through the native logger.
+	p := newLifecycleParser(t)
+	defer p.Close()
+	text := []byte(strings.Repeat("let value = 1;\n", 4000))
+	baseline := time.Hour
+	for range 3 {
+		start := time.Now()
+		tree := treeparse.Parse(t.Context(), p, text, time.Now().Add(5*time.Second))
+		if tree == nil {
+			t.Fatal("reference parse failed")
+		}
+		baseline = min(baseline, time.Since(start))
+		tree.Close()
+	}
+	for i := 1; i <= 128; i++ {
+		budget := baseline * time.Duration(i) / 64
+		tree := treeparse.Parse(t.Context(), p, text, time.Now().Add(budget))
+		if tree != nil {
+			if tree.RootNode().HasError() || tree.RootNode().EndByte() != uint(len(text)) {
+				t.Error("deadline parse returned an invalid or partial tree")
+			}
+			tree.Close()
+		}
+		assertReusableParser(t, p)
 	}
 }
 

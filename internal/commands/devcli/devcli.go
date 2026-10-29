@@ -1,5 +1,5 @@
 // Package devcli contains developer maintenance commands, separate from Scout's
-// input inspection CLI. External upstream oracles are always explicit tools.
+// input inspection CLI.
 package devcli
 
 import (

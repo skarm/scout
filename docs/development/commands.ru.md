@@ -5,7 +5,6 @@
 - [Измерения и приёмка сборки](#измерения-и-приёмка-сборки)
 - [Сохранённые исходники и replay](#сохранённые-исходники-и-replay)
 - [Source-bound provenance](#source-bound-provenance)
-- [Внешние эксперименты](#внешние-эксперименты)
 - [Проверки памяти Tree-sitter](#проверки-памяти-tree-sitter)
 
 [English](commands.md) · Русский
@@ -40,12 +39,6 @@ scout-dev releasecheck --binary "$(command -v scout)"
   `--download` разрешает загрузку недостающих файлов.
 - `check-knowledge-runtime --binary SCOUT --output NEW_DIR`: проверить статические
   scans и scripted reviewer на локальном сервере.
-- `compare-upstream-suite prepare --capture SAVED_DIR --replay NEW_DIR`: проверить
-  blobs и подготовить входы replay.
-- `compare-upstream-suite compare --capture SAVED_DIR --replay REPLAY_DIR
-  --results RESULTS_JSONL --output DIFFERENCES_JSON`: сравнить replay с сохранёнными наблюдениями.
-- `adjudicate-upstream-suite --upstream SOURCE --before OLD_DIFFERENCES_JSON
-  --after DIFFERENCES_JSON --results RESULTS_JSONL --output LEDGER_JSON`: записать разбор различий.
 
 ```sh
 scout-dev replay --input captures.jsonl.gz --output replay-results.jsonl \
@@ -96,23 +89,14 @@ SHA коммита. Проверка требует, чтобы replay и selfte
 Флаг `provenance verify --expected-version BUILD_ID` позволяет дополнительно
 потребовать конкретный идентификатор проверенной сборки.
 
-## Внешние эксперименты
-
-Эти команды запускают внешние инструменты отдельно от обычных Go-проверок:
-
-- `compare-upstream --upstream-source SOURCE --skillspector CLI
-  --scout SCOUT --output NEW_DIR`: сравнить закреплённый корпус через оба CLI.
-- `run-upstream-suite --upstream SOURCE --python PYTHON --output NEW_DIR`: запустить
-  закреплённый pytest под macOS `sandbox-exec`, с запретом публичной сети.
-
 ## Проверки памяти Tree-sitter
 
-C harness требует Python 3, Clang и загруженных Go modules:
+C harness требует Go, Clang и загруженных Go modules:
 
 ```sh
-python3 internal/dev/maintenance/treeparse_sanitize.py --sanitizer address --output /tmp/treeparse-asan
-python3 internal/dev/maintenance/treeparse_sanitize.py --sanitizer thread --output /tmp/treeparse-tsan
-python3 internal/dev/maintenance/treeparse_sanitize.py --sanitizer none --output /tmp/treeparse-plain
+go run ./internal/dev/treeparsecheck --sanitizer address --output /tmp/treeparse-asan
+go run ./internal/dev/treeparsecheck --sanitizer thread --output /tmp/treeparse-tsan
+go run ./internal/dev/treeparsecheck --sanitizer none --output /tmp/treeparse-plain
 MallocStackLogging=1 leaks --atExit -- /tmp/treeparse-plain 1000
 ```
 

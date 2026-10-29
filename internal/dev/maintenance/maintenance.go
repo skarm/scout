@@ -1,4 +1,4 @@
-// Package maintenance implements offline evidence maintenance and developer checks.
+// Package maintenance implements source verification and developer runtime checks.
 package maintenance
 
 import (
@@ -17,47 +17,37 @@ import (
 )
 
 const (
-	upstreamCommit  = "d7338f58200a9ae2a24810cee08911ab68b107a7"
-	upstreamVersion = "2.12.0"
-	maxJSONLine     = 64 << 20
-	decisionAllow   = "allow"
-	findingsKey     = "findings"
-	coverageKey     = "coverage"
-	decisionKey     = "decision"
-	errorKey        = "error"
+	maxJSONLine   = 64 << 20
+	decisionAllow = "allow"
+	findingsKey   = "findings"
+	coverageKey   = "coverage"
+	decisionKey   = "decision"
+	errorKey      = "error"
 )
 
 type object map[string]any
 
 type options struct {
-	root, mode string
-	values     map[string]*string
-	download   *bool
+	root     string
+	values   map[string]*string
+	download *bool
 }
 
-// Run executes a maintenance command. External programs are always caller-selected.
+// Run executes a source verification or Scout runtime check.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: scout-tools <verify-knowledge-sources|check-knowledge-runtime|compare-upstream|run-upstream-suite|compare-upstream-suite|adjudicate-upstream-suite> [flags]")
+		return errors.New("usage: scout-dev <verify-knowledge-sources|check-knowledge-runtime> [flags]")
 	}
 
 	command := args[0]
 
 	args = args[1:]
-	if command == "network-denial-probe" {
-		if len(args) != 0 {
-			return errors.New("network-denial-probe takes no arguments")
-		}
 
-		return networkDenialProbe(ctx)
+	if command != "verify-knowledge-sources" && command != "check-knowledge-runtime" {
+		return fmt.Errorf("unknown maintenance command %q", command)
 	}
 
-	mode := ""
-	if command == "compare-upstream-suite" && len(args) > 0 {
-		mode, args = args[0], args[1:]
-	}
-
-	opts, err := parseOptions(command, mode, args, stderr)
+	opts, err := parseOptions(command, args, stderr)
 	if err != nil {
 		return err
 	}
@@ -65,17 +55,13 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	return execute(ctx, command, opts, stdout)
 }
 
-func parseOptions(command, mode string, args []string, stderr io.Writer) (options, error) {
+func parseOptions(command string, args []string, stderr io.Writer) (options, error) {
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
-	opts := options{mode: mode, values: map[string]*string{}}
-	for name := range strings.FieldsSeq("cache binary output upstream upstream-source python skillspector scout replay results before after") {
+	opts := options{values: map[string]*string{}}
+	for name := range strings.FieldsSeq("cache binary output") {
 		opts.values[name] = flags.String(name, "", name+" path")
-	}
-	// Capture processing reads saved observations; it does not install a pytest plugin.
-	if command == "compare-upstream-suite" {
-		opts.values["capture"] = flags.String("capture", "", "saved capture directory")
 	}
 
 	opts.download = flags.Bool("download", false, "download missing pinned knowledge sources")
@@ -108,14 +94,6 @@ func execute(ctx context.Context, command string, opts options, stdout io.Writer
 		return verifyKnowledgeSources(ctx, opts, stdout)
 	case "check-knowledge-runtime":
 		return checkKnowledgeRuntime(ctx, opts, stdout)
-	case "compare-upstream-suite":
-		return compareUpstreamSuite(ctx, opts, stdout)
-	case "adjudicate-upstream-suite":
-		return adjudicateUpstreamSuite(ctx, opts, stdout)
-	case "compare-upstream":
-		return compareUpstream(ctx, opts, stdout)
-	case "run-upstream-suite":
-		return runUpstreamSuite(ctx, opts, stdout)
 	default:
 		return fmt.Errorf("unknown maintenance command %q", command)
 	}
@@ -225,15 +203,6 @@ func stringsOf(v any) []string {
 	return out
 }
 
-func stringSet(values []string) map[string]bool {
-	out := make(map[string]bool, len(values))
-	for _, v := range values {
-		out[v] = true
-	}
-
-	return out
-}
-
 func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for key := range m {
@@ -241,18 +210,6 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 
 	slices.Sort(out)
-
-	return out
-}
-
-func difference(a, b map[string]bool) []string {
-	out := make([]string, 0)
-
-	for _, key := range sortedKeys(a) {
-		if !b[key] {
-			out = append(out, key)
-		}
-	}
 
 	return out
 }

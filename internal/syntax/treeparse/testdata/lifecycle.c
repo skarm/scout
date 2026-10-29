@@ -1,6 +1,11 @@
 // Native memory-safety harness. Compile with the unmodified official engine
-// and grammars; see internal/dev/maintenance/treeparse_sanitize.py. Not linked into Scout.
-#include "native.h"
+// and grammars; see internal/dev/treeparsecheck. Not linked into Scout.
+// Include the adapter to install a logger on its private parser for the
+// deterministic balancing cancellation regression. No test hook enters Scout.
+#ifndef SCOUT_TREEPARSE_ADAPTER
+#define SCOUT_TREEPARSE_ADAPTER "../native.c"
+#endif
+#include SCOUT_TREEPARSE_ADAPTER
 #include <assert.h>
 #include <pthread.h>
 #include <sched.h>
@@ -171,6 +176,38 @@ static void leak_control(const TSLanguage *language) {
   // Intentional lost parser. Used only to verify the leak detector itself.
 }
 
+static void cancel_after_accept(void *payload, TSLogType type, const char *message) {
+  if (type == TSLogTypeParse && !strcmp(message, "accept"))
+    scout_parser_cancel(payload);
+}
+
+static void balancing_cancellation(void) {
+  ScoutParser *p = scout_parser_new();
+  assert(p && scout_parser_language(p, tree_sitter_python()));
+  // A long flat repetition requires balancing after the final accept. Cancel
+  // there rather than depending on thread scheduling or a deadline race.
+  size_t count = 10000;
+  const char *line = "value = 1\n";
+  size_t width = strlen(line), length = count * width;
+  char *text = malloc(length);
+  assert(text);
+  for (size_t i = 0; i < count; i++) memcpy(text + i * width, line, width);
+  ts_parser_set_logger(p->parser, (TSLogger){p, cancel_after_accept});
+  assert(scout_parser_prepare(p, 5000000000ULL));
+  assert(!scout_parser_parse(p, text, length));
+  free(text);
+  // v0.25.0 reset leaves canceled_balancing set but clears finished_tree.
+  // Reusing that engine aborts at the finished_tree assertion.
+  ts_parser_set_logger(p->parser, (TSLogger){0});
+  assert(scout_parser_prepare(p, 5000000000ULL));
+  TSTree *tree = scout_parser_parse(p, line, width);
+  assert(tree && !ts_node_has_error(ts_tree_root_node(tree)));
+  inspect_tree(tree, width);
+  ts_tree_delete(tree);
+  scout_parser_delete(p);
+  puts("balancing cancellation and reuse passed");
+}
+
 int main(int argc, char **argv) {
   atomic_init(&live_blocks, 0);
   atomic_init(&live_bytes, 0);
@@ -185,6 +222,7 @@ int main(int argc, char **argv) {
     leak_control(tree_sitter_python());
     return 0;
   }
+  balancing_cancellation();
   size_t rounds = argc > 1 ? strtoul(argv[1], NULL, 10) : 500;
   assert(rounds > 0 && rounds <= 100000);
   Worker workers[4] = {

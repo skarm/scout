@@ -62,15 +62,4 @@ func TestEmbeddedScoutSourcePointersResolve(t *testing.T) {
 			check(id, path)
 		}
 	}
-	var adjudication struct {
-		Reasons map[string]struct {
-			Code string `json:"scout_code"`
-		}
-	}
-	read("internal/dev/maintenance/data/adjudication.json", &adjudication)
-	for reason, entry := range adjudication.Reasons {
-		if entry.Code != "" {
-			check(reason, entry.Code)
-		}
-	}
 }

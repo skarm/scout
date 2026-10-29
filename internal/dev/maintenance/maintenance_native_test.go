@@ -30,7 +30,7 @@ func TestKnowledgeRuntimeUsesActualCLIAndScriptedLoopbackProtocol(t *testing.T) 
 	}
 }
 
-func TestCurrentScoutComparisonRequiresTheActualBoundRun(t *testing.T) {
+func TestKnowledgeRuntimeRequiresTheActualBoundRun(t *testing.T) {
 	t.Setenv("SCOUT_DEVELOPER_CLI_HELPER", "1")
 	t.Setenv("GOCOVERDIR", t.TempDir())
 	binary, err := os.Executable()
@@ -39,28 +39,19 @@ func TestCurrentScoutComparisonRequiresTheActualBoundRun(t *testing.T) {
 	}
 	target := t.TempDir()
 	nativeMaintenanceFile(t, target, "script.py", []byte("import os\nos.system(input())\n"))
-	data, code, err := maintenance.InvokeCLIForTest(t.Context(), binary, "scan", "--profile", "standard", "--format", "json", "--", target)
+	data, _, err := maintenance.InvokeCLIForTest(t.Context(), binary, "scan", "--profile", "standard", "--format", "json", "--", target)
 	if err != nil {
 		t.Fatal(err)
 	}
-	normalized, err := maintenance.NormalizeScoutComparisonForTest(data, code)
-	if err != nil || normalized == 0 {
+	document, err := maintenance.DecodeScoutDocumentForTest(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Run.Targets[0].Analysis.Findings) == 0 {
 		t.Fatal("actual current scan lost its observations")
 	}
-	if err := maintenance.ValidateScoutDocumentForTest([]byte(`{"schema_version":"0.15","findings":[]}`)); err == nil {
+	if _, err := maintenance.DecodeScoutDocumentForTest([]byte(`{"schema_version":"0.15","findings":[]}`)); err == nil {
 		t.Fatal("flat historical report was reinterpreted as a current run")
-	}
-}
-
-func TestAdjudicationFindsNativeDefinitionsWhenNoCachedSiteExists(t *testing.T) {
-	upstream := t.TempDir()
-	nativeMaintenanceFile(t, upstream, "tests/test_example.py", []byte("class Example:\n    def test_case(self):\n        pass\n"))
-	site, err := maintenance.LocateTestForTest(t.Context(), upstream, "tests/test_example.py::Example::test_case")
-	if err != nil || site.Line != 2 || site.File != "tests/test_example.py" {
-		t.Fatalf("definition evidence changed: %+v %v", site, err)
-	}
-	if _, err := maintenance.LocateTestForTest(t.Context(), upstream, "tests/test_example.py::missing"); err == nil {
-		t.Fatal("missing native definition acquired a location")
 	}
 }
 
