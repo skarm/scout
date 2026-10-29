@@ -2,6 +2,7 @@ package review_test
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -225,17 +226,48 @@ func TestHTTPSWithExplicitCA(t *testing.T) {
 		}
 	}))
 	defer s.Close()
-	o := httpOptions(s.URL + "/api")
-	pool := x509.NewCertPool()
-	pool.AddCert(s.Certificate())
-	o.RootCAs = pool
-	p, e := review.NewHTTP(o)
-	if e != nil {
-		t.Fatal(e)
+	for _, trusted := range []bool{true, false} {
+		t.Run(map[bool]string{true: "trusted", false: "untrusted"}[trusted], func(t *testing.T) {
+			o := httpOptions(s.URL + "/api")
+			o.RootCAs = x509.NewCertPool()
+			if trusted {
+				o.RootCAs.AddCert(s.Certificate())
+			}
+			p, err := review.NewHTTP(o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Capture the original error only for this credential-free local fixture.
+			// Public provider errors deliberately omit network and endpoint details.
+			client := review.HTTPClientForTest(p)
+			transport := &observedHTTPTransport{base: client.Transport}
+			client.Transport = transport
+			_, err = p.Complete(t.Context(), payload())
+			if trusted {
+				if err != nil {
+					t.Fatalf("trusted CA request failed: %v; transport cause: %T: %v", err, transport.err, transport.err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("untrusted server certificate accepted")
+			}
+			if _, ok := errors.AsType[*tls.CertificateVerificationError](transport.err); !ok {
+				t.Fatalf("expected certificate rejection, got %v; transport cause: %T: %v", err, transport.err, transport.err)
+			}
+		})
 	}
-	if _, e = p.Complete(context.Background(), payload()); e != nil {
-		t.Fatal(e)
-	}
+}
+
+type observedHTTPTransport struct {
+	base http.RoundTripper
+	err  error
+}
+
+func (t *observedHTTPTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(r)
+	t.err = err
+	return response, err
 }
 
 func TestEndpointAndOptionValidation(t *testing.T) {
