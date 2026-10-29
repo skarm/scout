@@ -11,6 +11,7 @@ import (
 	"github.com/skarm/scout/internal/scantest"
 	scenario "github.com/skarm/scout/internal/scantest/scenarios"
 	"github.com/skarm/scout/osv"
+	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
 )
 
@@ -98,5 +99,44 @@ func TestOSVExactCacheIntegratesEvidenceAndPolicy(t *testing.T) {
 	}
 	if len(r.Vulnerabilities.Matches) > 0 || r.Vulnerabilities.Completeness == report.Complete {
 		t.Fatal("range got an exact CVE result")
+	}
+}
+
+func TestOSVFreshCacheCompletesScan(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		advisories []osv.ID
+		decision   report.Decision
+		code       int
+	}{
+		{name: "clean", advisories: []osv.ID{}, decision: report.Allow, code: 0},
+		{name: "vulnerable", advisories: []osv.ID{{ID: "GHSA-fixture-only"}}, decision: report.Block, code: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := scantest.DefaultConfig()
+			config.Gate.Scope = policy.SelectedScope
+			options := osv.DefaultOptions()
+			options.Enabled = true
+			cache := osv.Cache{Version: 1, QueriedAt: time.Now().UTC(), Records: []osv.Record{{
+				Ecosystem: "PyPI", Name: "sample", Version: "1.2.3", Vulnerabilities: tc.advisories,
+			}}}
+			var err error
+			options.Offline, err = json.Marshal(cache)
+			if err != nil {
+				t.Fatal(err)
+			}
+			config.Scanner.Vulnerabilities = &options
+			scanner, err := scantest.New(config, t)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := scanner.ScanBytes(t.Context(), "requirements-dev.txt", []byte("sample==1.2.3\n"))
+			if err != nil || result.Run.State != report.RunComplete || result.Coverage.Completeness != report.Complete {
+				t.Fatalf("fresh exact cache caused an incomplete scan: state=%s coverage=%s diagnostics=%+v error=%v", result.Run.State, result.Coverage.Completeness, result.Diagnostics, err)
+			}
+			if len(result.Vulnerabilities.Queries) != 1 || result.Vulnerabilities.Queries[0].Status != report.OutcomeCached || result.Evaluation.Decision != tc.decision || scantest.ExitCode(result) != tc.code {
+				t.Fatalf("cached observation lost policy or query outcome: %+v %+v", result.Vulnerabilities, result.Evaluation)
+			}
+		})
 	}
 }

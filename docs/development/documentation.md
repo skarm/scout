@@ -31,5 +31,5 @@ contents blocks to Go source files. Preserve directives, quotations and legal te
 
 Run `gofmt`, inspect `go doc`, and check links, anchors and EN/RU pairs.
 Documentation edits must preserve behavior, except changes needed to package the
-documentation itself. Source-bound receipts need fresh evidence after Go file edits;
-see [acceptance](validation.md#binary-and-source-acceptance).
+documentation itself. Editing Go files does not require refreshing historical
+measurement receipts; see [acceptance](validation.md#binary-and-recorded-evidence).

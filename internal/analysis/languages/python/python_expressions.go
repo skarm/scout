@@ -229,7 +229,7 @@ func (w *pyWalker) attributeExpr(n *frontend.Node, s *pyState, depth int) pyValu
 
 	name := v.symbol()
 	if name != "" {
-		name = canonPy(name + "." + n.String(frontend.Attr))
+		name = canonicalSymbolName(name + "." + n.String(frontend.Attr))
 	}
 
 	if name == "os.environ" {

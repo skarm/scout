@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/engine"
 	"github.com/skarm/scout/internal/analysis/semantic"
 	"github.com/skarm/scout/internal/buildinfo"
@@ -170,7 +171,7 @@ func validateConstruction(ctx context.Context, options Options) (Checks, error) 
 	return checks, nil
 }
 
-func configuredEngine(options Options, checks Checks, catalog []analyzer.Analyzer) (*engine.Engine, error) {
+func configuredEngine(options Options, checks Checks, catalog []check.Analyzer) (*engine.Engine, error) {
 	registry, err := parse.WithFrontends(options.parserOptions(checks))
 	if err != nil {
 		return nil, err
@@ -200,7 +201,7 @@ func validateAvailableChecks(plan report.InspectionPlan) error {
 	return nil
 }
 
-func engineIdentity(options Options, checks Checks, catalog []analyzer.Analyzer) report.EngineIdentity {
+func engineIdentity(options Options, checks Checks, catalog []check.Analyzer) report.EngineIdentity {
 	var (
 		signaturesDigest string
 		extraRules       []byte
@@ -272,7 +273,7 @@ func cloneOptions(o Options) Options {
 	return o
 }
 
-func ruleCatalog(checks []analyzer.Analyzer, yara, vulnerabilities bool) []report.Rule {
+func ruleCatalog(checks []check.Analyzer, yara, vulnerabilities bool) []report.Rule {
 	rules := make([]report.Rule, 0, len(checks)+6)
 	for _, c := range checks {
 		rules = append(rules, knowledge.WithGuidance(c.Rule()))

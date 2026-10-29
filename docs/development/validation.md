@@ -19,7 +19,7 @@ adapters against SDK fixtures and the real CLI. Go tests do not require Python.
 
 Make test targets use `-vet=off`; linting runs separately.
 
-## Binary and source acceptance
+## Binary and recorded evidence
 
 ```sh
 make releasecheck
@@ -27,13 +27,16 @@ make acceptance
 ```
 
 `releasecheck` checks the built binary's linkage, metadata and native self-tests.
-`acceptance` verifies source closures, capture IDs, replay, release checks and
-adjudicated observation changes against `testdata/provenance/scout-current-review.json`.
-Native CI requires acceptance.
+`acceptance` verifies the integrity of recorded capture IDs, replay, release checks
+and adjudicated observation changes in `testdata/provenance/scout-current-review.json`.
+It checks the saved measurement, not whether today's source files match that run.
+Native CI requires this integrity check alongside tests of the current code.
 
-Receipts hash full source bytes, so Go comment edits also invalidate them.
-Generate fresh evidence through the [provenance commands](commands.md#source-bound-provenance)
-rather than editing recorded hashes. Inputs under `testdata/` survive `make clean`.
+Code and comment edits do not require refreshing receipts. Source hashes remain
+metadata identifying the measured revision. An explicit `provenance verify --current-sources` audit checks the current checkout
+when needed. Generate a new
+measurement through the [provenance commands](commands.md#source-bound-provenance)
+when intentionally updating evidence. Inputs under `testdata/` survive `make clean`.
 
 ## Lint
 

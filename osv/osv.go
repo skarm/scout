@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/skarm/scout/fetch"
@@ -137,7 +138,8 @@ func ParseCache(data []byte) (Cache, error) {
 
 	// The byte bound also bounds the number of JSON nodes. A cache can contain
 	// more nodes than one provider page while retaining identical strict parsing.
-	if _, err := jsonconfig.ParseWithNodeLimit(context.Background(), string(data), len(data)); err != nil {
+	shape, err := jsonconfig.ParseWithNodeLimit(context.Background(), string(data), len(data))
+	if err != nil || cacheAliases(shape) {
 		return c, errors.New("invalid cache JSON")
 	}
 
@@ -404,7 +406,10 @@ func groupQueries(deps report.DependencyReport, o Options, r *report.Vulnerabili
 			continue
 		}
 
-		if qi >= o.MaxQueries {
+		k := key(d.Ecosystem, d.Module, d.DeclaredVersion)
+		g := byKey[k]
+
+		if g == nil && len(groups) >= o.MaxQueries {
 			q.Status = "query_limit"
 			r.Completeness = report.Partial
 			r.Queries = append(r.Queries, q)
@@ -413,9 +418,7 @@ func groupQueries(deps report.DependencyReport, o Options, r *report.Vulnerabili
 		}
 
 		r.Queries = append(r.Queries, q)
-		k := key(d.Ecosystem, d.Module, d.DeclaredVersion)
 
-		g := byKey[k]
 		if g == nil {
 			g = &queryGroup{tokens: map[string]bool{}}
 			g.q.Package.Name = d.Module
@@ -651,7 +654,7 @@ func exportRecords(r report.VulnerabilityReport) []Record {
 func key(e, n, v string) string { return e + "\x00" + n + "\x00" + v }
 
 func validateResponseShape(root *jsonconfig.Node, count int) error {
-	if root == nil || root.Kind != jsonconfig.KindObject {
+	if root == nil || root.Kind != jsonconfig.KindObject || fieldAliases(root, "results") {
 		return errors.New("invalid response")
 	}
 
@@ -670,7 +673,7 @@ func validateResponseShape(root *jsonconfig.Node, count int) error {
 }
 
 func validateResultShape(item *jsonconfig.Node) error {
-	if item == nil || item.Kind != jsonconfig.KindObject || item.Get("error") != nil {
+	if item == nil || item.Kind != jsonconfig.KindObject || item.Get("error") != nil || fieldAliases(item, "vulns", "next_page_token", "error") {
 		return errors.New("invalid result")
 	}
 
@@ -698,7 +701,7 @@ func validateVulnerabilityShapes(n *jsonconfig.Node) error {
 }
 
 func validateVulnerabilityShape(v *jsonconfig.Node) error {
-	if v.Kind != jsonconfig.KindObject {
+	if v.Kind != jsonconfig.KindObject || fieldAliases(v, "id", "modified") {
 		return errors.New("invalid vulnerability")
 	}
 
@@ -712,4 +715,46 @@ func validateVulnerabilityShape(v *jsonconfig.Node) error {
 	}
 
 	return nil
+}
+
+// encoding/json folds struct field names. Reject aliases before decoding so
+// validation and the consumed advisory/cache values cannot disagree.
+func fieldAliases(n *jsonconfig.Node, fields ...string) bool {
+	if n == nil {
+		return false
+	}
+
+	for _, member := range n.Members {
+		for _, field := range fields {
+			if member.Key != field && strings.EqualFold(member.Key, field) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func cacheAliases(root *jsonconfig.Node) bool {
+	if fieldAliases(root, "version", "queried_at", "records") {
+		return true
+	}
+
+	if records := root.Get("records"); records != nil {
+		for _, record := range records.Elements {
+			if fieldAliases(record, "ecosystem", "name", "version", "vulnerabilities") {
+				return true
+			}
+
+			if vulnerabilities := record.Get("vulnerabilities"); vulnerabilities != nil {
+				for _, vulnerability := range vulnerabilities.Elements {
+					if fieldAliases(vulnerability, "id", "modified") {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	return false
 }

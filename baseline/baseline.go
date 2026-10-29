@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -111,7 +112,8 @@ func Parse(data []byte) (Document, error) {
 		return d, errors.New("baseline byte limit")
 	}
 
-	if _, err := jsonconfig.Parse(context.Background(), string(data)); err != nil {
+	root, err := jsonconfig.ParseWithNodeLimit(context.Background(), string(data), len(data))
+	if err != nil || !baselineFields(root) {
 		return d, errors.New("invalid or ambiguous baseline JSON")
 	}
 
@@ -127,6 +129,38 @@ func Parse(data []byte) (Document, error) {
 	}
 
 	return d, Validate(d)
+}
+
+// Exact JSON tags keep the validated approval document independent of the
+// case-insensitive struct field matching performed by encoding/json.
+func baselineFields(root *jsonconfig.Node) bool {
+	if !knownFields(root, "version", "engine_version", "rulepack_digest", "profile", "entries") {
+		return false
+	}
+
+	if entries := root.Get("entries"); entries != nil {
+		for _, entry := range entries.Elements {
+			if !knownFields(entry, "kind", "fingerprint", "rule_id", "path_glob", "message_glob", "reason", "expires", "approved") {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func knownFields(node *jsonconfig.Node, fields ...string) bool {
+	if node == nil || node.Kind != jsonconfig.KindObject {
+		return false
+	}
+
+	for _, member := range node.Members {
+		if !slices.Contains(fields, member.Key) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // Validate checks the schema, identity fields, entry limits, approval

@@ -54,32 +54,6 @@ func TestBuiltinRules(t *testing.T) {
 	}
 }
 
-func TestSurface(t *testing.T) {
-	for _, tc := range []struct{ name, surface string }{{name: "SKILL.md", surface: "instructions"}, {
-		name:    "tests/SKILL.md",
-		surface: "instructions",
-	}, {
-		name:    "tests/x.md",
-		surface: "tests",
-	}, {
-		name:    "LICENSE.txt",
-		surface: "license",
-	}, {
-		name:    "a.py",
-		surface: "code",
-	}, {
-		name:    "plugin.json",
-		surface: "config",
-	}, {
-		name:    "README.md",
-		surface: "docs",
-	}} {
-		if got := analyzer.Surface(tc.name); got != tc.surface {
-			t.Fatalf("%s => %s != %s", tc.name, got, tc.surface)
-		}
-	}
-}
-
 func TestBinaryAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

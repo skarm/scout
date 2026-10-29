@@ -56,6 +56,7 @@ type Server struct {
 type session struct {
 	mu                 sync.Mutex
 	initialized, ready bool
+	closed             bool
 	protocol           string
 	pending            map[requestKey]context.CancelFunc
 	created            time.Time

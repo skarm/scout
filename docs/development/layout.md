@@ -55,6 +55,8 @@ Language semantics belong to `internal/analysis/languages/<language>`; parsing a
 coordinates belong to `internal/syntax`. Language packages export
 `Rules() []check.Analyzer` and do not import each other or the common registry.
 Shared checks belong to `analyzer`, facts to `check`, and quotas to `analysisbudget`.
+Consumers use check contracts directly from `check`. Filename-based display
+surfaces live in `syntax/filetype`; they never grant trust or suppress checks.
 
 Keep unit tests and fixtures beside their package. Use `foo_test.go` for tests of
 `foo.go`; separate files when build constraints or a substantial component justify it.

@@ -20,7 +20,7 @@ make host-test
 
 Make test-цели используют `-vet=off`; линтер запускается отдельно.
 
-## Приёмка бинарника и исходников
+## Бинарник и сохранённые измерения
 
 ```sh
 make releasecheck
@@ -28,13 +28,16 @@ make acceptance
 ```
 
 `releasecheck` проверяет linkage, metadata и нативные selftests бинарника.
-`acceptance` сверяет состав исходников, IDs входов, replay, releasecheck
-и разобранные изменения наблюдений с `testdata/provenance/scout-current-review.json`.
-Native CI требует этой приёмки.
+`acceptance` проверяет целостность сохранённых IDs входов, replay, releasecheck
+и разобранных изменений наблюдений в `testdata/provenance/scout-current-review.json`.
+Проверяется записанное измерение, без требования совпадения с сегодняшними исходниками.
+Native CI выполняет эту проверку вместе с тестами текущего кода.
 
-Receipt хеширует полные байты исходников: правка Go-комментариев тоже делает его
-неактуальным. Получайте свежие доказательства через [provenance-команды](commands.ru.md#source-bound-provenance),
-без подмены сохранённых хешей. Входы в `testdata/` сохраняются после `make clean`.
+Правки кода и комментариев не требуют обновления receipts. Хеши исходников остаются
+метаданными измеренной версии. Явная проверка `provenance verify --current-sources`
+при необходимости сверяет запись с текущими исходниками. Новое измерение создаётся
+через [provenance-команды](commands.ru.md#source-bound-provenance), когда нужно обновить
+сохранённые результаты. Входы в `testdata/` сохраняются после `make clean`.
 
 ## Линтер
 

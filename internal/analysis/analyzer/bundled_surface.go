@@ -23,11 +23,8 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-//nolint:gochecknoglobals // These hook vocabularies are initialized once and only read by concurrent scans.
-var (
-	hookEvents      = hookpolicy.Events
-	sensitiveEvents = stringSet("UserPromptSubmit UserPromptExpansion MessageDisplay PreToolUse PermissionRequest PermissionDenied PostToolUse PostToolUseFailure PostToolBatch SubagentStop TaskCreated TaskCompleted Stop StopFailure PreCompact PostCompact Elicitation ElicitationResult")
-)
+//nolint:gochecknoglobals // The sensitive-event vocabulary is initialized once and only read by concurrent scans.
+var sensitiveEvents = stringSet("UserPromptSubmit UserPromptExpansion MessageDisplay PreToolUse PermissionRequest PermissionDenied PostToolUse PostToolUseFailure PostToolBatch SubagentStop TaskCreated TaskCompleted Stop StopFailure PreCompact PostCompact Elicitation ElicitationResult")
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var surfaceTextFields = map[string][]struct {
@@ -242,7 +239,7 @@ func (a bundledSurface) inspectHookEvents(ctx context.Context, hooks *jsonconfig
 			return false
 		}
 
-		if !hookEvents[event.Key] {
+		if !hookpolicy.KnownEvent(event.Key) {
 			*partial = true
 		}
 

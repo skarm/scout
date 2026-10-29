@@ -21,9 +21,11 @@ make lint
 make test-core test race host-test releasecheck acceptance
 ```
 
-Source changes invalidate acceptance hashes. Regenerate affected evidence using
-[the provenance commands](docs/development/commands.md#source-bound-provenance);
-do not edit hashes to bypass verification.
+Acceptance checks the integrity of recorded measurements independently of the
+current checkout. Editing code or comments does not require refreshing receipts.
+Use [the provenance commands](docs/development/commands.md#source-bound-provenance)
+when intentionally recording a new measurement; `provenance verify --current-sources`
+explicitly audits whether a receipt describes the current checkout.
 
 ## Pull requests
 

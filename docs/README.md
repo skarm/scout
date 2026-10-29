@@ -27,6 +27,7 @@ Guides to using, extending and validating Scout.
 ## Development
 
 - [Architecture and trust boundaries](development/architecture.md).
+- [Architecture review from 29 October 2026 (Russian)](development/architecture-review-2026-10-29.ru.md).
 - [Repository layout](development/layout.md).
 - [Project validation and acceptance](development/validation.md).
 - [Developer commands](development/commands.md).

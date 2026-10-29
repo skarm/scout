@@ -18,6 +18,9 @@ type listedPackage struct {
 	Dir                                           string
 	Module                                        *struct{ Dir string }
 	GoFiles, CgoFiles, IgnoredGoFiles, EmbedFiles []string
+	CFiles, CXXFiles, MFiles, HFiles, FFiles      []string
+	SFiles, SwigFiles, SwigCXXFiles, SysoFiles    []string
+	IgnoredOtherFiles                             []string
 }
 
 // ScannerRuntimeFiles binds product evidence to both build variants and embeds.
@@ -177,18 +180,25 @@ func runtimePackageFiles(root string, pkg listedPackage) ([]string, error) {
 		return out, nil
 	}
 
-	names := append(append(append(pkg.GoFiles, pkg.CgoFiles...), pkg.IgnoredGoFiles...), pkg.EmbedFiles...)
-	for _, name := range names {
-		if strings.HasSuffix(name, "_test.go") {
-			continue
-		}
+	// Native code and headers are source inputs too. Include inactive variants so
+	// a receipt cannot survive changes to code selected on another platform.
+	for _, names := range [][]string{
+		pkg.GoFiles, pkg.CgoFiles, pkg.IgnoredGoFiles, pkg.EmbedFiles,
+		pkg.CFiles, pkg.CXXFiles, pkg.MFiles, pkg.HFiles, pkg.FFiles,
+		pkg.SFiles, pkg.SwigFiles, pkg.SwigCXXFiles, pkg.SysoFiles, pkg.IgnoredOtherFiles,
+	} {
+		for _, name := range names {
+			if strings.HasSuffix(name, "_test.go") {
+				continue
+			}
 
-		path, err := checkedRuntimePath(root, pkg.Dir, name)
-		if err != nil {
-			return nil, err
-		}
+			path, err := checkedRuntimePath(root, pkg.Dir, name)
+			if err != nil {
+				return nil, err
+			}
 
-		out = append(out, path)
+			out = append(out, path)
+		}
 	}
 
 	return out, nil

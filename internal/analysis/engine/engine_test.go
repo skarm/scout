@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/engine"
 	"github.com/skarm/scout/internal/capture/artifact"
@@ -19,24 +19,24 @@ import (
 func TestFailuresNeverAllow(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		fn   func(context.Context, document.File, int) (analyzer.Result, error)
+		fn   func(context.Context, document.File, int) (check.Result, error)
 	}{
-		{name: "error", fn: func(context.Context, document.File, int) (analyzer.Result, error) {
-			return analyzer.Result{}, errors.New("SECRET_SENTINEL")
+		{name: "error", fn: func(context.Context, document.File, int) (check.Result, error) {
+			return check.Result{}, errors.New("SECRET_SENTINEL")
 		}},
 		{
 			name: "panic",
-			fn:   func(context.Context, document.File, int) (analyzer.Result, error) { panic("SECRET_SENTINEL") },
+			fn:   func(context.Context, document.File, int) (check.Result, error) { panic("SECRET_SENTINEL") },
 		},
-		{name: "bad-span", fn: func(context.Context, document.File, int) (analyzer.Result, error) {
-			return analyzer.Result{Matches: []analyzer.Match{{Start: 0, End: 99}}}, nil
+		{name: "bad-span", fn: func(context.Context, document.File, int) (check.Result, error) {
+			return check.Result{Matches: []check.Match{{Start: 0, End: 99}}}, nil
 		}},
-		{name: "budget", fn: func(context.Context, document.File, int) (analyzer.Result, error) {
-			return analyzer.Result{Matches: []analyzer.Match{{Start: 0, End: 1}, {Start: 0, End: 1}}}, nil
+		{name: "budget", fn: func(context.Context, document.File, int) (check.Result, error) {
+			return check.Result{Matches: []check.Match{{Start: 0, End: 1}, {Start: 0, End: 1}}}, nil
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e, err := engine.New([]analyzer.Analyzer{fake{id: "FAIL", find: tc.fn}}, 1)
+			e, err := engine.New([]check.Analyzer{fake{id: "FAIL", find: tc.fn}}, 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,12 +59,12 @@ func TestFailuresNeverAllow(t *testing.T) {
 }
 
 func TestFailurePreservesOtherFindings(t *testing.T) {
-	e, err := engine.New([]analyzer.Analyzer{
-		fake{id: "GOOD", find: func(context.Context, document.File, int) (analyzer.Result, error) {
-			return analyzer.Result{Matches: []analyzer.Match{{Start: 0, End: 1}}}, nil
+	e, err := engine.New([]check.Analyzer{
+		fake{id: "GOOD", find: func(context.Context, document.File, int) (check.Result, error) {
+			return check.Result{Matches: []check.Match{{Start: 0, End: 1}}}, nil
 		}},
-		fake{id: "BAD", find: func(context.Context, document.File, int) (analyzer.Result, error) {
-			return analyzer.Result{}, errors.New("failed")
+		fake{id: "BAD", find: func(context.Context, document.File, int) (check.Result, error) {
+			return check.Result{}, errors.New("failed")
 		}},
 	}, 2)
 	if err != nil {
@@ -79,19 +79,19 @@ func TestFailurePreservesOtherFindings(t *testing.T) {
 func TestEngineRejectsInvalidConfig(t *testing.T) {
 	good := fake{
 		id:   "A",
-		find: func(context.Context, document.File, int) (analyzer.Result, error) { return analyzer.Result{}, nil },
+		find: func(context.Context, document.File, int) (check.Result, error) { return check.Result{}, nil },
 	}
 	for _, tc := range []struct {
 		name    string
-		checks  []analyzer.Analyzer
+		checks  []check.Analyzer
 		workers int
-	}{{name: "none", checks: nil, workers: 1}, {name: "nil", checks: []analyzer.Analyzer{nil}, workers: 1}, {
+	}{{name: "none", checks: nil, workers: 1}, {name: "nil", checks: []check.Analyzer{nil}, workers: 1}, {
 		name:    "duplicate",
-		checks:  []analyzer.Analyzer{good, good},
+		checks:  []check.Analyzer{good, good},
 		workers: 1,
 	}, {
 		name:    "workers",
-		checks:  []analyzer.Analyzer{good},
+		checks:  []check.Analyzer{good},
 		workers: 0,
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -103,10 +103,10 @@ func TestEngineRejectsInvalidConfig(t *testing.T) {
 }
 
 func TestPartialResultOnErrorIsPreserved(t *testing.T) {
-	e, err := engine.New([]analyzer.Analyzer{fake{
+	e, err := engine.New([]check.Analyzer{fake{
 		id: "PARTIAL",
-		find: func(context.Context, document.File, int) (analyzer.Result, error) {
-			return analyzer.Result{Matches: []analyzer.Match{{Start: 0, End: 1}}}, errors.New("SECRET_SENTINEL")
+		find: func(context.Context, document.File, int) (check.Result, error) {
+			return check.Result{Matches: []check.Match{{Start: 0, End: 1}}}, errors.New("SECRET_SENTINEL")
 		},
 	}}, 1)
 	if err != nil {
@@ -119,15 +119,15 @@ func TestPartialResultOnErrorIsPreserved(t *testing.T) {
 }
 
 func TestInvalidTraceRejected(t *testing.T) {
-	for _, trace := range [][]analyzer.Trace{
+	for _, trace := range [][]check.Trace{
 		{{Role: "SECRET_SENTINEL", Start: 0, End: 1}},
 		{{Role: "source", Start: 0, End: 99}},
-		make([]analyzer.Trace, 9),
+		make([]check.Trace, 9),
 	} {
-		e, err := engine.New([]analyzer.Analyzer{fake{
+		e, err := engine.New([]check.Analyzer{fake{
 			id: "TRACE",
-			find: func(context.Context, document.File, int) (analyzer.Result, error) {
-				return analyzer.Result{Matches: []analyzer.Match{{Start: 0, End: 1, Trace: trace}}}, nil
+			find: func(context.Context, document.File, int) (check.Result, error) {
+				return check.Result{Matches: []check.Match{{Start: 0, End: 1, Trace: trace}}}, nil
 			},
 		}}, 1)
 		if err != nil {
@@ -161,10 +161,10 @@ func TestFindingSeverityCannotExceedRuleMaximum(t *testing.T) {
 		},
 	} {
 		t.Run(string(tc.severity), func(t *testing.T) {
-			a := fake{id: "SEVERITY", find: func(context.Context, document.File, int) (analyzer.Result, error) {
-				return analyzer.Result{Matches: []analyzer.Match{{Start: 0, End: 1, Severity: tc.severity}}}, nil
+			a := fake{id: "SEVERITY", find: func(context.Context, document.File, int) (check.Result, error) {
+				return check.Result{Matches: []check.Match{{Start: 0, End: 1, Severity: tc.severity}}}, nil
 			}}
-			e, err := engine.New([]analyzer.Analyzer{a}, 1)
+			e, err := engine.New([]check.Analyzer{a}, 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -185,10 +185,10 @@ func TestFindingSeverityCannotExceedRuleMaximum(t *testing.T) {
 
 func TestAnalyzerContextLabelsAreBoundedAndScannerOwned(t *testing.T) {
 	for _, signals := range [][]string{{"SENTINEL_UNTRUSTED_LABEL"}, {"registry_assertion", "registry_assertion", "registry_assertion", "registry_assertion", "registry_assertion", "registry_assertion", "registry_assertion", "registry_assertion", "registry_assertion"}} {
-		a := fake{id: "CONTEXT", find: func(context.Context, document.File, int) (analyzer.Result, error) {
-			return analyzer.Result{Matches: []analyzer.Match{{Start: 0, End: 1, ContextSignals: signals}}}, nil
+		a := fake{id: "CONTEXT", find: func(context.Context, document.File, int) (check.Result, error) {
+			return check.Result{Matches: []check.Match{{Start: 0, End: 1, ContextSignals: signals}}}, nil
 		}}
-		e, err := engine.New([]analyzer.Analyzer{a}, 1)
+		e, err := engine.New([]check.Analyzer{a}, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,9 +203,9 @@ func TestAnalyzerContextLabelsAreBoundedAndScannerOwned(t *testing.T) {
 }
 
 func TestIncompleteCaptureWithoutDiagnosticNeverCompletes(t *testing.T) {
-	e, err := engine.New([]analyzer.Analyzer{fake{
+	e, err := engine.New([]check.Analyzer{fake{
 		id:   "OK",
-		find: func(context.Context, document.File, int) (analyzer.Result, error) { return analyzer.Result{}, nil },
+		find: func(context.Context, document.File, int) (check.Result, error) { return check.Result{}, nil },
 	}}, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -219,14 +219,14 @@ func TestIncompleteCaptureWithoutDiagnosticNeverCompletes(t *testing.T) {
 
 type fake struct {
 	id   string
-	find func(context.Context, document.File, int) (analyzer.Result, error)
+	find func(context.Context, document.File, int) (check.Result, error)
 }
 
 func (a fake) Rule() report.Rule {
 	return report.Rule{ID: a.id, Version: "1", Severity: report.High, Title: "test", Method: "test"}
 }
 func (a fake) AppliesTo(document.File) bool { return true }
-func (a fake) Find(ctx context.Context, f document.File, n int) (analyzer.Result, error) {
+func (a fake) Find(ctx context.Context, f document.File, n int) (check.Result, error) {
 	return a.find(ctx, f, n)
 }
 

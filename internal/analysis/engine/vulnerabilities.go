@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/knowledge"
@@ -116,7 +116,7 @@ func collectVulnerabilityFindings(r *report.Analysis, byID map[string]report.Dep
 				continue
 			}
 
-			f, e := makeFinding(vulnerabilityRule, doc, analyzer.Match{Start: d.Source.ByteStart, End: d.Source.ByteEnd})
+			f, e := makeFinding(vulnerabilityRule, doc, check.Match{Start: d.Source.ByteStart, End: d.Source.ByteEnd})
 			if e != nil {
 				r.Vulnerabilities.Completeness = report.Partial
 				continue

@@ -89,7 +89,7 @@ func TestComparisonCannotHideChangedObservations(t *testing.T) {
 	if err != nil || delta.ChangedRows != 1 || len(delta.Changes[0].Added) != 1 || len(delta.Changes[0].Removed) != 1 {
 		t.Fatal(delta, err)
 	}
-	if verifyAdjudication(t.TempDir(), delta.Changes[0]) == nil {
+	if verifyAdjudication(t.TempDir(), delta.Changes[0], false) == nil {
 		t.Fatal("unadjudicated change accepted")
 	}
 	after.rows[id] = observedRow{error: true}
@@ -169,7 +169,7 @@ func TestChangedReplayRequiresBoundAdjudicationAndExistingRegression(t *testing.
 		t.Fatal(err)
 	}
 	after.UncompressedSHA256 = observed.contentSHA256
-	if verifyComparisonArtifact(t.Context(), root, write("comparison.json", comparison), after, observed) == nil {
+	if verifyComparisonArtifact(t.Context(), root, write("comparison.json", comparison), after, observed, true) == nil {
 		t.Fatal("unadjudicated change accepted")
 	}
 	if err := os.WriteFile(filepath.Join(root, "evidence_test.go"), []byte("package fixture\nfunc TestFixedRegression() {}\n"), 0o600); err != nil {
@@ -179,19 +179,31 @@ func TestChangedReplayRequiresBoundAdjudicationAndExistingRegression(t *testing.
 		Reason: "fixed fixture regression",
 		Test:   "evidence_test.go:TestFixedRegression",
 	}
-	if err := verifyComparisonArtifact(t.Context(), root, write("comparison.json", comparison), after, observed); err != nil {
+	if err := verifyComparisonArtifact(t.Context(), root, write("comparison.json", comparison), after, observed, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "evidence_test.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyComparisonArtifact(t.Context(), root, write("comparison.json", comparison), after, observed, false); err != nil {
+		t.Fatal("historical adjudication depended on today's test file", err)
+	}
+	if err := verifyComparisonArtifact(t.Context(), root, write("comparison.json", comparison), after, observed, true); err == nil {
+		t.Fatal("explicit checkout audit accepted a missing regression test")
+	}
+	if err := os.WriteFile(filepath.Join(root, "evidence_test.go"), []byte("package fixture\nfunc TestFixedRegression() {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, reference := range []string{"wrong", "../outside_test.go:TestFixedRegression", "evidence_test.go:not_a_test", "missing_test.go:TestFixedRegression", "evidence_test.go:TestMissing"} {
 		change := comparison.Changes[0]
 		change.Adjudication = &adjudication{Reason: "fixture", Test: reference}
-		if verifyAdjudication(root, change) == nil {
+		if verifyAdjudication(root, change, true) == nil {
 			t.Fatal("unbound regression accepted", reference)
 		}
 	}
 	bad := comparison
 	bad.After.SHA256 = strings.Repeat("0", 64)
-	if verifyComparisonArtifact(context.Background(), root, write("comparison.json", bad), after, observed) == nil {
+	if verifyComparisonArtifact(context.Background(), root, write("comparison.json", bad), after, observed, true) == nil {
 		t.Fatal("changed current binding accepted")
 	}
 }

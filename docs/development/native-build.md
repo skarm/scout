@@ -107,8 +107,8 @@ git push origin v1.2.3
 Tags matching `v*` with a numeric major, minor and patch version trigger automatic
 publication. Tags such as `v1.2.3-rc.1` produce prereleases. The workflow runs native
 tests, race checks and binary linkage/selftest verification. The existing
-source-bound acceptance gate on macOS/Linux must also pass; changed sources require
-current acceptance evidence. Packaging reuses those exact checked binaries.
+recorded-evidence integrity check on macOS/Linux must also pass. Source edits do
+not require replacing historical receipts. Packaging reuses those exact checked binaries.
 All three archives are uploaded to a draft release before it becomes public.
 The standalone Go command `internal/dev/releasepack` creates the archives and
 checksums using only Go's standard library.

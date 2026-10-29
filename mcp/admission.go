@@ -21,6 +21,13 @@ func (s *Server) accept(ctx context.Context, sess *session, r request) (context.
 	callCtx, cancel := context.WithTimeout(ctx, s.options.Timeout)
 
 	sess.mu.Lock()
+	if sess.closed {
+		sess.mu.Unlock()
+		cancel()
+		<-s.slots
+
+		return ret("Session closed")
+	}
 
 	k := r.key
 	if sess.pending[k] != nil {

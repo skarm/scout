@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -139,6 +140,28 @@ func sourceInventory(ctx context.Context, root string) ([]file, []file, error) {
 	b, err := sourceHashes(ctx, root, developer)
 
 	return a, b, err
+}
+
+// Recorded inventories describe the measured revision. Validate their shape
+// without opening today's source files or requiring Go/Git to be installed.
+func validateSourceInventories(inventories ...[]file) error {
+	seen := map[string]bool{}
+
+	for _, inventory := range inventories {
+		if len(inventory) == 0 {
+			return errors.New("missing recorded source inventory")
+		}
+
+		for _, source := range inventory {
+			if !fs.ValidPath(source.Path) || source.Path == "." || strings.ContainsAny(source.Path, `\:`) || !hexDigest(source.SHA256, 64) || seen[source.Path] {
+				return errors.New("invalid or duplicate recorded source")
+			}
+
+			seen[source.Path] = true
+		}
+	}
+
+	return nil
 }
 
 func sourceHashes(ctx context.Context, root string, paths []string) ([]file, error) {

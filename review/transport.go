@@ -21,7 +21,7 @@ func (p *HTTPProvider) readResponse(ctx context.Context, req *http.Request) ([]b
 	// remain the transport result even if cleanup also fails.
 	defer func() { _ = resp.Body.Close() }()
 
-	if err := responseHeaders(resp, p.maxBytes); err != nil {
+	if err := validateResponseHeaders(resp, p.maxBytes); err != nil {
 		return nil, err
 	}
 
@@ -57,7 +57,7 @@ func responseFailure(ctx context.Context, err error) error {
 	return transportError("http_failed")
 }
 
-func responseHeaders(resp *http.Response, maxBytes int) error {
+func validateResponseHeaders(resp *http.Response, maxBytes int) error {
 	if resp.StatusCode != http.StatusOK {
 		return &TransportError{Code: "http_status", Status: resp.StatusCode}
 	}

@@ -89,7 +89,7 @@ jobs:
           set -euo pipefail
           go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -count=1 -timeout=10m ./... 2>&1 | tee "$RUNNER_TEMP/native-evidence/tests.log"
           go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -race -count=3 -timeout=15m ./... 2>&1 | tee "$RUNNER_TEMP/native-evidence/race.log"
-      - name: Mandatory source-bound acceptance after cleanup
+      - name: Recorded evidence integrity after cleanup
         run: |
           set -euo pipefail
           make clean
@@ -97,7 +97,7 @@ jobs:
           test ! -e bin/scout
           test ! -e bin/scout-core
           test ! -e bin/scout-dev
-          go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -tags=static_link,acceptance -run TestCurrentAcceptance -count=1 ./tests/acceptance \
+          go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -tags=static_link,acceptance -run TestRecordedAcceptance -count=1 ./tests/acceptance \
             2>&1 | tee "$RUNNER_TEMP/native-evidence/acceptance.log"
       - name: Build and verify a single binary
         run: |

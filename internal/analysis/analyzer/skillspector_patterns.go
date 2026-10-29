@@ -432,7 +432,7 @@ type familyAnalyzer struct {
 	patternHints   [][]string
 	python         python.Facts
 	pythonRule     string
-	native         languageFacts
+	languageFacts  languageFacts
 	exempt         func(string, int, int) bool
 	candidateLimit int
 	supplement     func(context.Context, string, func(int, int) bool, *Result) bool

@@ -155,6 +155,12 @@ func TestHTTPAuthOriginLifecycle(t *testing.T) {
 	if w = call(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`, id, "", auth); w.Code != 200 || !strings.Contains(w.Body.String(), "scan_skill") {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
+	if w = call(initMessage, id, "", auth); w.Code != 200 || !strings.Contains(w.Body.String(), `"error"`) {
+		t.Fatalf("reinitialization should return a protocol error: %d %s", w.Code, w.Body)
+	}
+	if w = call(`{"jsonrpc":"2.0","id":3,"method":"tools/list"}`, id, "", auth); w.Code != 200 || !strings.Contains(w.Body.String(), "scan_skill") {
+		t.Fatalf("failed reinitialization destroyed the active session: %d %s", w.Code, w.Body)
+	}
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "http://localhost/mcp", nil)
 	r.Header.Set("Authorization", auth)
 	r.Header.Set("Mcp-Session-Id", id)

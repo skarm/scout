@@ -44,8 +44,8 @@ func TestPatternShellRetainsPartialFactsOnError(t *testing.T) {
 	facts.Add(Match{Start: 1, End: 3})
 	facts.Finish(failure, false)
 	a := familyAnalyzer{
-		shellMode: shellDownload,
-		native:    languageFacts{"input.txt": {Rules: map[string]*check.Facts{"NV-SC2": facts}}},
+		shellMode:     shellDownload,
+		languageFacts: languageFacts{"input.txt": {Rules: map[string]*check.Facts{"NV-SC2": facts}}},
 	}
 	out := Result{}
 	err := a.addShell(context.Background(), d, 4, &out)

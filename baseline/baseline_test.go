@@ -440,6 +440,38 @@ func FuzzBaselineParser(f *testing.F) {
 	})
 }
 
+func TestMarshalRoundTripWithinByteAndEntryLimits(t *testing.T) {
+	r, now := baselineFixture()
+	doc, err := baseline.Create(r, "reviewed", now.Add(time.Hour), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := doc.Entries[0]
+	doc.Entries = make([]baseline.Entry, 800)
+	for i := range doc.Entries {
+		doc.Entries[i] = entry
+	}
+	raw, err := baseline.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := baseline.Parse(raw)
+	if err != nil || !reflect.DeepEqual(parsed, doc) {
+		t.Fatalf("valid baseline emitted by Marshal cannot be loaded: bytes=%d error=%v", len(raw), err)
+	}
+}
+
+func TestParseRejectsCaseAliasedApprovals(t *testing.T) {
+	for _, raw := range []string{
+		`{"version":1,"engine_version":"test","profile":"test","entries":[],"ENTRIES":[]}`,
+		`{"version":1,"engine_version":"test","profile":"test","entries":[{"kind":"glob","rule_id":"R*","path_glob":"src/*","reason":"reviewed","expires":"2099-01-01T00:00:00Z","approved":false,"APPROVED":true}]}`,
+	} {
+		if doc, err := baseline.Parse([]byte(raw)); err == nil {
+			t.Fatalf("ambiguous approval accepted: %+v", doc)
+		}
+	}
+}
+
 func baselineFixture() (report.Analysis, time.Time) {
 	return report.Analysis{
 		EngineVersion:  "fixture",

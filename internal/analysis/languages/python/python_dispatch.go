@@ -26,7 +26,7 @@ type pyCall struct {
 func (w *pyWalker) callExpression(n *frontend.Node, s *pyState, depth int) pyValue {
 	call := pyCall{node: n, function: n.Child(frontend.Func), args: n.List(frontend.Args)}
 	call.callable = w.expr(call.function, s, depth+1)
-	call.name = canonPy(call.callable.symbol())
+	call.name = canonicalSymbolName(call.callable.symbol())
 
 	if w.chainCalls == nil {
 		w.chainCalls = map[*frontend.Node]bool{}

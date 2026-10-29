@@ -145,7 +145,7 @@ func (a downloadCheck) Find(ctx context.Context, d document.File, budget int) (R
 }
 
 func (a downloadCheck) WithLanguageFacts(facts languageFacts) Analyzer {
-	a.native = facts
+	a.languageFacts = facts
 	return a
 }
 

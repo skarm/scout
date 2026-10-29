@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"reflect"
 	"regexp"
 	"strings"
@@ -126,7 +127,7 @@ func observationDelta(before, after []Observation) ([]Observation, []Observation
 	return append(added, after[j:]...), append(removed, before[i:]...)
 }
 
-func verifyComparisonArtifact(ctx context.Context, root string, artifact, replay artifact, after replayEvidence) error {
+func verifyComparisonArtifact(ctx context.Context, root string, artifact, replay artifact, after replayEvidence, currentSources bool) error {
 	var supplied Comparison
 	if err := readArtifactJSON(ctx, root, artifact, &supplied); err != nil {
 		return err
@@ -152,16 +153,16 @@ func verifyComparisonArtifact(ctx context.Context, root string, artifact, replay
 
 	actual.Before, actual.After = supplied.Before, supplied.After
 
-	return verifyChanges(root, actual, supplied)
+	return verifyChanges(root, actual, supplied, currentSources)
 }
 
-func verifyChanges(root string, actual, supplied Comparison) error {
+func verifyChanges(root string, actual, supplied Comparison, currentSources bool) error {
 	if len(actual.Changes) != len(supplied.Changes) {
 		return errors.New("comparison changed-row inventory differs")
 	}
 
 	for i := range supplied.Changes {
-		if err := verifyAdjudication(root, supplied.Changes[i]); err != nil {
+		if err := verifyAdjudication(root, supplied.Changes[i], currentSources); err != nil {
 			return err
 		}
 
@@ -175,14 +176,18 @@ func verifyChanges(root string, actual, supplied Comparison) error {
 	return nil
 }
 
-func verifyAdjudication(root string, change change) error {
+func verifyAdjudication(root string, change change, currentSources bool) error {
 	if change.Adjudication == nil || strings.TrimSpace(change.Adjudication.Reason) == "" {
 		return fmt.Errorf("unadjudicated observation change: %s", change.ID)
 	}
 
 	path, name, found := strings.Cut(change.Adjudication.Test, ":")
-	if !found || !strings.HasSuffix(path, "_test.go") || !(strings.HasPrefix(name, "Test") && len(name) > 4 && textmatch.Identifier(name, len(name))) {
+	if !found || !fs.ValidPath(path) || strings.ContainsAny(path, `\:`) || !strings.HasSuffix(path, "_test.go") || !(strings.HasPrefix(name, "Test") && len(name) > 4 && textmatch.Identifier(name, len(name))) {
 		return errors.New("adjudication requires repo-relative _test.go:TestName")
+	}
+
+	if !currentSources {
+		return nil
 	}
 
 	data, err := readJSONSource(root, path)
