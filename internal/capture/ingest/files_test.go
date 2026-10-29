@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -22,7 +23,7 @@ func TestSelectedFilesCaptureExactBytesAndEnforceBounds(t *testing.T) {
 			t.Fatal(err)
 		}
 		snapshot, err := ingest.Read(context.Background(), name, report.DefaultCaptureLimits())
-		if err != nil || len(snapshot.Files()) != 1 || snapshot.Files()[0].Content() != tc.data || !snapshot.Files()[0].Metadata().Executable {
+		if err != nil || len(snapshot.Files()) != 1 || snapshot.Files()[0].Content() != tc.data || snapshot.Files()[0].Metadata().Executable != (runtime.GOOS != "windows") {
 			t.Fatal(snapshot, err)
 		}
 	}
@@ -36,6 +37,13 @@ func TestSelectedFilesCaptureExactBytesAndEnforceBounds(t *testing.T) {
 		if _, err := ingest.Read(context.Background(), target, report.DefaultCaptureLimits()); err == nil {
 			t.Fatal(target)
 		}
+	}
+	if err := ingest.ValidatePath("CON.txt", limits.MaxPathBytes, limits.MaxDepth); err == nil {
+		t.Fatal("reserved device name accepted")
+	}
+	// Windows reserves CON even with an extension; it cannot be a file fixture.
+	if runtime.GOOS == "windows" {
+		return
 	}
 	if err := os.WriteFile(filepath.Join(dir, "CON.txt"), []byte("unsafe name"), 0o600); err != nil {
 		t.Fatal(err)

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -87,9 +88,8 @@ func TestComparisonRuntimePlansAndCancelledRunsStayExplicit(t *testing.T) {
 		"scout":           &scanner,
 		"output":          &output,
 	}
-	selected, err := selectComparison(options{root: root, values: fields})
-	if err != nil || selected.upstream != upstream || selected.scanner != scanner {
-		t.Fatalf("comparison selection changed: %v", err)
+	selected := &comparisonSession{
+		root: root, upstream: upstream, scanner: scanner, scoutBinary: scanner, output: output,
 	}
 	upstreamArgs := comparisonCommand("upstream", "mcp_registry", scanner, scanner, "/input with spaces")
 	scoutArgs := comparisonCommand("scout", "static", scanner, scanner, "--input")
@@ -133,8 +133,9 @@ func TestComparisonRuntimePlansAndCancelledRunsStayExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runComparisonCase(ctx, output, environment.home, environment.profile, environment.env, scanner, scanner, cases[0]); !errors.Is(err, context.Canceled) {
-		t.Fatal("cancelled same-byte comparison ran")
+	// Windows resolves the unavailable sandbox executable before checking cancellation.
+	if _, err := runComparisonCase(ctx, output, environment.home, environment.profile, environment.env, scanner, scanner, cases[0]); err == nil || (runtime.GOOS != "windows" && !errors.Is(err, context.Canceled)) {
+		t.Fatalf("cancelled same-byte comparison was not rejected: %v", err)
 	}
 	tc := preparedCase{Root: t.TempDir(), Spec: object{"id": "empty"}, Files: []inventoryFile{}}
 	row := object{
@@ -240,16 +241,8 @@ func TestUpstreamSuitePlansPersistExactArgumentsAndExitEvidence(t *testing.T) {
 	root, upstream, _, _ := comparisonCorpus(t)
 	python := filepath.Join(t.TempDir(), "venv/bin/python")
 	output := filepath.Join(t.TempDir(), "suite")
-	session, err := selectUpstreamSuite(options{
-		root: root,
-		values: map[string]*string{
-			"upstream": &upstream,
-			"python":   &python,
-			"output":   &output,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
+	session := &upstreamSuiteSession{
+		root: root, upstream: upstream, python: python, output: output,
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -279,6 +272,45 @@ func TestUpstreamSuitePlansPersistExactArgumentsAndExitEvidence(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(output, "exit.json")); err != nil {
 		t.Fatal("exit evidence not retained")
+	}
+}
+
+func TestExternalRuntimeSelectionRequiresSandbox(t *testing.T) {
+	root, upstream, output, _ := comparisonCorpus(t)
+	scanner := maintenanceFile(t, t.TempDir(), "scanner", []byte("inert identity; never executable"))
+	python := filepath.Join(t.TempDir(), "venv/bin/python")
+	opts := options{
+		root: root,
+		values: map[string]*string{
+			"upstream-source": &upstream,
+			"upstream":        &upstream,
+			"skillspector":    &scanner,
+			"scout":           &scanner,
+			"python":          &python,
+			"output":          &output,
+		},
+	}
+	comparison, comparisonErr := selectComparison(opts)
+	suite, suiteErr := selectUpstreamSuite(opts)
+	if runtime.GOOS != "darwin" {
+		const want = "external upstream execution requires macOS sandbox-exec"
+		if comparison != nil || comparisonErr == nil || comparisonErr.Error() != want {
+			t.Fatalf("comparison selection bypassed sandbox admission: %v, %v", comparison, comparisonErr)
+		}
+		if suite != nil || suiteErr == nil || suiteErr.Error() != want {
+			t.Fatalf("suite selection bypassed sandbox admission: %v, %v", suite, suiteErr)
+		}
+		return
+	}
+	if comparisonErr != nil || !reflect.DeepEqual(comparison, &comparisonSession{
+		root: root, upstream: upstream, scanner: scanner, scoutBinary: scanner, output: output,
+	}) {
+		t.Fatalf("comparison selection changed: %v, %v", comparison, comparisonErr)
+	}
+	if suiteErr != nil || !reflect.DeepEqual(suite, &upstreamSuiteSession{
+		root: root, upstream: upstream, python: python, output: output,
+	}) {
+		t.Fatalf("suite selection changed: %v, %v", suite, suiteErr)
 	}
 }
 

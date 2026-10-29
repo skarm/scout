@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestActualPythonAndTOML(t *testing.T) {
 func TestNeverExecutesPythonSource(t *testing.T) {
 	o := options(t)
 	target := filepath.Join(t.TempDir(), "MUST_NOT_EXIST")
-	src := "from pathlib import Path\nPath(" + `"` + target + `"` + ").write_text('executed')\nraise RuntimeError('not parse error')"
+	src := "from pathlib import Path\nPath(" + strconv.Quote(target) + ").write_text('executed')\nraise RuntimeError('not parse error')"
 	if _, e := frontend.Parse(context.Background(), o, "python", src); e != nil {
 		t.Fatal(e)
 	}

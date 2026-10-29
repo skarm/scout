@@ -97,7 +97,7 @@ func TestSandboxPlansRemainExplicitAndCancellationDoesNotRunAnOracle(t *testing.
 		t.Fatal("cancelled oracle suite succeeded")
 	}
 	for _, name := range []string{"stdout.log", "stderr.log"} {
-		if info, err := os.Stat(filepath.Join(output, name)); err != nil || info.Mode().Perm() != 0o600 {
+		if info, err := os.Stat(filepath.Join(output, name)); err != nil || !info.Mode().IsRegular() || (goruntime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 			t.Fatal("cancelled workflow did not retain private logs")
 		}
 	}
