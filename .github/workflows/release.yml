@@ -37,14 +37,19 @@ jobs:
             exit 1
           fi
 
-  build:
-    name: Test and build all three platforms
+  checks:
+    name: Lint and regression checks
     needs: version
     uses: ./.github/workflows/ci.yml
 
+  candidates:
+    name: Test and build all three platforms
+    needs: version
+    uses: ./.github/workflows/native-validation.yml
+
   package:
     name: Package verified candidates
-    needs: build
+    needs: [checks, candidates]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:

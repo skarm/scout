@@ -44,9 +44,41 @@ jobs:
         run: make lint
 
   native:
-    name: Full native engines
+    name: Native regressions (Linux)
     if: github.event_name != 'push' || !github.event.deleted
-    uses: ./.github/workflows/native-validation.yml
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: '1'
+      GOTOOLCHAIN: local
+      GOPROXY: https://proxy.golang.org
+      GOSUMDB: sum.golang.org
+      GONOSUMDB: ''
+      GOPRIVATE: ''
+      GONOPROXY: ''
+      PKG_CONFIG_PATH: ''
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          check-latest: false
+      - name: Authenticate module and native dependencies
+        run: make deps native-deps
+      - name: Native tests, race checks and recorded evidence
+        env:
+          GOPROXY: 'off'
+        run: |
+          make test race
+          make clean
+          make acceptance
 
   core:
     name: Reduced build regressions

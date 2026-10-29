@@ -87,6 +87,11 @@ resulting version. See [validation](validation.md) for test and acceptance comma
 
 ## GitHub Actions releases
 
+Branch pushes and pull requests run lint, core and Linux native tests with race
+checks, recorded-evidence integrity checks and host adapter boundary tests.
+Full macOS/Linux/Windows validation and release candidate builds run on version
+tags or an explicit manual workflow run.
+
 The **Scout release** workflow builds three full native distributions:
 
 - `scout-vX.Y.Z-macos-arm64.tar.gz`: Apple Silicon, macOS 15+.

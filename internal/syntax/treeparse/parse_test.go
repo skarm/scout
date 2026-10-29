@@ -19,6 +19,7 @@ import (
 	typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 
 	"github.com/skarm/scout/internal/syntax/treeparse"
+	"github.com/skarm/scout/internal/syntax/treeparse/internal/nativetest"
 )
 
 type (
@@ -203,102 +204,28 @@ func TestCancellationCloseAndReuseStress(t *testing.T) {
 
 func TestNativeProgressInterruptsWorkBetweenInputReads(t *testing.T) {
 	// Fits in one input chunk, but ambiguous generics require substantial parser
-	// work after delivery. Read-only cancellation cannot interrupt that work.
-	text := []byte("let x=" + strings.Repeat("A<", 1200) + "T" + strings.Repeat(">", 1200) + ";\n")
-	language := sitter.NewLanguage(typescript.LanguageTypescript())
-	oracle := sitter.NewParser()
-	defer oracle.Close()
-	if err := oracle.SetLanguage(language); err != nil {
-		t.Fatal(err)
-	}
-	baseline := time.Hour
-	for range 3 {
-		start := time.Now()
-		tree := oracle.Parse(text, nil)
-		if tree == nil {
-			t.Fatal("reference parse failed")
-		}
-		tree.Close()
-		baseline = min(baseline, time.Since(start))
-	}
-	parser := treeparse.NewParser()
-	defer parser.Close()
-	if err := parser.SetLanguage(language); err != nil {
-		t.Fatal(err)
-	}
+	// work after delivery. The native logger interrupts at a fixed reduction;
+	// accepting a tree before discarding it is a failure, regardless of speed.
+	text := "let x=" + strings.Repeat("A<", 1200) + "T" + strings.Repeat(">", 1200) + ";\n"
 	for _, mode := range []string{"deadline", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
-			fastest := time.Hour
-			for range 5 {
-				ctx, cancel := context.WithCancel(t.Context())
-				budget := min(100*time.Microsecond, baseline/20)
-				deadline := time.Now().Add(budget)
-				stop := func() bool { return true }
-				if mode == "cancel" {
-					deadline = time.Now().Add(time.Second)
-					stop = time.AfterFunc(budget, cancel).Stop
-				}
-				start := time.Now()
-				tree := treeparse.Parse(ctx, parser, text, deadline)
-				elapsed := time.Since(start)
-				stop()
-				cancel()
-				if tree != nil {
-					tree.Close()
-					// A Go timer can run after native parsing finishes. That
-					// attempt did not exercise cancellation; retry it.
-					if mode == "cancel" {
-						continue
-					}
-					t.Fatal("interrupted parse returned a tree")
-				}
-				fastest = min(fastest, elapsed)
-			}
-			// Compare on the same machine instead of imposing an absolute timing
-			// bound. Repetition tolerates isolated scheduler stalls in loaded CI.
-			if fastest >= baseline/2 {
-				t.Fatalf("%s did not interrupt native work: fastest=%s, whole parse=%s", mode, fastest, baseline)
+			if err := nativetest.CheckProgress(typescript.LanguageTypescript(), text, "reduce ", mode == "deadline"); err != nil {
+				t.Fatal(err)
 			}
 		})
-	}
-	// A cancelled native stack must never be resumed as a later request.
-	tree := treeparse.Parse(t.Context(), parser, []byte("let answer = 42;\n"), time.Now().Add(time.Second))
-	if tree == nil {
-		t.Fatal("parser did not recover after cancellation")
-	}
-	defer tree.Close()
-	if tree.RootNode().HasError() || tree.RootNode().EndByte() != 17 {
-		t.Fatal("cancelled request contaminated the next tree")
 	}
 }
 
 func TestFlatTreeDeadlineAndReuse(t *testing.T) {
-	// Flat repetitions exercise tree balancing as well as parsing. Sweep the
-	// deadline across both phases; testdata/lifecycle.c also cancels balancing
-	// deterministically through the native logger.
-	p := newLifecycleParser(t)
-	defer p.Close()
-	text := []byte(strings.Repeat("let value = 1;\n", 4000))
-	baseline := time.Hour
-	for range 3 {
-		start := time.Now()
-		tree := treeparse.Parse(t.Context(), p, text, time.Now().Add(5*time.Second))
-		if tree == nil {
-			t.Fatal("reference parse failed")
-		}
-		baseline = min(baseline, time.Since(start))
-		tree.Close()
-	}
-	for i := 1; i <= 128; i++ {
-		budget := baseline * time.Duration(i) / 64
-		tree := treeparse.Parse(t.Context(), p, text, time.Now().Add(budget))
-		if tree != nil {
-			if tree.RootNode().HasError() || tree.RootNode().EndByte() != uint(len(text)) {
-				t.Error("deadline parse returned an invalid or partial tree")
+	// Interrupt after acceptance, when a flat tree still requires balancing.
+	// The native check requires interruption before completion and a clean reuse.
+	text := strings.Repeat("let value = 1;\n", 4000)
+	for _, mode := range []string{"deadline", "cancel"} {
+		t.Run(mode, func(t *testing.T) {
+			if err := nativetest.CheckProgress(typescript.LanguageTypescript(), text, "accept", mode == "deadline"); err != nil {
+				t.Fatal(err)
 			}
-			tree.Close()
-		}
-		assertReusableParser(t, p)
+		})
 	}
 }
 

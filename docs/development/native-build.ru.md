@@ -89,6 +89,11 @@ make build VERSION="$GITHUB_SHA"
 
 ## Релизы через GitHub Actions
 
+При push в ветку и в pull request запускаются линтер, core- и нативные Linux-тесты
+с проверками гонок, целостности сохранённых измерений и границ host-адаптеров.
+Полная проверка macOS/Linux/Windows и сборка релизных бинарников запускаются по
+версионному тегу или явно вручную.
+
 Workflow **Scout release** собирает три полные нативные версии:
 
 - `scout-vX.Y.Z-macos-arm64.tar.gz`: Apple Silicon, macOS 15+.
