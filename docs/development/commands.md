@@ -5,7 +5,6 @@ Contents
 - [Evaluation and release checks](#evaluation-and-release-checks)
 - [Saved sources and replay](#saved-sources-and-replay)
 - [Source-bound provenance](#source-bound-provenance)
-- [External experiments](#external-experiments)
 - [Tree-sitter memory checks](#tree-sitter-memory-checks)
 
 English · [Русский](commands.ru.md)
@@ -40,12 +39,6 @@ See [evaluation](evaluation.md) and [validation](validation.md).
   to fetch missing files.
 - `check-knowledge-runtime --binary SCOUT --output NEW_DIR`: check static scans and
   scripted local reviewer transport.
-- `compare-upstream-suite prepare --capture SAVED_DIR --replay NEW_DIR`: verify blobs
-  and prepare replay inputs.
-- `compare-upstream-suite compare --capture SAVED_DIR --replay REPLAY_DIR
-  --results RESULTS_JSONL --output DIFFERENCES_JSON`: compare replay with saved observations.
-- `adjudicate-upstream-suite --upstream SOURCE --before OLD_DIFFERENCES_JSON
-  --after DIFFERENCES_JSON --results RESULTS_JSONL --output LEDGER_JSON`: record reviewed differences.
 
 ```sh
 scout-dev replay --input captures.jsonl.gz --output replay-results.jsonl \
@@ -57,8 +50,13 @@ results and runtime faults are counted separately. Use fresh output directories.
 
 ## Source-bound provenance
 
-The active receipt is `testdata/provenance/scout-current-review.json`.
-Stage new runs in `.work/`; replace `testdata/provenance/current/` when accepted.
+The recorded receipt is `testdata/provenance/scout-current-review.json`.
+Ordinary verification checks its saved artifacts without comparing today's source
+files. Code edits do not require a new receipt. Use `provenance verify --current-sources`
+only to audit whether that measurement describes the current checkout; the output's
+`current_sources_checked` field distinguishes this audit from recorded-evidence verification.
+
+When intentionally recording a new measurement, stage new runs in `.work/`; replace `testdata/provenance/current/` when accepted.
 Set `SCOUT_EVIDENCE_DIR` to the replay and release-check directory:
 
 ```sh
@@ -83,29 +81,21 @@ Acceptance uses `testdata/acceptance/upstream-inputs.jsonl.gz`.
 Explicit `--input-mode pinned` is available for separate checks without that capture.
 
 The receipt's `engine_version` identifies the measured build; before the first
-release, a commit SHA is sufficient. Verification checks exact source hashes and
-requires replay and binary selftests to match that recorded identifier. It does
-not require the verifier itself to have the same tag or commit-derived version.
+release, a commit SHA is sufficient. Verification requires replay and binary
+selftests to match that recorded identifier. Exact current source hashes are checked
+only with `--current-sources`. The verifier itself may have a different tag or
+commit-derived version.
 Use `provenance verify --expected-version BUILD_ID` to require a particular
 measured identifier as an additional check.
 
-## External experiments
-
-These commands execute external tools and are separate from ordinary Go gates:
-
-- `compare-upstream --upstream-source SOURCE --skillspector CLI
-  --scout SCOUT --output NEW_DIR`: compare the pinned corpus through both CLIs.
-- `run-upstream-suite --upstream SOURCE --python PYTHON --output NEW_DIR`: run the
-  pinned pytest suite under macOS `sandbox-exec`, with public networking denied.
-
 ## Tree-sitter memory checks
 
-The C harness requires Python 3, Clang and downloaded Go modules:
+The C harness requires Go, Clang and downloaded Go modules:
 
 ```sh
-python3 internal/dev/maintenance/treeparse_sanitize.py --sanitizer address --output /tmp/treeparse-asan
-python3 internal/dev/maintenance/treeparse_sanitize.py --sanitizer thread --output /tmp/treeparse-tsan
-python3 internal/dev/maintenance/treeparse_sanitize.py --sanitizer none --output /tmp/treeparse-plain
+go run ./internal/dev/treeparsecheck --sanitizer address --output /tmp/treeparse-asan
+go run ./internal/dev/treeparsecheck --sanitizer thread --output /tmp/treeparse-tsan
+go run ./internal/dev/treeparsecheck --sanitizer none --output /tmp/treeparse-plain
 MallocStackLogging=1 leaks --atExit -- /tmp/treeparse-plain 1000
 ```
 

@@ -2,11 +2,17 @@ package review_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -218,24 +224,95 @@ func TestHTTPResponseBudgetAndCancellation(t *testing.T) {
 }
 
 func TestHTTPSWithExplicitCA(t *testing.T) {
-	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	certificate, root := localhostTLSCertificate(t)
+	for _, tc := range []struct {
+		name, endpoint string
+		trusted, valid bool
+	}{
+		{name: "trusted", endpoint: "https://127.0.0.1/api", trusted: true, valid: true},
+		{name: "untrusted", endpoint: "https://127.0.0.1/api", trusted: false, valid: false},
+		{name: "wrong-host", endpoint: "https://[::1]/api", trusted: true, valid: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := httpOptions(tc.endpoint)
+			o.Timeout = 5 * time.Second
+			o.RootCAs = x509.NewCertPool()
+			if tc.trusted {
+				o.RootCAs.AddCert(root)
+			}
+			p, err := review.NewHTTP(o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Capture the original error only for this credential-free local fixture.
+			// Public provider errors deliberately omit network and endpoint details.
+			client := review.HTTPClientForTest(p)
+			// Keep the real HTTP/TLS transport, including its CA and hostname checks.
+			// The fixture supplies the connection; it does not supply TLS verification.
+			client.Transport.(*http.Transport).DialContext = localTLSDialer(t, certificate)
+			transport := &observedHTTPTransport{base: client.Transport}
+			client.Transport = transport
+			_, err = p.Complete(t.Context(), payload())
+			if tc.valid {
+				if err != nil {
+					t.Fatalf("trusted CA request failed: %v; transport cause: %T: %v", err, transport.err, transport.err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("invalid server certificate accepted")
+			}
+			if _, ok := errors.AsType[*tls.CertificateVerificationError](transport.err); !ok {
+				t.Fatalf("expected certificate rejection, got %v; transport cause: %T: %v", err, transport.err, transport.err)
+			}
+		})
+	}
+}
+
+func localhostTLSCertificate(t *testing.T) (tls.Certificate, *x509.Certificate) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1), NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true, IsCA: true,
+		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}, root
+}
+
+func tlsFixtureHandler(t *testing.T) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if _, err := io.WriteString(w, apiEnvelope("{}")); err != nil {
 			t.Error(err)
 		}
-	}))
-	defer s.Close()
-	o := httpOptions(s.URL + "/api")
-	pool := x509.NewCertPool()
-	pool.AddCert(s.Certificate())
-	o.RootCAs = pool
-	p, e := review.NewHTTP(o)
-	if e != nil {
-		t.Fatal(e)
 	}
-	if _, e = p.Complete(context.Background(), payload()); e != nil {
-		t.Fatal(e)
-	}
+}
+
+type observedHTTPTransport struct {
+	base http.RoundTripper
+	err  error
+}
+
+func (t *observedHTTPTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(r)
+	t.err = err
+	return response, err
 }
 
 func TestEndpointAndOptionValidation(t *testing.T) {

@@ -19,9 +19,6 @@ var additionalPatterns = func() map[string][]Pattern {
 
 // Pattern records a supplemental expression, its source and its adaptation
 // notes.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type Pattern struct {
 	// Expression contains the supplemental pattern expression associated with a
 	// rule.

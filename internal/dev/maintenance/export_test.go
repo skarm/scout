@@ -4,11 +4,10 @@ package maintenance
 
 import (
 	"context"
-	"errors"
 	"io"
-)
 
-type TestSiteForTest = testSite
+	"github.com/skarm/scout/report"
+)
 
 // These bridges expose maintenance internals only in the native test binary.
 func CheckKnowledgeRuntimeForTest(ctx context.Context, binary, output string, w io.Writer) error {
@@ -24,24 +23,6 @@ func InvokeCLIForTest(ctx context.Context, binary string, args ...string) ([]byt
 	return invokeCLI(ctx, binary, args...)
 }
 
-func NormalizeScoutComparisonForTest(data []byte, code int) (int, error) {
-	normalized, err := normalizeComparisonResult(object{}, "scout", processResult{Stdout: data, Code: code})
-	if err != nil {
-		return 0, err
-	}
-	findings, ok := normalized[findingsKey].([]object)
-	if !ok {
-		return 0, errors.New("comparison findings have an unexpected type")
-	}
-	return len(findings), nil
-}
-
-func ValidateScoutDocumentForTest(data []byte) error {
-	_, err := decodeScoutDocument(data)
-	return err
-}
-
-func LocateTestForTest(ctx context.Context, upstream, id string) (TestSiteForTest, error) {
-	a := adjudicator{upstream: upstream, cachedSites: map[string]testSite{}}
-	return a.locateTest(ctx, id)
+func DecodeScoutDocumentForTest(data []byte) (report.Document, error) {
+	return decodeScoutDocument(data)
 }

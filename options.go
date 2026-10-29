@@ -52,8 +52,6 @@ type (
 	}
 	// CaptureLimits bounds inventory traversal and captured bytes for each target.
 	// All limits must be positive.
-	// Part of the supported Go API for callers outside this repository.
-	//goland:noinspection GoUnnecessarilyExportedIdentifiers
 	CaptureLimits struct {
 		// MaxEntries limits inventoried entries, including unread and rejected
 		// entries.
@@ -88,8 +86,6 @@ type AnalysisLimits struct {
 type (
 	// RetentionLimits bounds the findings retained across a run. Omitted findings
 	// make the run incomplete.
-	// Part of the supported Go API for callers outside this repository.
-	//goland:noinspection GoUnnecessarilyExportedIdentifiers
 	RetentionLimits struct {
 		// MaxFindings bounds retained findings. Exceeding it leaves an explicit
 		// completeness gap.
@@ -125,9 +121,6 @@ type (
 
 // SignatureOptions configures YARA-X rules and the per-input execution
 // timeout.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type SignatureOptions struct {
 	// ExtraRules contains additional trusted operator-supplied YARA source.
 	ExtraRules []byte

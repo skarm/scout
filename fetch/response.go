@@ -31,7 +31,7 @@ func downloadResponse(ctx context.Context, req *http.Request, options Options) (
 	}
 	defer func() { _ = resp.Body.Close() }() // Read/admission errors determine the response; closing only releases the transport.
 
-	if err := responseHeaders(resp, options.MaxBytes); err != nil {
+	if err := validateResponseHeaders(resp, options.MaxBytes); err != nil {
 		return nil, err
 	}
 
@@ -63,7 +63,7 @@ func requestFailure(ctx context.Context, err error) error {
 	return fail("request_failed")
 }
 
-func responseHeaders(resp *http.Response, maxBytes int64) error {
+func validateResponseHeaders(resp *http.Response, maxBytes int64) error {
 	if resp.StatusCode != http.StatusOK {
 		return fail("http_status")
 	}

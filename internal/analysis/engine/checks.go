@@ -4,13 +4,13 @@ import (
 	"context"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
-	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/validation"
 	"github.com/skarm/scout/report"
 )
 
-func (e *Engine) runCheck(ctx context.Context, a analyzer.Analyzer, rule report.Rule, files []document.File, byPath map[string]document.File, budget int, plan *validation.Ledger) (out outcome) {
+func (e *Engine) runCheck(ctx context.Context, a check.Analyzer, rule report.Rule, files []document.File, byPath map[string]document.File, budget int, plan *validation.Ledger) (out outcome) {
 	out.check = report.Check{AnalyzerID: rule.ID, Version: rule.Version, Status: report.OutcomeCompleted}
 
 	// Panic text is untrusted and can contain source content. Do not leak it.
@@ -69,7 +69,7 @@ func (e *Engine) runCheck(ctx context.Context, a analyzer.Analyzer, rule report.
 		}
 
 		var (
-			result analyzer.Result
+			result check.Result
 			err    error
 		)
 
@@ -84,7 +84,7 @@ func (e *Engine) runCheck(ctx context.Context, a analyzer.Analyzer, rule report.
 	return out
 }
 
-func acceptAnalyzerResult(out *outcome, rule report.Rule, doc document.File, result analyzer.Result, err error, byPath map[string]document.File, budget, index int) {
+func acceptAnalyzerResult(out *outcome, rule report.Rule, doc document.File, result check.Result, err error, byPath map[string]document.File, budget, index int) {
 	f := doc.Artifact()
 
 	failed := err != nil
@@ -138,7 +138,7 @@ func acceptAnalyzerResult(out *outcome, rule report.Rule, doc document.File, res
 	}
 }
 
-func (out *outcome) planFiles(a analyzer.Analyzer, rule report.Rule, files []document.File, plan *validation.Ledger) {
+func (out *outcome) planFiles(a check.Analyzer, rule report.Rule, files []document.File, plan *validation.Ledger) {
 	out.fileChecks = make([]report.FileCheck, len(files))
 	for i := range files {
 		out.fileChecks[i] = report.FileCheck{AnalyzerID: rule.ID, Status: report.OutcomeNotRun}
@@ -160,7 +160,7 @@ func (out *outcome) planFiles(a analyzer.Analyzer, rule report.Rule, files []doc
 	}
 }
 
-func (out *outcome) appendMatches(rule report.Rule, doc document.File, matches []analyzer.Match, byPath map[string]document.File) bool {
+func (out *outcome) appendMatches(rule report.Rule, doc document.File, matches []check.Match, byPath map[string]document.File) bool {
 	valid := true
 
 	for _, m := range matches {

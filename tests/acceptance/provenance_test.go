@@ -15,7 +15,7 @@ const (
 	captureIDsSHA = "8822cc765d0341faef0fcaeb583b8e147ed1527030f417976c24af870241cb2f"
 )
 
-func TestCurrentAcceptance(t *testing.T) {
+func TestRecordedAcceptance(t *testing.T) {
 	manifest, err := provenance.Read("../..", "testdata/provenance/scout-current-review.json")
 	if err != nil {
 		t.Fatal(err)
@@ -29,8 +29,8 @@ func TestCurrentAcceptance(t *testing.T) {
 	if manifest.Input.Path != capturePath || manifest.Input.SHA256 != captureSHA || manifest.InputIDsSHA256 != captureIDsSHA {
 		t.Fatal("acceptance differs from trusted capture pins")
 	}
-	// Exact source hashes bind the measured build to this checkout. A new tag or
-	// commit can change the verifier's identifier without changing those sources.
+	// Verify the saved measurement independently of this checkout. Current code
+	// behavior is exercised by the ordinary native and regression suites.
 	if err := provenance.Verify(context.Background(), "../..", manifest, provenance.Verification{
 		Version:   manifest.Version,
 		InputMode: provenance.InputFile,

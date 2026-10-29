@@ -1,6 +1,7 @@
 package architecture_test
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -36,6 +37,50 @@ func TestReportContractDoesNotImportRuntime(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Execution consumes check contracts directly. The registry's aliases are an
+// implementation convenience for its own checks, not a second contract owner.
+func TestCheckConsumersUseOwningPackage(t *testing.T) {
+	root := filepath.Join("..", "..")
+	visitProductionSource(t, root, func(_ string, file *ast.File, positions *token.FileSet) {
+		registry := ""
+		for _, spec := range file.Imports {
+			if spec.Path.Value == `"github.com/skarm/scout/internal/analysis/analyzer"` {
+				registry = "analyzer"
+				if spec.Name != nil {
+					registry = spec.Name.Name
+				}
+			}
+		}
+		if registry == "" {
+			return
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			owner, ok := selector.X.(*ast.Ident)
+			if ok && owner.Name == registry && slices.Contains([]string{"Analyzer", "Match", "Trace", "Result"}, selector.Sel.Name) {
+				t.Errorf("%s: use check.%s from the contract owner", positions.Position(selector.Pos()), selector.Sel.Name)
+			}
+			return true
+		})
+	})
+}
+
+func TestEngineImportsRegistryOnlyDuringPreparation(t *testing.T) {
+	visitProductionSource(t, filepath.Join("..", ".."), func(path string, file *ast.File, _ *token.FileSet) {
+		if !strings.HasPrefix(path, "internal/analysis/engine/") || path == "internal/analysis/engine/execution.go" {
+			return
+		}
+		for _, spec := range file.Imports {
+			if spec.Path.Value == `"github.com/skarm/scout/internal/analysis/analyzer"` {
+				t.Errorf("%s: registry binding belongs to execution preparation; use shared contracts and file classification directly", path)
+			}
+		}
+	})
 }
 
 func TestPackageDependencyBoundaries(t *testing.T) {

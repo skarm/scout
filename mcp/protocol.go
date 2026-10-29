@@ -63,7 +63,7 @@ func (s *Server) initialize(sess *session, r request) *response {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 
-	if sess.initialized {
+	if sess.initialized || sess.closed {
 		return rpcFailure(r.ID, -32600, "Already initialized")
 	}
 
@@ -184,7 +184,7 @@ func handleNotification(sess *session, r request) {
 	switch r.Method {
 	case "notifications/initialized":
 		sess.mu.Lock()
-		if sess.initialized {
+		if sess.initialized && !sess.closed {
 			sess.ready = true
 		}
 		sess.mu.Unlock()

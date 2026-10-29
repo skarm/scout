@@ -86,8 +86,6 @@ func (b embeddedBackend) Parse(ctx context.Context, v source.View) (any, error) 
 }
 
 // RuntimeIdentity implements the cross-package parser identity interface.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 func (t PythonTree) RuntimeIdentity() string { return t.Runtime }
 
 func frontendFailure(err error) error {

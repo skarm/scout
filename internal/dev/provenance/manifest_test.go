@@ -34,6 +34,9 @@ func TestGenerateVerifyAndSourceMutation(t *testing.T) {
 		"go.mod": "module example.invalid/receipt\n\ngo 1.26.0\n", "go.sum": "",
 		"scan.go":                            "package receipt\nimport _ \"example.invalid/receipt/internal/analysis/engine\"\n",
 		"internal/analysis/engine/engine.go": "package engine\n",
+		"internal/analysis/engine/native.go": "//go:build !coreonly && cgo\n\npackage engine\nimport \"C\"\n",
+		"internal/analysis/engine/native.c":  "//go:build !coreonly && cgo\n\nint scout_fixture(void) { return 1; }\n",
+		"internal/analysis/engine/native.h":  "int scout_fixture(void);\n",
 		"cmd/scout/main.go":                  "package main\nimport _ \"example.invalid/receipt\"\nfunc main(){}\n",
 		"cmd/scout-dev/main.go":              "package main\nfunc main(){}\n",
 	}
@@ -103,7 +106,7 @@ func TestGenerateVerifyAndSourceMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Summary.Inputs != 1 || m.Summary.Complete != 1 || !m.SourceDirty || len(m.ProductSources) != 5 || len(m.DeveloperSources) != 1 {
+	if m.Summary.Inputs != 1 || m.Summary.Complete != 1 || !m.SourceDirty || len(m.ProductSources) != 8 || len(m.DeveloperSources) != 1 {
 		t.Fatalf("incorrect source-bound receipt: %+v", m)
 	}
 	encode("manifest.json", m)
@@ -113,6 +116,7 @@ func TestGenerateVerifyAndSourceMutation(t *testing.T) {
 	}
 	for _, expected := range []Verification{
 		{Version: "fixture", InputMode: InputFile},
+		{Version: "fixture", InputMode: InputFile, CurrentSources: true},
 		{
 			Version:   "fixture",
 			InputMode: inputPinned,
@@ -129,6 +133,9 @@ func TestGenerateVerifyAndSourceMutation(t *testing.T) {
 		func(m *Manifest) { m.SourceCommit = "bad" }, func(m *Manifest) { m.Summary.Inputs = 0 },
 		func(m *Manifest) { m.InputIDsSHA256 = "bad" }, func(m *Manifest) { m.Replay.UncompressedSHA256 = "bad" },
 		func(m *Manifest) { m.ProductSources = nil }, func(m *Manifest) { m.DeveloperSources = nil },
+		func(m *Manifest) { m.ProductSources = []file{{Path: "../outside.go", SHA256: strings.Repeat("a", 64)}} },
+		func(m *Manifest) { m.ProductSources = []file{{Path: "scan.go", SHA256: "invalid"}} },
+		func(m *Manifest) { m.DeveloperSources = m.ProductSources },
 		func(m *Manifest) { m.Summary.Findings++ },
 	}
 	for i, change := range invalid {
@@ -139,14 +146,53 @@ func TestGenerateVerifyAndSourceMutation(t *testing.T) {
 		}
 	}
 	write("internal/analysis/engine/engine.go", []byte("package engine\nfunc Changed(){}\n"))
-	if Verify(t.Context(), root, m, Verification{Version: "fixture", InputMode: InputFile}) == nil {
+	if err := Verify(t.Context(), root, m, Verification{Version: "fixture", InputMode: InputFile}); err != nil {
+		t.Fatalf("editing current source invalidated recorded evidence: %v", err)
+	}
+	if Verify(t.Context(), root, m, Verification{Version: "fixture", InputMode: InputFile, CurrentSources: true}) == nil {
 		t.Fatal("source replacement accepted")
+	}
+	write("internal/analysis/engine/engine.go", []byte(files["internal/analysis/engine/engine.go"]))
+	for _, path := range []string{"internal/analysis/engine/native.c", "internal/analysis/engine/native.h"} {
+		write(path, []byte(files[path]+"\n// changed native source\n"))
+		if Verify(t.Context(), root, m, Verification{Version: "fixture", InputMode: InputFile, CurrentSources: true}) == nil {
+			t.Fatalf("native source replacement accepted: %s", path)
+		}
+		write(path, []byte(files[path]))
 	}
 	if _, err := Generate(nil, opts); err == nil {
 		t.Fatal("nil generation context accepted")
 	}
 	if err := Verify(context.Background(), root, m, Verification{Version: "other", InputMode: InputFile}); err == nil {
 		t.Fatal("foreign receipt accepted")
+	}
+}
+
+func TestRecordedVerificationNeedsEvidenceButNoSourceCheckout(t *testing.T) {
+	fixture := verificationArtifactFixture(t)
+	m := fixture.manifest
+	m.Schema = schema
+	m.SourceCommit = strings.Repeat("c", 40)
+	m.ProductSources = []file{{Path: "recorded.go", SHA256: strings.Repeat("d", 64)}}
+	m.DeveloperSources = []file{{Path: "tools/recorded.go", SHA256: strings.Repeat("e", 64)}}
+	m.Input = fixture.write(t, "input.jsonl", map[string]any{
+		"id": strings.Repeat("a", 64), "files": []any{},
+	})
+	m.InputIDsSHA256 = idsDigest(fixture.observed.ids)
+	expected := Verification{Version: m.Version, InputMode: InputFile}
+	if err := Verify(t.Context(), fixture.root, m, expected); err != nil {
+		t.Fatal("recorded evidence required a source checkout", err)
+	}
+
+	expected.CurrentSources = true
+	if err := Verify(t.Context(), fixture.root, m, expected); err == nil {
+		t.Fatal("explicit checkout audit accepted missing sources")
+	}
+
+	expected.CurrentSources = false
+	fixture.writeBytes(t, "after.jsonl", []byte("corrupted evidence\n"))
+	if err := Verify(t.Context(), fixture.root, m, expected); err == nil {
+		t.Fatal("recorded verification accepted corrupted replay bytes")
 	}
 }
 
@@ -189,7 +235,7 @@ func TestVerificationBindsAccountingAndArtifactBytes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := verificationArtifactFixture(t)
 			tc.change(t, fixture)
-			if err := verifyArtifacts(t.Context(), fixture.root, fixture.manifest, fixture.observed); err == nil {
+			if err := verifyArtifacts(t.Context(), fixture.root, fixture.manifest, fixture.observed, false); err == nil {
 				t.Fatal("receipt accepted altered accounting or artifact")
 			}
 		})
@@ -240,7 +286,7 @@ func TestVerificationRequiresBothAcceptanceResultsForTheBoundVersion(t *testing.
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := verificationArtifactFixture(t)
 			fixture.manifest.Releasecheck = fixture.write(t, "release.json", tc.release)
-			if err := verifyArtifacts(t.Context(), fixture.root, fixture.manifest, fixture.observed); err == nil {
+			if err := verifyArtifacts(t.Context(), fixture.root, fixture.manifest, fixture.observed, false); err == nil {
 				t.Fatal("unsupported acceptance admitted")
 			}
 		})
@@ -313,7 +359,7 @@ func verificationArtifactFixture(t *testing.T) *verificationArtifacts {
 		}),
 		Comparison: f.write(t, "comparison.json", comparison),
 	}
-	if err := verifyArtifacts(t.Context(), f.root, f.manifest, f.observed); err != nil {
+	if err := verifyArtifacts(t.Context(), f.root, f.manifest, f.observed, false); err != nil {
 		t.Fatal("valid receipt fixture rejected", err)
 	}
 	return f

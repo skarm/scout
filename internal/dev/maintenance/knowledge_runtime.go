@@ -418,6 +418,27 @@ func knowledgeScan(ctx context.Context, o options, binary, target, name string, 
 	return result, code, err
 }
 
+func decodeScoutDocument(data []byte) (scanreport.Document, error) {
+	var document scanreport.Document
+	if len(data) > maxJSONLine {
+		return document, errors.New("scout document exceeds byte budget")
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+
+	if decoder.Decode(&document) != nil {
+		return scanreport.Document{}, errors.New("invalid scout document JSON")
+	}
+
+	var trailing any
+	if !errors.Is(decoder.Decode(&trailing), io.EOF) || document.Validate() != nil || document.Operation != scanreport.ScanOperation || len(document.Run.Targets) != 1 {
+		return scanreport.Document{}, errors.New("scout requires one validated scan target")
+	}
+
+	return document, nil
+}
+
 func checkStaticKnowledge(report object, tc knowledgeCase) ([]string, bool, error) {
 	if boolean(at(report, "semantic", "enabled")) {
 		return nil, false, errors.New("static scan enabled semantic review")

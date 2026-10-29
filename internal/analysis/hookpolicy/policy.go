@@ -23,7 +23,7 @@ import (
 
 //nolint:gochecknoglobals // Fixed event, setting and permission vocabularies shared read-only by scans.
 var (
-	Events = set("ConfigChange CwdChanged DirectoryAdded Elicitation ElicitationResult FileChanged InstructionsLoaded MessageDisplay Notification PermissionDenied PermissionRequest PostCompact PostToolBatch PostToolUse PostToolUseFailure PreCompact PreToolUse SessionEnd SessionStart Setup Stop StopFailure SubagentStart SubagentStop TaskCompleted TaskCreated TeammateIdle UserPromptExpansion UserPromptSubmit WorktreeCreate WorktreeRemove")
+	events = set("ConfigChange CwdChanged DirectoryAdded Elicitation ElicitationResult FileChanged InstructionsLoaded MessageDisplay Notification PermissionDenied PermissionRequest PostCompact PostToolBatch PostToolUse PostToolUseFailure PreCompact PreToolUse SessionEnd SessionStart Setup Stop StopFailure SubagentStart SubagentStop TaskCompleted TaskCreated TeammateIdle UserPromptExpansion UserPromptSubmit WorktreeCreate WorktreeRemove")
 	keys   = set("$schema disableAllHooks env fileSuggestion hooks includeCoAuthoredBy model permissions statusLine")
 	modes  = set("acceptEdits auto bypassPermissions default dontAsk manual plan")
 )
@@ -95,6 +95,10 @@ type (
 	address = document.Address
 	setting struct{ root *jsonconfig.Node }
 )
+
+// KnownEvent reports whether name belongs to the closed hook event grammar.
+// The vocabulary stays private so consumers cannot change validation rules.
+func KnownEvent(name string) bool { return events[name] }
 
 func IsSettings(name string) bool {
 	b := path.Base(name)
@@ -413,7 +417,7 @@ func hooksValid(n *jsonconfig.Node) bool {
 	}
 
 	for _, event := range n.Members {
-		if !Events[event.Key] || event.Value.Kind != jsonconfig.KindArray {
+		if !KnownEvent(event.Key) || event.Value.Kind != jsonconfig.KindArray {
 			return false
 		}
 

@@ -233,9 +233,6 @@ type JSONTree struct {
 
 // RuntimeIdentity returns the configuration adapter identity retained with the
 // parsed tree.
-// RuntimeIdentity implements the cross-package parser identity interface.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 func (t JSONTree) RuntimeIdentity() string { return t.Runtime }
 
 type jsonBackend struct{}

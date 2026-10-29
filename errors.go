@@ -28,7 +28,4 @@ type Error struct {
 func (e *Error) Error() string { return "scout: " + e.Code }
 
 // Unwrap returns the underlying cause for errors.Is and errors.As.
-// Unwrap implements the standard error-chain contract.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 func (e *Error) Unwrap() error { return e.Cause }

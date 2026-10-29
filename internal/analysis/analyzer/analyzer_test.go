@@ -35,7 +35,7 @@ func TestBuiltinRules(t *testing.T) {
 		{name: "shadow", rule: "FS001", text: "/etc/shadow", matches: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, a := range analyzer.Builtins() {
+			for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 				if a.Rule().ID != tc.rule {
 					continue
 				}
@@ -54,36 +54,10 @@ func TestBuiltinRules(t *testing.T) {
 	}
 }
 
-func TestSurface(t *testing.T) {
-	for _, tc := range []struct{ name, surface string }{{name: "SKILL.md", surface: "instructions"}, {
-		name:    "tests/SKILL.md",
-		surface: "instructions",
-	}, {
-		name:    "tests/x.md",
-		surface: "tests",
-	}, {
-		name:    "LICENSE.txt",
-		surface: "license",
-	}, {
-		name:    "a.py",
-		surface: "code",
-	}, {
-		name:    "plugin.json",
-		surface: "config",
-	}, {
-		name:    "README.md",
-		surface: "docs",
-	}} {
-		if got := analyzer.Surface(tc.name); got != tc.surface {
-			t.Fatalf("%s => %s != %s", tc.name, got, tc.surface)
-		}
-	}
-}
-
 func TestBinaryAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	for _, a := range analyzer.Builtins() {
+	for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 		f := artifact.NewFile("x.pyc", []byte("Привет"), false)
 		if _, err := a.Find(ctx, prepared(ctx, f), 10); err == nil {
 			t.Fatalf("%s ignored cancellation", a.Rule().ID)
@@ -104,7 +78,7 @@ func TestInstructionRulesHaveNoPathOrBinaryExemption(t *testing.T) {
 		"PI003": "<|im_start|>system",
 	}
 	registry := map[string]analyzer.Analyzer{}
-	for _, a := range analyzer.Builtins() {
+	for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 		registry[a.Rule().ID] = a
 	}
 	for id, text := range rules {

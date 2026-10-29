@@ -194,7 +194,7 @@ func TestHookScopeDisableProofIsHostBoundAndBudgetVisible(t *testing.T) {
 			Host: host,
 			Span: tree.Get("inline").Span,
 		}})
-		checks := analyzer.BindContexts(context.Background(), analyzer.Builtins(), docs, report.ExtractionReport{})
+		checks := analyzer.BindContexts(context.Background(), analyzer.NewCatalog(analyzer.Selection{}).Analyzers(), docs, report.ExtractionReport{})
 		for _, check := range checks {
 			if check.Rule().ID != "AC003" && check.Rule().ID != "NV-BH1" {
 				continue

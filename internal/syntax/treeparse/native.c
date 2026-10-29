@@ -101,8 +101,17 @@ TSTree *scout_parser_parse(ScoutParser *parser, const char *text, size_t length)
   TSParseOptions options = { .payload = parser, .progress_callback = progress };
   TSTree *tree = ts_parser_parse_with_options(parser->parser, NULL, input, options);
   if (interrupted(parser)) { ts_tree_delete(tree); tree = NULL; }
-  // Never resume a cancelled request's parser stack on the next request.
-  if (!tree) ts_parser_reset(parser->parser);
+  // v0.25.0 reset clears finished_tree but leaves canceled_balancing set.
+  // Reuse after cancellation during balancing would then assert on a missing
+  // tree (upstream tree-sitter/tree-sitter#4176). Replace the engine, retaining
+  // the language before deleting its old owner. Callback state stays here so
+  // an in-flight Go cancellation callback still targets a live ScoutParser.
+  if (!tree) {
+    TSParser *fresh = ts_parser_new();
+    ts_parser_set_language(fresh, ts_parser_language(parser->parser));
+    ts_parser_delete(parser->parser);
+    parser->parser = fresh;
+  }
   // No borrowed Go input pointer survives this synchronous C call.
   parser->text = NULL;
   parser->length = 0;

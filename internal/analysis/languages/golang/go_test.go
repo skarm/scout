@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/golang"
 	"github.com/skarm/scout/internal/capture/artifact"
@@ -292,7 +292,7 @@ func TestPartialGoASTKeepsCompleteCalls(t *testing.T) {
 	}
 }
 
-func goResult(t testing.TB, rule, text string, budget int) analyzer.Result {
+func goResult(t testing.TB, rule, text string, budget int) check.Result {
 	t.Helper()
 	for _, a := range golang.Rules() {
 		if a.Rule().ID != rule {
@@ -305,5 +305,5 @@ func goResult(t testing.TB, rule, text string, budget int) analyzer.Result {
 		return r
 	}
 	t.Fatalf("unknown rule %s", rule)
-	return analyzer.Result{}
+	return check.Result{}
 }

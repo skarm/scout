@@ -2,7 +2,6 @@ package maintenance
 
 import "encoding/json"
 
-func decodeJSON(data []byte, value any) error { return json.Unmarshal(data, value) }
 func asObject(value any) (object, error) {
 	data, err := json.Marshal(value)
 	if err != nil {

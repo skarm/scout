@@ -432,7 +432,7 @@ type familyAnalyzer struct {
 	patternHints   [][]string
 	python         python.Facts
 	pythonRule     string
-	native         languageFacts
+	languageFacts  languageFacts
 	exempt         func(string, int, int) bool
 	candidateLimit int
 	supplement     func(context.Context, string, func(int, int) bool, *Result) bool
@@ -441,13 +441,13 @@ type familyAnalyzer struct {
 	shellFacts     shellPatternFacts
 }
 
-func SkillspectorPatterns() []Analyzer {
+func PatternRules() []Analyzer {
 	return append([]Analyzer(nil), compiledPatternCatalog()...)
 }
 
-// SkillspectorExamples are synthetic positive regression inputs, not an
+// PatternExamples are synthetic positive regression inputs, not an
 // independent quality benchmark or observed attack samples.
-func SkillspectorExamples() map[string]string {
+func PatternExamples() map[string]string {
 	out := map[string]string{}
 	for _, f := range families {
 		out[rulePrefixNVIDIA+f.id] = f.example

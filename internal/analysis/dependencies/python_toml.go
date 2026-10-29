@@ -57,7 +57,7 @@ func collectPythonTOML(ctx context.Context, doc document.File, out *report.Depen
 }
 
 func (c *tomlCollector) add(pkg, version, kind string, n *jsonconfig.Node, indirect bool) {
-	if c.ctx.Err() != nil || n == nil || !appendDecl(c.out, c.doc, &c.unit, report.EcosystemPyPI, normalizePy(pkg), version, kind, n.Span, indirect) {
+	if c.ctx.Err() != nil || n == nil || !appendDecl(c.out, c.doc, &c.unit, report.EcosystemPyPI, normalizePyPIName(pkg), version, kind, n.Span, indirect) {
 		c.partial = true
 	}
 }

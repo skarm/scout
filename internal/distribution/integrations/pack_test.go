@@ -182,6 +182,19 @@ func TestDeterministicZIPAndManifest(t *testing.T) {
 			if manifest.Bundle != name {
 				t.Fatal("identity mismatch")
 			}
+			var transfer struct {
+				Version           string `json:"version"`
+				AdaptationVersion string `json:"adaptation_version"`
+			}
+			if err := json.Unmarshal(seen["transfer-manifest.json"], &transfer); err != nil {
+				t.Fatal(err)
+			}
+			if transfer.Version == "" || transfer.Version != manifest.Version {
+				t.Fatalf("transfer version %q differs from bundle version %q", transfer.Version, manifest.Version)
+			}
+			if transfer.AdaptationVersion != "scout-reviewer-transfer-v2" {
+				t.Fatal("original adaptation identity lost")
+			}
 		})
 	}
 }

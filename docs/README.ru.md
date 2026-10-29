@@ -27,6 +27,7 @@
 ## Разработка
 
 - [Архитектура и границы доверия](development/architecture.ru.md).
+- [Архитектурное ревью от 29 октября 2026 года](development/architecture-review-2026-10-29.ru.md).
 - [Организация репозитория](development/layout.ru.md).
 - [Проверки проекта и приёмка](development/validation.ru.md).
 - [Команды разработчика](development/commands.ru.md).

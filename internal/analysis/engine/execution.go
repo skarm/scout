@@ -6,6 +6,7 @@ import (
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/capture/artifact"
 
 	"github.com/skarm/scout/internal/analysis/document"
@@ -28,7 +29,7 @@ type execution struct {
 	graph                         report.ComponentGraph
 	expanded                      extract.Result
 	inputs                        []report.File
-	checks                        []analyzer.Analyzer
+	checks                        []check.Analyzer
 	ledger                        *validation.Ledger
 	results                       []outcome
 	collector                     *findingCollector

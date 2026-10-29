@@ -20,19 +20,6 @@ import (
 	"github.com/skarm/scout/review"
 )
 
-type targetSettings struct {
-	Options
-	semanticQuota      *semantic.Quota
-	vulnerabilityQuota *int
-}
-
-type targetQuota struct{ index, count int }
-
-type captureInput struct {
-	ctx   context.Context
-	input ContextReader
-}
-
 // Scan inspects one target and returns a sealed run. ErrIncomplete preserves
 // available observations; preflight failures may return no run.
 func (s *Scanner) Scan(ctx context.Context, target Target) (report.Run, error) {
@@ -361,6 +348,8 @@ func problemCode(state report.State) string {
 	}
 }
 
+type targetQuota struct{ index, count int }
+
 func (q targetQuota) allocate(total int64) int64 {
 	share := total / int64(q.count)
 	if int64(q.index) < total%int64(q.count) {
@@ -382,6 +371,12 @@ func (q targetQuota) applyLimits(limits *Limits) {
 	e.MaxObjectBytes = min(e.MaxObjectBytes, e.MaxTotalBytes)
 	//nolint:gosec // G115: Options.Validate bounds MaxOperations to 1..1<<40 before allocating target quotas.
 	limits.Analysis.MaxOperations = uint64(q.allocate(int64(limits.Analysis.MaxOperations)))
+}
+
+type targetSettings struct {
+	Options
+	semanticQuota      *semantic.Quota
+	vulnerabilityQuota *int
 }
 
 func (o *targetSettings) allocateServices(quota targetQuota) {
@@ -472,6 +467,11 @@ func captureReader(ctx context.Context, target Target, c CaptureLimits) (artifac
 	}
 
 	return artifact.New("memory", []artifact.File{artifact.NewFile(target.name, data, false)}, nil, nil, readErr == nil), nil, readErr
+}
+
+type captureInput struct {
+	ctx   context.Context
+	input ContextReader
 }
 
 func (r captureInput) Read(p []byte) (int, error) {

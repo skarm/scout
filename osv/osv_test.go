@@ -555,6 +555,55 @@ func TestResponseShapeAndContentGrammar(t *testing.T) {
 	}
 }
 
+func TestResponseRejectsCaseAliasedFields(t *testing.T) {
+	for _, body := range []string{
+		`{"results":[{"vulns":[{"id":"GHSA-retained"}]}],"RESULTS":[{}]}`,
+		`{"results":[{"vulns":[{"id":"GHSA-retained"}],"VULNS":[]}]}`,
+		`{"results":[{"next_page_token":"more","NEXT_PAGE_TOKEN":""}]}`,
+		`{"results":[{"vulns":[{"id":"GHSA-retained","ID":"GHSA-other"}]}]}`,
+		`{"results":[{"vulns":[{"id":"GHSA-retained","modified":"first","MODIFIED":"second"}]}]}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			if result, valid := decodeQueryResponse(t.Context(), []byte(body), 1); valid {
+				t.Fatalf("ambiguous response accepted: %+v", result)
+			}
+		})
+	}
+}
+
+func TestCacheRejectsCaseAliasedFields(t *testing.T) {
+	for _, body := range []string{
+		`{"version":1,"queried_at":"2026-10-28T00:00:00Z","records":[{"ecosystem":"npm","name":"sample","version":"1","vulnerabilities":[{"id":"GHSA-retained"}]}],"RECORDS":[]}`,
+		`{"version":1,"queried_at":"2026-10-28T00:00:00Z","records":[{"ecosystem":"npm","name":"sample","version":"1","vulnerabilities":[{"id":"GHSA-retained"}],"VULNERABILITIES":[]}]}`,
+		`{"version":1,"queried_at":"2026-10-28T00:00:00Z","records":[{"ecosystem":"npm","name":"sample","version":"1","vulnerabilities":[{"id":"GHSA-retained","ID":"GHSA-other"}]}]}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			if cache, err := ParseCache([]byte(body)); err == nil {
+				t.Fatalf("ambiguous cache accepted: %+v", cache)
+			}
+		})
+	}
+}
+
+func TestQueryBudgetCountsDistinctCoordinates(t *testing.T) {
+	deps := dependencies()
+	deps.Declarations[2].VersionSemantics = report.VersionExactLockfile
+	deps.Declarations[2].DeclaredVersion = "2.0.0"
+	duplicate := deps.Declarations[0]
+	duplicate.ID = "d4"
+	deps.Declarations = append(deps.Declarations, duplicate)
+	options := DefaultOptions()
+	options.MaxQueries = 2
+	r := report.VulnerabilityReport{Completeness: report.Complete}
+	groups := groupQueries(deps, options, &r)
+	if len(groups) != 2 || len(r.Queries) != 4 || r.Completeness != report.Complete {
+		t.Fatalf("duplicate declarations consumed distinct-coordinate budget: groups=%d report=%+v", len(groups), r)
+	}
+	if !reflect.DeepEqual(groups[0].indices, []int{0, 1, 3}) || !reflect.DeepEqual(groups[1].indices, []int{2}) {
+		t.Fatalf("declaration associations lost: %+v %+v", groups[0].indices, groups[1].indices)
+	}
+}
+
 func dependencies() report.DependencyReport {
 	return report.DependencyReport{
 		Manifests: []report.DependencyManifest{{

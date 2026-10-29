@@ -257,7 +257,7 @@ func collectPipfileLock(root *jsonconfig.Node, add dependencyAdder) bool {
 				kind = report.VersionExactLockfile
 			}
 
-			add(report.EcosystemPyPI, normalizePy(m.Key), v, kind, m.Value, false)
+			add(report.EcosystemPyPI, normalizePyPIName(m.Key), v, kind, m.Value, false)
 		}
 	}
 
@@ -375,7 +375,7 @@ func collectNPMLockV1(ctx context.Context, n *jsonconfig.Node, depth int, add de
 	return partial
 }
 
-func normalizePy(s string) string {
+func normalizePyPIName(s string) string {
 	var out strings.Builder
 
 	dash := false
@@ -433,7 +433,7 @@ func collectRequirements(ctx context.Context, doc document.File, out *report.Dep
 
 		pkg, v, kind := parsed.name, parsed.version, parsed.kind
 
-		if !appendDecl(out, doc, nil, report.EcosystemPyPI, normalizePy(pkg), v, kind, source.Span{Start: start, End: offset}, false) {
+		if !appendDecl(out, doc, nil, report.EcosystemPyPI, normalizePyPIName(pkg), v, kind, source.Span{Start: start, End: offset}, false) {
 			out.Manifests[mi].Status = report.OutcomePartial
 			return
 		}

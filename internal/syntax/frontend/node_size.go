@@ -1,4 +1,3 @@
-//goland:noinspection GoMixedReceiverTypes // JSON values marshal by value and unmarshal by pointer.
 package frontend
 
 import (

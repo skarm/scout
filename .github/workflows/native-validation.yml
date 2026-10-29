@@ -89,7 +89,7 @@ jobs:
           set -euo pipefail
           go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -count=1 -timeout=10m ./... 2>&1 | tee "$RUNNER_TEMP/native-evidence/tests.log"
           go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -race -count=3 -timeout=15m ./... 2>&1 | tee "$RUNNER_TEMP/native-evidence/race.log"
-      - name: Mandatory source-bound acceptance after cleanup
+      - name: Recorded evidence integrity after cleanup
         run: |
           set -euo pipefail
           make clean
@@ -97,18 +97,18 @@ jobs:
           test ! -e bin/scout
           test ! -e bin/scout-core
           test ! -e bin/scout-dev
-          go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -tags=static_link,acceptance -run TestCurrentAcceptance -count=1 ./tests/acceptance \
+          go run -mod=readonly ./internal/dev/builddeps -- go test -vet=off -tags=static_link,acceptance -run TestRecordedAcceptance -count=1 ./tests/acceptance \
             2>&1 | tee "$RUNNER_TEMP/native-evidence/acceptance.log"
       - name: Build and verify a single binary
         run: |
           set -euo pipefail
-          go run -mod=readonly ./internal/dev/builddeps -- go build -trimpath -ldflags="-X github.com/skarm/scout.buildVersionOverride=$VERSION" \
+          go run -mod=readonly ./internal/dev/builddeps -- go build -trimpath -ldflags="-s -w -X github.com/skarm/scout.buildVersionOverride=$VERSION" \
             -o "$RUNNER_TEMP/candidate/scout" ./cmd/scout
           test "$("$RUNNER_TEMP/candidate/scout" version)" = "$VERSION"
           "$RUNNER_TEMP/candidate/scout" capabilities > "$RUNNER_TEMP/native-evidence/capabilities.json"
           go run -mod=readonly ./internal/dev/builddeps -- go run -ldflags="-X github.com/skarm/scout.buildVersionOverride=$VERSION" \
             ./cmd/scout-dev releasecheck --binary "$RUNNER_TEMP/candidate/scout" \
-            > "$RUNNER_TEMP/native-evidence/releasecheck.json"
+            | tee "$RUNNER_TEMP/native-evidence/releasecheck.json"
       - name: Host adapters with the native binary
         env:
           SCOUT_TEST_BIN: ${{ runner.temp }}/candidate/scout

@@ -90,6 +90,8 @@ func TestRejectedCapturedFilesProduceRowsAndContinue(t *testing.T) {
 func TestPrivateReplayDirectoriesAreRemovedAndNeverExecuted(t *testing.T) {
 	base := t.TempDir()
 	t.Setenv("TMPDIR", base)
+	t.Setenv("TMP", base)
+	t.Setenv("TEMP", base)
 	marker := filepath.Join(t.TempDir(), "executed")
 	input := record(t, 1, capturedFile{
 		Name:       "bin/run.sh",
@@ -309,6 +311,8 @@ func TestCancellationAfterRecordAdmissionPublishesCancelledOutcome(t *testing.T)
 	runtime := scanner(t, options())
 	temporary := t.TempDir()
 	t.Setenv("TMPDIR", temporary)
+	t.Setenv("TMP", temporary)
+	t.Setenv("TEMP", temporary)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	input := record(t, 1, capturedFile{Name: "README.txt", Data: []byte("ordinary text")})
@@ -340,6 +344,8 @@ func TestUnavailablePrivateCaptureStorageProducesExplicitRuntimeFailure(t *testi
 				}
 			}
 			t.Setenv("TMPDIR", unavailable)
+			t.Setenv("TMP", unavailable)
+			t.Setenv("TEMP", unavailable)
 			var output bytes.Buffer
 			summary, err := replay.Run(t.Context(), runtime, strings.NewReader(record(t, 1, capturedFile{
 				Name: "README.txt",

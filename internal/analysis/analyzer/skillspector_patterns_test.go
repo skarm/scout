@@ -14,8 +14,8 @@ import (
 )
 
 func TestAdaptedPatternFamilies(t *testing.T) {
-	examples := analyzer.SkillspectorExamples()
-	for _, a := range analyzer.SkillspectorPatterns() {
+	examples := analyzer.PatternExamples()
+	for _, a := range analyzer.PatternRules() {
 		t.Run(a.Rule().ID, func(t *testing.T) {
 			sample, ok := examples[a.Rule().ID]
 			if !ok {
@@ -373,7 +373,7 @@ func TestAdaptedDownloadRuleRetainsBroaderDeclarationFlow(t *testing.T) {
 
 func family(t testing.TB, id string) analyzer.Analyzer {
 	t.Helper()
-	for _, a := range analyzer.SkillspectorPatterns() {
+	for _, a := range analyzer.PatternRules() {
 		if a.Rule().ID == id {
 			return a
 		}

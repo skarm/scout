@@ -6,7 +6,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/semantic"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/signatures"
@@ -22,7 +22,7 @@ import (
 type Engine struct {
 	signatures signatures.Options
 	registry   parse.Registry
-	analyzers  []analyzer.Analyzer
+	analyzers  []check.Analyzer
 	rules      []report.Rule
 	workers    int
 }
@@ -74,13 +74,13 @@ type RunOptions struct {
 
 // New validates analyzers and worker limits and uses the build's default
 // parser registry.
-func New(checks []analyzer.Analyzer, workers int) (*Engine, error) {
+func New(checks []check.Analyzer, workers int) (*Engine, error) {
 	return NewWithRegistry(checks, workers, parse.Defaults())
 }
 
 // NewWithRegistry copies trusted analyzer configuration, validates unique rule
 // identities and binds an explicit parser registry.
-func NewWithRegistry(checks []analyzer.Analyzer, workers int, r parse.Registry) (*Engine, error) {
+func NewWithRegistry(checks []check.Analyzer, workers int, r parse.Registry) (*Engine, error) {
 	if workers < 1 || workers > 32 {
 		return nil, errors.New("workers must be in 1..32")
 	}
@@ -109,7 +109,7 @@ func NewWithRegistry(checks []analyzer.Analyzer, workers int, r parse.Registry) 
 	return &Engine{
 		signatures: signatures.DefaultOptions(),
 		registry:   r,
-		analyzers:  append([]analyzer.Analyzer(nil), checks...),
+		analyzers:  append([]check.Analyzer(nil), checks...),
 		rules:      rules,
 		workers:    workers,
 	}, nil

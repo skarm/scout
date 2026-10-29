@@ -123,7 +123,7 @@ func base64Candidate(name, data string) bool {
 	return ext == ".b64" || ext == ".base64" || strings.Contains(data, ";base64,") || wholeBase64(data)
 }
 
-func b64char(c byte) bool {
+func base64Byte(c byte) bool {
 	return strings.ContainsRune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_=", rune(c))
 }
 func asciiSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\r' || c == '\n' }
@@ -141,7 +141,7 @@ func wholeBase64(data string) bool {
 			continue
 		}
 
-		if !b64char(c) {
+		if !base64Byte(c) {
 			return false
 		}
 
@@ -233,7 +233,7 @@ func dataURIRange(data string, i int) (header string, start, end int, valid bool
 	start = j + 8
 
 	end = start
-	for end < len(data) && b64char(data[end]) {
+	for end < len(data) && base64Byte(data[end]) {
 		end++
 	}
 

@@ -11,7 +11,7 @@ import (
 
 func TestRuntimeInventoryJSON(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{"product.go", "platform_windows.go", "embed.txt"} {
+	for _, name := range []string{"product.go", "platform_windows.go", "embed.txt", "native.c", "native.h", "platform_arm64.s"} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte("fixture"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -21,6 +21,7 @@ func TestRuntimeInventoryJSON(t *testing.T) {
 		Dir: root, Module: &struct{ Dir string }{Dir: root},
 		GoFiles:        []string{"product.go", "ignored_test.go"},
 		IgnoredGoFiles: []string{"platform_windows.go"}, EmbedFiles: []string{"embed.txt"},
+		CFiles: []string{"native.c"}, HFiles: []string{"native.h"}, IgnoredOtherFiles: []string{"platform_arm64.s"},
 	}
 	data, err := json.Marshal(pkg)
 	if err != nil {
@@ -28,7 +29,10 @@ func TestRuntimeInventoryJSON(t *testing.T) {
 	}
 
 	files, err := decodeRuntimeFiles(root, data)
-	want := []string{filepath.Join(root, "product.go"), filepath.Join(root, "platform_windows.go"), filepath.Join(root, "embed.txt")}
+	want := []string{
+		filepath.Join(root, "product.go"), filepath.Join(root, "platform_windows.go"), filepath.Join(root, "embed.txt"),
+		filepath.Join(root, "native.c"), filepath.Join(root, "native.h"), filepath.Join(root, "platform_arm64.s"),
+	}
 	if err != nil || !reflect.DeepEqual(files, want) {
 		t.Fatalf("runtime inventory=%v error=%v, want %v", files, err, want)
 	}

@@ -230,11 +230,12 @@ func TestTruthUsesOnlyKnownScalarAndContainerValues(t *testing.T) {
 		json:  "1e999",
 		truth: 0,
 	}} {
-		var value frontend.Value
-		if err := json.Unmarshal([]byte(tc.json), &value); err != nil {
+		var node frontend.Node
+		raw := `{"type":"Constant","start":0,"end":1,"fields":{"value":` + tc.json + `}}`
+		if err := json.Unmarshal([]byte(raw), &node); err != nil {
 			t.Fatal(err)
 		}
-		if got := pyTruth(constant(value), newPyState(), 0); got != tc.truth {
+		if got := pyTruth(&node, newPyState(), 0); got != tc.truth {
 			t.Fatalf("%s truth=%d", tc.json, got)
 		}
 	}

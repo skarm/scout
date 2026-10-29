@@ -4,11 +4,9 @@ package report
 // means the literal references selected by this traversal were captured; it is
 // never a guarantee about arbitrary package-manager or runtime installations.
 type ExternalClosure struct {
-	// Complete reports completion only within the explicitly selected traversal
-	// scope.
+	// Complete reports completion only within the explicitly selected traversal scope.
 	Complete bool `json:"complete"`
-	// MaxDepth limits recursive external-reference traversal from the original
-	// target.
+	// MaxDepth limits recursive external-reference traversal from the original target.
 	MaxDepth int `json:"max_depth"`
 	// MaxRequests limits attempted external downloads.
 	MaxRequests int `json:"max_requests"`
@@ -25,8 +23,7 @@ type ExternalReference struct {
 	Source SourceRef `json:"source"`
 	// URLSHA256 identifies a referenced URL without exposing its text.
 	URLSHA256 string `json:"url_sha256"`
-	// Path is the captured external object's inventory path, when acquisition
-	// succeeded.
+	// Path is the captured external object's inventory path, when acquisition succeeded.
 	Path string `json:"path,omitempty"`
 	// BytesSHA256 is the SHA-256 digest of the complete acquired bytes.
 	BytesSHA256 string `json:"bytes_sha256,omitempty"`

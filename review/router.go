@@ -12,9 +12,6 @@ import (
 // Router deterministically selects an explicitly configured provider for each
 // semantic stage. It never retries another model after an error. Providers and
 // endpoints are operator code/configuration, never selected from scanned data.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
 type Router struct {
 	providers map[string]Provider
 	identity  Identity

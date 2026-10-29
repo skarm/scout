@@ -3,7 +3,7 @@ package engine
 import (
 	"context"
 
-	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/knowledge"
@@ -172,10 +172,10 @@ func collectSignatureMatches(step signatures.Outcome, byPath map[string]document
 
 // All reported string spans support one native condition. Invalid related spans
 // are rejected while retaining the valid primary finding and partial status.
-func signatureMatch(doc document.File, step signatures.Outcome, m signatures.Match) (analyzer.Match, bool) {
+func signatureMatch(doc document.File, step signatures.Outcome, m signatures.Match) (check.Match, bool) {
 	complete := true
 
-	match := analyzer.Match{Start: m.Spans[0].Start, End: m.Spans[0].End}
+	match := check.Match{Start: m.Spans[0].Start, End: m.Spans[0].End}
 	for _, s := range m.Spans[1:] {
 		b := doc.Artifact().Content()
 		if s.Start < 0 || s.End > len(b) || s.Start >= s.End {

@@ -9,11 +9,9 @@ type Suppression struct {
 	FindingID string `json:"finding_id"`
 	// EntryIndex is the zero-based index of the matching baseline entry.
 	EntryIndex int `json:"entry_index"`
-	// Kind records whether the operator approval used a fingerprint or a glob
-	// selector.
+	// Kind records whether the operator approval used a fingerprint or a glob selector.
 	Kind string `json:"kind"`
-	// ReasonSHA256 identifies the operator's approval reason without exposing its
-	// raw text.
+	// ReasonSHA256 identifies the operator's approval reason without exposing its raw text.
 	ReasonSHA256 string `json:"reason_sha256"`
 	// Expires is the exclusive RFC3339 approval expiry time.
 	Expires string `json:"expires"`
@@ -24,13 +22,11 @@ type Suppression struct {
 type Vulnerability struct {
 	// ID is the advisory identifier returned by the database.
 	ID string `json:"id"`
-	// DependencyIDs lists the captured dependency declarations associated with the
-	// advisory.
+	// DependencyIDs lists the captured dependency declarations associated with the advisory.
 	DependencyIDs []string `json:"dependency_ids"`
 	// Aliases lists alternate advisory identifiers reported by the database.
 	Aliases []string `json:"aliases,omitempty"`
-	// DatabaseModified records the advisory modification time reported by the
-	// database.
+	// DatabaseModified records the advisory modification time reported by the database.
 	DatabaseModified string `json:"database_modified,omitempty"`
 }
 

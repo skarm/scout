@@ -26,7 +26,7 @@ help:
 	  'install     Build and install scout to $(PREFIX)/bin (supports DESTDIR staging)' \
 	  'test        Run the native test suite' \
 	  'test-core   Run the reduced core test suite' \
-	  'acceptance Verify current source-bound replay and release evidence' \
+	  'acceptance Verify recorded replay and release evidence integrity' \
 	  'race        Run the native suite with the Go race detector' \
 	  'host-test   Build native and test Pi/OpenCode adapters' \
 	  'evaluate    Measure CORPUS with the native scanner' \
@@ -68,7 +68,7 @@ test-core:
 	$(GO) test -vet=off -mod=readonly -tags=coreonly ./...
 
 acceptance:
-	$(NATIVE) $(GO) test -vet=off -mod=readonly -tags=$(NATIVE_TAGS),acceptance -run TestCurrentAcceptance ./tests/acceptance
+	$(NATIVE) $(GO) test -vet=off -mod=readonly -tags=$(NATIVE_TAGS),acceptance -run TestRecordedAcceptance -count=1 ./tests/acceptance
 
 race:
 	$(NATIVE) $(GO) test -vet=off -mod=readonly -tags=$(NATIVE_TAGS) -race ./...

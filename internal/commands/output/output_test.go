@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -18,7 +19,7 @@ func TestCreateNewIsPrivateAndNeverReplaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0o600 {
+	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		t.Fatalf("private file: info=%v err=%v", info, err)
 	}
 	if err := output.CreateNew(context.Background(), path, render("second")); !errors.Is(err, os.ErrExist) {

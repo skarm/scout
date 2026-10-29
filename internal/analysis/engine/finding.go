@@ -7,8 +7,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/internal/syntax/filetype"
 
 	"github.com/skarm/scout/internal/analysis/document"
 
@@ -18,7 +19,7 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-func makeFinding(rule report.Rule, doc document.File, m analyzer.Match) (report.Finding, error) {
+func makeFinding(rule report.Rule, doc document.File, m check.Match) (report.Finding, error) {
 	severity, err := findingSeverity(rule, m)
 	if err != nil {
 		return report.Finding{}, err
@@ -102,7 +103,7 @@ func location(doc document.File, span source.Span) (report.Location, error) {
 		StartColumn: column,
 		EndLine:     endLine,
 		EndColumn:   endColumn,
-		Context:     analyzer.Surface(meta.Path),
+		Context:     filetype.Surface(meta.Path),
 		Structure:   kind,
 		Language:    language,
 	}, nil
@@ -150,7 +151,7 @@ func attachRelated(f *report.Finding, refs []report.SourceRef, docs map[string]d
 	return nil
 }
 
-func findingSeverity(rule report.Rule, m analyzer.Match) (report.Severity, error) {
+func findingSeverity(rule report.Rule, m check.Match) (report.Severity, error) {
 	severity := rule.Severity
 	if m.Severity != "" {
 		if m.Severity.Rank() < 0 || m.Severity.Rank() > severity.Rank() {
@@ -163,7 +164,7 @@ func findingSeverity(rule report.Rule, m analyzer.Match) (report.Severity, error
 	return severity, nil
 }
 
-func findingTrace(doc document.File, steps []analyzer.Trace) ([]report.TraceStep, error) {
+func findingTrace(doc document.File, steps []check.Trace) ([]report.TraceStep, error) {
 	f := doc.Artifact()
 	s := f.Content()
 	meta := f.Metadata()
@@ -196,7 +197,7 @@ func findingTrace(doc document.File, steps []analyzer.Trace) ([]report.TraceStep
 	return trace, nil
 }
 
-func findingContext(doc document.File, m analyzer.Match) ([]string, error) {
+func findingContext(doc document.File, m check.Match) ([]string, error) {
 	s := doc.Artifact().Content()
 
 	signals := knowledge.ContextSignals(s, m.Start, m.End)

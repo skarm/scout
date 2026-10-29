@@ -52,6 +52,8 @@ func (s *Server) postHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	created := req.Method == "initialize" && id == ""
+
 	sess, id, status := s.httpSession(req, id)
 	if status != 0 {
 		message := "session unavailable"
@@ -75,13 +77,14 @@ func (s *Server) postHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Method == "initialize" {
+	if created {
 		if answer.Error == nil {
 			w.Header().Set("Mcp-Session-Id", id)
 		} else {
 			s.mu.Lock()
 			delete(s.sessions, id)
 			s.mu.Unlock()
+			cancelSession(sess)
 		}
 	}
 
@@ -161,6 +164,9 @@ func (s *Server) deleteHTTP(w http.ResponseWriter, id string) {
 func cancelSession(sess *session) {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
+
+	sess.closed = true
+	sess.ready = false
 
 	for _, cancel := range sess.pending {
 		cancel()

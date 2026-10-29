@@ -29,9 +29,9 @@ var (
 
 // PatternOptions separates syntax observations from generic pattern policy.
 type PatternOptions struct {
-	Mode      PatternMode
-	Native    check.LanguageFacts
-	MatchText func(context.Context, string) bool
+	Mode          PatternMode
+	LanguageFacts check.LanguageFacts
+	MatchText     func(context.Context, string) bool
 }
 
 type shellPatternWalker struct {
@@ -74,7 +74,7 @@ func Patterns(ctx context.Context, d document.File, options PatternOptions, budg
 
 	sharedOrdinary := false
 
-	shared := options.Native[d.Artifact().Metadata().Path]
+	shared := options.LanguageFacts[d.Artifact().Metadata().Path]
 	if options.Mode == PatternDownload && shared != nil {
 		sharedOrdinary = true
 

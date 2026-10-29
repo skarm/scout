@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,43 +15,34 @@ import (
 )
 
 func TestMaintenanceDispatchRequiresEveryExplicitInput(t *testing.T) {
-	for _, command := range []string{"verify-knowledge-sources", "check-knowledge-runtime", "compare-upstream-suite", "adjudicate-upstream-suite", "compare-upstream", "run-upstream-suite", "unknown"} {
+	for _, command := range []string{"verify-knowledge-sources", "check-knowledge-runtime", "unknown"} {
 		if err := execute(t.Context(), command, options{}, io.Discard); err == nil {
 			t.Fatalf("%s accepted implicit inputs", command)
 		}
 	}
 }
 
-func TestReplayExclusionsDistinguishPathsBytesRepresentationsAndCaps(t *testing.T) {
-	valid := capturedBlob{SHA256: strings.Repeat("a", 64), Bytes: 1}
-	for _, tc := range []struct {
-		name string
-		blob capturedBlob
-		want string
-	}{
-		{name: "input.py", blob: valid, want: ""},
-		{name: "../input.py", blob: valid, want: "path_not_a_scout_artifact_path"},
-		{name: "input.py", blob: capturedBlob{Omitted: "capture_limit"}, want: "capture_limit"},
-		{name: "input.py", blob: capturedBlob{}, want: "no_bytes"},
-		{name: "input.py", blob: capturedBlob{SHA256: "bad"}, want: "invalid_blob_digest"},
-		{
-			name: "input.py",
-			blob: capturedBlob{SHA256: valid.SHA256, Representation: "python_surrogate_string"},
-			want: "not_a_utf8_file_python_surrogate_string",
-		},
-		{name: "input.py", blob: capturedBlob{SHA256: valid.SHA256, Bytes: -1}, want: "replay_input_limit"},
-		{name: "input.py", blob: capturedBlob{SHA256: valid.SHA256, Bytes: 4<<20 + 1}, want: "replay_input_limit"},
-	} {
-		if got := replayFileExclusion(tc.name, tc.blob); got != tc.want {
-			t.Fatalf("%s: got %s want %s", tc.name, got, tc.want)
-		}
+func TestRuntimeJSONAndLocalPathContracts(t *testing.T) {
+	root := t.TempDir()
+	if _, err := safeJoin(root, "../escape"); err == nil {
+		t.Fatal("artifact path escaped its root")
 	}
-	files := map[string]capturedBlob{}
-	for i := range 5 {
-		files[fmt.Sprintf("part-%d", i)] = capturedBlob{SHA256: valid.SHA256, Bytes: 4 << 20}
+	if name, err := safeJoin(root, "a/file"); err != nil || name != filepath.Join(root, "a/file") {
+		t.Fatal("local path normalization changed")
 	}
-	if replayExclusion(files) != "replay_input_limit" {
-		t.Fatal("aggregate replay byte cap ignored")
+	if root, err := projectRoot(); err != nil || root == "" {
+		t.Fatal("repository root discovery failed")
+	}
+	parsed, _ := url.Parse("https://github.com/example/repo")
+	_, item, _ := sourceFixture()
+	if err := verifyArtifactURL(parsed, strings.Repeat("a", 40), item); err != nil {
+		t.Fatal(err)
+	}
+	if got := obj(map[string]any{"x": true}); !boolean(got["x"]) {
+		t.Fatal("JSON object boundary lost a field")
+	}
+	if obj(object{"x": true}) == nil || obj("not-object") != nil {
+		t.Fatal("JSON object shape changed")
 	}
 }
 

@@ -85,7 +85,15 @@ func Inspect(path string) (Report, error) {
 func AllowedSystemLibrary(goos, lib string) bool {
 	if goos == "windows" {
 		switch strings.ToLower(lib) {
-		case "advapi32.dll", "bcrypt.dll", "crypt32.dll", "cryptbase.dll", "dbghelp.dll", "dnsapi.dll",
+		// Exact system API-set contracts imported by the pinned UCRT64 build.
+		case "api-ms-win-core-synch-l1-2-0.dll", "api-ms-win-crt-convert-l1-1-0.dll",
+			"api-ms-win-crt-environment-l1-1-0.dll", "api-ms-win-crt-filesystem-l1-1-0.dll",
+			"api-ms-win-crt-heap-l1-1-0.dll", "api-ms-win-crt-locale-l1-1-0.dll",
+			"api-ms-win-crt-math-l1-1-0.dll", "api-ms-win-crt-private-l1-1-0.dll",
+			"api-ms-win-crt-runtime-l1-1-0.dll", "api-ms-win-crt-stdio-l1-1-0.dll",
+			"api-ms-win-crt-string-l1-1-0.dll":
+			return true
+		case "advapi32.dll", "bcrypt.dll", "bcryptprimitives.dll", "crypt32.dll", "cryptbase.dll", "dbghelp.dll", "dnsapi.dll",
 			"iphlpapi.dll", "kernel32.dll", "msvcrt.dll", "netapi32.dll", "ntdll.dll", "ole32.dll", "oleaut32.dll",
 			"powrprof.dll", "psapi.dll", "rpcrt4.dll", "secur32.dll", "shell32.dll", "synchronization.dll",
 			"ucrtbase.dll", "user32.dll", "userenv.dll", "version.dll", "winmm.dll", "ws2_32.dll":

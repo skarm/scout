@@ -14,8 +14,8 @@ func (a familyAnalyzer) shellPatterns(ctx context.Context, d document.File, budg
 	}
 
 	return shell.Patterns(ctx, d, shell.PatternOptions{
-		Mode:   a.shellMode,
-		Native: a.native,
+		Mode:          a.shellMode,
+		LanguageFacts: a.languageFacts,
 		MatchText: func(ctx context.Context, text string) bool {
 			literal, _ := a.findText(ctx, text, 1)
 			return len(literal.Matches) > 0

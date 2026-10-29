@@ -54,7 +54,7 @@ func (w *pyWalker) nestedSource(n *frontend.Node, depth int) bool {
 	return false
 }
 
-func canonPy(n string) string {
+func canonicalSymbolName(n string) string {
 	n = strings.TrimPrefix(n, "builtins.")
 	for _, prefix := range []string{"requests.Session.", "httpx.Client.", "httpx.AsyncClient."} {
 		if after, ok := strings.CutPrefix(n, prefix); ok {

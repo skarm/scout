@@ -87,6 +87,11 @@ resulting version. See [validation](validation.md) for test and acceptance comma
 
 ## GitHub Actions releases
 
+Branch pushes and pull requests run lint, core and Linux native tests with race
+checks, recorded-evidence integrity checks and host adapter boundary tests.
+Full macOS/Linux/Windows validation and release candidate builds run on version
+tags or an explicit manual workflow run.
+
 The **Scout release** workflow builds three full native distributions:
 
 - `scout-vX.Y.Z-macos-arm64.tar.gz`: Apple Silicon, macOS 15+.
@@ -107,8 +112,8 @@ git push origin v1.2.3
 Tags matching `v*` with a numeric major, minor and patch version trigger automatic
 publication. Tags such as `v1.2.3-rc.1` produce prereleases. The workflow runs native
 tests, race checks and binary linkage/selftest verification. The existing
-source-bound acceptance gate on macOS/Linux must also pass; changed sources require
-current acceptance evidence. Packaging reuses those exact checked binaries.
+recorded-evidence integrity check on macOS/Linux must also pass. Source edits do
+not require replacing historical receipts. Packaging reuses those exact checked binaries.
 All three archives are uploaded to a draft release before it becomes public.
 The standalone Go command `internal/dev/releasepack` creates the archives and
 checksums using only Go's standard library.

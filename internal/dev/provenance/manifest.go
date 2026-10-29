@@ -1,4 +1,4 @@
-// Package provenance binds local acceptance artifacts to explicit source closures.
+// Package provenance verifies recorded measurements and their source inventories.
 // Hashes prove consistency of recorded bytes, not authenticity of their author.
 package provenance
 
@@ -53,13 +53,14 @@ const (
 	inputPinned InputMode = "pinned"
 )
 
-// Verification explicitly selects whether raw captures must be available. CI
-// uses trusted pins for ignored captures; local generation always reads them.
+// Verification selects capture verification and an optional checkout audit.
+// Recorded evidence remains valid when the current checkout changes.
 type Verification struct {
-	Version   string
-	InputMode InputMode
-	InputPin  file
-	IDsSHA256 string
+	Version        string
+	InputMode      InputMode
+	InputPin       file
+	IDsSHA256      string
+	CurrentSources bool
 }
 
 // releaseEvidence permits additional measured linkage/build metadata, but its
@@ -110,7 +111,7 @@ func Generate(ctx context.Context, options Options) (Manifest, error) {
 	}
 
 	m.Summary, m.ErrorCounts, m.InputIDsSHA256 = observed.summary, observed.errors, idsDigest(input.ids)
-	if err = verifyArtifacts(ctx, root, m, observed); err != nil {
+	if err = verifyArtifacts(ctx, root, m, observed, true); err != nil {
 		return Manifest{}, err
 	}
 
@@ -144,8 +145,10 @@ func Verify(ctx context.Context, root string, manifest Manifest, expected Verifi
 		return err
 	}
 
-	if err := verifySources(ctx, root, manifest); err != nil {
-		return err
+	if expected.CurrentSources {
+		if err := verifySources(ctx, root, manifest); err != nil {
+			return err
+		}
 	}
 
 	observed, err := readReplay(ctx, root, manifest.Replay, manifest.Version)
@@ -161,7 +164,7 @@ func Verify(ctx context.Context, root string, manifest Manifest, expected Verifi
 		return err
 	}
 
-	return verifyArtifacts(ctx, root, manifest, observed)
+	return verifyArtifacts(ctx, root, manifest, observed, expected.CurrentSources)
 }
 
 func validateIdentity(m Manifest, expected Verification) error {
@@ -181,7 +184,7 @@ func validateIdentity(m Manifest, expected Verification) error {
 		return errors.New("missing replay identity")
 	}
 
-	return nil
+	return validateSourceInventories(m.ProductSources, m.DeveloperSources)
 }
 
 func verifyInput(ctx context.Context, root string, m Manifest, expected Verification, ids []string) error {
@@ -210,7 +213,7 @@ func verifyInput(ctx context.Context, root string, m Manifest, expected Verifica
 	return nil
 }
 
-func verifyArtifacts(ctx context.Context, root string, m Manifest, observed replayEvidence) error {
+func verifyArtifacts(ctx context.Context, root string, m Manifest, observed replayEvidence, currentSources bool) error {
 	if m.Summary != observed.summary || !reflect.DeepEqual(m.ErrorCounts, observed.errors) {
 		return errors.New("replay accounting differs from provenance")
 	}
@@ -233,7 +236,7 @@ func verifyArtifacts(ctx context.Context, root string, m Manifest, observed repl
 		return errors.New("release acceptance is absent, failed or for another version")
 	}
 
-	return verifyComparisonArtifact(ctx, root, m.Comparison, m.Replay, observed)
+	return verifyComparisonArtifact(ctx, root, m.Comparison, m.Replay, observed, currentSources)
 }
 
 func readArtifactJSON(ctx context.Context, root string, artifact artifact, out any) error {
@@ -309,11 +312,11 @@ func verifySources(ctx context.Context, root string, manifest Manifest) error {
 	}
 
 	if !reflect.DeepEqual(product, manifest.ProductSources) {
-		return errors.New("product source closure changed; fresh acceptance required")
+		return errors.New("current product sources differ from the recorded measurement")
 	}
 
 	if !reflect.DeepEqual(developer, manifest.DeveloperSources) {
-		return errors.New("developer source closure changed; fresh tooling acceptance required")
+		return errors.New("current developer sources differ from the recorded measurement")
 	}
 
 	return nil

@@ -114,7 +114,7 @@ func TestPermissionsAreScopedAndEvidenceBound(t *testing.T) {
 		artifact.NewFile("two/helper.go", []byte("package main\nfunc f(){fmt.Println(1)}"), false),
 	}
 	docs := document.PrepareAll(context.Background(), files)
-	checks := analyzer.BindContexts(context.Background(), analyzer.PluginSecurityRules(), docs, report.ExtractionReport{})
+	checks := analyzer.BindContexts(context.Background(), analyzer.PermissionRules(), docs, report.ExtractionReport{})
 	for _, a := range checks {
 		if !strings.HasPrefix(a.Rule().ID, "NV-LP") {
 			continue
@@ -153,7 +153,7 @@ func TestPermissionWildcardAndMissing(t *testing.T) {
 	}} {
 		t.Run(tc.id, func(t *testing.T) {
 			docs := document.PrepareAll(context.Background(), []artifact.File{artifact.NewFile(".claude-plugin/plugin.json", []byte(tc.manifest), false), artifact.NewFile("main.go", []byte("package p\nfunc f(){os.Getenv(\"TOKEN\")}"), false)})
-			checks := analyzer.BindContexts(context.Background(), analyzer.PluginSecurityRules(), docs, report.ExtractionReport{})
+			checks := analyzer.BindContexts(context.Background(), analyzer.PermissionRules(), docs, report.ExtractionReport{})
 			for _, a := range checks {
 				if a.Rule().ID == tc.id {
 					r, e := a.Find(context.Background(), prepared(context.Background(), docs[0].Artifact()), 10)
@@ -274,7 +274,7 @@ func TestModuleReplacementRulesPreserveKindAndSource(t *testing.T) {
 
 func pluginRule(t *testing.T, id string) analyzer.Analyzer {
 	t.Helper()
-	for _, a := range analyzer.PluginSecurityRules() {
+	for _, a := range analyzer.NewCatalog(analyzer.Selection{Patterns: true}).Analyzers() {
 		if a.Rule().ID == id {
 			return a
 		}

@@ -58,6 +58,7 @@ func parseProvenance(args []string, diag io.Writer) (provenanceInvocation, error
 	fs.StringVar(&c.options.Comparison, "comparison", "", "adjudicated comparison JSON")
 	fs.StringVar(&c.manifest, "manifest", "", "provenance manifest")
 	fs.StringVar(&c.verification.Version, "expected-version", "", "optional expected measured build identifier for verification")
+	fs.BoolVar(&c.verification.CurrentSources, "current-sources", false, "also require the current checkout to match the recorded source inventory")
 	mode := fs.String("input-mode", "file", "file or explicitly pinned capture verification")
 	fs.StringVar(&c.verification.InputPin.SHA256, "input-sha256", "", "trusted capture digest for pinned verification")
 	fs.StringVar(&c.verification.IDsSHA256, "input-ids-sha256", "", "trusted sorted capture IDs digest")
@@ -97,8 +98,9 @@ func (c provenanceInvocation) execute(ctx context.Context) (any, error) {
 		}
 
 		return struct {
-			Passed bool `json:"passed"`
-		}{Passed: true}, nil
+			Passed                bool `json:"passed"`
+			CurrentSourcesChecked bool `json:"current_sources_checked"`
+		}{Passed: true, CurrentSourcesChecked: c.verification.CurrentSources}, nil
 	default:
 		return nil, errors.New("unknown provenance operation")
 	}

@@ -47,8 +47,20 @@ A baseline applies operator approvals without deleting observations or closing g
 Downloads, advisory networking and source uploads use separate permissions.
 Native engines execute in-process with cooperative limits and cancellation.
 
+Measurement receipts inventory local native sources and headers alongside Go files
+and embedded assets, including inactive build variants. These hashes describe the
+measured revision. Ordinary acceptance verifies the recorded evidence independently
+of today's checkout; source equality is checked only by an explicit
+`provenance verify --current-sources` audit.
+
 ## Package boundaries
 
 `report` is independent of the runtime. Language packages do not import each other
 or the analyzer registry. Product and developer command adapters remain separate.
 `internal/architecture` tests these boundaries. See [repository layout](layout.md).
+
+Execution code consumes `Analyzer`, `Match`, `Trace` and `Result` from `check`,
+their contract owner. Only execution preparation needs the registry's binding
+functions. File display hints belong to `syntax/filetype`; constructing evidence
+does not require the analyzer registry. Hook event validation stays in `hookpolicy`,
+which exposes membership through `KnownEvent` without sharing its mutable lookup table.

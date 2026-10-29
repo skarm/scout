@@ -15,15 +15,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/skarm/scout/internal/reviewpack"
 	"github.com/skarm/scout/report"
 )
 
-// Version identifies the compiled knowledge pack rather than an upstream
-// detector release.
-// Part of the supported Go API for callers outside this repository.
-//
-//goland:noinspection GoUnnecessarilyExportedIdentifiers
-const Version = "scout-curated-review-v4"
+// Version identifies the knowledge pack's compatibility revision. Inventory's
+// SHA256 identifies its exact contents, independently of this label.
+const Version = reviewpack.KnowledgeVersion
 
 //go:embed prompts/*.md data/*.json sources/*.md
 var content embed.FS
@@ -45,12 +43,8 @@ type (
 	Guide = report.Guidance
 	// PromptDescriptor is the shared report representation of a compiled review
 	// prompt.
-	// Part of the supported Go API for callers outside this repository.
-	//goland:noinspection GoUnnecessarilyExportedIdentifiers
 	PromptDescriptor = report.PromptDescriptor
 	// Asset is the shared report representation of an embedded knowledge asset.
-	// Part of the supported Go API for callers outside this repository.
-	//goland:noinspection GoUnnecessarilyExportedIdentifiers
 	Asset = report.KnowledgeAsset
 	// Manifest is the shared report representation of the embedded knowledge
 	// inventory.

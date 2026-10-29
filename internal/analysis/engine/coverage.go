@@ -217,7 +217,7 @@ func completeServices(r report.Analysis) bool {
 }
 
 func completedStatus(status string) bool {
-	return status == report.OutcomeCompleted || status == report.OutcomeNotApplicable
+	return status == report.OutcomeCompleted || status == report.OutcomeNotApplicable || status == report.OutcomeCached
 }
 
 func completeFile(file report.FileCoverage) bool {

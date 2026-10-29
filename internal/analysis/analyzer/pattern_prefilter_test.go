@@ -68,17 +68,17 @@ func BenchmarkPatternCatalog(b *testing.B) {
 	b.ReportAllocs()
 	familyCount := len(analyzer.PatternFamiliesForTest())
 	for b.Loop() {
-		if len(analyzer.SkillspectorPatterns()) != familyCount {
+		if len(analyzer.PatternRules()) != familyCount {
 			b.Fatal("incomplete pattern catalog")
 		}
 	}
 }
 
 func TestPatternCatalogDoesNotShareRegistrySlice(t *testing.T) {
-	first := analyzer.SkillspectorPatterns()
+	first := analyzer.PatternRules()
 	want := first[0].Rule().ID
 	first[0] = nil
-	if got := analyzer.SkillspectorPatterns()[0].Rule().ID; got != want {
+	if got := analyzer.PatternRules()[0].Rule().ID; got != want {
 		t.Fatalf("caller changed compiled catalog: %s", got)
 	}
 }

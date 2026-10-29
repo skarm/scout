@@ -340,8 +340,7 @@ type budgetRange struct {
 // Analysis contains passive observations for one target. It does not contain
 // an installation decision.
 type Analysis struct {
-	// Inspection records the selected plan and backend availability before
-	// execution.
+	// Inspection records the selected plan and backend availability before execution.
 	Inspection InspectionPlan `json:"inspection"`
 	// Knowledge identifies the compiled guidance and instruction assets.
 	Knowledge KnowledgeManifest `json:"knowledge"`
@@ -353,8 +352,7 @@ type Analysis struct {
 	// Vulnerabilities records exact-coordinate advisory queries and matches
 	// separately from static findings.
 	Vulnerabilities VulnerabilityReport `json:"vulnerabilities"`
-	// Dependencies contains captured dependency declarations and manifest parsing
-	// outcomes.
+	// Dependencies contains captured dependency declarations and manifest parsing outcomes.
 	Dependencies DependencyReport `json:"dependencies"`
 	// Source records remote acquisition provenance when the target was downloaded.
 	Source *SourceProvenance `json:"source,omitempty"`
@@ -373,15 +371,16 @@ type Analysis struct {
 	// EngineVersion records the Scout build version used for this analysis.
 	EngineVersion string `json:"engine_version"`
 	// RulesVersion is retained for reading existing reports. New scans use RulepackDigest.
-	RulesVersion   string `json:"rules_version,omitempty"`
-	RulepackDigest string `json:"rulepack_digest,omitempty"` // selected check configuration and rule data; not an implementation hash
-	Profile        string `json:"profile"`                   // selected profile name, also recorded in Inspection
+	RulesVersion string `json:"rules_version,omitempty"`
+	// RulepackDigest  selected check configuration and rule data; not an implementation hash.
+	RulepackDigest string `json:"rulepack_digest,omitempty"`
+	// Profile selected profile name, also recorded in Inspection.
+	Profile string `json:"profile"`
 	// Artifact records the captured inventory and snapshot scope.
 	Artifact Artifact `json:"artifact"`
 	// Coverage records aggregate and per-file coverage of the selected checks.
 	Coverage Coverage `json:"coverage"`
-	// Limits records capture limits and the finding ceiling used for this
-	// analysis.
+	// Limits records capture limits and the finding ceiling used for this analysis.
 	Limits CaptureLimits `json:"limits"`
 	// Extraction records extraction limits, derived objects and skipped children.
 	Extraction ExtractionReport `json:"extraction"`
@@ -426,8 +425,7 @@ type AnalysisLimits struct {
 	ShellOperations int `json:"shell_analysis_operations"`
 	// ShellBindings bounds tracked shell variable bindings.
 	ShellBindings int `json:"shell_bindings"`
-	// ShellTraceTransforms bounds transformations retained in a shell evidence
-	// trace.
+	// ShellTraceTransforms bounds transformations retained in a shell evidence trace.
 	ShellTraceTransforms int `json:"shell_trace_transforms"`
 	// JSONNestingDepth bounds nested JSON extraction depth.
 	JSONNestingDepth int `json:"json_extraction_nesting_depth"`
@@ -443,11 +441,9 @@ type AnalysisLimits struct {
 	GoUnitBytes int `json:"go_unit_bytes"`
 	// GoScanBytes bounds bytes considered by Go checks.
 	GoScanBytes int `json:"go_scan_bytes"`
-	// ConstantOperations bounds work used to evaluate supported constant
-	// expressions.
+	// ConstantOperations bounds work used to evaluate supported constant expressions.
 	ConstantOperations int `json:"constant_operations"`
-	// ConstantStringBytes bounds the bytes retained for one evaluated constant
-	// string.
+	// ConstantStringBytes bounds the bytes retained for one evaluated constant string.
 	ConstantStringBytes int `json:"constant_string_bytes"`
 }
 

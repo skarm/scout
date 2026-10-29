@@ -49,10 +49,6 @@ type ContextReader interface {
 	ReadContext(context.Context, []byte) (int, error)
 }
 
-// Adapt the legacy Read contract once, at construction. The capture boundary
-// checks context before and after each call; this adapter cannot interrupt Read.
-type borrowedReader struct{ input io.Reader }
-
 // Path selects a local file or directory. The path is validated when the
 // operation starts.
 func Path(path string) Target { return Target{kind: pathTarget, name: path} }
@@ -119,6 +115,10 @@ func (t Target) validate() error {
 
 	return nil
 }
+
+// Adapt the legacy Read contract once, at construction. The capture boundary
+// checks context before and after each call; this adapter cannot interrupt Read.
+type borrowedReader struct{ input io.Reader }
 
 func (r borrowedReader) ReadContext(_ context.Context, p []byte) (int, error) {
 	return r.input.Read(p)

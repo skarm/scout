@@ -1,4 +1,3 @@
-//goland:noinspection GoMixedReceiverTypes // JSON values marshal by value and unmarshal by pointer.
 package frontend
 
 import (
@@ -497,8 +496,8 @@ func (n *Node) Children() []*Node {
 
 // MarshalJSON is an explicit transport boundary. Unknown variants, unknown fields,
 // duplicate keys and mismatched shapes fail here, before interpretation.
-func (n Node) MarshalJSON() ([]byte, error) {
-	if n.kind.String() == "" {
+func (n *Node) MarshalJSON() ([]byte, error) {
+	if n == nil || n.kind.String() == "" {
 		return nil, errors.New("invalid Python IR node kind")
 	}
 
