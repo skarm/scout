@@ -108,7 +108,7 @@ jobs:
           "$RUNNER_TEMP/candidate/scout" capabilities > "$RUNNER_TEMP/native-evidence/capabilities.json"
           go run -mod=readonly ./internal/dev/builddeps -- go run -ldflags="-X github.com/skarm/scout.buildVersionOverride=$VERSION" \
             ./cmd/scout-dev releasecheck --binary "$RUNNER_TEMP/candidate/scout" \
-            > "$RUNNER_TEMP/native-evidence/releasecheck.json"
+            | tee "$RUNNER_TEMP/native-evidence/releasecheck.json"
       - name: Host adapters with the native binary
         env:
           SCOUT_TEST_BIN: ${{ runner.temp }}/candidate/scout
