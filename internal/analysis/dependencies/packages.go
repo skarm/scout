@@ -189,7 +189,7 @@ func collectJSONDeclarations(ctx context.Context, name string, root *jsonconfig.
 	case "package.json":
 		return collectPackageManifest(root, add)
 	case "pipfile.lock":
-		return collectPipfileLock(root, add)
+		return collectPipfileLock(ctx, root, add)
 	default:
 		return collectNPMLock(ctx, root, text, add)
 	}
@@ -228,14 +228,26 @@ func collectPackageManifest(root *jsonconfig.Node, add dependencyAdder) bool {
 	return partial
 }
 
-func collectPipfileLock(root *jsonconfig.Node, add dependencyAdder) bool {
-	partial := false
+func collectPipfileLock(ctx context.Context, root *jsonconfig.Node, add dependencyAdder) bool {
+	metadata := root.Get("_meta")
+	indexes := pipfileSources(metadata.Get("sources"))
 
-	for _, field := range []string{"default", "develop"} {
-		n := root.Get(field)
-		if n == nil {
+	if metadata != nil && metadata.Kind != jsonconfig.KindObject {
+		indexes = pipfileIndexes{}
+	}
+
+	partial := !indexes.valid
+
+	for _, category := range root.Members {
+		if category.Key == "_meta" {
 			continue
 		}
+
+		if ctx.Err() != nil {
+			return true
+		}
+
+		n := category.Value
 
 		if n.Kind != jsonconfig.KindObject {
 			partial = true
@@ -243,6 +255,10 @@ func collectPipfileLock(root *jsonconfig.Node, add dependencyAdder) bool {
 		}
 
 		for _, m := range n.Members {
+			if ctx.Err() != nil {
+				return true
+			}
+
 			v, ok := m.Value.Get("version").Text()
 			if !ok {
 				partial = true
@@ -251,9 +267,8 @@ func collectPipfileLock(root *jsonconfig.Node, add dependencyAdder) bool {
 
 			kind := report.VersionUnresolved
 
-			plain := strings.TrimPrefix(v, "==")
-			if strings.HasPrefix(v, "==") && exactPyVersion.MatchString(plain) && m.Value.Get("markers") == nil {
-				v = plain
+			if pipfileExactVersion(m.Value, v, indexes) {
+				v = strings.TrimPrefix(v, "==")
 				kind = report.VersionExactLockfile
 			}
 

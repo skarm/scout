@@ -204,7 +204,8 @@ type AnalysisTask struct {
 	Version string `json:"version"`
 	// Path is the inventory path selected as task input, when applicable.
 	Path string `json:"path,omitempty"`
-	// InputSHA256 identifies the source bytes selected for the planned task.
+	// InputSHA256 identifies the selected source bytes, or the sorted input
+	// inventory for an analyzer task covering every prepared file.
 	InputSHA256 string `json:"input_sha256,omitempty"`
 	// ComponentID identifies the component selected for this task, when
 	// applicable.

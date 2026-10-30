@@ -10,6 +10,7 @@ import (
 	"github.com/skarm/scout/internal/syntax/frontend"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
+	"github.com/skarm/scout/report"
 )
 
 func TestTrustedNPMResolutionGrammar(t *testing.T) {
@@ -114,6 +115,32 @@ func TestPythonTOMLDeclarationsRetainIncompleteStates(t *testing.T) {
 			r := Collect(context.Background(), docs)
 			if len(r.Declarations) != tc.count || len(r.Manifests) != 1 || r.Manifests[0].InventoryComplete() != tc.complete {
 				t.Fatal(r)
+			}
+		})
+	}
+}
+
+func TestPipfileTOMLCategoriesAndOrigins(t *testing.T) {
+	if !frontend.BackendFor("toml").Available {
+		t.Skip("TOML parser unavailable in this build")
+	}
+	options := frontend.DefaultOptions()
+	options.TOML = true
+	registry, err := parse.WithFrontends(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, address, semantics string }{
+		{name: "public", address: "https://pypi.org/simple", semantics: report.VersionExactDeclaration},
+		{name: "private", address: "https://private.invalid/simple", semantics: report.VersionUnresolved},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := "[[source]]\nname='selected'\nurl='" + tc.address + "'\n" +
+				"[docs]\nsample={version='==1.2.3',index='selected'}\n"
+			docs := document.PrepareAllWithRegistry(t.Context(), []artifact.File{artifact.NewFile("Pipfile", []byte(text), false)}, registry)
+			deps := Collect(t.Context(), docs)
+			if len(deps.Declarations) != 1 || deps.Declarations[0].Module != "sample" || deps.Declarations[0].VersionSemantics != tc.semantics {
+				t.Fatalf("TOML category or index identity lost: %+v", deps)
 			}
 		})
 	}

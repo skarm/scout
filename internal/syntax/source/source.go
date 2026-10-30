@@ -9,9 +9,11 @@ import (
 	"unicode/utf8"
 )
 
-// A sparse index avoids eight bytes of metadata for every byte of an input
-// consisting entirely of newlines. A lookup scans at most one 64-line block.
-const indexStride = 64
+// Byte-spaced checkpoints bound lookup work even in a single long line, while
+// keeping metadata sparse for inputs consisting entirely of newlines.
+const indexByteStride = 1024
+
+type checkpoint struct{ offset, line, column int }
 
 // Span is a zero-based, half-open byte interval.
 type Span struct {
@@ -26,8 +28,8 @@ type Span struct {
 type Index struct {
 	// text retains unchanged source bytes for coordinate lookup.
 	text string
-	// lines stores one byte offset per 64-line block to bound index memory.
-	lines []int
+	// points stores rune-aligned byte checkpoints with their text coordinates.
+	points []checkpoint
 }
 
 type segment struct {
@@ -58,26 +60,26 @@ type Replacement struct {
 	Text string
 }
 
-// NewIndex builds a sparse line index over the unchanged source text.
+// NewIndex builds a sparse coordinate index over the unchanged source text.
 func NewIndex(text string) Index {
-	lines := make([]int, 1, strings.Count(text, "\n")/indexStride+1)
-	line := 0
+	points := make([]checkpoint, 1, len(text)/indexByteStride+1)
+	points[0] = checkpoint{line: 1, column: 1}
 
-	for at := 0; at < len(text); {
-		n := strings.IndexByte(text[at:], '\n')
-		if n < 0 {
-			break
+	line, column, next := 1, 1, indexByteStride
+	for at, char := range text {
+		if at >= next {
+			points = append(points, checkpoint{offset: at, line: line, column: column})
+			next = at + indexByteStride
 		}
 
-		at += n + 1
-
-		line++
-		if line%indexStride == 0 {
-			lines = append(lines, at)
+		if char == '\n' {
+			line, column = line+1, 1
+		} else {
+			column++
 		}
 	}
 
-	return Index{text: text, lines: lines}
+	return Index{text: text, points: points}
 }
 
 // Position maps a valid byte offset to one-based line and Unicode code-point
@@ -88,15 +90,21 @@ func (i Index) Position(offset int) (line, column int, err error) {
 		return 0, 0, errors.New("invalid source offset")
 	}
 
-	n := sort.Search(len(i.lines), func(n int) bool { return i.lines[n] > offset }) - 1
+	n := sort.Search(len(i.points), func(n int) bool { return i.points[n].offset > offset }) - 1
 	if n < 0 {
 		return 0, 0, errors.New("uninitialized source index")
 	}
 
-	block := i.text[i.lines[n]:offset]
+	point := i.points[n]
+	block := i.text[point.offset:offset]
+	line = point.line + strings.Count(block, "\n")
 
-	return n*indexStride + strings.Count(block, "\n") + 1,
-		utf8.RuneCountInString(block[strings.LastIndexByte(block, '\n')+1:]) + 1, nil
+	column = point.column
+	if last := strings.LastIndexByte(block, '\n'); last >= 0 {
+		block, column = block[last+1:], 1
+	}
+
+	return line, column + utf8.RuneCountInString(block), nil
 }
 
 // NewView concatenates ordered, nonoverlapping source spans and retains their

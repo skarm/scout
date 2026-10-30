@@ -31,6 +31,8 @@ independent rule budgets and outcomes. See [language scope](../reference/languag
 
 The component graph records declarations, references and inferred host activation.
 A fixed task plan and outcome ledger expose omitted, failed and unfinished work.
+Each analyzer has one task bound to the sorted prepared-file inventory; per-file
+outcomes remain in coverage. The plan does not grow with file/rule pairs.
 Evidence already collected survives later failures.
 
 Optional semantic review uses bounded source excerpts and request-scoped citations.

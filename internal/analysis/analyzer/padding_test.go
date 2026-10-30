@@ -113,8 +113,14 @@ func TestPaddingFindBudgetAndCancellationKeepEvidence(t *testing.T) {
 			t.Fatalf("budget changed first evidence: %+v", got)
 		}
 	}
-	ctx := &patternCancelContext{Context: context.Background(), until: 4}
-	got, err := a.Find(ctx, doc, 10)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	got := Result{}
+	emit := paddingEmitter(&got, 10)
+	err := paddingColumns(ctx, paddingLines(text), true, nil, func(start, end int) {
+		emit(start, end)
+		cancel()
+	})
 	if !errors.Is(err, context.Canceled) || len(got.Matches) != 1 || got.Matches[0].Start != 1 || got.Matches[0].End != 81 {
 		t.Fatalf("cancellation discarded accepted padding: %+v, %v", got, err)
 	}

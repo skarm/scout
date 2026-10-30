@@ -13,18 +13,19 @@ import (
 
 const MaxTasks = 131072
 
-// Ledger is confined to the engine coordinator, not shared with workers.
-// Tasks and inputs are copied before execution. Snapshot binds decisions to bytes.
+// Ledger is mutated only by the engine coordinator. Workers read fixed scheduling
+// decisions. Tasks and inputs are copied before execution and bound to bytes.
 type Ledger struct {
-	tasks           []report.AnalysisTask
-	index           map[string]int
-	tasksByAnalyzer map[string][]int
-	results         map[string]report.TaskOutcome
-	scheduled       map[string]bool
-	issues          map[string]bool
-	omitted         int
-	max             int
-	digest          string
+	tasks     []report.AnalysisTask
+	index     map[string]int
+	analyzers map[string]int
+	files     []report.File
+	fileIndex map[string]int
+	results   map[string]report.TaskOutcome
+	issues    map[string]bool
+	omitted   int
+	max       int
+	digest    string
 }
 
 func New(files []report.File, rules []report.Rule, g report.ComponentGraph) *Ledger {
@@ -50,8 +51,8 @@ func newLedger(files []report.File, rules []report.Rule, g report.ComponentGraph
 	}
 
 	l := &Ledger{
-		tasks: []report.AnalysisTask{}, index: map[string]int{}, tasksByAnalyzer: map[string][]int{},
-		results: map[string]report.TaskOutcome{}, scheduled: map[string]bool{}, issues: map[string]bool{}, max: limit,
+		tasks: []report.AnalysisTask{}, index: map[string]int{}, analyzers: map[string]int{},
+		fileIndex: map[string]int{}, results: map[string]report.TaskOutcome{}, issues: map[string]bool{}, max: limit,
 	}
 	// Discovery-dependent obligations are explicit; unsupported is not success.
 	// Phase order is part of the bounded plan and its stable hash.
@@ -65,48 +66,60 @@ func newLedger(files []report.File, rules []report.Rule, g report.ComponentGraph
 	return l
 }
 
-func (l *Ledger) Scheduled(rule, file string) bool { return l.scheduled[key(rule, file)] }
+func (l *Ledger) Scheduled(rule, file string) bool {
+	_, analyzer := l.analyzers[rule]
+	_, input := l.fileIndex[file]
+
+	return analyzer && input
+}
 
 // Record reports a terminal outcome for a known task. No result can rewrite an
 // earlier one. The first outcome is retained and the duplicate is a contract gap.
 func (l *Ledger) Record(id, status, reason string) { l.record(id, status, reason) }
 
-// CompleteAnalyzer maps the engine's file outcomes onto already planned tasks.
-// Unscheduled files cannot retrospectively become successfully planned work.
+// CompleteAnalyzer closes one analyzer's inventory-bound task only after every
+// planned input has exactly one valid outcome. Per-file details remain in coverage.
 func (l *Ledger) CompleteAnalyzer(rule string, files []report.File, checks []report.FileCheck) {
-	if len(files) != len(checks) {
-		l.issues["task_result_count_mismatch"] = true
+	index, planned := l.analyzers[rule]
+	if !planned {
+		return
 	}
 
-	byPath := make(map[string]report.FileCheck, len(checks))
+	status := report.OutcomeNotApplicable
+
+	if len(files) != len(l.files) || len(files) != len(checks) {
+		l.issues["task_result_count_mismatch"] = true
+		status = report.OutcomePartial
+	}
+
+	seen := make([]bool, len(l.files))
 	for i, c := range checks {
 		if i >= len(files) {
 			break
 		}
 
+		input, known := l.fileIndex[files[i].Path]
+		if !known || seen[input] || l.files[input] != files[i] {
+			l.issues["task_input_mismatch"] = true
+			status = report.OutcomePartial
+		} else {
+			seen[input] = true
+		}
+
 		if c.AnalyzerID != rule {
 			l.issues["task_analyzer_mismatch"] = true
-			continue
+			status = report.OutcomePartial
 		}
 
-		byPath[files[i].Path] = c
+		terminal := l.normalizeStatus(c.Status)
+		if terminal != report.OutcomeCompleted && terminal != report.OutcomeNotApplicable {
+			status = report.OutcomePartial
+		} else if terminal == report.OutcomeCompleted && status == report.OutcomeNotApplicable {
+			status = report.OutcomeCompleted
+		}
 	}
 
-	for _, index := range l.tasksByAnalyzer[rule] {
-		t := l.tasks[index]
-
-		check, ok := byPath[t.Path]
-		if !ok {
-			continue
-		}
-
-		reason := "engine_reported_" + check.Status
-		if check.Status == report.OutcomeNotApplicable {
-			reason = "analyzer_declared_not_applicable"
-		}
-
-		l.record(t.ID, check.Status, reason)
-	}
+	l.record(l.tasks[index].ID, status, "file_outcomes_"+status)
 }
 
 func (l *Ledger) Tasks() []report.AnalysisTask { return append([]report.AnalysisTask(nil), l.tasks...) }
@@ -239,28 +252,29 @@ func (l *Ledger) planSemantic(enabled bool) {
 }
 
 func (l *Ledger) planAnalyzers(files []report.File, rules []report.Rule) {
-	fs := append([]report.File(nil), files...)
+	l.files = append([]report.File(nil), files...)
 	rs := append([]report.Rule(nil), rules...)
 
-	sort.Slice(fs, func(i, j int) bool { return fs[i].Path < fs[j].Path })
+	sort.Slice(l.files, func(i, j int) bool { return l.files[i].Path < l.files[j].Path })
 	sort.Slice(rs, func(i, j int) bool { return rs[i].ID < rs[j].ID })
 
-	for _, f := range fs {
-		for _, r := range rs {
-			t := report.AnalysisTask{
-				Kind:        "analyzer",
-				AnalyzerID:  r.ID,
-				Version:     r.Version,
-				Path:        f.Path,
-				InputSHA256: f.SHA256,
-				Required:    true,
-			}
-
-			id := l.add(t)
-			if id != "" {
-				l.scheduled[key(r.ID, f.Path)] = true
-			}
+	for i, file := range l.files {
+		if _, duplicate := l.fileIndex[file.Path]; duplicate {
+			l.issues["duplicate_planned_task"] = true
 		}
+
+		l.fileIndex[file.Path] = i
+	}
+	// The same sorted inventory binds every analyzer. Store it once rather than
+	// retaining a task and outcome for every file/rule pair.
+	encoded, _ := json.Marshal(l.files)
+
+	inputDigest := artifact.Hash(encoded)
+	for _, r := range rs {
+		l.add(report.AnalysisTask{
+			Kind: "analyzer", AnalyzerID: r.ID, Version: r.Version,
+			InputSHA256: inputDigest, Required: true,
+		})
 	}
 }
 
@@ -269,7 +283,7 @@ func (l *Ledger) bindPlan(host string) {
 		Version string
 		Host    string
 		Tasks   []report.AnalysisTask
-	}{Version: "validation-plan-v2", Host: host, Tasks: l.tasks})
+	}{Version: "validation-plan-v3", Host: host, Tasks: l.tasks})
 	l.digest = artifact.Hash(raw)
 }
 
@@ -287,10 +301,16 @@ func (l *Ledger) add(t report.AnalysisTask) string {
 		return ""
 	}
 
-	l.index[t.ID] = len(l.tasks)
 	if t.Kind == "analyzer" {
-		l.tasksByAnalyzer[t.AnalyzerID] = append(l.tasksByAnalyzer[t.AnalyzerID], len(l.tasks))
+		if _, duplicate := l.analyzers[t.AnalyzerID]; duplicate {
+			l.issues["duplicate_planned_task"] = true
+			return ""
+		}
+
+		l.analyzers[t.AnalyzerID] = len(l.tasks)
 	}
+
+	l.index[t.ID] = len(l.tasks)
 
 	l.tasks = append(l.tasks, t)
 
@@ -308,12 +328,8 @@ func (l *Ledger) record(id, status, reason string) {
 		return
 	}
 
-	switch status {
-	case report.OutcomeCompleted, report.OutcomeNotApplicable, report.OutcomeUnsupported, report.OutcomeDisabled, report.OutcomeCancelled, report.OutcomeFailed, report.OutcomePartial, report.OutcomeNotRun:
-	default:
-		l.issues["invalid_task_outcome"] = true
-		status = report.OutcomeFailed
-		reason = "invalid_outcome"
+	if normalized := l.normalizeStatus(status); normalized != status {
+		status, reason = normalized, "invalid_outcome"
 	}
 	// Reasons are scanner-controlled enums, not analyzer error strings.
 	if len(reason) == 0 || len(reason) > 128 {
@@ -324,4 +340,13 @@ func (l *Ledger) record(id, status, reason string) {
 
 	l.results[id] = report.TaskOutcome{TaskID: id, Status: status, Reason: reason}
 }
-func key(rule, file string) string { return rule + "\x00" + file }
+
+func (l *Ledger) normalizeStatus(status string) string {
+	switch status {
+	case report.OutcomeCompleted, report.OutcomeNotApplicable, report.OutcomeUnsupported, report.OutcomeDisabled, report.OutcomeCancelled, report.OutcomeFailed, report.OutcomePartial, report.OutcomeNotRun:
+		return status
+	default:
+		l.issues["invalid_task_outcome"] = true
+		return report.OutcomeFailed
+	}
+}

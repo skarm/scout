@@ -119,14 +119,42 @@ func FuzzIndex(f *testing.F) {
 }
 
 func BenchmarkIndexLookup(b *testing.B) {
-	text := strings.Repeat("word слово\n", 20000)
+	for _, tc := range []struct{ name, text string }{
+		{name: "short-lines", text: strings.Repeat("word слово\n", 20000)},
+		{name: "long-ascii-line", text: strings.Repeat("a", 1<<20)},
+		{name: "long-unicode-line", text: strings.Repeat("слово🙂", 1<<16)},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			index := source.NewIndex(tc.text)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if _, _, err := index.Position(len(tc.text)); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestIndexCoordinatesAcrossLongUnicodeLines(t *testing.T) {
+	text := strings.Repeat("a", 1023) + "🙂" + strings.Repeat("слово", 15000) + "\r\n" + strings.Repeat("🙂", 2000) + "\n"
 	index := source.NewIndex(text)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if _, _, err := index.Position(len(text)); err != nil {
-			b.Fatal(err)
+	for at := 0; at <= len(text); at += 127 {
+		if at < len(text) && !utf8.RuneStart(text[at]) {
+			continue
 		}
+		prefix := text[:at]
+		wantLine := strings.Count(prefix, "\n") + 1
+		wantColumn := utf8.RuneCountInString(prefix[strings.LastIndexByte(prefix, '\n')+1:]) + 1
+		line, column, err := index.Position(at)
+		if err != nil || line != wantLine || column != wantColumn {
+			t.Fatalf("offset %d: got %d:%d, want %d:%d (%v)", at, line, column, wantLine, wantColumn, err)
+		}
+	}
+	line, column, err := index.Position(len(text))
+	if err != nil || line != 3 || column != 1 {
+		t.Fatalf("EOF coordinate: %d:%d (%v)", line, column, err)
 	}
 }
 

@@ -56,7 +56,8 @@ type VulnerabilityReport struct {
 	Source string `json:"source"`
 	// DatabaseSHA256 identifies the supplied offline advisory cache bytes.
 	DatabaseSHA256 string `json:"database_sha256,omitempty"`
-	// QueriedAt records the trusted time associated with advisory query results.
+	// QueriedAt records the oldest trusted query time among included advisory
+	// sources, so exporting mixed network/cache results cannot renew cached data.
 	QueriedAt string `json:"queried_at,omitempty"`
 	// Completeness records coverage of the selected dependency queries.
 	Completeness Completeness `json:"completeness"`

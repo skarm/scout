@@ -14,7 +14,7 @@ func TestPlanExistsBeforeExecutionAndIsDefensive(t *testing.T) {
 	fs, rs := inputs()
 	l := validation.New(fs, rs, report.ComponentGraph{})
 	before := l.Tasks()
-	if len(before) != 3 {
+	if len(before) != 2 {
 		t.Fatal(before)
 	}
 	before[0].Kind = "mutated"
@@ -85,9 +85,9 @@ func TestContractViolations(t *testing.T) {
 
 func TestBudgetAndDigests(t *testing.T) {
 	fs, rs := inputs()
-	a := validation.NewWithLimit(fs, rs, report.ComponentGraph{}, 2)
+	a := validation.NewWithLimit(fs, rs, report.ComponentGraph{}, 1)
 	r := a.Finalize()
-	if r.OmittedTasks != 1 || len(r.Tasks) != 2 || r.Completeness != "partial" || a.Scheduled("R", "b") {
+	if r.OmittedTasks != 1 || len(r.Tasks) != 1 || r.Completeness != "partial" || a.Scheduled("R", "b") {
 		t.Fatal(r)
 	}
 	b := validation.New(fs, rs, report.ComponentGraph{}).Finalize()
@@ -177,14 +177,11 @@ func TestAnalyzerCompletionPreservesPlanAndOutcomeOrder(t *testing.T) {
 	if a.Completeness != report.Complete || a.PlanSHA256 != plan.PlanSHA256 || !reflect.DeepEqual(a.Tasks, plan.Tasks) {
 		t.Fatalf("execution changed plan or failed completion: %+v", a)
 	}
-	if got := taskOrder(a.Tasks); !slices.Equal(got, []string{"semantic_review", "A:a", "B:a", "A:b", "B:b"}) {
+	if got := taskOrder(a.Tasks); !slices.Equal(got, []string{"semantic_review", "A:", "B:"}) {
 		t.Fatalf("task order changed: %v", got)
 	}
 	for i, outcome := range a.Outcomes {
 		want := "completed"
-		if a.Tasks[i].AnalyzerID == "A" && a.Tasks[i].Path == "b" {
-			want = "not_applicable"
-		}
 		if outcome.TaskID != a.Tasks[i].ID || (a.Tasks[i].Kind == "analyzer" && outcome.Status != want) {
 			t.Fatalf("outcome detached from planned task at %d: %+v", i, outcome)
 		}
@@ -237,15 +234,16 @@ func TestAnalyzerCompletionOnlyCompletesRetainedTasks(t *testing.T) {
 				l.CompleteAnalyzer(rule.ID, files, completedChecks(rule.ID, len(files)))
 			}
 			r := l.Finalize()
-			if !reflect.DeepEqual(r.Tasks, plan.Tasks) || r.PlanSHA256 != plan.PlanSHA256 || r.OmittedTasks != 5-limit {
+			omitted := max(0, len(rules)+1-limit)
+			if !reflect.DeepEqual(r.Tasks, plan.Tasks) || r.PlanSHA256 != plan.PlanSHA256 || r.OmittedTasks != omitted {
 				t.Fatalf("completion changed capped plan: %+v", r)
 			}
 			for i, task := range r.Tasks {
-				if task.Kind == "analyzer" && (r.Outcomes[i].Status != "completed" || !l.Scheduled(task.AnalyzerID, task.Path)) {
+				if task.Kind == "analyzer" && (r.Outcomes[i].Status != "completed" || !l.Scheduled(task.AnalyzerID, files[0].Path)) {
 					t.Fatalf("retained task not completed: %+v", task)
 				}
 			}
-			if limit < 5 && (r.Completeness != report.Partial || !slices.Contains(r.Issues, fmt.Sprintf("task_budget_exceeded:%d", 5-limit))) {
+			if omitted > 0 && (r.Completeness != report.Partial || !slices.Contains(r.Issues, fmt.Sprintf("task_budget_exceeded:%d", omitted))) {
 				t.Fatalf("omitted work was presented as complete: %+v", r)
 			}
 		})
@@ -280,15 +278,8 @@ func TestAnalyzerCompletionRejectsInvalidPerFileOutcomes(t *testing.T) {
 		t.Fatalf("invalid outcomes were accepted: %+v", r)
 	}
 	for i, task := range r.Tasks {
-		switch task.Path {
-		case "a":
-			if r.Outcomes[i].Status != "missing" {
-				t.Fatalf("wrong analyzer completed task: %+v", r.Outcomes[i])
-			}
-		case "b":
-			if r.Outcomes[i].Status != "failed" || r.Outcomes[i].Reason != "invalid_outcome" {
-				t.Fatalf("invalid status not normalized to failure: %+v", r.Outcomes[i])
-			}
+		if task.Kind == "analyzer" && r.Outcomes[i].Status != "partial" {
+			t.Fatalf("invalid per-file results completed analyzer: %+v", r.Outcomes[i])
 		}
 	}
 }
@@ -369,7 +360,7 @@ func TestPlanningPhasesPreserveOrderOutcomesAndDigest(t *testing.T) {
 			plugin:    "",
 			reference: "",
 			analyzer:  "A",
-			path:      "a",
+			path:      "",
 			status:    "missing",
 			reason:    "planned_task_has_no_result",
 		},
@@ -378,25 +369,7 @@ func TestPlanningPhasesPreserveOrderOutcomesAndDigest(t *testing.T) {
 			plugin:    "",
 			reference: "",
 			analyzer:  "B",
-			path:      "a",
-			status:    "missing",
-			reason:    "planned_task_has_no_result",
-		},
-		{
-			kind:      "analyzer",
-			plugin:    "",
-			reference: "",
-			analyzer:  "A",
-			path:      "b",
-			status:    "missing",
-			reason:    "planned_task_has_no_result",
-		},
-		{
-			kind:      "analyzer",
-			plugin:    "",
-			reference: "",
-			analyzer:  "B",
-			path:      "b",
+			path:      "",
 			status:    "missing",
 			reason:    "planned_task_has_no_result",
 		},
@@ -410,9 +383,10 @@ func TestPlanningPhasesPreserveOrderOutcomesAndDigest(t *testing.T) {
 			t.Fatalf("task %d lost phase order or exact outcome: task=%+v outcome=%+v", i, task, outcome)
 		}
 	}
-	const beforeRefactorDigest = "ee9f7954eb8ddd3e8c2cb94914449cd6b0d349f0336db87e8316a07c2658ad73"
-	if got.PlanSHA256 != beforeRefactorDigest {
-		t.Fatalf("exact plan binding changed: %s", got.PlanSHA256)
+	changed := append([]report.File(nil), files...)
+	changed[0].SHA256 = "different captured bytes"
+	if other := validation.NewWithSemantic(changed, rules, graph, true).Finalize(); got.PlanSHA256 == other.PlanSHA256 {
+		t.Fatal("plan is not bound to every input's bytes")
 	}
 	if files[0].Path != "b" || rules[0].ID != "B" || graph.Plugins[0].ID != "second" || graph.References[0].ID != "ref-z" {
 		t.Fatal("planning reordered caller-owned input")
@@ -589,4 +563,47 @@ func inputs() ([]report.File, []report.Rule) {
 		ID:      "R",
 		Version: "1",
 	}}
+}
+
+func TestAnalyzerPlanCoversLargeInventoryWithoutDroppingTail(t *testing.T) {
+	files := make([]report.File, 4096)
+	for i := range files {
+		files[i] = report.File{Path: fmt.Sprintf("file-%04d", i), SHA256: fmt.Sprintf("digest-%04d", i)}
+	}
+	rules := make([]report.Rule, 154)
+	for i := range rules {
+		rules[i] = report.Rule{ID: fmt.Sprintf("R%03d", i), Version: "1"}
+	}
+	ledger := validation.New(files, rules, report.ComponentGraph{})
+	for _, rule := range rules {
+		if !ledger.Scheduled(rule.ID, files[len(files)-1].Path) {
+			t.Fatalf("last captured file was excluded from %s", rule.ID)
+		}
+		ledger.CompleteAnalyzer(rule.ID, files, completedChecks(rule.ID, len(files)))
+	}
+	result := ledger.Finalize()
+	if result.Completeness != report.Complete || result.OmittedTasks != 0 || len(result.Tasks) > len(rules)+1 {
+		t.Fatalf("plan scales with file/rule pairs: tasks=%d omitted=%d completeness=%s", len(result.Tasks), result.OmittedTasks, result.Completeness)
+	}
+}
+
+func TestAnalyzerCompletionRejectsChangedMissingOrDuplicateInputs(t *testing.T) {
+	files, rules := inputs()
+	for _, tc := range []struct {
+		name   string
+		inputs []report.File
+	}{
+		{name: "missing", inputs: files[:1]},
+		{name: "duplicate", inputs: []report.File{files[0], files[0]}},
+		{name: "changed", inputs: []report.File{files[0], {Path: files[1].Path, SHA256: "changed"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ledger := validation.New(files, rules, report.ComponentGraph{})
+			ledger.CompleteAnalyzer("R", tc.inputs, completedChecks("R", len(tc.inputs)))
+			result := ledger.Finalize()
+			if result.Completeness != report.Partial || len(result.Issues) == 0 {
+				t.Fatalf("invalid inventory was accepted: %+v", result)
+			}
+		})
+	}
 }

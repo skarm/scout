@@ -182,7 +182,7 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 
 	r.Source = "OSV-querybatch"
 	r.QueriedAt = now.UTC().Format(time.RFC3339)
-	cached, cacheUsable := prepareCache(o, now, &r)
+	cached, cachedAt := prepareCache(o, now, &r)
 
 	for _, m := range deps.Manifests {
 		if !m.InventoryComplete() {
@@ -193,7 +193,11 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 	groups := groupQueries(deps, o, &r)
 	set := func(g *queryGroup, status string) { setQueryStatus(g, status, &r) }
 	fallback := func(g *queryGroup, status string) {
-		if x, ok := cached[key(g.q.Package.Ecosystem, g.q.Package.Name, g.q.Version)]; ok && cacheUsable {
+		if x, ok := cached[key(g.q.Package.Ecosystem, g.q.Package.Name, g.q.Version)]; ok {
+			// A report and its exported cache have one timestamp. Use the oldest
+			// included source so a network fallback cannot renew cached answers.
+			r.QueriedAt = cachedAt.UTC().Format(time.RFC3339)
+
 			if !g.appendResults(x.Vulnerabilities) {
 				set(g, "result_limit")
 				return
@@ -216,7 +220,8 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 }
 
 // Export builds a validated exact-query cache from completed or cached report
-// queries using the report query time. It does not encode JSON.
+// queries using the oldest included query time. It does not encode JSON or
+// renew cached answers.
 func Export(r report.VulnerabilityReport) (Cache, error) {
 	at, err := time.Parse(time.RFC3339, r.QueriedAt)
 	if err != nil {
@@ -356,16 +361,17 @@ func cacheRecordValid(r Record) bool {
 	return r.Ecosystem != "" && r.Name != "" && r.Version != "" && len(r.Name) <= 256 && len(r.Version) <= 256 && r.Vulnerabilities != nil && len(r.Vulnerabilities) <= maxCoordinateResults
 }
 
-func prepareCache(o Options, now time.Time, r *report.VulnerabilityReport) (map[string]Record, bool) {
+func prepareCache(o Options, now time.Time, r *report.VulnerabilityReport) (map[string]Record, time.Time) {
 	cached := map[string]Record{}
-	cacheUsable := false
+
+	var queriedAt time.Time
 
 	if len(o.Offline) > 0 {
 		c, _ := ParseCache(o.Offline)
 		age := now.Sub(c.QueriedAt)
 
-		cacheUsable = age >= 0 && age <= o.MaxCacheAge
-		if cacheUsable {
+		if age >= 0 && age <= o.MaxCacheAge {
+			queriedAt = c.QueriedAt
 			for _, x := range c.Records {
 				cached[key(x.Ecosystem, x.Name, x.Version)] = x
 			}
@@ -380,7 +386,7 @@ func prepareCache(o Options, now time.Time, r *report.VulnerabilityReport) (map[
 		}
 	}
 
-	return cached, cacheUsable
+	return cached, queriedAt
 }
 
 func groupQueries(deps report.DependencyReport, o Options, r *report.VulnerabilityReport) []*queryGroup {
@@ -618,7 +624,7 @@ func exportRecords(r report.VulnerabilityReport) []Record {
 	seen := map[int]map[string]bool{}
 
 	for _, q := range r.Queries {
-		if q.Status != report.OutcomeCompleted {
+		if q.Status != report.OutcomeCompleted && q.Status != report.OutcomeCached {
 			continue
 		}
 

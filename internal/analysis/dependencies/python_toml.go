@@ -2,6 +2,7 @@ package dependencies
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/syntax/language"
@@ -155,11 +156,15 @@ func (c *tomlCollector) pyproject(root *jsonconfig.Node) {
 }
 
 func (c *tomlCollector) pipfile(root *jsonconfig.Node) {
-	for _, field := range []string{"packages", "dev-packages"} {
-		table := root.Get(field)
-		if table == nil {
+	indexes := pipfileSources(root.Get("source"))
+	c.partial = c.partial || !indexes.valid
+
+	for _, group := range root.Members {
+		if slices.Contains([]string{"source", "requires", "scripts", "pipenv"}, group.Key) {
 			continue
 		}
+
+		table := group.Value
 
 		if table.Kind != jsonconfig.KindObject {
 			c.partial = true
@@ -173,7 +178,7 @@ func (c *tomlCollector) pipfile(root *jsonconfig.Node) {
 			}
 
 			kind := report.VersionUnresolved
-			if ok && strings.HasPrefix(version, "==") && exactPyVersion.MatchString(strings.TrimPrefix(version, "==")) {
+			if pipfileExactVersion(member.Value, version, indexes) {
 				kind, version = report.VersionExactDeclaration, strings.TrimPrefix(version, "==")
 			} else {
 				c.partial = true
@@ -226,7 +231,7 @@ func pythonRegistrySource(source *jsonconfig.Node, name string) bool {
 			address, _ = source.Get("url").Text()
 		}
 
-		if address != "" && address != "https://pypi.org/simple" && address != "https://pypi.org/simple/" {
+		if address != "" && !publicPythonRegistry(address) {
 			registry = false
 		}
 	}

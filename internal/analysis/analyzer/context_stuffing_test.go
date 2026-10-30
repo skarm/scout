@@ -78,14 +78,18 @@ func TestContextRepetitionFindBudgetPreservesPeriodOrder(t *testing.T) {
 	}
 }
 
-func TestContextRepetitionFindCancellationKeepsEarlierRun(t *testing.T) {
+func TestContextRepetitionCancellationKeepsEarlierRun(t *testing.T) {
 	text := strings.Repeat("AB", 21) + "\n" + strings.Repeat("x", 5000)
-	doc := document.Prepare(context.Background(), artifact.NewFile("input.txt", []byte(text), false))
-	// MP2's five literal grammars run before the bounded repetition scan. The
-	// sixth context check cancels its first 4096-rune checkpoint after AB emits.
-	ctx := &patternCancelContext{Context: context.Background(), until: 6}
-	got, err := patternAnalyzerForTest(t, "NV-MP2").Find(ctx, doc, 10)
-	if !errors.Is(err, context.Canceled) || !got.Truncated || len(got.Matches) != 1 || got.Matches[0].Start != 0 || got.Matches[0].End != 42 {
-		t.Fatalf("cancellation discarded prior repetition: %+v, %v", got, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	got := Result{}
+	emit := collectMatches(&got, 10).span
+	got.Truncated = repeatedContext(ctx, text, func(start, end int) bool {
+		accepted := emit(start, end)
+		cancel()
+		return accepted
+	})
+	if !errors.Is(ctx.Err(), context.Canceled) || !got.Truncated || len(got.Matches) != 1 || got.Matches[0].Start != 0 || got.Matches[0].End != 42 {
+		t.Fatalf("cancellation discarded prior repetition: %+v, %v", got, ctx.Err())
 	}
 }

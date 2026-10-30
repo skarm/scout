@@ -673,3 +673,73 @@ func paginatedResult(t *testing.T, count int, duplicate bool) report.Vulnerabili
 	collectMatches([]*queryGroup{g}, &r)
 	return r
 }
+
+func TestOfflineCheckCanBeExportedWithoutRefreshingItsAge(t *testing.T) {
+	now := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+	options, original := cachedOptions(t, now.Add(-6*24*time.Hour))
+	deps := report.DependencyReport{Declarations: []report.Dependency{cachedDependency()}}
+	result, err := Check(t.Context(), deps, options, now)
+	if err != nil || result.Completeness != report.Complete || len(result.Matches) != 1 {
+		t.Fatal(result, err)
+	}
+	exported, err := Export(result)
+	if err != nil || !exported.QueriedAt.Equal(original.QueriedAt) || len(exported.Records) != 1 || len(exported.Records[0].Vulnerabilities) != 1 {
+		t.Fatalf("cached evidence or original age lost: %+v (%v)", exported, err)
+	}
+	options.Offline, err = json.Marshal(exported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expired, err := Check(t.Context(), deps, options, original.QueriedAt.Add(options.MaxCacheAge+time.Second))
+	if err != nil || expired.Completeness != report.Partial || len(expired.Matches) != 0 {
+		t.Fatalf("export renewed stale data: %+v (%v)", expired, err)
+	}
+}
+
+func TestMixedNetworkAndCachedExportUsesOldestQueryTime(t *testing.T) {
+	now := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+	options, original := cachedOptions(t, now.Add(-6*24*time.Hour))
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) != 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"results":[{"vulns":[{"id":"GHSA-live"}]},{"next_page_token":"next"}]}`)); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	options.AllowNetwork, options.AllowLoopback, options.Endpoint = true, true, server.URL
+	deps := report.DependencyReport{Declarations: []report.Dependency{{
+		ID: "fresh", Ecosystem: "npm", Module: "fresh", DeclaredVersion: "1.2.3", VersionSemantics: report.VersionExactDeclaration,
+	}, cachedDependency()}}
+	result, err := Check(t.Context(), deps, options, now)
+	if err != nil || result.Completeness != report.Complete || len(result.Matches) != 2 || requests.Load() != 2 {
+		t.Fatal(result, err)
+	}
+	exported, err := Export(result)
+	if err != nil || len(exported.Records) != 2 || !exported.QueriedAt.Equal(original.QueriedAt) {
+		t.Fatalf("mixed export dropped or refreshed cached data: %+v (%v)", exported, err)
+	}
+}
+
+func cachedDependency() report.Dependency {
+	return report.Dependency{ID: "cached", Ecosystem: "npm", Module: "sample", DeclaredVersion: "1.2.3", VersionSemantics: report.VersionExactDeclaration}
+}
+
+func cachedOptions(t *testing.T, at time.Time) (Options, Cache) {
+	t.Helper()
+	cache := Cache{Version: 1, QueriedAt: at, Records: []Record{{
+		Ecosystem: "npm", Name: "sample", Version: "1.2.3", Vulnerabilities: []ID{{ID: "GHSA-cached"}},
+	}}}
+	options := DefaultOptions()
+	options.Enabled = true
+	var err error
+	options.Offline, err = json.Marshal(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return options, cache
+}
