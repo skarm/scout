@@ -10,6 +10,24 @@ import (
 )
 
 const operatorHelp = `
+discover:
+  --agent all|codex|claude-code Agent to inventory (default: all).
+  --home DIR                 Selected user home (default: current user's home).
+  --codex-home DIR           Explicit Codex configuration directory.
+  --claude-home DIR          Explicit Claude Code configuration directory.
+  --project DIR              Selected project; repeatable (default: current directory).
+  --no-project               Omit project discovery (default: false).
+  --system[=BOOL]            Include known system locations (default: true).
+  --max-entries N            Aggregate discovery probes/entries (default: 10000).
+  --max-depth N              Skill/plugin directory depth (default: 12).
+  --max-bytes N              Aggregate config/manifest bytes (default: 8388608).
+  --timeout DURATION         Discovery deadline (default: 10s; maximum: 2m).
+  --format text|json         Inventory format (default: text).
+  --output FILE              Inventory destination (default: stdout).
+  --scan                     Scan discovered roots; ordinary scan flags follow --.
+  Explicit --home ignores process CODEX_HOME/CLAUDE_CONFIG_DIR overrides.
+  --scan requires complete discovery and 1..32 roots; stdout is a scan report.
+
 doctor (alias: selftest):
   --format text|json         Output format (default: terminal; alias for text).
   --timeout DURATION         Total self-test deadline (default: 90s; maximum: 2m).

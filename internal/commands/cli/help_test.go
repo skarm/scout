@@ -41,6 +41,7 @@ func TestFullHelpAndManualCoverEveryCommandFlag(t *testing.T) {
 	for _, command := range [][]string{
 		{"scan"},
 		{"compare"},
+		{"discover"},
 		{"mcp"},
 		{"config", "validate"},
 		{"doctor"},

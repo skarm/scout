@@ -13,6 +13,7 @@
 - [Полный справочник команд и флагов](reference/cli.ru.md).
 - [Встроенные проверки, дополнительные правила и профили](user/inspection-profiles.ru.md).
 - [Сравнение обновлений](user/update-review.ru.md).
+- [Обнаружение установленных компонентов агентов](user/discovery.ru.md).
 - [Семантическая проверка](user/semantic-review.ru.md).
 - [Интеграции и MCP](user/integrations.ru.md).
 

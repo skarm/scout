@@ -13,6 +13,7 @@ Guides to using, extending and validating Scout.
 - [Complete command and flag reference](reference/cli.md).
 - [Built-in checks, additional rules and profiles](user/inspection-profiles.md).
 - [Update comparison](user/update-review.md).
+- [Discover installed agent components](user/discovery.md).
 - [Semantic review](user/semantic-review.md).
 - [Integrations and MCP](user/integrations.md).
 

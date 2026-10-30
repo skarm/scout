@@ -17,6 +17,7 @@ const usage = `Usage:
   scout scan [flags] <target> [target...]
   scout scan [flags] --input - --name <relative-name>
   scout compare [flags] <before> <after>
+  scout discover [flags] [--scan -- <scan flags>]
   scout rules list [--all]
   scout profiles
   scout capabilities
@@ -59,6 +60,8 @@ func inspectionCommand(ctx context.Context, args []string, stdout, stderr io.Wri
 		return scanCommand(ctx, args[1:], os.Stdin, stdout, stderr)
 	case "compare":
 		return compareCommand(ctx, args[1:], stdout, stderr)
+	case "discover":
+		return discoverCommand(ctx, args[1:], stdout, stderr)
 	case "doctor", "selftest":
 		return selftest(ctx, args[1:], stdout, stderr)
 	case "mcp":

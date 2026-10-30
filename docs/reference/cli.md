@@ -12,6 +12,7 @@ Contents
 - [Commands](#commands)
 - [Scan flags](#scan-flags)
 - [Compare](#compare)
+- [Environment discovery](#environment-discovery)
 - [Configuration validation](#configuration-validation)
 - [MCP server](#mcp-server)
 - [Doctor](#doctor)
@@ -53,6 +54,7 @@ from `--config`. Permissions always come from the current invocation.
 scout scan [flags] <target> [target...]
 scout scan [flags] --input - --name <relative-name>
 scout compare [flags] <before> <after>
+scout discover [flags] [--scan -- <scan flags>]
 scout config validate [flags]
 scout mcp [flags]
 scout doctor [flags]
@@ -73,6 +75,33 @@ Current aliases are `batch` for `scan`, `selftest` for `doctor`, `rules` for
 `rules list`, `integrations` for `integrations list`, and root `--version` for
 `version`. A scan accepts 1 through 32 local paths or explicit HTTP(S) URLs.
 Stdin accepts one named input and cannot be mixed with positional targets.
+
+## Environment discovery
+
+`scout discover` inventories Codex and Claude Code; `--scan` passes discovered
+roots to the existing Scanner. See [locations, format and limits](../user/discovery.md).
+
+- `--agent all|codex|claude-code`: agent; default `all`.
+- `--home DIR`: selected user home; default current user's home.
+- `--codex-home DIR`, `--claude-home DIR`: explicit agent configuration directories.
+  Without `--home`, process `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are honored.
+- `--project DIR`: repeatable selected project; default current directory.
+- `--no-project`: omit projects; default `false`.
+- `--system[=BOOL]`: known system locations; default `true`.
+- `--max-entries N`: aggregate probes/directory entries; default 10000, 1..100000.
+- `--max-depth N`: skill/plugin traversal depth; default 12, 1..32.
+- `--max-bytes N`: aggregate config/manifest bytes; default 8388608, 1..67108864.
+  A single file is limited to 256 KiB.
+- `--timeout DURATION`: discovery deadline; default `10s`, greater than 0 and at most `2m`.
+- `--format text|json`: inventory format; default `text`.
+- `--output FILE`: inventory outside scan inputs; default stdout.
+- `--scan`: scan discovered roots; default `false`. Ordinary scan flags follow `--`.
+  Inventory `--format`/`--output` flags are rejected in this mode.
+
+Inventory uses `scout.environment/v1`; exit 0 means complete within the documented
+surface, and 2 means error or incomplete discovery. It is not a policy decision.
+`--scan` requires complete discovery and 1..32 roots; it returns the ordinary scan
+report and exit code. Declaration states do not establish component activation.
 
 ## Scan flags
 

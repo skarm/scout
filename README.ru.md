@@ -28,6 +28,7 @@ scout doctor
 scout scan --format markdown ./my-skill
 scout scan --format json --fail-on high ./skills ./plugins
 scout compare --format markdown ./previous ./candidate
+scout discover --scan -- --format markdown
 scout scan --input - --name SKILL.md --format json < ./SKILL.md
 ```
 

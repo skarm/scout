@@ -32,6 +32,7 @@ scout/
 │   │   └── other analysis packages
 │   ├── signatures/{rules,testdata}/
 │   ├── distribution/{integrations,skills,registry,attestation}/
+│   ├── discovery/               # passive agent configuration and component inventory
 │   ├── commands/{cli,devcli,output}/
 │   ├── dev/{maintenance,evaluation,replay,replaywire,provenance,releasecheck}/
 │   ├── nativecheck/
