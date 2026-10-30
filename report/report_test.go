@@ -129,13 +129,13 @@ func TestMarkdownEscapesHostilePaths(t *testing.T) {
 	if err := writeFixture(&b, "markdown", r); err != nil {
 		t.Fatal(err)
 	}
-	for _, unsafe := range []string{"<img", "</code><img", "\x1b"} {
+	for _, unsafe := range []string{"\x1b", "\n[click]"} {
 		if bytes.Contains(b.Bytes(), []byte(unsafe)) {
 			t.Fatalf("unsafe report path: %q", unsafe)
 		}
 	}
-	if !bytes.Contains(b.Bytes(), []byte("&lt;/code&gt;")) || !bytes.Contains(b.Bytes(), []byte("&#96;")) {
-		t.Fatal("lost encoded path evidence")
+	if !bytes.Contains(b.Bytes(), []byte("Location: ``</code><img src=x onerror=alert(1)>`\\n[click](https://example.invalid)\\x1b[31m``,")) {
+		t.Fatal("hostile markup escaped the enclosing code span")
 	}
 }
 

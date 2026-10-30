@@ -39,6 +39,7 @@ type argvPatch struct {
 	values                    request
 	present                   map[string]bool
 	command                   string
+	checks                    checkSelection
 	semantic, vulnerabilities bool
 }
 
@@ -63,17 +64,36 @@ func resolveRequest(command string, args []string, stderr io.Writer, extra func(
 }
 
 func parseArgv(command string, args []string, stderr io.Writer, extra func(*flag.FlagSet)) (argvPatch, error) {
+	patch, fs := requestFlagSet(command, stderr, extra)
+	if err := fs.Parse(args); err != nil {
+		return *patch, err
+	}
+
+	patch.values.targets = fs.Args()
+	fs.Visit(func(f *flag.Flag) { patch.present[f.Name] = true })
+
+	return *patch, nil
+}
+
+// requestFlagSet registers passive flag destinations without reading config,
+// credentials or targets. Help uses the same definitions as argument parsing.
+func requestFlagSet(command string, stderr io.Writer, extra func(*flag.FlagSet)) (*argvPatch, *flag.FlagSet) {
 	settings := configfile.DefaultSettings()
-	settings.Scanner.Checks = &scout.Checks{Patterns: true, Python: true, YAML: true, TOML: true, YARA: true}
 	download, vulnerabilities := fetch.DefaultOptions(), osv.DefaultOptions()
 	settings.Scanner.Download, settings.Scanner.Vulnerabilities = &download, &vulnerabilities
 	settings.Reviewer = &configfile.Reviewer{Provider: review.DefaultProviderSpec(), Settings: review.DefaultOptions()}
-	patch := argvPatch{values: request{settings: settings}, present: map[string]bool{}, command: command}
+	patch := &argvPatch{
+		values:  request{settings: settings},
+		present: map[string]bool{},
+		command: command,
+		checks:  checkSelection{value: allStaticChecks()},
+	}
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	bindCommon(fs, &patch.values)
+	fs.Var(&patch.checks, "checks", "optional `LIST`: python,yaml,toml,yara,patterns or none; subsets require custom")
 	bindBudgets(fs, &patch.values.settings.Scanner)
-	bindServices(fs, &patch)
+	bindServices(fs, patch)
 
 	if extra != nil {
 		extra(fs)
@@ -84,14 +104,7 @@ func parseArgv(command string, args []string, stderr io.Writer, extra func(*flag
 		fs.IntVar(&patch.values.compare.MaxChanges, "max-changes", patch.values.compare.MaxChanges, "maximum retained comparison deltas")
 	}
 
-	if err := fs.Parse(args); err != nil {
-		return patch, err
-	}
-
-	patch.values.targets = fs.Args()
-	fs.Visit(func(f *flag.Flag) { patch.present[f.Name] = true })
-
-	return patch, nil
+	return patch, fs
 }
 
 func readExplicitSettings(path string, grants configfile.Grants) (configfile.Settings, error) {
@@ -189,7 +202,7 @@ func (p argvPatch) applyBudgets(l *scout.Limits) {
 }
 
 func (p argvPatch) resolveInspection(o *scout.Options) error {
-	checks := scout.Checks{Patterns: true, Python: true, YAML: true, TOML: true, YARA: true}
+	checks := allStaticChecks()
 
 	switch o.Profile {
 	case "extended":
@@ -205,17 +218,12 @@ func (p argvPatch) resolveInspection(o *scout.Options) error {
 		}
 	}
 
-	v := p.values.settings.Scanner.Checks
-	applyArgument(p.present, "python-ast", &checks.Python, v.Python)
-	applyArgument(p.present, "yaml-parser", &checks.YAML, v.YAML)
-	applyArgument(p.present, "toml-parser", &checks.TOML, v.TOML)
-	applyArgument(p.present, "yara", &checks.YARA, v.YARA)
-	applyArgument(p.present, "skillspector-patterns", &checks.Patterns, v.Patterns)
+	applyArgument(p.present, "checks", &checks, p.checks.value)
 
 	o.Checks = nil
 	if o.Profile == scout.Custom {
 		o.Checks = &checks
-	} else if checks != (scout.Checks{Patterns: true, Python: true, YAML: true, TOML: true, YARA: true}) {
+	} else if checks != allStaticChecks() {
 		return errors.New("named profiles require every check; choose custom for explicit selection")
 	}
 
@@ -231,7 +239,7 @@ func applyArgument[T any](present map[string]bool, name string, destination *T, 
 func bindCommon(fs *flag.FlagSet, r *request) {
 	configSpecified := false
 
-	fs.Func("config", "explicit operator config", func(value string) error {
+	fs.Func("config", "explicit operator config `FILE`", func(value string) error {
 		if configSpecified || value == "" {
 			return errors.New("config requires one explicit path")
 		}
@@ -240,29 +248,31 @@ func bindCommon(fs *flag.FlagSet, r *request) {
 
 		return nil
 	})
-	fs.Var(stringSetting[scout.Profile]{value: &r.settings.Scanner.Profile}, "profile", "standard, review or custom")
-	fs.StringVar(&r.format, "format", "text", "text, json, sarif or markdown")
-	fs.StringVar(&r.output, "output", "", "report file (atomic replacement)")
-	fs.Var(&r.reports, "report", "additional format=path; repeatable")
-	fs.StringVar(&r.input, "input", "", "- reads one target from stdin")
-	fs.StringVar(&r.name, "name", "", "relative name for stdin")
-	fs.StringVar(&r.settings.BaselinePath, "baseline", r.settings.BaselinePath, "operator approvals outside inputs")
+	fs.Var(stringSetting[scout.Profile]{value: &r.settings.Scanner.Profile}, "profile", "inspection `PROFILE`: standard, review or custom")
+	fs.StringVar(&r.format, "format", "text", "report `FORMAT`: text, json, sarif or markdown")
+	fs.StringVar(&r.output, "output", "", "report `FILE` (atomic replacement; default stdout)")
+	fs.Var(&r.reports, "report", "additional `FORMAT=PATH`; repeatable")
+	fs.StringVar(&r.input, "input", "", "`-` reads one target from stdin")
+	fs.StringVar(&r.name, "name", "", "`RELATIVE_PATH` for stdin format detection and source coordinates")
+	fs.StringVar(&r.settings.BaselinePath, "baseline", r.settings.BaselinePath, "operator approvals `FILE` outside inputs")
 	fs.BoolVar(&r.settings.Policy.AllowGlobs, "allow-baseline-globs", r.settings.Policy.AllowGlobs, "permit broad approvals")
-	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, "fail-on", "failure severity")
-	fs.Var(stringSetting[policy.ScopePolicy]{value: &r.settings.Policy.Scope}, "scope", "conservative review or selected scope completion")
-	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, "block-at", "alias for fail-on")
-	fs.StringVar(&r.settings.Scanner.Harness.Host, "harness", r.settings.Scanner.Harness.Host, "host interpretation")
-	fs.IntVar(&r.settings.Scanner.Concurrency.Workers, "workers", r.settings.Scanner.Concurrency.Workers, "analyzer workers")
-	fs.IntVar(&r.settings.Scanner.Concurrency.Targets, "target-workers", r.settings.Scanner.Concurrency.Targets, "concurrent targets")
+	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, "fail-on", "minimum blocking `SEVERITY`: info, low, medium, high or critical")
+	fs.Var(stringSetting[policy.ScopePolicy]{value: &r.settings.Policy.Scope}, "scope", "coverage `POLICY`: conservative (default) or selected")
+	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, "block-at", "`SEVERITY` alias for fail-on")
+	fs.StringVar(&r.settings.Scanner.Harness.Host, "harness", r.settings.Scanner.Harness.Host, "`HOST` interpretation: auto, claude-code, codex or agent-skills")
+	fs.IntVar(&r.settings.Scanner.Concurrency.Workers, "workers", r.settings.Scanner.Concurrency.Workers, "analyzer workers shared across targets (1..32)")
+	fs.IntVar(&r.settings.Scanner.Concurrency.Targets, "target-workers", r.settings.Scanner.Concurrency.Targets, "concurrent targets (1..32)")
 	fs.DurationVar(&r.settings.Scanner.Limits.Timeout, "timeout", r.settings.Scanner.Limits.Timeout, "whole operation timeout")
-	fs.BoolVar(&r.settings.Scanner.Checks.Python, "python-ast", r.settings.Scanner.Checks.Python, "Python analysis")
-	fs.BoolVar(&r.settings.Scanner.Checks.YAML, "yaml-parser", r.settings.Scanner.Checks.YAML, "YAML parsing")
-	fs.BoolVar(&r.settings.Scanner.Checks.TOML, "toml-parser", r.settings.Scanner.Checks.TOML, "TOML parsing")
-	fs.BoolVar(&r.settings.Scanner.Checks.YARA, "yara", r.settings.Scanner.Checks.YARA, "YARA-X signatures")
-	fs.BoolVar(&r.settings.Scanner.Checks.Patterns, "skillspector-patterns", r.settings.Scanner.Checks.Patterns, "adapted patterns")
 }
 
-func (s stringSetting[T]) String() string         { return string(*s.value) }
+func (s stringSetting[T]) String() string {
+	if s.value == nil {
+		return ""
+	}
+
+	return string(*s.value)
+}
+
 func (s stringSetting[T]) Set(value string) error { *s.value = T(value); return nil }
 func bindBudgets(fs *flag.FlagSet, o *scout.Options) {
 	c := &o.Limits.Capture
@@ -278,10 +288,10 @@ func bindBudgets(fs *flag.FlagSet, o *scout.Options) {
 	fs.Uint64Var(&a.MaxOperations, "max-operations", a.MaxOperations, "bounded analysis operations across targets")
 	fs.IntVar(&a.MaxMatchesPerRule, "max-matches-per-rule", a.MaxMatchesPerRule, "candidate occurrences per rule")
 	fs.DurationVar(&a.ParserTimeout, "parser-timeout", a.ParserTimeout, "parser timeout")
-	fs.IntVar(&o.Limits.Retention.MaxFindings, "max-findings", o.Limits.Retention.MaxFindings, "retained findings per target")
+	fs.IntVar(&o.Limits.Retention.MaxFindings, "max-findings", o.Limits.Retention.MaxFindings, "retained findings across the whole run")
 	fs.IntVar(&e.MaxDepth, "extract-depth", e.MaxDepth, "extraction depth")
-	fs.IntVar(&e.MaxObjects, "extract-objects", e.MaxObjects, "derived objects")
-	fs.IntVar(&e.MaxEntries, "extract-entries", e.MaxEntries, "extraction entries")
+	fs.IntVar(&e.MaxObjects, "extract-objects", e.MaxObjects, "derived objects per target")
+	fs.IntVar(&e.MaxEntries, "extract-entries", e.MaxEntries, "extraction entries per target")
 	fs.Int64Var(&e.MaxObjectBytes, "extract-object-bytes", e.MaxObjectBytes, "bytes per derived object")
 	fs.Int64Var(&e.MaxTotalBytes, "extract-total-bytes", e.MaxTotalBytes, "extracted bytes per target")
 }

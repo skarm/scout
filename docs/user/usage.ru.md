@@ -10,6 +10,10 @@
 
 [English](usage.md) · Русский
 
+Все параметры, значения по умолчанию и области действия лимитов перечислены
+в [полном справочнике команд и флагов](../reference/cli.ru.md). `scout -h` печатает
+полный список в терминале; `scout scan -h` показывает флаги сканирования.
+
 ## Первая проверка
 
 Используйте `scout` из `PATH` или замените его путём к вашему бинарнику. Примеры
@@ -18,9 +22,9 @@
 
 ```sh
 scout doctor
-scout scan -- ./my-skill
-scout scan --format markdown --output /tmp/scout-report.md -- ./my-skill
-scout compare -- ./previous ./candidate
+scout scan ./my-skill
+scout scan --format markdown --output /tmp/scout-report.md ./my-skill
+scout compare ./previous ./candidate
 ```
 
 Замените пути в примерах своими локальными папками навыков или плагинов. Проверка
@@ -32,11 +36,22 @@ Scout анализирует пакет без выполнения его ко�
 проверки и `Decision` — решение политики: `allow`, `review` или `block`.
 `review` возможен и без находок, если ограничения анализа требуют ручной проверки.
 
-Указывайте параметры перед позиционными входами. `--` завершает разбор параметров.
+Указывайте параметры перед позиционными входами. `--` завершает разбор параметров;
+для обычных путей он необязателен. Сохраняйте его перед путём из переменной
+или именем, начинающимся с `-`:
+
+```sh
+scout scan --format json -- "$target"
+```
+
 `scan` принимает до 32 входов; `batch` — другое имя той же команды. `--target-workers` задаёт параллелизм
 входов, `--workers` — анализаторов, `--timeout` ограничивает всю операцию.
 
 ## Конфигурация
+
+Начните с [готовой конфигурации](../../examples/configs/README.ru.md): обычная проверка,
+строгий CI, несколько входов, core, OSV или шаблон LLM-review. Для каждого файла
+есть пример запуска и необходимые флаги разрешений.
 
 Scout читает конфигурацию только по явному `--config`. Пример `/ci/scout.json`:
 
@@ -52,7 +67,7 @@ Scout читает конфигурацию только по явному `--co
 
 ```sh
 scout config validate --config /ci/scout.json
-scout scan --config /ci/scout.json --format json -- ./my-plugin
+scout scan --config /ci/scout.json --format json ./my-plugin
 ```
 
 Явные параметры переопределяют конфигурацию. Неуказанные поля получают значения по умолчанию;
@@ -65,13 +80,23 @@ scout scan --config /ci/scout.json --format json -- ./my-plugin
 scout scan --format json \
   --report json=/ci-results/scout.json \
   --report sarif=/ci-results/scout.sarif \
-  --fail-on high --timeout 2m -- ./skills ./plugins
-scout scan --format markdown --output /ci-results/scout.md -- ./my-plugin
+  --fail-on high --timeout 2m ./skills ./plugins
+scout scan --format markdown --output /ci-results/scout.md ./my-plugin
 ```
 
 Форматы: `text`, `json`, `sarif`, `markdown`. Без `--output` основной отчёт идёт
 в stdout. Повторяемый `--report FORMAT=PATH` добавляет другие представления.
 Диагностика идёт в stderr. Создайте каталоги отчётов перед запуском.
+
+Text и Markdown начинаются с решения, состояния запуска, числа находок по серьёзности
+и пояснений причин политики. Находки идут перед служебными данными. Для пробелов
+проверки указаны пути, объяснения и незавершённые обязательные задания; примечания
+анализа вынесены отдельно. Захваченные файлы и извлечённые объекты посчитаны раздельно.
+В Markdown служебные данные и общие ограничения идут под обычными заголовками,
+значения — в обратных кавычках, без встроенного HTML-форматирования.
+В сравнении первой показана новая версия, а её находки посчитаны отдельно
+от предыдущей.
+JSON и SARIF сохраняют полные машинные данные и стабильные идентификаторы.
 
 Scout готовит каждый отчёт в приватном временном файле, затем заменяет назначение
 переименованием. Ошибка подготовки сохраняет прежний файл. Символические ссылки, каталоги и пути
@@ -98,7 +123,7 @@ scout baseline create --from /ci-results/scout.json \
 scout baseline approve --from /ci-results/pending-baseline.json \
   --output /ci-results/reviewed-baseline.json \
   --reason 'Reviewed by operator' --expires '2099-01-01T00:00:00Z'
-scout scan --baseline /ci-results/reviewed-baseline.json -- ./my-plugin
+scout scan --baseline /ci-results/reviewed-baseline.json ./my-plugin
 ```
 
 Выберите подходящий будущий срок в RFC3339. `create` сохраняет неодобренные записи;
@@ -112,10 +137,10 @@ scout scan --baseline /ci-results/reviewed-baseline.json -- ./my-plugin
 `--revision` с полным commit SHA. См. [внешние источники](../reference/external-sources.ru.md).
 
 ```sh
-scout scan --vulnerability-check --allow-vulnerability-network \
-  --format json -- ./my-plugin
-scout scan --vulnerability-check --osv-cache /ci/osv-cache.json \
-  --osv-cache-max-age 168h --format json -- ./my-plugin
+scout scan --vuln --allow-vulnerability-network \
+  --format json ./my-plugin
+scout scan --vuln --osv-cache /ci/osv-cache.json \
+  --osv-cache-max-age 168h --format json ./my-plugin
 ```
 
 OSV проверяет точные координаты захваченных зависимостей. Кеш для работы без сети задаёт

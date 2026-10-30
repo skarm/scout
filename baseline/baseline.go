@@ -35,22 +35,21 @@ const (
 	valueGlob        = "glob"
 )
 
-// Entry records a fingerprint or glob approval, its reason and its exclusive
-// expiry time.
+// Entry records a fingerprint or glob approval, its reason and its exclusive expiry time.
 type Entry struct {
 	Kind string `json:"kind"` // fingerprint or glob
 	// Fingerprint selects an exact finding occurrence when Kind is fingerprint.
 	Fingerprint string `json:"fingerprint,omitempty"`
-	// RuleID selects rules for a glob approval and is unused by fingerprint
-	// entries.
+	// RuleID selects rules for a glob approval and is unused by fingerprint entries.
 	RuleID string `json:"rule_id,omitempty"`
 	// PathGlob selects source paths for an explicitly permitted glob approval.
 	PathGlob string `json:"path_glob,omitempty"`
 	// MessageGlob optionally narrows a glob approval by finding message.
 	MessageGlob string `json:"message_glob,omitempty"`
 	// Reason is the required operator rationale; reports retain only its digest.
-	Reason  string `json:"reason"`
-	Expires string `json:"expires"` // RFC3339, exclusive deadline
+	Reason string `json:"reason"`
+	// Expires is the exclusive approval deadline in RFC3339 format.
+	Expires string `json:"expires"`
 	// Approved distinguishes active approvals from pending entries.
 	Approved bool `json:"approved"`
 }
@@ -60,8 +59,7 @@ type Entry struct {
 type Document struct {
 	// Version is the baseline schema version, which must equal baseline.Version.
 	Version int `json:"version"`
-	// EngineVersion must match the Scout version recorded in the analysis being
-	// approved.
+	// EngineVersion must match the Scout version recorded in the analysis being approved.
 	EngineVersion string `json:"engine_version"`
 	// RulepackDigest optionally restricts approvals to the analysis's selected
 	// check configuration and rule data.

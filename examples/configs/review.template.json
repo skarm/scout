@@ -1,0 +1,26 @@
+{
+  "schema": "scout.config/v1",
+  "profile": "review",
+  "concurrency": {
+    "targets": 1,
+    "workers": 4
+  },
+  "timeout": "5m",
+  "policy": {
+    "fail_at": "high",
+    "scope": "conservative",
+    "review_below_threshold": false
+  },
+  "review": {
+    "provider": "chat-completions",
+    "endpoint": "https://review.example.invalid/v1/chat/completions",
+    "model": "REPLACE_ME",
+    "key_env": "SCOUT_REVIEW_API_KEY",
+    "quality": false,
+    "max_requests": 32,
+    "max_input_bytes": 2097152,
+    "max_output_tokens": 2048,
+    "max_response_bytes": 65536,
+    "timeout": "30s"
+  }
+}

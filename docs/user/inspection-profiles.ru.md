@@ -80,7 +80,7 @@ rule organization_review_marker {
 ```
 
 ```sh
-scout scan --yara-rules /etc/scout/organization.yar --fail-on medium -- ./my-plugin
+scout scan --yara-rules /etc/scout/organization.yar --fail-on medium ./my-plugin
 ```
 
 Пересборка Scout не нужна. Файл правил должен находиться вне проверяемого пакета.
@@ -93,7 +93,7 @@ scout scan --yara-rules /etc/scout/organization.yar --fail-on medium -- ./my-plu
 ### Поиск известных уязвимостей через OSV
 
 ```sh
-scout scan --vulnerability-check --allow-vulnerability-network -- ./my-plugin
+scout scan --vuln --allow-vulnerability-network ./my-plugin
 ```
 
 Проверка по точным координатам захваченных зависимостей включается отдельно.
@@ -118,7 +118,7 @@ scout scan --vulnerability-check --allow-vulnerability-network -- ./my-plugin
 ## Standard
 
 ```sh
-scout scan --profile standard -- ./my-plugin
+scout scan --profile standard ./my-plugin
 ```
 
 Профиль по умолчанию включает встроенные проверки, адаптированные шаблонные правила,
@@ -129,13 +129,13 @@ Python, YAML, TOML и YARA-X. Загрузки, OSV и LLM автоматиче�
 ## Custom
 
 ```bash
-scout scan --profile custom --python-ast=false --yaml-parser=false \
-  --toml-parser=false --yara=false --skillspector-patterns=false \
-  --format markdown -- ./my-skill
+scout scan --profile custom --checks none --format markdown ./my-skill
+scout scan --profile custom --checks python,yaml,toml,patterns ./my-skill
 ```
 
-Пример выбирает только встроенные проверки. В CLI профиль custom начинается с полного
-набора, затем применяются явно заданные параметры. В Go задайте `Profile = scout.Custom`
+Первый пример выбирает только встроенные проверки; второй — необязательные проверки
+без YARA. В CLI профиль custom начинается с полного набора, а `--checks` заменяет
+этот список целиком. В Go задайте `Profile = scout.Custom`
 и ненулевой `Checks`. См. [настройку API](../development/go-api.ru.md#создание-и-закрытие-scanner).
 
 ## Review
@@ -144,7 +144,7 @@ scout scan --profile custom --python-ast=false --yaml-parser=false \
 scout scan --profile review --semantic --allow-source-upload \
   --llm-provider chat-completions \
   --llm-endpoint https://trusted.example/v1/chat/completions \
-  --llm-model YOUR_MODEL --llm-api-key-env REVIEW_API_KEY -- ./my-plugin
+  --llm-model YOUR_MODEL --llm-api-key-env REVIEW_API_KEY ./my-plugin
 ```
 
 Review добавляет к стандартным проверкам настроенного провайдера. Адрес сервиса,

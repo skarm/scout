@@ -7,9 +7,9 @@
 все находки кандидата.
 
 ```sh
-scout compare --profile standard --format markdown -- ./previous ./candidate
+scout compare --profile standard --format markdown ./previous ./candidate
 scout compare --profile standard --max-changes 4096 \
-  --format json --output /ci-results/update.json -- ./previous ./candidate
+  --format json --output /ci-results/update.json ./previous ./candidate
 ```
 
 Обе копии подготавливает оператор. URL и настройки загрузки отвергаются.

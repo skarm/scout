@@ -7,12 +7,16 @@ It adds hypotheses and assessments while preserving static findings.
 
 ## Enable review
 
+For file-based setup, copy and customize
+[review.template.json](../../examples/configs/review.template.json) using the
+[preset instructions](../../examples/configs/README.md#llm-review-template).
+
 ```bash
 scout scan --profile review --semantic --allow-source-upload \
   --llm-provider chat-completions \
   --llm-endpoint https://trusted.example/v1/chat/completions \
   --llm-model YOUR_MODEL --llm-api-key-env REVIEW_API_KEY \
-  --timeout 3m --format json -- ./my-plugin
+  --timeout 3m --format json ./my-plugin
 ```
 
 Supply a trusted endpoint, model and credential variable. The example endpoint is

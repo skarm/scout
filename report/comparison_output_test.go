@@ -17,8 +17,11 @@ func TestComparisonDocumentEscapesAndKeepsCandidate(t *testing.T) {
 		if err := report.Write(&out, format, d); err != nil {
 			t.Fatal(err)
 		}
-		if bytes.Contains(out.Bytes(), []byte{0x1b}) || (format != report.Text && strings.Contains(out.String(), "<script>")) {
+		if bytes.Contains(out.Bytes(), []byte{0x1b}) || ((format == report.JSON || format == report.SARIF) && strings.Contains(out.String(), "<script>")) {
 			t.Fatal(format, "output injection")
+		}
+		if format == report.Markdown && !strings.Contains(out.String(), "File `<script>alert(1)</script>\\x1b[31m\\n![x](https://e.invalid)`:") {
+			t.Fatal("comparison path escaped its Markdown code span")
 		}
 		if !strings.Contains(out.String(), "block") {
 			t.Fatal("candidate verdict missing")

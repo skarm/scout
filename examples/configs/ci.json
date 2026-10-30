@@ -1,0 +1,14 @@
+{
+  "schema": "scout.config/v1",
+  "profile": "standard",
+  "concurrency": {
+    "targets": 1,
+    "workers": 4
+  },
+  "timeout": "2m",
+  "policy": {
+    "fail_at": "medium",
+    "scope": "conservative",
+    "review_below_threshold": true
+  }
+}

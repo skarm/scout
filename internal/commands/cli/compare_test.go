@@ -222,7 +222,7 @@ func TestCompareCLITimeoutRetainsPartialPlan(t *testing.T) {
 
 func compareCLIArgs(tail ...string) []string {
 	args := make([]string, 0, 8+len(tail))
-	args = append(args, "compare", "--profile", "custom", "--python-ast=false", "--yaml-parser=false", "--toml-parser=false", "--yara=false", "--skillspector-patterns=false")
+	args = append(args, "compare", "--profile", "custom", "--checks", "none")
 	return append(args, tail...)
 }
 

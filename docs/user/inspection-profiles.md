@@ -77,7 +77,7 @@ rule organization_review_marker {
 ```
 
 ```sh
-scout scan --yara-rules /etc/scout/organization.yar --fail-on medium -- ./my-plugin
+scout scan --yara-rules /etc/scout/organization.yar --fail-on medium ./my-plugin
 ```
 
 No rebuild is needed. Keep the rules file outside the inspected package.
@@ -90,7 +90,7 @@ are separate parts of the report.
 ### Known-vulnerability lookup with OSV
 
 ```sh
-scout scan --vulnerability-check --allow-vulnerability-network -- ./my-plugin
+scout scan --vuln --allow-vulnerability-network ./my-plugin
 ```
 
 Lookup by exact captured dependency coordinates is enabled separately. Select a
@@ -115,7 +115,7 @@ source inputs inspected by the existing checks; see
 ## Standard
 
 ```sh
-scout scan --profile standard -- ./my-plugin
+scout scan --profile standard ./my-plugin
 ```
 
 The default profile selects built-ins, adapted patterns, Python, YAML, TOML and YARA-X.
@@ -125,13 +125,13 @@ required checks cannot be disabled within a named profile.
 ## Custom
 
 ```bash
-scout scan --profile custom --python-ast=false --yaml-parser=false \
-  --toml-parser=false --yara=false --skillspector-patterns=false \
-  --format markdown -- ./my-skill
+scout scan --profile custom --checks none --format markdown ./my-skill
+scout scan --profile custom --checks python,yaml,toml,patterns ./my-skill
 ```
 
-This example selects built-ins only. CLI custom selection starts with all checks
-and applies explicit flags. In Go, set `Profile = scout.Custom` and supply a non-nil
+The first example selects built-ins only; the second selects optional checks without
+YARA. CLI custom starts with all optional checks, and `--checks` replaces that list.
+In Go, set `Profile = scout.Custom` and supply a non-nil
 `Checks` value. See [API configuration](../development/go-api.md#construct-and-close-a-scanner).
 
 ## Review
@@ -140,7 +140,7 @@ and applies explicit flags. In Go, set `Profile = scout.Custom` and supply a non
 scout scan --profile review --semantic --allow-source-upload \
   --llm-provider chat-completions \
   --llm-endpoint https://trusted.example/v1/chat/completions \
-  --llm-model YOUR_MODEL --llm-api-key-env REVIEW_API_KEY -- ./my-plugin
+  --llm-model YOUR_MODEL --llm-api-key-env REVIEW_API_KEY ./my-plugin
 ```
 
 Review adds an operator-configured provider to standard checks. The operator supplies

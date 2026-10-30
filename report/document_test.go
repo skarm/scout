@@ -127,8 +127,11 @@ func TestHumanDocumentsQuoteLabelsAndDoNotMutateInput(t *testing.T) {
 		if err := report.Write(&out, format, document); err != nil {
 			t.Fatalf("%s: %v", format, err)
 		}
-		if bytes.Contains(out.Bytes(), []byte{0x1b}) || (format == report.Markdown && strings.Contains(out.String(), "<img")) {
+		if bytes.Contains(out.Bytes(), []byte{0x1b}) {
 			t.Fatalf("unsafe label in %s", format)
+		}
+		if format == report.Markdown && !strings.Contains(out.String(), "Target 0: ``</code><img src=x>`\\n\\x1b[31m``;") {
+			t.Fatal("label escaped its Markdown code span")
 		}
 		if format != report.SARIF && (!strings.Contains(out.String(), "Target 0") || !strings.Contains(out.String(), "Target 1")) {
 			t.Fatalf("missing target in %s", format)

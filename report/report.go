@@ -121,7 +121,18 @@ func writeJSON(w io.Writer, v any) error {
 func terminal(w io.Writer, r Analysis, evaluation Evaluation) error {
 	var b strings.Builder
 
-	_, _ = fmt.Fprintf(&b, "scout %s\nProfile: %s\nDecision: %s\nCompleteness: %s\nSnapshot: %s\nFiles: %d captured; %d text\nDerived objects: %d\nFindings: %d\n", r.EngineVersion, r.Profile, evaluation.Decision, r.Coverage.Completeness, r.Artifact.SnapshotSHA256, r.Coverage.CapturedFiles, r.Coverage.TextFiles, len(r.Extraction.Objects), len(r.Findings))
+	_, _ = fmt.Fprintf(&b, "Completeness: %s\nFiles: %d captured; derived objects: %d; analyzed objects: %d (%d text)\nFindings: %d (%s)\n",
+		r.Coverage.Completeness, r.Coverage.CapturedFiles, len(r.Extraction.Objects), r.Coverage.AnalyzedObjects, r.Coverage.TextFiles, len(r.Findings), severitySummary(r.Findings))
+	writeTerminalFindings(&b, r, evaluation)
+	writeTerminalSemantic(&b, r)
+	writeVulnerabilityExtras(&b, r, strconv.QuoteToASCII)
+	writeHumanDiagnostics(&b, r.Diagnostics, false)
+	writeValidationSummary(&b, r.Validation, false)
+
+	_, _ = fmt.Fprintf(&b, "\nInspection details\nscout %s\nProfile: %s\n", r.EngineVersion, r.Profile)
+	if r.Artifact.SnapshotSHA256 != "" {
+		_, _ = fmt.Fprintf(&b, "Snapshot: %s\n", r.Artifact.SnapshotSHA256)
+	}
 
 	if r.Inspection.Name != "" {
 		_, _ = fmt.Fprintf(&b, "Inspection: %s\n", strconv.QuoteToASCII(r.Inspection.Name))
@@ -129,9 +140,7 @@ func terminal(w io.Writer, r Analysis, evaluation Evaluation) error {
 		writeInspectionChecks(&b, r.Inspection.Checks, false)
 	}
 
-	_, _ = fmt.Fprintf(&b, "Harness: %s\nPlugin interpretations: %d; components: %d\nPlanned tasks: %d; outcomes: %d; validation: %s\n", r.Components.RequestedHost, len(r.Components.Plugins), len(r.Components.Components), len(r.Validation.Tasks), len(r.Validation.Outcomes), r.Validation.Completeness)
-
-	writeTerminalSemantic(&b, r)
+	_, _ = fmt.Fprintf(&b, "Harness: %s\nPlugin interpretations: %d; components: %d\n", r.Components.RequestedHost, len(r.Components.Plugins), len(r.Components.Components))
 
 	_, _ = fmt.Fprintf(&b, "Dependency declarations: %d (not a resolved install graph; see separate vulnerability lookup status)\n", len(r.Dependencies.Declarations))
 
@@ -141,11 +150,6 @@ func terminal(w io.Writer, r Analysis, evaluation Evaluation) error {
 
 	_, _ = fmt.Fprintf(&b, "Validation instructions: %s; SHA256=%s\n", r.Knowledge.Version, r.Knowledge.SHA256)
 	writeExtras(&b, r, evaluation, false)
-	writeTerminalFindings(&b, r)
-
-	for _, d := range r.Diagnostics {
-		_, _ = fmt.Fprintf(&b, "\n! %s %s: %s\n", d.Code, strconv.QuoteToASCII(d.Path), d.Message)
-	}
 
 	b.WriteString("\nLimits of this result:\n")
 
@@ -306,15 +310,22 @@ func writeTerminalSemantic(b *strings.Builder, r Analysis) {
 	}
 }
 
-func writeTerminalFindings(b *strings.Builder, r Analysis) {
+func writeTerminalFindings(b *strings.Builder, r Analysis, evaluation Evaluation) {
+	b.WriteString("\nStatic findings\n")
+
+	if len(r.Findings) == 0 {
+		b.WriteString("No retained static findings. Check completeness and coverage before treating this as a clean result.\n\n")
+	}
+
 	guides := ruleGuides(r.Rules)
+	approved := approvedFindings(evaluation)
 
 	provenance := make(map[string]DerivedObject, len(r.Extraction.Objects))
 	for _, object := range r.Extraction.Objects {
 		provenance[object.File.Path] = object
 	}
 
-	for _, f := range r.Findings {
+	for _, f := range sortedFindings(r.Findings) {
 		if object, ok := provenance[f.Location.Path]; ok {
 			_, _ = fmt.Fprintf(b, "\nDerived object %s via %s from %s (offsets below refer to decoded bytes)\n", strconv.QuoteToASCII(object.MemberName), object.ExtractorID, strconv.QuoteToASCII(object.ParentPath))
 		}
@@ -326,6 +337,10 @@ func writeTerminalFindings(b *strings.Builder, r Analysis) {
 		}
 
 		writeRuleGuidance(b, guides[f.RuleID], f.ContextSignals, false)
+
+		if approved[f.ID] {
+			b.WriteString("  Operator approved: this occurrence remains visible as evidence.\n")
+		}
 
 		for _, c := range f.Contexts {
 			_, _ = fmt.Fprintf(b, "  Component: %s host=%s relation=%s activation=%s\n", c.ComponentID, c.Host, c.Relation, c.Activation)

@@ -25,9 +25,9 @@ scout doctor
 ## Сканирование и сравнение
 
 ```sh
-scout scan --format markdown -- ./my-skill
-scout scan --format json --fail-on high -- ./skills ./plugins
-scout compare --format markdown -- ./previous ./candidate
+scout scan --format markdown ./my-skill
+scout scan --format json --fail-on high ./skills ./plugins
+scout compare --format markdown ./previous ./candidate
 scout scan --input - --name SKILL.md --format json < ./SKILL.md
 ```
 
@@ -39,6 +39,10 @@ scout scan --input - --name SKILL.md --format json < ./SKILL.md
 Отчёт сохраняет находки, пробелы проверки и решение политики. Неполная проверка
 требует внимания даже без находок. Конфигурация, запись отчётов, baseline
 и коды завершения описаны в [руководстве CLI](docs/user/usage.ru.md).
+Все флаги и значения по умолчанию перечислены в [справочнике CLI](docs/reference/cli.ru.md);
+`scout -h` печатает полный список в терминале.
+Для обычной проверки, CI, нескольких входов, core-сборки, OSV и LLM-review
+есть [готовые конфигурации](examples/configs/README.ru.md).
 
 ## Проверки и расширения
 
@@ -49,13 +53,13 @@ scout scan --input - --name SKILL.md --format json < ./SKILL.md
 webshells, cryptominers, hacktools и угроз в навыках агентов.
 
 Без пересборки можно добавить свои или сторонние YARA-правила через `--yara-rules`,
-включить OSV через `--vulnerability-check` или подключить LLM в профиле `review`.
+включить OSV через `--vuln` или подключить LLM в профиле `review`.
 Сеть и передача исходников требуют отдельных разрешений.
 
 ```sh
 scout rules list --all
 scout capabilities
-scout scan --yara-rules /etc/scout/organization.yar --fail-on medium -- ./my-plugin
+scout scan --yara-rules /etc/scout/organization.yar --fail-on medium ./my-plugin
 ```
 
 Категории, ограничения и примеры подключения описаны в
@@ -66,7 +70,7 @@ scout scan --yara-rules /etc/scout/organization.yar --fail-on medium -- ./my-plu
 Создайте Scanner через `scout.New(ctx, scout.DefaultOptions())` и освободите его
 через `Close`. Вызовите `Scan`, `ScanMany` или `Compare`, оцените результат через доверенный
 `policy.Gate` и подготовьте вывод через `report.Prepare`.
-[Контракты и примеры API](docs/development/go-api.ru.md).
+[Контракты API](docs/development/go-api.ru.md) · [Пример использования Go API](examples/go-api/README.ru.md).
 
 [Руководство интеграций](docs/user/integrations.ru.md) описывает MCP и reviewer-пакеты
 для Claude Code, Codex, Pi и OpenCode.
@@ -85,5 +89,5 @@ make test
 
 [Участие в разработке](CONTRIBUTING.md) · [Политика безопасности](SECURITY.md)
 
-[Документация](docs/README.ru.md) · [Архитектура](docs/development/architecture.ru.md) ·
+[Документация](docs/README.ru.md) · [Примеры](examples/README.ru.md) · [Архитектура](docs/development/architecture.ru.md) ·
 [Языки](docs/reference/languages.ru.md) · [Лицензии и источники](docs/reference/port-manifest.ru.md)

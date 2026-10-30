@@ -83,7 +83,7 @@ func TestSkillWorkflowObligations(t *testing.T) {
 	m := files(t, "agent-skill")
 	skill := string(m["skill-inspector/SKILL.md"])
 	check := string(m["skill-inspector/references/review-checklist.md"])
-	cases := []string{"## Goal", "two independent lines", "## Operating rules", "### 1.", "### 2.", "### 3.", "### 4.", "### 5.", "### 6.", "## Score interpretation", "## Report style", "## Manual fallback", "APPROVE", "CAUTION", "REJECT", "Exit `2`", "unavailable", "Do not install", "read-only", "--skillspector-patterns", "--python-ast", "--yaml-parser", "--toml-parser", "--yara", "--format json --", "native backend", "user's language"}
+	cases := []string{"## Goal", "two independent lines", "## Operating rules", "### 1.", "### 2.", "### 3.", "### 4.", "### 5.", "### 6.", "## Score interpretation", "## Report style", "## Manual fallback", "APPROVE", "CAUTION", "REJECT", "Exit `2`", "unavailable", "Do not install", "read-only", "--checks python,yaml,toml,yara,patterns", "--format json --", "native backend", "user's language"}
 	for _, c := range cases {
 		t.Run(c, func(t *testing.T) {
 			if !strings.Contains(skill, c) {

@@ -109,7 +109,7 @@ jobs:
           test "$(wc -l < SHA256SUMS)" -eq 3
           diff -u <(printf '%s\n' "${archives[@]}" | sort) <(cut -c 67- SHA256SUMS | sort)
           sha256sum --check --strict SHA256SUMS
-      - name: Upload to a draft and publish after all uploads succeed
+      - name: Publish verified assets without replacing published files
         run: |
           set -euo pipefail
           verify_tag() {
@@ -129,10 +129,29 @@ jobs:
           )
           prerelease=false
           [[ "${VERSION%%+*}" != *-* ]] || prerelease=true
-          if gh release view "$VERSION" --json isDraft --jq '.isDraft' > release-state.txt; then
-            if [[ "$(cat release-state.txt)" != true ]]; then
-              echo 'Refusing to replace assets in an already published release' >&2
-              exit 1
+          if gh release view "$VERSION" --json isDraft,assets > release-state.json; then
+            if [[ "$(jq -r '.isDraft' release-state.json)" != true ]]; then
+              existing="$(mktemp -d)"
+              trap 'rm -rf "$existing"' EXIT
+              missing=()
+              for asset in "${assets[@]}"; do
+                name="${asset##*/}"
+                if jq -e --arg name "$name" 'any(.assets[]; .name == $name)' release-state.json > /dev/null; then
+                  gh release download "$VERSION" --pattern "$name" --dir "$existing"
+                  if ! cmp -s "$asset" "$existing/$name"; then
+                    echo "Published asset $name differs from this build; use a new version tag" >&2
+                    exit 1
+                  fi
+                else
+                  missing+=("$asset")
+                fi
+              done
+              verify_tag
+              if [[ ${#missing[@]} -gt 0 ]]; then
+                gh release upload "$VERSION" "${missing[@]}"
+              fi
+              echo 'Published release assets verified; missing files uploaded without replacing existing files'
+              exit 0
             fi
             gh release upload "$VERSION" "${assets[@]}" --clobber
           else

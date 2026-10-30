@@ -25,9 +25,9 @@ and offline preparation.
 ## Scan and compare
 
 ```sh
-scout scan --format markdown -- ./my-skill
-scout scan --format json --fail-on high -- ./skills ./plugins
-scout compare --format markdown -- ./previous ./candidate
+scout scan --format markdown ./my-skill
+scout scan --format json --fail-on high ./skills ./plugins
+scout compare --format markdown ./previous ./candidate
 scout scan --input - --name SKILL.md --format json < ./SKILL.md
 ```
 
@@ -38,6 +38,10 @@ Downloads and network vulnerability lookup require separate permissions.
 Reports retain findings, inspection gaps and the policy decision. Incomplete checks
 require attention even when no findings were reported. See [CLI usage](docs/user/usage.md)
 for configuration, report files, baselines and exit codes.
+The [CLI reference](docs/reference/cli.md) lists every flag and default;
+`scout -h` prints the complete list in the terminal.
+Start with [ready-to-use configurations](examples/configs/README.md) for standard review,
+CI, batch scans, the core build, OSV or LLM review.
 
 ## Checks and extensions
 
@@ -48,13 +52,13 @@ also includes adapted SkillSpector rules and embedded YARA-X signatures for
 malware, webshells, cryptominers, hacktools and agent skill threats.
 
 Without rebuilding, add custom or third-party YARA rules with `--yara-rules`,
-enable OSV with `--vulnerability-check`, or connect an LLM through the `review`
+enable OSV with `--vuln`, or connect an LLM through the `review`
 profile. Network access and source uploads require separate grants.
 
 ```sh
 scout rules list --all
 scout capabilities
-scout scan --yara-rules /etc/scout/organization.yar --fail-on medium -- ./my-plugin
+scout scan --yara-rules /etc/scout/organization.yar --fail-on medium ./my-plugin
 ```
 
 See [checks and profiles](docs/user/inspection-profiles.md) for categories,
@@ -65,7 +69,7 @@ limitations and extension examples.
 Create a Scanner with `scout.New(ctx, scout.DefaultOptions())` and release it with
 `Close`. Use `Scan`, `ScanMany` or `Compare`, then evaluate the result with a trusted
 `policy.Gate` and prepare it for output with `report.Prepare`.
-[API contracts and examples](docs/development/go-api.md).
+[API contracts](docs/development/go-api.md) · [Go API example](examples/go-api/README.md).
 
 [Integration guides](docs/user/integrations.md) cover MCP and reviewer bundles for
 Claude Code, Codex, Pi and OpenCode.
@@ -84,5 +88,5 @@ for other checks.
 
 [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md)
 
-[Documentation](docs/README.md) · [Architecture](docs/development/architecture.md) ·
+[Documentation](docs/README.md) · [Examples](examples/README.md) · [Architecture](docs/development/architecture.md) ·
 [Languages](docs/reference/languages.md) · [Licenses and sources](docs/reference/port-manifest.md)

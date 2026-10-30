@@ -1,0 +1,26 @@
+{
+  "schema": "scout.config/v1",
+  "profile": "standard",
+  "concurrency": {
+    "targets": 4,
+    "workers": 4
+  },
+  "timeout": "5m",
+  "policy": {
+    "fail_at": "high",
+    "scope": "conservative",
+    "review_below_threshold": false
+  },
+  "limits": {
+    "analysis": {
+      "max_operations": 67108864
+    },
+    "retention": {
+      "max_findings": 4096
+    },
+    "max_capture_bytes": 134217728,
+    "max_extracted_bytes": 67108864,
+    "max_capture_files": 16384,
+    "max_capture_entries": 32768
+  }
+}

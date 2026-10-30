@@ -12,7 +12,7 @@ func writeExtras(b *strings.Builder, r Analysis, evaluation Evaluation, md bool)
 
 	if md {
 		q = mdCode
-		heading = "## Review controls\n\n"
+		heading = "### Review controls\n\n"
 	}
 
 	b.WriteString(heading)
@@ -33,7 +33,6 @@ func writeExtras(b *strings.Builder, r Analysis, evaluation Evaluation, md bool)
 
 	writeSignatureExtras(b, r, q)
 	writeRelatedExtras(b, r, q)
-	writeVulnerabilityExtras(b, r, q)
 }
 
 func writeSignatureExtras(b *strings.Builder, r Analysis, q func(string) string) {
@@ -70,13 +69,31 @@ func writeVulnerabilityExtras(b *strings.Builder, r Analysis, q func(string) str
 	} else {
 		_, _ = fmt.Fprintf(b, "Known-vulnerability lookup: %s, completeness %s, queries %d, matches %d; query time %s.\n\n", q(r.Vulnerabilities.Source), q(string(r.Vulnerabilities.Completeness)), len(r.Vulnerabilities.Queries), len(r.Vulnerabilities.Matches), q(r.Vulnerabilities.QueriedAt))
 
+		coordinates := make(map[string]string, len(r.Vulnerabilities.Queries))
+		for _, query := range r.Vulnerabilities.Queries {
+			coordinates[query.DependencyID] = query.DependencyID
+			if query.Name != "" && query.Version != "" {
+				coordinates[query.DependencyID] = query.Ecosystem + ":" + query.Name + "@" + query.Version
+			}
+		}
+
 		for _, v := range r.Vulnerabilities.Matches {
-			_, _ = fmt.Fprintf(b, "Advisory %s matches captured exact coordinate(s) %s; not proof of exploitability.\n\n", q(v.ID), q(strings.Join(v.DependencyIDs, ", ")))
+			packages := make([]string, 0, len(v.DependencyIDs))
+			for _, id := range v.DependencyIDs {
+				label := coordinates[id]
+				if label == "" {
+					label = id
+				}
+
+				packages = append(packages, label)
+			}
+
+			_, _ = fmt.Fprintf(b, "Advisory %s matches captured exact coordinate(s) %s; not proof of exploitability.\n\n", q(v.ID), q(strings.Join(packages, ", ")))
 		}
 
 		for _, v := range r.Vulnerabilities.Queries {
 			if v.Status != OutcomeCompleted && v.Status != OutcomeCached {
-				_, _ = fmt.Fprintf(b, "Unchecked dependency %s: %s.\n\n", q(v.DependencyID), q(v.Status))
+				_, _ = fmt.Fprintf(b, "Unchecked dependency %s: %s.\n\n", q(coordinates[v.DependencyID]), q(v.Status))
 			}
 		}
 	}

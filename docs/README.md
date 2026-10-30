@@ -8,6 +8,9 @@ Guides to using, extending and validating Scout.
 
 - [Build and dependencies](development/native-build.md).
 - [CLI, configuration, reports and baselines](user/usage.md).
+- [Ready-to-use configurations](../examples/configs/README.md).
+- [Go API example](../examples/go-api/README.md).
+- [Complete command and flag reference](reference/cli.md).
 - [Built-in checks, additional rules and profiles](user/inspection-profiles.md).
 - [Update comparison](user/update-review.md).
 - [Semantic review](user/semantic-review.md).
@@ -27,7 +30,6 @@ Guides to using, extending and validating Scout.
 ## Development
 
 - [Architecture and trust boundaries](development/architecture.md).
-- [Architecture review from 29 October 2026 (Russian)](development/architecture-review-2026-10-29.ru.md).
 - [Repository layout](development/layout.md).
 - [Project validation and acceptance](development/validation.md).
 - [Developer commands](development/commands.md).

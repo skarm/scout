@@ -14,24 +14,29 @@ import (
 )
 
 const usage = `Usage:
-  scout scan [flags] -- <target> [target...]
+  scout scan [flags] <target> [target...]
   scout scan [flags] --input - --name <relative-name>
-  scout compare [flags] -- <before> <after>
+  scout compare [flags] <before> <after>
   scout rules list [--all]
+  scout profiles
+  scout capabilities
   scout doctor [--format json|text]
-  scout config validate --config <file>
+  scout config validate [flags]
   scout baseline create|approve [flags]
   scout mcp [flags]
-  scout knowledge [flags]
-  scout integrations [flags]
+  scout knowledge [--mode MODE]
+  scout integrations list|export [flags]
   scout registry fetch|compare [flags]
-  scout verify-attestation --public-key KEY --envelope DSSE --artifact FILE --subject NAME
+  scout attestation verify --public-key KEY --envelope DSSE --artifact FILE --subject NAME
   scout version
+  scout help | -h | --help
 
-Common flags: --config FILE --profile standard|review|custom --format text|json|sarif|markdown
+Scan flags: --config FILE --profile standard|review|custom --format text|json|sarif|markdown
   --report FORMAT=PATH (repeatable) --workers N --timeout DURATION --fail-on SEVERITY
   --baseline FILE --allow-download --allow-vulnerability-network --allow-source-upload
 Network and source upload require separate explicit grants. Configuration is never discovered in targets.
+Place flags before inputs. Use -- before a variable or a path beginning with -.
+Run scout -h for the complete flag reference; scout scan -h for scan defaults.
 Reports use scout.report/v1; stdout contains only the requested report, diagnostics go to stderr.
 Exit: 0 complete/allow; 1 complete/review-or-block; 2 incomplete, invalid request or output failure.
 `
@@ -77,7 +82,7 @@ func operatorCommand(ctx context.Context, args []string, stdout, stderr io.Write
 		return profilesCommand(args[1:], stdout, stderr)
 	case "registry":
 		return registryCommand(ctx, args[1:], stdout, stderr)
-	case "verify-attestation":
+	case "attestation":
 		return attestationCommand(ctx, args[1:], stdout, stderr)
 	default:
 		return informationalCommand(args, stdout, stderr)
@@ -87,7 +92,7 @@ func operatorCommand(ctx context.Context, args []string, stdout, stderr io.Write
 func informationalCommand(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "help", "-h", "--help":
-		return writeText(stdout, usage)
+		return fullHelp(stdout)
 	case "version", "--version":
 		if len(args) != 1 {
 			return usageError(stderr, "version takes no arguments")

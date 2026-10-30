@@ -165,11 +165,11 @@ func TestMCPBoundaryFailuresDoNotProduceSuccessfulProtocolOutput(t *testing.T) {
 }
 
 func TestArgvParsingIsPassiveAndRetainsExplicitFalse(t *testing.T) {
-	patch, err := parseArgv("scan", []string{"--config", "/missing/operator.json", "--semantic=false", "--python-ast=false", "--workers", "3", "--report", "json=first.json", "--report", "sarif=second.sarif", "--", "input"}, io.Discard, nil)
+	patch, err := parseArgv("scan", []string{"--config", "/missing/operator.json", "--semantic=false", "--checks", "none", "--workers", "3", "--report", "json=first.json", "--report", "sarif=second.sarif", "--", "input"}, io.Discard, nil)
 	if err != nil {
 		t.Fatalf("argv parsing tried to resolve operator inputs: %v", err)
 	}
-	if !patch.present["semantic"] || !patch.present["python-ast"] || patch.semantic || patch.values.settings.Scanner.Checks.Python || patch.values.settings.Scanner.Concurrency.Workers != 3 || len(patch.values.reports) != 2 {
+	if !patch.present["semantic"] || !patch.present["checks"] || patch.semantic || patch.checks.value != (scout.Checks{}) || patch.values.settings.Scanner.Concurrency.Workers != 3 || len(patch.values.reports) != 2 {
 		t.Fatal("typed argv patch lost explicit false, numeric value, or repeated output")
 	}
 }
@@ -287,30 +287,95 @@ func TestNamedProfilesReplaceConfiguredCustomChecks(t *testing.T) {
 			}
 		})
 	}
-	for _, flag := range []string{"--python-ast=false", "--yaml-parser=false", "--toml-parser=false", "--yara=false", "--skillspector-patterns=false"} {
-		if _, err := parseRequest("scan", []string{"--config", config, "--profile", "standard", flag, "--", "inert.txt"}, io.Discard); err == nil || !strings.Contains(err.Error(), "named profiles") {
-			t.Fatalf("named profile accepted explicit disabled check %s: %v", flag, err)
+	for _, selection := range []string{"none", "python", "patterns,yaml,toml,yara"} {
+		if _, err := parseRequest("scan", []string{"--config", config, "--profile", "standard", "--checks", selection, "--", "inert.txt"}, io.Discard); err == nil || !strings.Contains(err.Error(), "named profiles") {
+			t.Fatalf("named profile accepted partial check selection %s: %v", selection, err)
 		}
 	}
-	for _, flag := range []string{"--python-ast=true", "--yaml-parser=true"} {
-		r, err := parseRequest("scan", []string{"--config", config, "--profile", "standard", flag, "--", "inert.txt"}, io.Discard)
+	for _, selection := range []string{"python,yaml,toml,yara,patterns", "patterns,yara,toml,yaml,python"} {
+		r, err := parseRequest("scan", []string{"--config", config, "--profile", "standard", "--checks", selection, "--", "inert.txt"}, io.Discard)
 		if err != nil || r.settings.Scanner.Profile != scout.Standard || r.settings.Scanner.Checks != nil {
-			t.Fatalf("enabled check %s inherited disabled config siblings: %+v %v", flag, r.settings.Scanner, err)
+			t.Fatalf("full check selection %s inherited disabled config siblings: %+v %v", selection, r.settings.Scanner, err)
 		}
 	}
-	r, err := parseRequest("scan", []string{"--config", config, "--profile", "basic", "--python-ast=true", "--", "inert.txt"}, io.Discard)
+	r, err := parseRequest("scan", []string{"--config", config, "--profile", "basic", "--checks", "python", "--", "inert.txt"}, io.Discard)
 	if err != nil || r.settings.Scanner.Profile != scout.Custom || r.settings.Scanner.Checks == nil || *r.settings.Scanner.Checks != (scout.Checks{Python: true}) {
 		t.Fatalf("legacy basic alias lost its explicit check patch: %+v %v", r.settings.Scanner.Checks, err)
 	}
 }
 
 func TestBasicAliasPreservesExplicitChecks(t *testing.T) {
-	r, err := parseRequest("scan", []string{"--profile", "basic", "--skillspector-patterns", "target"}, &bytes.Buffer{})
+	r, err := parseRequest("scan", []string{"--profile", "basic", "--checks", "patterns", "target"}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if r.settings.Scanner.Checks == nil || !r.settings.Scanner.Checks.Patterns || r.settings.Scanner.Checks.Python {
 		t.Fatal("explicit adapted patterns discarded")
+	}
+}
+
+func TestChecksSelectionReplacesConfiguredChecks(t *testing.T) {
+	settings, err := configfile.Parse([]byte(`{"schema":"scout.config/v1","profile":"custom","checks":{"python":false}}`), configfile.Grants{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		selection string
+		want      scout.Checks
+	}{
+		{"", scout.Checks{YAML: true, TOML: true, YARA: true, Patterns: true}},
+		{"none", scout.Checks{}},
+		{"python", scout.Checks{Python: true}},
+		{"yaml", scout.Checks{YAML: true}},
+		{"toml", scout.Checks{TOML: true}},
+		{"yara", scout.Checks{YARA: true}},
+		{"patterns", scout.Checks{Patterns: true}},
+		{"toml, python", scout.Checks{Python: true, TOML: true}},
+		{"python,yaml,toml,yara,patterns", allStaticChecks()},
+	} {
+		args := []string{}
+		if tc.selection != "" {
+			args = append(args, "--checks", tc.selection)
+		}
+
+		patch, err := parseArgv("scan", args, io.Discard, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		r, err := patch.resolve(settings, nil)
+		if err != nil || r.settings.Scanner.Checks == nil || *r.settings.Scanner.Checks != tc.want {
+			t.Fatalf("selection %q: checks=%+v error=%v", tc.selection, r.settings.Scanner.Checks, err)
+		}
+	}
+}
+
+func TestChecksRejectsAmbiguousListsBeforeReadingConfiguration(t *testing.T) {
+	for _, args := range [][]string{
+		{"--checks", ""},
+		{"--checks", "unknown"},
+		{"--checks", "python,python"},
+		{"--checks", "python,"},
+		{"--checks", "none,python"},
+		{"--checks", "none", "--checks", "yaml"},
+	} {
+		args = append(args, "--config", "/missing/operator.json")
+		if _, err := parseArgv("scan", args, io.Discard, nil); err == nil {
+			t.Errorf("ambiguous selection accepted: %v", args)
+		}
+	}
+}
+
+func TestVulnFlagSelectsService(t *testing.T) {
+	r, err := parseRequest("scan", []string{"--vuln", "--allow-vulnerability-network"}, io.Discard)
+	if err != nil || r.settings.Scanner.Vulnerabilities == nil || !r.settings.Scanner.Vulnerabilities.Enabled || !r.settings.Scanner.Vulnerabilities.AllowNetwork {
+		t.Fatalf("vulnerability service not enabled: %+v %v", r.settings.Scanner.Vulnerabilities, err)
+	}
+
+	r, err = parseRequest("scan", []string{"--vuln=false"}, io.Discard)
+	if err != nil || r.settings.Scanner.Vulnerabilities != nil {
+		t.Fatalf("explicit false enabled vulnerability service: %+v %v", r.settings.Scanner.Vulnerabilities, err)
 	}
 }
 
@@ -393,7 +458,7 @@ func TestConfiguredReviewerCanBeDisabledBeforeConsentAndCredentials(t *testing.T
 }
 
 func reducedCommandFlags() []string {
-	return []string{"--profile", "custom", "--python-ast=false", "--yaml-parser=false", "--toml-parser=false", "--yara=false", "--skillspector-patterns"}
+	return []string{"--profile", "custom", "--checks", "patterns"}
 }
 
 type brokenMCPInput struct{}

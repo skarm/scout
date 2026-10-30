@@ -7,12 +7,16 @@ LLM-провайдеру. Она добавляет гипотезы и оцен
 
 ## Включение
 
+Для настройки через файл скопируйте и заполните
+[review.template.json](../../examples/configs/review.template.json) по
+[инструкции пресета](../../examples/configs/README.ru.md#шаблон-llm-проверки).
+
 ```bash
 scout scan --profile review --semantic --allow-source-upload \
   --llm-provider chat-completions \
   --llm-endpoint https://trusted.example/v1/chat/completions \
   --llm-model YOUR_MODEL --llm-api-key-env REVIEW_API_KEY \
-  --timeout 3m --format json -- ./my-plugin
+  --timeout 3m --format json ./my-plugin
 ```
 
 Задайте доверенный адрес сервиса, модель и переменную с учётными данными. Адрес в примере —

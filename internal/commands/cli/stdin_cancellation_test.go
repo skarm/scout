@@ -24,7 +24,7 @@ func TestStdinPipeRespectsOperationTimeout(t *testing.T) {
 	var out, diag bytes.Buffer
 	done := make(chan int, 1)
 	go func() {
-		done <- scanCommand(context.Background(), []string{"--profile", "custom", "--python-ast=false", "--yaml-parser=false", "--toml-parser=false", "--yara=false", "--skillspector-patterns=false", "--timeout", "30ms", "--format", "json", "--input", "-", "--name", "input.txt"}, read, &out, &diag)
+		done <- scanCommand(context.Background(), []string{"--profile", "custom", "--checks", "none", "--timeout", "30ms", "--format", "json", "--input", "-", "--name", "input.txt"}, read, &out, &diag)
 	}()
 	select {
 	case code := <-done:

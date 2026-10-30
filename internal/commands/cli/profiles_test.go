@@ -31,9 +31,9 @@ func TestProfilePreflightAndDowngradeRejection(t *testing.T) {
 	for _, args := range [][]string{
 		{"profiles", "invalid"},
 		{"profiles", "standard", "review"},
-		{"scan", "--profile", "standard", "--yara=false", "does-not-exist"},
-		{"scan", "--profile", "standard", "--python-ast=false", "does-not-exist"},
-		{"scan", "--profile", "extended", "--yara=false", "does-not-exist"},
+		{"scan", "--profile", "standard", "--checks", "python,yaml,toml,patterns", "does-not-exist"},
+		{"scan", "--profile", "standard", "--checks", "yaml,toml,yara,patterns", "does-not-exist"},
+		{"scan", "--profile", "extended", "--checks", "none", "does-not-exist"},
 		{"scan", "--profile", "semantic", "--semantic=false", "does-not-exist"},
 		{"scan", "--profile", "semantic", "does-not-exist"},
 	} {

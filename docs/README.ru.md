@@ -8,6 +8,9 @@
 
 - [Сборка и зависимости](development/native-build.ru.md).
 - [CLI, конфигурация, отчёты и baseline](user/usage.ru.md).
+- [Готовые конфигурации](../examples/configs/README.ru.md).
+- [Пример использования Go API](../examples/go-api/README.ru.md).
+- [Полный справочник команд и флагов](reference/cli.ru.md).
 - [Встроенные проверки, дополнительные правила и профили](user/inspection-profiles.ru.md).
 - [Сравнение обновлений](user/update-review.ru.md).
 - [Семантическая проверка](user/semantic-review.ru.md).
@@ -27,7 +30,6 @@
 ## Разработка
 
 - [Архитектура и границы доверия](development/architecture.ru.md).
-- [Архитектурное ревью от 29 октября 2026 года](development/architecture-review-2026-10-29.ru.md).
 - [Организация репозитория](development/layout.ru.md).
 - [Проверки проекта и приёмка](development/validation.ru.md).
 - [Команды разработчика](development/commands.ru.md).

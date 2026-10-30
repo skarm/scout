@@ -11,6 +11,8 @@
 
 Импортируйте `github.com/skarm/scout`. Описание типов и полей доступно через `go doc`.
 
+[Пример использования Go API](../../examples/go-api/README.ru.md).
+
 ## Создание и закрытие Scanner
 
 Начинайте со `scout.DefaultOptions()`; нулевые options недопустимы.

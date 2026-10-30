@@ -1,0 +1,21 @@
+{
+  "schema": "scout.config/v1",
+  "profile": "custom",
+  "checks": {
+    "python": false,
+    "yaml": false,
+    "toml": false,
+    "yara": false,
+    "patterns": true
+  },
+  "concurrency": {
+    "targets": 1,
+    "workers": 4
+  },
+  "timeout": "2m",
+  "policy": {
+    "fail_at": "high",
+    "scope": "conservative",
+    "review_below_threshold": false
+  }
+}

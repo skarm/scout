@@ -81,7 +81,7 @@ All flags precede the input; `--` ends flag parsing. No remote/model permission 
 
 ```sh
 "$SCOUT_BIN" capabilities
-"$SCOUT_BIN" scan --skillspector-patterns --python-ast --yaml-parser --toml-parser --yara --format json -- "$TARGET"
+"$SCOUT_BIN" scan --checks python,yaml,toml,yara,patterns --format json -- "$TARGET"
 ```
 
 These flags request the real embedded engines; unavailable engines must stay visible as

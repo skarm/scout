@@ -7,13 +7,13 @@ exit-code assumptions: this is a Go adaptation with a different interface.
 Static requested full-capability review:
 
 ```sh
-"$SCOUT_BIN" scan --skillspector-patterns --python-ast --yaml-parser --toml-parser --yara --format json -- "$TARGET"
+"$SCOUT_BIN" scan --checks python,yaml,toml,yara,patterns --format json -- "$TARGET"
 ```
 
 Update review (local inputs only):
 
 ```sh
-"$SCOUT_BIN" compare --skillspector-patterns --python-ast --yaml-parser --toml-parser --yara --format json -- "$PREVIOUS" "$CANDIDATE"
+"$SCOUT_BIN" compare --checks python,yaml,toml,yara,patterns --format json -- "$PREVIOUS" "$CANDIDATE"
 ```
 
 The same flags apply to `batch` for explicitly selected inputs. `capabilities`, `selftest`,
@@ -33,7 +33,7 @@ malware, and a missing report is not evidence of safety. Partial + block is mean
 
 Only after explicit permission: remote downloads use `--allow-download` (GitHub additionally
 needs `--revision` with a full SHA; `--download-sha256` can constrain bytes). OSV uses
-`--vulnerability-check --allow-vulnerability-network`. Model review uses `--semantic
+`--vuln --allow-vulnerability-network`. Model review uses `--semantic
 --allow-source-upload` and explicitly chosen provider/endpoint/model/credential variable.
 The latter can transmit source secrets; complete automatic redaction is not provided.
 Approval for one of these operations is not approval for the others.

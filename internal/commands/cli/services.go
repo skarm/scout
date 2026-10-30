@@ -30,7 +30,7 @@ func bindServices(fs *flag.FlagSet, p *argvPatch) {
 	fs.StringVar(&r.revision, "revision", "", "pinned commit revision")
 	fs.StringVar(&r.sha256, "download-sha256", "", "pinned response hash")
 	fs.StringVar(&r.settings.ExtraRulesPath, "yara-rules", r.settings.ExtraRulesPath, "trusted additional rules file")
-	fs.BoolVar(&p.vulnerabilities, "vulnerability-check", p.vulnerabilities, "enable exact vulnerability queries")
+	fs.BoolVar(&p.vulnerabilities, "vuln", p.vulnerabilities, "enable exact vulnerability queries")
 	fs.StringVar(&r.settings.OSVCachePath, "osv-cache", r.settings.OSVCachePath, "trusted offline query cache")
 	fs.StringVar(&r.settings.Scanner.Vulnerabilities.Endpoint, "osv-endpoint", r.settings.Scanner.Vulnerabilities.Endpoint, "query endpoint")
 	fs.BoolVar(&r.settings.Scanner.Vulnerabilities.AllowLoopback, "osv-allow-loopback", r.settings.Scanner.Vulnerabilities.AllowLoopback, "allow explicit local query endpoint")
@@ -116,7 +116,7 @@ func (p argvPatch) resolveDownload(s *configfile.Settings) error {
 
 func (p argvPatch) resolveVulnerabilities(s *configfile.Settings) error {
 	enabled := s.Scanner.Vulnerabilities != nil
-	if p.present["vulnerability-check"] {
+	if p.present["vuln"] {
 		enabled = p.vulnerabilities
 	}
 

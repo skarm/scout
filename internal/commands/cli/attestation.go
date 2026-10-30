@@ -11,14 +11,18 @@ import (
 )
 
 func attestationCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("verify-attestation", flag.ContinueOnError)
+	if len(args) == 0 || args[0] != "verify" {
+		return usageError(stderr, "attestation verify required")
+	}
+
+	fs := flag.NewFlagSet("attestation verify", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	key := fs.String("public-key", "", "explicit trusted PKIX public key PEM outside inspected inputs")
 	envelope := fs.String("envelope", "", "DSSE envelope or OMS bundle")
 	artifact := fs.String("artifact", "", "regular artifact file whose exact bytes must match the signed subject")
 
 	subject := fs.String("subject", "", "exact signed subject name")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args[1:]); err != nil {
 		return requestError(err, stderr)
 	}
 

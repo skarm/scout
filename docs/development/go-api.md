@@ -4,6 +4,8 @@ English · [Русский](go-api.ru.md)
 
 Import `github.com/skarm/scout`. Use `go doc` for individual types and fields.
 
+[Go API example](../../examples/go-api/README.md).
+
 ## Construct and close a Scanner
 
 Start with `scout.DefaultOptions()`; zero options are invalid. Standard and Review

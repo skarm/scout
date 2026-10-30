@@ -11,7 +11,7 @@ cannot enable networking or choose trusted keys.
 scout scan --allow-download --follow-external \
   --external-origin https://raw.githubusercontent.com \
   --external-depth 2 --external-max-requests 16 --external-max-bytes 4194304 \
-  --format json -- ./my-plugin
+  --format json ./my-plugin
 ```
 
 Traversal requires both `--follow-external` and `--allow-download`.
@@ -31,7 +31,7 @@ scout registry fetch --allow-download --name org.example/tool --latest \
   --output /ci/registry-current.json
 scout registry compare --output /ci/registry-delta.json \
   /ci/registry-previous.json /ci/registry-current.json
-scout scan --format json -- /ci/registry-current.json
+scout scan --format json /ci/registry-current.json
 ```
 
 Fetch creates a bounded data snapshot. `--latest` uses the registry's `isLatest`
@@ -41,7 +41,7 @@ A registry record is not an installation approval.
 ## DSSE/in-toto verification
 
 ```sh
-scout verify-attestation --public-key /ci/trusted-signer.pem \
+scout attestation verify --public-key /ci/trusted-signer.pem \
   --envelope ./bundle.oms.sig --artifact ./bundle.zip --subject bundle.zip
 ```
 

@@ -90,7 +90,7 @@ export function invocation(params, config) {
   const semantic = params.semantic === true;
   const profile = inspectionProfile(config, semantic);
   const args = ['scan', '--profile', profile, '--format', 'json', '--harness', target.harness, '--timeout', '2m'];
-  if (config.reduced) args.push('--python-ast=false', '--yaml-parser=false', '--toml-parser=false', '--yara=false', '--skillspector-patterns');
+  if (config.reduced) args.push('--checks', 'patterns');
   const grants = [{ permission: 'bash', patterns: [config.binary], description: 'Execute the trusted scanner without a shell. Target programs will not run.' }];
   targetInvocation(target, args, grants);
   if (semantic) semanticInvocation(config.reviewer, args, grants);

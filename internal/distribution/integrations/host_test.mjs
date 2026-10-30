@@ -43,13 +43,13 @@ await test('only named inputs and enumerated tool arguments are accepted', () =>
   assert.equal(p.semantic,false); assert.equal(p.args[0],'scan');
   assert.deepEqual(p.args.slice(-2),['--','/review/plugin']);
   assert.equal(p.args[p.args.indexOf('--profile')+1], 'standard');
-  for(const flag of ['--allow-download','--semantic','--vulnerability-check','--baseline','--output','--config']) assert.ok(!p.args.includes(flag));
+  assert.equal(p.args[p.args.indexOf('--harness')+1], 'claude-code');
+  for(const flag of ['--allow-download','--semantic','--vuln','--baseline','--output','--config']) assert.ok(!p.args.includes(flag));
   assert.deepEqual(p.grants.map(x=>x.permission),['bash','read','external_directory']);
   for(const args of [{target:'/etc/passwd'},{target:'--help'},{target:'candidate',args:['--baseline','x']},{target:'candidate',semantic:'true'},{target:'candidate',semantic:true},{target:'constructor'}]) assert.throws(()=>invocation(args,c));
   const reduced=invocation({target:'candidate'},setup({SCOUT_REDUCED_CORE:'1'}));
   assert.equal(reduced.args[reduced.args.indexOf('--profile')+1], 'custom');
-  for (const flag of ['--python-ast=false','--yaml-parser=false','--toml-parser=false','--yara=false']) assert.ok(reduced.args.includes(flag));
-  assert.ok(reduced.args.includes('--skillspector-patterns'));
+  assert.equal(reduced.args[reduced.args.indexOf('--checks')+1], 'patterns');
 });
 
 await test('download and source upload have different grants and no implicit credentials', () => {

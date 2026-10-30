@@ -46,7 +46,7 @@ In a GitHub Actions shell step, build directly into a runner-selected directory:
 make build BIN_DIR="$RUNNER_TEMP/scout-bin"
 export PATH="$RUNNER_TEMP/scout-bin:$PATH"
 scout doctor
-scout scan --format json -- ./my-skill
+scout scan --format json ./my-skill
 ```
 
 For use in later steps, also add the directory to `GITHUB_PATH`.
@@ -118,7 +118,10 @@ All three archives are uploaded to a draft release before it becomes public.
 The standalone Go command `internal/dev/releasepack` creates the archives and
 checksums using only Go's standard library.
 A failed upload can be retried while the release is still a draft; published
-assets are never replaced by this workflow.
+assets are never replaced by this workflow. If the release is already public,
+the workflow first compares existing assets byte for byte with the build artifacts,
+then uploads only missing files. A mismatch stops publication and requires a new
+version tag. An already published release keeps its title, notes and prerelease status.
 
 Use **Actions → Scout release → Run workflow** for a trial build. Manual runs
 save `release-assets` for 14 days and never publish a GitHub Release. Publication

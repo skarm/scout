@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 )
 
 // Format selects a report representation. Each format renders the same
@@ -218,21 +217,36 @@ func documentText(out *bytes.Buffer, document Document, md bool) error {
 		quote = mdCode
 
 		out.WriteString("# Scout report\n\n")
+	} else {
+		out.WriteString("Scout report\n\n")
 	}
 
-	_, _ = fmt.Fprintf(out, "Operation: %s; state: %s; decision: %s.\n\n", quote(string(document.Operation)), quote(string(document.Run.State)), quote(string(document.Evaluation.Decision)))
-	_, _ = fmt.Fprintf(out, "Run digest: %s.\n\n", quote(document.Run.Digest))
-	_, _ = fmt.Fprintf(out, "Decision reasons: %s.\n\n", quote(strings.Join(document.Evaluation.Reasons, ", ")))
+	humanSummary(out, document, md)
 
 	for _, problem := range document.Run.Problems {
-		_, _ = fmt.Fprintf(out, "Problem: %s; phase: %s; target: %s; object: %s.\n\n", quote(problem.Code), quote(problem.Phase), quote(problem.TargetID), quote(problem.ObjectID))
+		_, _ = fmt.Fprintf(out, "Problem: %s; phase: %s", quote(problem.Code), quote(problem.Phase))
+		if problem.TargetID != "" {
+			_, _ = fmt.Fprintf(out, "; target: %s", quote(problem.TargetID))
+		}
+
+		if problem.ObjectID != "" {
+			_, _ = fmt.Fprintf(out, "; object: %s", quote(problem.ObjectID))
+		}
+
+		out.WriteString(".\n")
+
+		if problem.Message != "" {
+			_, _ = fmt.Fprintf(out, "%s\n", quote(problem.Message))
+		}
+
+		out.WriteString("\n")
 	}
 
 	if document.Run.Comparison != nil {
 		writeComparison(out, *document.Run.Comparison, md)
 	}
 
-	for _, target := range document.Run.Targets {
+	for _, target := range humanTargets(document.Run) {
 		writeTargetHeading(out, target, md)
 
 		analysis := documentAnalysis(document, target)
@@ -249,6 +263,12 @@ func documentText(out *bytes.Buffer, document Document, md bool) error {
 			}
 		}
 	}
+
+	if md {
+		out.WriteString("## Report identity\n\n")
+	}
+
+	_, _ = fmt.Fprintf(out, "Run digest: %s.\n", quote(document.Run.Digest))
 
 	return nil
 }
@@ -297,7 +317,12 @@ func writeTargetHeading(out *bytes.Buffer, target TargetResult, md bool) {
 		label = target.ID
 	}
 
-	_, _ = fmt.Fprintf(out, "%sTarget %d: %s; state: %s; role: %s.\n\n", prefix, target.Index, quote(label), quote(string(target.State)), quote(target.Role))
+	_, _ = fmt.Fprintf(out, "%sTarget %d: %s; state: %s", prefix, target.Index, quote(label), quote(string(target.State)))
+	if target.Role != "" {
+		_, _ = fmt.Fprintf(out, "; role: %s", quote(target.Role))
+	}
+
+	out.WriteString(".\n\n")
 }
 
 func validateFailure(operation Operation, problem Problem) error {
@@ -342,7 +367,15 @@ func failureText(out *bytes.Buffer, format Format, operation Operation, problem 
 	}
 
 	_, _ = fmt.Fprintf(out, "Scout operation %s failed: %s; phase: %s.\n\n", quote(string(operation)), quote(problem.Code), quote(problem.Phase))
-	_, _ = fmt.Fprintf(out, "Target: %s; object: %s.\n", quote(problem.TargetID), quote(problem.ObjectID))
+
+	_, _ = fmt.Fprintf(out, "%s No inspection result or policy decision is available.\n", quote(problem.Message))
+	if problem.TargetID != "" {
+		_, _ = fmt.Fprintf(out, "Target: %s.\n", quote(problem.TargetID))
+	}
+
+	if problem.ObjectID != "" {
+		_, _ = fmt.Fprintf(out, "Object: %s.\n", quote(problem.ObjectID))
+	}
 }
 
 func problemCode(value string) bool {
