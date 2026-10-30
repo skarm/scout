@@ -8,7 +8,9 @@ import (
 	"sync"
 
 	"github.com/skarm/scout/fetch"
+	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/analysis/engine"
+	"github.com/skarm/scout/internal/analysis/environment"
 	"github.com/skarm/scout/internal/analysis/semantic"
 	"github.com/skarm/scout/internal/analysis/update"
 	"github.com/skarm/scout/internal/capture/artifact"
@@ -48,6 +50,10 @@ func (s *Scanner) Compare(ctx context.Context, before, after Target, options Com
 }
 
 func (s *Scanner) execute(ctx context.Context, targets []Target, operation report.Operation, comparison CompareOptions) (report.Run, error) {
+	return s.executeWithin(ctx, targets, operation, comparison, false)
+}
+
+func (s *Scanner) executeWithin(ctx context.Context, targets []Target, operation report.Operation, comparison CompareOptions, joint bool) (report.Run, error) {
 	if err := s.validateTargets(ctx, targets); err != nil {
 		return report.Run{}, err
 	}
@@ -60,8 +66,27 @@ func (s *Scanner) execute(ctx context.Context, targets []Target, operation repor
 	call, cancel := context.WithTimeout(ctx, s.options.Limits.Timeout)
 	defer cancel()
 
-	run, targetErrors := s.inspectTargets(call, targets, operation)
+	var surfaces []bundle.Surface
+	if joint {
+		surfaces = make([]bundle.Surface, len(targets))
+	}
+
+	run, targetErrors := s.inspectTargets(call, targets, operation, surfaces)
 	consolidateTargets(&run, targetErrors, s.options.Limits.Retention.MaxFindings)
+
+	if joint {
+		observations := environment.Build(call, surfaces, run.Targets, s.options.Limits.Retention.MaxFindings, s.options.Limits.Analysis.MaxOperations/8)
+
+		run.Environment = &observations
+		if observations.Completeness != report.Complete {
+			if run.State != report.RunCancelled {
+				run.State = report.RunIncomplete
+			}
+
+			run.Problems = append(run.Problems, report.Problem{Code: "environment_incomplete", Phase: "environment", Message: "Selected environment relationships were not completely inspected."})
+			targetErrors = append(targetErrors, ErrIncomplete)
+		}
+	}
 
 	if operation == report.CompareOperation {
 		targetErrors = append(targetErrors, buildComparison(call, &run, comparison))
@@ -97,7 +122,7 @@ func (s *Scanner) validateTargets(ctx context.Context, targets []Target) error {
 
 // Workers own disjoint result positions; completion order cannot reorder them.
 // One slot pool bounds analyzer execution across every target in this run.
-func (s *Scanner) inspectTargets(ctx context.Context, targets []Target, operation report.Operation) (report.Run, []error) {
+func (s *Scanner) inspectTargets(ctx context.Context, targets []Target, operation report.Operation, surfaces []bundle.Surface) (report.Run, []error) {
 	run := report.Run{
 		Operation: operation,
 		State:     report.RunComplete,
@@ -122,7 +147,13 @@ func (s *Scanner) inspectTargets(ctx context.Context, targets []Target, operatio
 			for i := range jobs {
 				options := s.targetOptions(i, len(targets), operation)
 
-				result, err := s.scanTarget(ctx, targets[i], i, options, slots)
+				var surface *bundle.Surface
+				if surfaces != nil {
+					surface = &surfaces[i]
+					options.Limits.Analysis.MaxOperations -= (options.Limits.Analysis.MaxOperations + 7) / 8
+				}
+
+				result, err := s.scanTarget(ctx, targets[i], i, options, slots, surface)
 				if operation == report.CompareOperation {
 					if i == 0 {
 						result.Role = "before"
@@ -162,7 +193,7 @@ func (s *Scanner) targetOptions(index, count int, operation report.Operation) ta
 	return settings
 }
 
-func (s *Scanner) scanTarget(ctx context.Context, target Target, index int, options targetSettings, slots chan struct{}) (report.TargetResult, error) {
+func (s *Scanner) scanTarget(ctx context.Context, target Target, index int, options targetSettings, slots chan struct{}, surface *bundle.Surface) (report.TargetResult, error) {
 	result := report.TargetResult{
 		ID:    fmt.Sprintf("target-%d", index),
 		Index: index,
@@ -193,7 +224,9 @@ func (s *Scanner) scanTarget(ctx context.Context, target Target, index int, opti
 		}
 	}
 
-	analysis, runErr := s.engine.Run(ctx, snapshot, s.engineOptions(options, slots))
+	engineOptions := s.engineOptions(options, slots)
+	engineOptions.Environment = surface
+	analysis, runErr := s.engine.Run(ctx, snapshot, engineOptions)
 
 	analysis.External = closure
 	if closure != nil {

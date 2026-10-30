@@ -132,6 +132,8 @@ func decisionReason(code string) string {
 		return "Security-relevant declaration changes require manual review"
 	case "semantic_proposals_require_review":
 		return "The reviewer produced evidence-linked hypotheses that require manual review"
+	case "environment_observations_require_review":
+		return "The selected environment contains source-linked collision or capability candidates requiring manual review"
 	case "previous_semantic_proposals_require_review":
 		return "The previous version contains reviewer hypotheses that require manual review"
 	case "findings_below_threshold_require_review":

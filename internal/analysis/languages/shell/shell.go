@@ -156,13 +156,13 @@ func newShellState() *shellState {
 
 func (a shellCheck) Rule() report.Rule {
 	r := report.Rule{
-		ID: a.kind, Version: "2", Method: "shell-subset-ast", Severity: report.Medium,
-		Limitation: "Bounded native shell subset, not full POSIX/Bash. Command names are syntactic candidates, not resolved executables. Selected straight-line assignments/stdio and constant words only; no general control flow, functions, aliases, field splitting or external-file semantics. A flow is not proof of execution or malicious intent.",
+		ID: a.kind, Version: "3", Method: "shell-subset-ast", Severity: report.Medium,
+		Limitation: "Bounded native shell subset, not full POSIX/Bash. Command names are syntactic candidates, not resolved executables. Selected straight-line assignments/stdio and constant words only; no general control flow, functions, aliases, field splitting or external-file semantics. Selected ~/ paths use symbolic HOME or an in-script constant, never the scanner's environment. A flow is not proof of execution or malicious intent.",
 	}
 	switch a.kind {
 	case ruleSH001:
 		r.Title, r.Category, r.Severity = "Downloaded bytes reach an execution input or file", "remote-execution", report.High
-		r.Version = "3"
+		r.Version = "4"
 		r.Limitation += " Selected constant file paths retain conservative may-flow provenance through downloads, redirections and script execution; filesystem state, executable resolution and runtime success are unverified."
 	case ruleSH002:
 		r.Title, r.Category, r.Severity = "Sensitive data reaches a supported curl request argument", "credential-egress", report.High
@@ -388,6 +388,10 @@ func (a *shellWalk) via(o *shellOrigin, s source.Span) *shellOrigin {
 func (a *shellWalk) word(w *shellsyntax.Word, s *shellState) shellValue {
 	if w == nil || !a.step() {
 		return shellValue{}
+	}
+
+	if value, ok := a.homePath(w, s); ok {
+		return value
 	}
 
 	v := shellValue{known: !w.Expands}
@@ -707,8 +711,7 @@ func (a *shellWalk) curlBody(c *shellsyntax.Command, body shellBody, input shell
 		if file == "-" {
 			v = mergeShellValue(v, input)
 		} else if literals.SensitivePath(file) {
-			v.credential = &shellOrigin{source: c.Span}
-			a.emit(ruleSH004, c.Span, nil)
+			v.credential = a.sensitiveFileRead(c.Span)
 		}
 	}
 
@@ -727,8 +730,7 @@ func (a *shellWalk) catCommand(c *shellsyntax.Command, s *shellState, input shel
 		for _, v := range files {
 			out.download = mergeShellValue(out, shellValue{download: s.fileOrigin(v)}).download
 			if v.known && literals.SensitivePath(v.text) {
-				out.credential = &shellOrigin{source: c.Span}
-				a.emit(ruleSH004, c.Span, nil)
+				out.credential = a.sensitiveFileRead(c.Span)
 			}
 		}
 	}
@@ -827,8 +829,7 @@ func (a *shellWalk) redirectedInput(kind shellRedirectKind, value shellValue, sp
 	case shellReadFile:
 		input := shellValue{}
 		if value.known && literals.SensitivePath(value.text) {
-			input.credential = &shellOrigin{source: span}
-			a.emit(ruleSH004, span, nil)
+			input.credential = a.sensitiveFileRead(span)
 		}
 
 		return input

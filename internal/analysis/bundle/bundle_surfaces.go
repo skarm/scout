@@ -159,6 +159,14 @@ func (b *bundleAnalysis) toolCollisions(d document.File) {
 
 			b.observeTools(d, u, n.Get("tools"), seen)
 
+			if depth == 0 {
+				b.observeServerNames(d, u, n)
+			}
+
+			if depth == 0 || n == t.Root.Get("result") {
+				b.observeSurfaceTools(d, u, n.Get("tools"))
+			}
+
 			for _, m := range n.Members {
 				walk(m.Value, depth+1)
 			}

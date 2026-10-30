@@ -69,7 +69,7 @@ scout scan --yara-rules /etc/scout/organization.yar --fail-on medium ./my-plugin
 ## Go API и интеграции
 
 Создайте Scanner через `scout.New(ctx, scout.DefaultOptions())` и освободите его
-через `Close`. Вызовите `Scan`, `ScanMany` или `Compare`, оцените результат через доверенный
+через `Close`. Вызовите `Scan`, `ScanMany`, `ScanEnvironment` или `Compare`, оцените результат через доверенный
 `policy.Gate` и подготовьте вывод через `report.Prepare`.
 [Контракты API](docs/development/go-api.ru.md) · [Пример использования Go API](examples/go-api/README.ru.md).
 

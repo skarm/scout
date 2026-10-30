@@ -6,6 +6,7 @@ import (
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/capture/artifact"
 
@@ -40,6 +41,12 @@ type execution struct {
 }
 
 func (run *execution) prepare() error {
+	var environmentOperations uint64
+	if run.options.Environment != nil {
+		environmentOperations = run.options.MaxOperations / 4
+		run.options.MaxOperations -= environmentOperations
+	}
+
 	files := run.snapshot.Files()
 	capturedCount := len(files)
 
@@ -61,7 +68,12 @@ func (run *execution) prepare() error {
 	documents, preparedChecks = analyzer.PrepareShellPatternsWithin(run.ctx, preparedChecks, documents, candidates, run.options.MaxOperations)
 	documents = document.Freeze(documents)
 	graph := harness.Discover(run.ctx, run.snapshot.Metadata().Files, documents, expanded.Report, run.options.Harness)
+
 	documents = harness.ApplyConfigScopes(documents, graph)
+	if run.options.Environment != nil {
+		*run.options.Environment = bundle.CollectSurface(run.ctx, documents, expanded.Report, environmentOperations)
+	}
+
 	checks := analyzer.BindContexts(run.ctx, preparedChecks, documents, expanded.Report)
 	checks = analyzer.BindBundle(run.ctx, checks, documents, expanded.Report, candidates, run.options.MaxOperations)
 	checks = analyzer.BindGraph(checks, documents, graph)

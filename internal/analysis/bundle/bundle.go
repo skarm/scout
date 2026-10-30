@@ -44,6 +44,8 @@ type bundleAnalysis struct {
 	active            map[*bundleFunction]bool
 	endpoints         map[string][]bundleEndpoint
 	secrets           map[string][]report.SourceRef
+	surface           *Surface
+	surfaceSeen       map[SurfaceFact]bool
 }
 type bundleEndpoint struct {
 	value string
@@ -82,7 +84,7 @@ func (a bundleCheck) Rule() report.Rule {
 
 	return report.Rule{
 		ID:          a.id,
-		Version:     "1",
+		Version:     "2",
 		Title:       title,
 		Description: title,
 		Severity:    severity,
@@ -120,7 +122,11 @@ func Consumers(checks []analyzer) int {
 // Bind owns one quota-charged prepass. Its observations are immutable
 // before parallel checks start, and never persist in a Scanner across runs.
 func Bind(ctx context.Context, checks []analyzer, docs []document.File, extraction report.ExtractionReport, limit int) []analyzer {
-	if Consumers(checks) == 0 {
+	return bind(ctx, checks, docs, extraction, limit, nil)
+}
+
+func bind(ctx context.Context, checks []analyzer, docs []document.File, extraction report.ExtractionReport, limit int, surface *Surface) []analyzer {
+	if Consumers(checks) == 0 && surface == nil {
 		return checks
 	}
 
@@ -134,6 +140,7 @@ func Bind(ctx context.Context, checks []analyzer, docs []document.File, extracti
 		active:    map[*bundleFunction]bool{},
 		endpoints: map[string][]bundleEndpoint{},
 		secrets:   map[string][]report.SourceRef{},
+		surface:   surface,
 	}
 
 	for _, a := range checks {
@@ -147,6 +154,10 @@ func Bind(ctx context.Context, checks []analyzer, docs []document.File, extracti
 	}
 
 	b.discover(docs)
+
+	if surface != nil {
+		b.surfaceSkills(docs)
+	}
 
 	for _, d := range docs {
 		if !b.step() {
@@ -172,6 +183,10 @@ func Bind(ctx context.Context, checks []analyzer, docs []document.File, extracti
 	}
 
 	b.finishScopes()
+
+	if surface != nil {
+		surface.Complete = b.err == nil && b.gap == nil && !surface.Limited && ctx.Err() == nil
+	}
 
 	out := append([]analyzer(nil), checks...)
 	for i, a := range out {
@@ -279,7 +294,15 @@ func (b *bundleAnalysis) discover(docs []document.File) {
 		b.scopes = append(b.scopes, bundleScope{file: name, ns: addr.Namespace, root: path.Dir(addr.Name), hosts: hosts})
 	}
 
-	sort.SliceStable(b.scopes, func(i, j int) bool { return len(b.scopes[i].root) > len(b.scopes[j].root) })
+	sort.SliceStable(b.scopes, func(i, j int) bool { return scopeDepth(b.scopes[i].root) > scopeDepth(b.scopes[j].root) })
+}
+
+func scopeDepth(root string) int {
+	if root == "." {
+		return 0
+	}
+
+	return strings.Count(root, "/") + 1
 }
 
 func (b *bundleAnalysis) scope(file string) *bundleScope {
@@ -311,6 +334,8 @@ func (b *bundleAnalysis) sameScope(a, c string) bool {
 }
 
 func (b *bundleAnalysis) endpoint(file, value string, ref report.SourceRef) {
+	b.surfaceFact("network", "", file, ref)
+
 	s := b.scope(file)
 	if s == nil {
 		return
@@ -328,6 +353,8 @@ func (b *bundleAnalysis) endpoint(file, value string, ref report.SourceRef) {
 }
 
 func (b *bundleAnalysis) secret(file string, ref report.SourceRef) {
+	b.surfaceFact("sensitive_read", "", file, ref)
+
 	if s := b.scope(file); s != nil {
 		b.secrets[s.file] = append(b.secrets[s.file], ref)
 	}

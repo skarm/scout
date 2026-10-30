@@ -68,7 +68,7 @@ limitations and extension examples.
 ## Go API and integrations
 
 Create a Scanner with `scout.New(ctx, scout.DefaultOptions())` and release it with
-`Close`. Use `Scan`, `ScanMany` or `Compare`, then evaluate the result with a trusted
+`Close`. Use `Scan`, `ScanMany`, `ScanEnvironment` or `Compare`, then evaluate the result with a trusted
 `policy.Gate` and prepare it for output with `report.Prepare`.
 [API contracts](docs/development/go-api.md) · [Go API example](examples/go-api/README.md).
 

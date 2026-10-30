@@ -10,7 +10,9 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
-// ObserveNetwork uses the same native command/option grammar as SH001/SH002.
+// ObserveNetwork uses the same native command/option grammar as SH001/SH002/SH004.
+// Sensitive reads include parameter expansion and supported cat, input redirect
+// and curl file-body operations, independently of their eventual use in a sink.
 // Callbacks contain captured text for trusted analysis only, never public logs.
 func ObserveNetwork(ctx context.Context, doc document.File, network func(string, source.Span), secret func(source.Span)) error {
 	w := shellWalk{ctx: ctx, outputs: map[string]*check.Facts{}}
@@ -35,6 +37,16 @@ func ObserveNetwork(ctx context.Context, doc document.File, network func(string,
 	w.units(doc.Units())
 
 	return errors.Join(w.err, w.gap, ctx.Err())
+}
+
+func (a *shellWalk) sensitiveFileRead(span source.Span) *shellOrigin {
+	a.emit(ruleSH004, span, nil)
+
+	if a.observeSecret != nil {
+		a.observeSecret(span)
+	}
+
+	return &shellOrigin{source: span}
 }
 
 func (a *shellWalk) observeWget(c *shellsyntax.Command, args []shellValue) {

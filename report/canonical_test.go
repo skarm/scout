@@ -79,7 +79,7 @@ func canonicalOracle(value any, field string) any {
 
 func unorderedOracle(field string) bool {
 	switch field {
-	case "findings", "diagnostics", "rules", "checks", "files", "skills", "objects", "skipped", "plugins", "components", "edges", "references", "issues", "requirements", "outcomes", "proposals", "assessments", "proposal_assessments", "queries", "matches", "aliases", "dependency_ids", "context_signals", "signature_names", "related_evidence", "contexts", "manifests", "declarations", "assets", "prompts", "link_ids", "finding_ids", "proposal_ids", "knowledge_topic_ids", "sources", "reasons", "problems", "suppressed":
+	case "findings", "observations", "diagnostics", "rules", "checks", "files", "skills", "objects", "skipped", "plugins", "components", "edges", "references", "issues", "requirements", "outcomes", "proposals", "assessments", "proposal_assessments", "queries", "matches", "aliases", "dependency_ids", "context_signals", "signature_names", "related_evidence", "contexts", "manifests", "declarations", "assets", "prompts", "link_ids", "finding_ids", "proposal_ids", "knowledge_topic_ids", "sources", "reasons", "problems", "suppressed":
 		return true
 	default:
 		return false

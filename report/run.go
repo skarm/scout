@@ -65,6 +65,8 @@ type Run struct {
 	// Comparison contains the bounded delta for a comparison, and is nil for a
 	// scan.
 	Comparison *UpdateDelta `json:"comparison,omitempty"`
+	// Environment is present only after an explicitly selected joint analysis.
+	Environment *EnvironmentReport `json:"environment,omitempty"`
 	// Operation identifies whether this result represents a scan or comparison.
 	Operation Operation `json:"-"`
 }
@@ -284,6 +286,10 @@ func validateRun(run Run) error {
 	}
 
 	if err := validateTargets(run.Targets); err != nil {
+		return err
+	}
+
+	if err := validateEnvironment(run); err != nil {
 		return err
 	}
 
@@ -585,7 +591,7 @@ func runDigest(run Run) (string, error) {
 
 func unorderedCollection(field string) bool {
 	switch field {
-	case "findings", "diagnostics", "rules", "checks", "files", "skills", "objects", "skipped",
+	case "findings", "observations", "diagnostics", "rules", "checks", "files", "skills", "objects", "skipped",
 		"plugins", "components", "edges", "references", "issues", "requirements", "outcomes",
 		"proposals", "assessments", "proposal_assessments", "queries", "matches", "aliases",
 		"dependency_ids", "context_signals", "signature_names", "related_evidence", "contexts",

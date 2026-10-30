@@ -6,10 +6,51 @@ import (
 	"path"
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/languages/literals"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 )
 
 var errShellFileBudget = errors.New("shell file provenance budget exceeded")
+
+// A literal ~/ path has a stable suffix even though HOME belongs to the target
+// shell. Use the existing symbolic HOME value, never the scanner's environment.
+// Globs, brace expansions and mixed dynamic words remain unresolved.
+func (a *shellWalk) homePath(word *shellsyntax.Word, state *shellState) (shellValue, bool) {
+	if !word.Expands || len(word.Parts) == 0 || word.Parts[0].Quoted ||
+		word.Parts[0].Kind != "literal" || !strings.HasPrefix(word.Parts[0].Text, "~/") {
+		return shellValue{}, false
+	}
+
+	var text strings.Builder
+	for _, part := range word.Parts {
+		if !a.step() || part.Kind != "literal" || !part.Quoted && strings.ContainsAny(part.Text, "*?[{}") ||
+			len(part.Text) > literals.MaxStaticStringBytes-text.Len() {
+			return shellValue{}, false
+		}
+
+		text.WriteString(part.Text)
+	}
+
+	home := state.parameter(shellsyntax.Part{Text: "HOME"})
+
+	tail := text.String()[1:]
+	if !home.known || len(tail) > literals.MaxStaticStringBytes-len(home.text) {
+		if a.observeSecret != nil {
+			a.gap = errors.New("shell home path is unresolved or exceeds the string budget")
+		}
+
+		home.known, home.text = false, ""
+
+		return home, true
+	}
+
+	home.text += tail
+	if home.credential != nil && a.observeSecret != nil {
+		a.observeSecret(home.credential.source)
+	}
+
+	return home, true
+}
 
 func (s *shellState) fileKey(v shellValue) string {
 	if !v.known || v.text == "" || v.text == "-" {

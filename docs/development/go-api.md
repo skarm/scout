@@ -32,6 +32,12 @@ Custom review providers must support concurrent calls and honor cancellation.
 scanning also requires enabled download options. `Compare` rescans two local paths.
 `ScanMany` preserves input order and shares aggregate budgets.
 
+Use `ScanEnvironment(ctx, targets)` only when those existing, nonoverlapping local
+roots belong to one explicitly selected agent/project context. It adds source-bound
+collision, capability and skill-reference observations in `Run.Environment`.
+`ScanMany` never performs this grouping automatically. See
+[environment analysis](../user/environment-analysis.md) for limits and policy behavior.
+
 `Reader` and `ReaderContext` borrow single-use streams without closing them.
 `ReadContext` must stop promptly on cancellation. Ordinary `Read` calls must return
 independently because the adapter cannot interrupt them.

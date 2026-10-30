@@ -48,7 +48,7 @@ func discoverCommand(ctx context.Context, args []string, stdout, stderr io.Write
 			return 2
 		}
 
-		return scanDiscovered(ctx, a.scanArgs, snapshot, stdout, stderr)
+		return scanDiscovered(ctx, a, snapshot, stdout, stderr)
 	}
 
 	return a.publishInventory(ctx, snapshot, err, stdout, stderr)
@@ -157,14 +157,18 @@ func (a *discoveryArguments) resolve() error {
 	return nil
 }
 
-func scanDiscovered(ctx context.Context, args []string, snapshot discovery.Snapshot, stdout, stderr io.Writer) int {
-	r, err := parseRequest("scan", args, stderr)
+func scanDiscovered(ctx context.Context, a discoveryArguments, snapshot discovery.Snapshot, stdout, stderr io.Writer) int {
+	r, err := parseRequest("scan", a.scanArgs, stderr)
 	if err != nil {
 		return requestError(err, stderr)
 	}
 
 	if len(r.targets) != 0 || r.input != "" || r.name != "" {
 		return usageError(stderr, "discovered scan accepts scan flags only, without positional targets or stdin")
+	}
+
+	if r.environment && (a.options.Agent == "all" || len(a.options.Projects) > 1) {
+		return usageError(stderr, "environment analysis requires one --agent and at most one --project; split independent environments")
 	}
 
 	r.targets = snapshot.Targets

@@ -29,6 +29,7 @@ scout/
 │   │   ├── sourcepolicy/        # offline default package-source predicates
 │   │   ├── document/            # prepared source views
 │   │   ├── engine/              # orchestration and budgets
+│   │   ├── environment/         # explicit joint review of captured component facts
 │   │   └── other analysis packages
 │   ├── signatures/{rules,testdata}/
 │   ├── distribution/{integrations,skills,registry,attestation}/

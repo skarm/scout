@@ -30,13 +30,14 @@ type documentSARIF struct {
 }
 
 type sarifDocumentProperties struct {
-	Schema     string       `json:"schema"`
-	Operation  Operation    `json:"operation"`
-	RunState   State        `json:"runState"`
-	RunDigest  string       `json:"runDigest,omitempty"`
-	Evaluation *Evaluation  `json:"evaluation"`
-	Problems   []Problem    `json:"problems,omitempty"`
-	Comparison *UpdateDelta `json:"comparison,omitempty"`
+	Schema      string             `json:"schema"`
+	Operation   Operation          `json:"operation"`
+	RunState    State              `json:"runState"`
+	RunDigest   string             `json:"runDigest,omitempty"`
+	Evaluation  *Evaluation        `json:"evaluation"`
+	Problems    []Problem          `json:"problems,omitempty"`
+	Comparison  *UpdateDelta       `json:"comparison,omitempty"`
+	Environment *EnvironmentReport `json:"environment,omitempty"`
 }
 
 type failureDocument struct {
@@ -155,13 +156,14 @@ func writeEncodedDocument(w io.Writer, value any) error {
 
 func documentToSARIF(document Document) documentSARIF {
 	res := documentSARIF{sarif: toSARIF(Analysis{}, document.Evaluation), Properties: sarifDocumentProperties{
-		Schema:     DocumentSchema,
-		Operation:  document.Operation,
-		RunState:   document.Run.State,
-		RunDigest:  document.Run.Digest,
-		Evaluation: &document.Evaluation,
-		Problems:   document.Run.Problems,
-		Comparison: document.Run.Comparison,
+		Schema:      DocumentSchema,
+		Operation:   document.Operation,
+		RunState:    document.Run.State,
+		RunDigest:   document.Run.Digest,
+		Evaluation:  &document.Evaluation,
+		Problems:    document.Run.Problems,
+		Comparison:  document.Run.Comparison,
+		Environment: document.Run.Environment,
 	}}
 
 	res.Runs = make([]run, 0, len(document.Run.Targets))
@@ -222,6 +224,7 @@ func documentText(out *bytes.Buffer, document Document, md bool) error {
 	}
 
 	humanSummary(out, document, md)
+	writeEnvironment(out, document.Run.Environment, md)
 
 	for _, problem := range document.Run.Problems {
 		_, _ = fmt.Fprintf(out, "Problem: %s; phase: %s", quote(problem.Code), quote(problem.Phase))

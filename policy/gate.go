@@ -129,6 +129,14 @@ func (g *Gate) Evaluate(run report.Run, now time.Time) report.Evaluation {
 		g.evaluateTarget(target, now, &result)
 	}
 
+	if run.Environment != nil {
+		for _, observation := range run.Environment.Observations {
+			if observation.Kind != "skill_reference" {
+				result.review("environment_observations_require_review")
+			}
+		}
+	}
+
 	if len(result.evaluation.Reasons) == 0 {
 		result.add("policy_allowed")
 	}

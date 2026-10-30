@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/semantic"
 	"github.com/skarm/scout/internal/capture/artifact"
@@ -70,6 +71,8 @@ type RunOptions struct {
 	// VulnerabilityQuota shares the admitted advisory request budget assigned to
 	// this target.
 	VulnerabilityQuota *int
+	// Environment receives passive source-bound facts only for ScanEnvironment.
+	Environment *bundle.Surface
 }
 
 // New validates analyzers and worker limits and uses the build's default

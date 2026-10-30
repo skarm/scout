@@ -52,6 +52,10 @@ func requestError(err error, stderr io.Writer) int {
 }
 
 func (r *request) scanTargets(stdin io.Reader) ([]scout.Target, error) {
+	if r.environment && r.input != "" {
+		return nil, errors.New("environment analysis requires local paths, not stdin")
+	}
+
 	if r.input != "" {
 		target, err := r.stdinTarget(stdin)
 		if err != nil {
@@ -73,6 +77,9 @@ func (r *request) scanTargets(stdin io.Reader) ([]scout.Target, error) {
 		}
 
 		targets[i] = target
+		if r.environment && !target.IsLocal() {
+			return nil, errors.New("environment analysis requires local paths")
+		}
 	}
 
 	return targets, nil
@@ -258,6 +265,8 @@ func executeRequest(ctx context.Context, r request, targets []scout.Target, oper
 	var run report.Run
 	if operation == report.CompareOperation {
 		run, err = scanner.Compare(ctx, targets[0], targets[1], r.compare)
+	} else if r.environment {
+		run, err = scanner.ScanEnvironment(ctx, targets)
 	} else {
 		run, err = scanner.ScanMany(ctx, targets)
 	}

@@ -27,6 +27,7 @@ type request struct {
 	configPath                      string
 	grants                          configfile.Grants
 	followExternal                  bool
+	environment                     bool
 	externalOrigins                 repeated
 	externalDepth, externalRequests int
 	externalBytes                   int64
@@ -94,6 +95,10 @@ func requestFlagSet(command string, stderr io.Writer, extra func(*flag.FlagSet))
 	fs.Var(&patch.checks, "checks", "optional `LIST`: python,yaml,toml,yara,patterns or none; subsets require custom")
 	bindBudgets(fs, &patch.values.settings.Scanner)
 	bindServices(fs, patch)
+
+	if command == "scan" {
+		fs.BoolVar(&patch.values.environment, "environment", false, "treat selected local roots as one agent/project environment")
+	}
 
 	if extra != nil {
 		extra(fs)

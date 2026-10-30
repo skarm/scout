@@ -107,6 +107,11 @@ report and exit code. Declaration states do not establish component activation.
 
 ### Input and configuration
 
+- `--environment`: explicitly relate selected local roots as one agent/project
+  environment; default `false`. Independent scans remain independent by default.
+  Requires existing, nonoverlapping local roots and does not support external traversal.
+  See [environment analysis](../user/environment-analysis.md).
+
 - `--config FILE`: explicit operator JSON configuration; unset by default. May be
   supplied only once. Configuration is never discovered inside targets.
 - `--profile standard|review|custom`: inspection preset; default `standard`.

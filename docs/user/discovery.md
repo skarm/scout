@@ -110,6 +110,10 @@ discovery and capture remain possible.
 Known plugin caches containing files remain scan targets even if no supported
 component metadata is recognized. Directory trees containing no files are omitted.
 
+For an explicit joint review, pass `--environment` after `--`, select one
+`--agent`, and choose at most one project context. See
+[environment analysis](environment-analysis.md) for observations and limitations.
+
 ## Bounds and coverage
 
 Defaults are 10 seconds, 10,000 probes/directory entries, depth 12 and 8 MiB total

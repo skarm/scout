@@ -14,6 +14,7 @@ Guides to using, extending and validating Scout.
 - [Built-in checks, additional rules and profiles](user/inspection-profiles.md).
 - [Update comparison](user/update-review.md).
 - [Discover installed agent components](user/discovery.md).
+- [Analyze interactions in one selected environment](user/environment-analysis.md).
 - [Semantic review](user/semantic-review.md).
 - [Integrations and MCP](user/integrations.md).
 
