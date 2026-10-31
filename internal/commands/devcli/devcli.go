@@ -9,20 +9,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
-	"time"
 
-	"github.com/skarm/scout"
-	"github.com/skarm/scout/internal/dev/evaluation"
 	"github.com/skarm/scout/internal/dev/maintenance"
 	"github.com/skarm/scout/internal/dev/releasecheck"
 )
-
-type evaluationInvocation struct {
-	path    string
-	profile scout.Profile
-	timeout time.Duration
-}
 
 func Run(ctx context.Context, args []string, out, diag io.Writer) int {
 	if len(args) == 0 {
@@ -47,52 +37,6 @@ func Run(ctx context.Context, args []string, out, diag io.Writer) int {
 	return 0
 }
 func failure(w io.Writer, err error) int { _, _ = fmt.Fprintln(w, err); return 2 }
-func evaluate(ctx context.Context, args []string, out, diag io.Writer) int {
-	command, err := parseEvaluation(args, diag)
-	if err != nil {
-		return failure(diag, err)
-	}
-
-	f, err := os.Open(command.path)
-	if err != nil {
-		return failure(diag, err)
-	}
-
-	data, readErr := io.ReadAll(io.LimitReader(f, evaluation.MaxCorpusBytes+1))
-
-	err = errors.Join(readErr, f.Close())
-	if err != nil {
-		return failure(diag, err)
-	}
-
-	opts := scout.DefaultOptions()
-
-	opts.Profile = command.profile
-	if opts.Profile == scout.Custom {
-		opts.Checks = &scout.Checks{}
-	}
-
-	call, cancel := context.WithTimeout(ctx, command.timeout)
-	defer cancel()
-
-	scanner, err := scout.New(call, opts)
-	if err != nil {
-		return failure(diag, err)
-	}
-	defer func() { _ = scanner.Close() }() // Detector resources are released after their result is consumed.
-
-	r, err := evaluation.Measure(call, scanner, data)
-	if err != nil {
-		return failure(diag, err)
-	}
-
-	if err = json.NewEncoder(out).Encode(r); err != nil {
-		return failure(diag, err)
-	}
-
-	return 0
-}
-
 func release(ctx context.Context, args []string, out, diag io.Writer) int {
 	fs := flag.NewFlagSet("releasecheck", flag.ContinueOnError)
 	fs.SetOutput(diag)
@@ -130,21 +74,4 @@ func release(ctx context.Context, args []string, out, diag io.Writer) int {
 	}
 
 	return 0
-}
-
-func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error) {
-	fs := flag.NewFlagSet("evaluate", flag.ContinueOnError)
-	fs.SetOutput(diag)
-	profile := fs.String("profile", "standard", "standard or custom (builtins only)")
-
-	timeout := fs.Duration("timeout", 2*time.Minute, "whole corpus deadline")
-	if err := fs.Parse(args); err != nil {
-		return evaluationInvocation{}, err
-	}
-
-	if fs.NArg() != 1 || *timeout <= 0 || *timeout > 10*time.Minute {
-		return evaluationInvocation{}, errors.New("evaluate requires one corpus and bounded timeout")
-	}
-
-	return evaluationInvocation{path: fs.Arg(0), profile: scout.Profile(*profile), timeout: *timeout}, nil
 }

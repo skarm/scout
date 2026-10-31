@@ -27,7 +27,10 @@ Maintenance commands accept `--root PROJECT_ROOT` when invoked elsewhere.
 ## Evaluation and release checks
 
 - `evaluate [--profile standard|custom] [--timeout 2m] CORPUS_JSON`: run a labeled
-  corpus. In this command, custom selects built-ins only.
+  single-file (schema 1) or package (schema 2) corpus. In this command, custom
+  selects built-ins only. `--split train|tune|holdout` filters after full corpus
+  validation. `--llm-config FILE --allow-source-upload` adds a separate LLM run;
+  `--input-usd-per-million N --output-usd-per-million N` records price assumptions.
 - `releasecheck --binary SCOUT`: inspect linkage and metadata, then execute fixed
   native self-tests. Add `--inspect-only` to avoid execution.
 

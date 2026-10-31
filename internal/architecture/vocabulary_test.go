@@ -24,7 +24,7 @@ func TestSharedVocabularyHasOneOwner(t *testing.T) {
 	}{
 		{"report/hosts.go", []string{"report/validation.go", "options.go", "internal/analysis", "internal/distribution/integrations/pack.go"}},
 		{"knowledge/modes.go", []string{"knowledge", "review", "internal/analysis/semantic", "internal/commands/cli/knowledge.go", "internal/dev/maintenance/knowledge_runtime.go"}},
-		{"review/providers.go", []string{"review", "internal/commands/cli"}},
+		{"review/providers.go", []string{"review", "internal/commands/cli", "internal/commands/config"}},
 		{"report/dependency_values.go", []string{"internal/analysis/dependencies", "osv"}},
 		{"internal/analysis/analyzer/rule_ids.go", []string{"internal/analysis/analyzer"}},
 		{"internal/analysis/bundle/rule_ids.go", []string{"internal/analysis/bundle"}},

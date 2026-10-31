@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/skarm/scout/internal/commands/cli/config"
+	"github.com/skarm/scout/internal/commands/config"
 
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"

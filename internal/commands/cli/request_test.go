@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/skarm/scout"
-	configfile "github.com/skarm/scout/internal/commands/cli/config"
+	configfile "github.com/skarm/scout/internal/commands/config"
 	"github.com/skarm/scout/internal/signatures"
 	"github.com/skarm/scout/internal/syntax/frontend"
 	"github.com/skarm/scout/osv"

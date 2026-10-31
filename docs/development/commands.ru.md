@@ -27,7 +27,11 @@ scout-dev releasecheck --binary "$(command -v scout)"
 ## Измерения и приёмка сборки
 
 - `evaluate [--profile standard|custom] [--timeout 2m] CORPUS_JSON`: проверить
-  размеченный корпус. Здесь custom выбирает только встроенные проверки.
+  размеченный корпус отдельных файлов (schema 1) или пакетов (schema 2).
+  Здесь custom выбирает только встроенные проверки. `--split train|tune|holdout`
+  фильтрует после проверки всего корпуса. `--llm-config FILE --allow-source-upload`
+  добавляет отдельный LLM-прогон; `--input-usd-per-million N --output-usd-per-million N`
+  задают тарифы для оценки стоимости.
 - `releasecheck --binary SCOUT`: проверить linkage и metadata, затем запустить
   нативные selftests. `--inspect-only` ограничивает работу чтением бинарника.
 

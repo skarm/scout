@@ -7,7 +7,7 @@ import (
 
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/fetch"
-	configfile "github.com/skarm/scout/internal/commands/cli/config"
+	configfile "github.com/skarm/scout/internal/commands/config"
 	"github.com/skarm/scout/osv"
 	"github.com/skarm/scout/review"
 )
