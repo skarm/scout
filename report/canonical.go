@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,8 +50,10 @@ func copyReportReferences(v reflect.Value) {
 		copyReportReferences(out.Elem())
 		v.Set(out)
 	case reflect.Struct:
-		for _, field := range v.Fields() {
-			copyReportReferences(field)
+		// Fields also builds unused StructField metadata for every value.
+		// Keep this recursive value-only walk free of those allocations.
+		for i := range v.NumField() {
+			copyReportReferences(v.Field(i))
 		}
 	case reflect.Slice:
 		if v.IsNil() {
@@ -259,17 +262,17 @@ func canonicalSet(out []byte, value reflect.Value) ([]byte, error) {
 
 	encoded := out[start:]
 
-	less := func(i, j int) bool {
-		a, b := items[i], items[j]
-		return bytes.Compare(encoded[a.start:a.end], encoded[b.start:b.end]) < 0
+	compare := func(a, b span) int {
+		return bytes.Compare(encoded[a.start:a.end], encoded[b.start:b.end])
 	}
-	if sort.SliceIsSorted(items, less) {
+
+	if slices.IsSortedFunc(items, compare) {
 		return append(out, ']'), nil
 	}
 
 	encoded = bytes.Clone(encoded)
 
-	sort.Slice(items, less)
+	slices.SortFunc(items, compare)
 
 	out = out[:start]
 

@@ -5,6 +5,7 @@ package analyzer
 import (
 	"context"
 	"regexp"
+	"sync"
 
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
@@ -27,12 +28,21 @@ type (
 type literal struct {
 	rule       report.Rule
 	expression *regexp.Regexp
+	hint       *patternLiteralFilter
 }
 
 type opaque struct{}
 
 // literalRules checks every captured byte stream, including examples and hidden files.
+//
+//nolint:gochecknoglobals // Cached rules contain only immutable descriptors and compiled regexps; callers receive detached lists.
+var compiledLiteralRules = sync.OnceValue(buildLiteralRules)
+
 func literalRules() []Analyzer {
+	return append([]Analyzer(nil), compiledLiteralRules()...)
+}
+
+func buildLiteralRules() []Analyzer {
 	return []Analyzer{
 		newLiteral(rulePI001, "Instruction-hierarchy override phrase", `(?i)\b(?:ignore|disregard|override)[\t ]+(?:all[\t ]+)?(?:previous|prior|system)[\t ]+(?:instructions?|prompts?|rules?)\b|(?i:игнорируй(?:те)?|проигнорируй(?:те)?)[\t ]+(?:все[\t ]+)?(?:предыдущие|системные)[\t ]+инструкции`, report.Medium, "prompt-injection", "Literal English/Russian phrases only; negation, quotation and intent require review. No automatic suppression in examples."),
 		newLiteral(ruleEX001, "Download piped to a shell", `(?im)\b(?:curl|wget)\b[^\r\n|]+\|[\t ]*(?:(?:sudo|env)[\t ]+)?(?:ba|da|z|k)?sh\b`, report.High, "remote-execution", "Single-line literal pipeline only; aliases, constructed commands and shell grammar are not analyzed. A match may be an example."),
@@ -52,6 +62,7 @@ func newLiteral(id, title, expression string, severity report.Severity, category
 			Severity: severity, Category: category, Method: "literal-heuristic", Limitation: limitation,
 		},
 		expression: regexp.MustCompile(expression),
+		hint:       literalFilter(expression),
 	}
 }
 
@@ -65,6 +76,9 @@ func (a literal) AppliesTo(document.File) bool { return true }
 
 func (a literal) Find(ctx context.Context, d document.File, budget int) (Result, error) {
 	matcher := familyAnalyzer{patterns: []*regexp.Regexp{a.expression}, exempt: literalGuards[a.rule.ID]}
+	if a.hint != nil {
+		matcher.patternHints = []patternLiteralFilter{*a.hint}
+	}
 
 	out, err := matcher.findText(ctx, d.Artifact().Content(), max(1, budget))
 	if budget < 1 && len(out.Matches) > 0 {

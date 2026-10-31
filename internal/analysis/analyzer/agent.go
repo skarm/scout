@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hookpolicy"
@@ -596,7 +597,15 @@ func (a agentConfigCheck) inspectServerScope(ctx context.Context, n *jsonconfig.
 // Agent checks focus on installable instructions/configuration rather than
 // generic language quality. Config declarations are NOT effective permissions:
 // trust, precedence and external host policy remain outside this offline scan.
+//
+//nolint:gochecknoglobals // Cached rules contain only immutable descriptors and compiled regexps; callers receive detached lists.
+var compiledAgentRules = sync.OnceValue(buildAgentRules)
+
 func agentRules() []Analyzer {
+	return append([]Analyzer(nil), compiledAgentRules()...)
+}
+
+func buildAgentRules() []Analyzer {
 	return []Analyzer{
 		agentSignal(rulePI002, "Instruction to conceal actions from the user", `(?i)\b(?:do not|don't|never)[\t ]+(?:tell|inform|notify)[\t ]+(?:the[\t ]+)?user\b|(?i:не)[\t ]+(?:сообщай(?:те)?|рассказывай(?:те)?|уведомляй(?:те)?)[\t ]+пользовател(?:ю|я)`, "prompt-injection", "Narrow English/Russian concealment wording only; quotation, legitimate privacy instructions and negation require review."),
 		agentSignal(ruleAG001, "Agent approval or sandbox bypass flag is referenced", `(?:--dangerously-skip-permissions|--dangerously-bypass-approvals-and-sandbox)\b`, "approval-bypass", "A literal flag reference, not proof of invocation. A prohibition or example can match; host restrictions are not evaluated."),
@@ -622,6 +631,7 @@ func agentSignal(id, title, expression, category, limitation string) Analyzer {
 			Severity: report.Medium, Category: category, Method: "literal-agent-signal", Limitation: limitation,
 		},
 		expression: regexp.MustCompile(expression),
+		hint:       literalFilter(expression),
 	}
 }
 

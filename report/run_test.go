@@ -125,6 +125,9 @@ func TestRunRejectsInvalidPlanAndFalseCompletion(t *testing.T) {
 		{name: "incomplete-native", change: func(r *report.Run) {
 			r.Targets[0].Analysis.Signatures = report.SignatureReport{Enabled: true, Completeness: "partial"}
 		}},
+		{name: "incomplete-dependencies", change: func(r *report.Run) {
+			r.Targets[0].Analysis.Dependencies.Manifests = []report.DependencyManifest{{Path: "go.mod", Status: report.OutcomePartial}}
+		}},
 		{name: "truncated-native", change: func(r *report.Run) {
 			r.Targets[0].Analysis.Signatures = report.SignatureReport{
 				Enabled:      true,

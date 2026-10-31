@@ -23,8 +23,10 @@ type pythonOutputSearch struct{ count int }
 
 func pythonOutputArgument(name string, call *frontend.Node) bool {
 	arguments := call.List(frontend.Args)
-	if len(arguments) > 1 {
-		arguments = arguments[:1]
+	if len(arguments) > 0 {
+		// The IR owns this slice. Appending keyword operands must not overwrite
+		// positional arguments used by other consumers of the same tree.
+		arguments = arguments[:1:1]
 	}
 
 	allowed := pythonOutputKeywords(name)

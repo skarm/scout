@@ -493,6 +493,12 @@ func validateCompleteServices(r Analysis) error {
 		return errors.New("complete target contains incomplete metadata")
 	}
 
+	for _, manifest := range r.Dependencies.Manifests {
+		if !manifest.InventoryComplete() {
+			return errors.New("complete target contains incomplete dependency inventory")
+		}
+	}
+
 	if err := validateCompleteSignatures(r.Signatures); err != nil {
 		return err
 	}

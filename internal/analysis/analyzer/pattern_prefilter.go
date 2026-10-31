@@ -8,13 +8,66 @@ import (
 // A prefilter is a necessary condition, never evidence. Every accepted input
 // still goes through the original RE2 expression, guards and source mapping.
 // Nil means that no useful mandatory literal could be proven.
-func patternLiterals(expression string) []string {
+type patternLiteralFilter [][]string
+
+func patternLiterals(expression string) patternLiteralFilter {
 	tree, err := syntax.Parse(expression, syntax.Perl)
 	if err != nil {
 		return nil
 	}
 
-	return requiredLiterals(tree)
+	return requiredLiteralGroups(tree)
+}
+
+// A pointer keeps literal analyzer values comparable when immutable hints are
+// attached. Binding stages can still compare unchanged analyzer instances.
+func literalFilter(expression string) *patternLiteralFilter {
+	filter := patternLiterals(expression)
+	if len(filter) == 0 {
+		return nil
+	}
+
+	return &filter
+}
+
+// A concatenation must satisfy each mandatory group. Within a group any
+// alternative suffices. Keep only a bounded subset: omitting a condition can
+// admit extra RE2 work, but can never suppress a match.
+func requiredLiteralGroups(tree *syntax.Regexp) patternLiteralFilter {
+	switch tree.Op {
+	case syntax.OpCapture, syntax.OpPlus:
+		return requiredLiteralGroups(tree.Sub[0])
+	case syntax.OpRepeat:
+		if tree.Min > 0 {
+			return requiredLiteralGroups(tree.Sub[0])
+		}
+	case syntax.OpConcat:
+		var groups patternLiteralFilter
+		for _, child := range tree.Sub {
+			groups = append(groups, requiredLiteralGroups(child)...)
+			if len(groups) >= 16 {
+				return groups[:16]
+			}
+		}
+
+		return groups
+	default:
+		if literals := requiredLiterals(tree); len(literals) > 0 {
+			return patternLiteralFilter{literals}
+		}
+	}
+
+	return nil
+}
+
+func (filter patternLiteralFilter) allows(text string) bool {
+	for _, literals := range filter {
+		if !containsPatternLiteral(text, literals) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func requiredLiterals(tree *syntax.Regexp) []string {

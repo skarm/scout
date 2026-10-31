@@ -1,10 +1,20 @@
 package analyzer
 
+import "sync"
+
 // instructionRules are original, deliberately narrow detectors for agent-facing
 // text. They scan the whole artifact and derived objects, not only SKILL.md.
 // These are review signals, NOT proof of intent or a semantic language model.
 // Quotes/negations are not silently exempted: an attacker controls those labels.
+//
+//nolint:gochecknoglobals // Cached rules contain only immutable descriptors and compiled regexps; callers receive detached lists.
+var compiledInstructionRules = sync.OnceValue(buildInstructionRules)
+
 func instructionRules() []Analyzer {
+	return append([]Analyzer(nil), compiledInstructionRules()...)
+}
+
+func buildInstructionRules() []Analyzer {
 	const caveat = "Bounded literal English/Russian instruction signal only, not actual behavior or malicious intent. A quotation, negation or authorized workflow can also match and requires contextual review. No format/path exemptions."
 
 	return []Analyzer{

@@ -1,10 +1,29 @@
 package python //nolint:testpackage // Tests exercise private evaluator values and call binding.
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/skarm/scout/internal/syntax/frontend"
 )
+
+func TestOutputArgumentInspectionPreservesTheSharedSyntaxTree(t *testing.T) {
+	call := semanticNode(t, frontend.Call,
+		frontend.ChildField(frontend.Func, semanticName(t, "run")),
+		frontend.NodesField(frontend.Args, []*frontend.Node{semanticName(t, "command"), semanticName(t, "timeout")}),
+		frontend.NodesField(frontend.Keywords, []*frontend.Node{semanticNode(t, frontend.Keyword,
+			frontend.TextField(frontend.FieldArg, "input"),
+			frontend.ChildField(frontend.FieldValue, semanticName(t, "output")))}))
+	arguments := slices.Clone(call.List(frontend.Args))
+	for range 2 {
+		if !pythonOutputArgument("subprocess.run", call) {
+			t.Fatal("output passed through the input keyword was missed")
+		}
+		if !slices.Equal(call.List(frontend.Args), arguments) {
+			t.Fatal("output inspection changed positional arguments visible to other analyzers")
+		}
+	}
+}
 
 func TestCallCapturesCallableBeforeArgumentEffects(t *testing.T) {
 	w, state := semanticWalker(t), newPyState()

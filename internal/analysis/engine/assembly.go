@@ -87,6 +87,17 @@ func (run *execution) buildAnalysis() {
 		})
 	}
 
+	for _, manifest := range run.analysis.Dependencies.Manifests {
+		if !manifest.InventoryComplete() {
+			run.analysis.Diagnostics = append(run.analysis.Diagnostics, report.Diagnostic{
+				Code:         "dependency_inventory_incomplete",
+				Path:         manifest.Path,
+				Message:      "Dependency declarations were not completely inventoried; see the manifest status.",
+				AffectsScope: true,
+			})
+		}
+	}
+
 	for _, issue := range run.graph.Issues {
 		run.analysis.Diagnostics = append(run.analysis.Diagnostics, report.Diagnostic{
 			Code:         issue.Code,

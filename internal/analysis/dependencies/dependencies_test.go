@@ -10,7 +10,40 @@ import (
 	"github.com/skarm/scout/internal/analysis/dependencies"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/report"
 )
+
+func TestGoDeclarationsShareThePackageInventoryBudget(t *testing.T) {
+	var module strings.Builder
+	module.WriteString("module example.com/root\nrequire (\n")
+	for i := range 4096 {
+		fmt.Fprintf(&module, "example.com/dep%d v1.0.0\n", i)
+	}
+	module.WriteString(")\n")
+	for _, first := range []artifact.File{
+		artifact.NewFile("first/go.mod", []byte(module.String()), false),
+		artifact.NewFile("first/package.json", []byte(`{"dependencies":{"sample":"1.2.3"}}`), false),
+	} {
+		t.Run(first.Metadata().Path, func(t *testing.T) {
+			files := make([]artifact.File, 1, 4)
+			files[0] = first
+			for i := range 3 {
+				files = append(files, artifact.NewFile(fmt.Sprintf("module%d/go.mod", i), []byte(module.String()), false))
+			}
+			docs := document.PrepareAll(t.Context(), files)
+			result := dependencies.Collect(t.Context(), docs)
+			if len(result.Declarations) != 8192 {
+				t.Fatalf("shared declaration budget exceeded: got %d, want 8192", len(result.Declarations))
+			}
+			if len(result.Manifests) != len(files) || !result.Manifests[0].InventoryComplete() {
+				t.Fatalf("previous evidence or later manifest inventory lost: %+v", result.Manifests)
+			}
+			if result.Manifests[len(result.Manifests)-1].Status != report.OutcomePartial {
+				t.Fatalf("omitted declarations reported as complete: %+v", result.Manifests)
+			}
+		})
+	}
+}
 
 func TestSpecificReplacementPrecedence(t *testing.T) {
 	text := `module example.com/root

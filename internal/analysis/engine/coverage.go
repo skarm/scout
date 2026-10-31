@@ -195,7 +195,17 @@ func reduceCoverage(ctx context.Context, r *report.Analysis) {
 }
 
 func completeChildren(r report.Analysis) bool {
-	return r.Artifact.InventoryComplete && r.Metadata.Completeness == report.Complete && r.Validation.Completeness == report.Complete && completeExtraction(r.Extraction)
+	return r.Artifact.InventoryComplete && r.Metadata.Completeness == report.Complete && r.Validation.Completeness == report.Complete && completeExtraction(r.Extraction) && completeDependencies(r.Dependencies)
+}
+
+func completeDependencies(dependencies report.DependencyReport) bool {
+	for _, manifest := range dependencies.Manifests {
+		if !manifest.InventoryComplete() {
+			return false
+		}
+	}
+
+	return true
 }
 
 func completeExtraction(extraction report.ExtractionReport) bool {

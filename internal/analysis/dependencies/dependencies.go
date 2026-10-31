@@ -71,6 +71,11 @@ func collectGoModule(ctx context.Context, doc document.File, u document.Unit, ou
 			return false
 		}
 
+		if len(out.Declarations) >= maxDeclarations {
+			out.Manifests[len(out.Manifests)-1].Status = report.OutcomePartial
+			return true
+		}
+
 		start, end := r.Syntax.Span()
 
 		span, err := u.View.Original(source.Span{Start: start.Byte, End: end.Byte})

@@ -429,7 +429,7 @@ type patternFamily struct {
 type familyAnalyzer struct {
 	spec           patternFamily
 	patterns       []*regexp.Regexp
-	patternHints   [][]string
+	patternHints   []patternLiteralFilter
 	python         python.Facts
 	pythonRule     string
 	languageFacts  languageFacts
@@ -568,8 +568,19 @@ func (a familyAnalyzer) preferPython(ctx context.Context, d document.File, budge
 }
 
 func (a familyAnalyzer) inspectSecurityViews(ctx context.Context, d document.File, collected *boundedMatches) (bool, error) {
+	views := d.SecurityViews()
+	if len(views) == 0 {
+		return false, nil
+	}
+
+	return a.inspectTransformedViews(ctx, d, views, collected)
+}
+
+// Allocate captured match-filter state only when there are transformed views.
+// Keep it shared by all views of the document, rather than allocating per view.
+func (a familyAnalyzer) inspectTransformedViews(ctx context.Context, d document.File, views []source.View, collected *boundedMatches) (bool, error) {
 	budget, out := collected.budget, collected.out
-	for _, v := range d.SecurityViews() {
+	for _, v := range views {
 		result, e := a.findTextWhere(ctx, v.Text(), budget+1, func(start, end int) bool {
 			return a.acceptsSecurityMatch(d, v, start, end)
 		})
@@ -682,7 +693,7 @@ func (a familyAnalyzer) findPatternMatches(ctx context.Context, text string, bud
 			return false
 		}
 
-		if ascii && i < len(a.patternHints) && !containsPatternLiteral(folded, a.patternHints[i]) {
+		if ascii && i < len(a.patternHints) && !a.patternHints[i].allows(folded) {
 			continue
 		}
 

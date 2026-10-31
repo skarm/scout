@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"testing"
 
@@ -83,5 +84,31 @@ func unorderedOracle(field string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func TestSealingDoesNotAllocatePerScalarField(t *testing.T) {
+	run := runFixture()
+	run.Targets[0].Analysis.Findings = make([]report.Finding, 500)
+	for i := range run.Targets[0].Analysis.Findings {
+		run.Targets[0].Analysis.Findings[i] = report.Finding{
+			ID: fmt.Sprintf("finding-%06d", i), RuleID: "R", Severity: report.High,
+			Location: report.Location{Path: "script.sh"},
+		}
+	}
+
+	var sealed report.Run
+	var err error
+	allocs := testing.AllocsPerRun(5, func() {
+		sealed, err = report.SealRun(run)
+	})
+	if err != nil || len(sealed.Targets) != 1 || len(sealed.Targets[0].Analysis.Findings) != 500 {
+		t.Fatalf("report sealing failed: %v", err)
+	}
+	// Leave ample room for compiler/runtime differences. A value-only copy uses
+	// fewer than 100 allocations here; reflect.Value.Fields creates thousands
+	// of unused StructField metadata allocations, including after go fix.
+	if allocs > 1000 {
+		t.Fatalf("sealing allocated %.0f times; avoid per-field metadata in the report copy", allocs)
 	}
 }

@@ -14,6 +14,9 @@ func TestCoverageReducerUsesOutcomesWithoutDiagnostics(t *testing.T) {
 	}{
 		{name: "inventory", alter: func(r *report.Analysis) { r.Artifact.InventoryComplete = false }},
 		{name: "metadata", alter: func(r *report.Analysis) { r.Metadata.Completeness = report.Partial }},
+		{name: "dependencies", alter: func(r *report.Analysis) {
+			r.Dependencies.Manifests = []report.DependencyManifest{{Path: "go.mod", Status: report.OutcomePartial}}
+		}},
 		{name: "validation", alter: func(r *report.Analysis) { r.Validation.Completeness = report.Partial }},
 		{
 			name:  "extraction",

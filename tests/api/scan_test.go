@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -43,6 +44,49 @@ func TestAggregateCaptureQuotaCannotMultiplyByTargetCount(t *testing.T) {
 	r, err := s.ScanMany(context.Background(), []scout.Target{scout.Reader("a.txt", strings.NewReader("abc")), scout.Reader("b.txt", strings.NewReader("ab"))})
 	if !errors.Is(err, scout.ErrIncomplete) || len(r.Targets) != 2 || r.Targets[0].State != report.RunFailed || r.Targets[1].State != report.RunComplete {
 		t.Fatalf("quota bypass: %+v %v", r, err)
+	}
+}
+
+func TestIncompleteDependencyInventoryCannotAllow(t *testing.T) {
+	o := basicOptions()
+	o.Limits.Analysis.MaxOperations = 1 << 32
+	s := testScanner(t, o)
+	root := t.TempDir()
+	var module strings.Builder
+	module.WriteString("module example.com/root\nrequire (\n")
+	for i := range 3000 {
+		fmt.Fprintf(&module, "example.com/dep%d v1.0.0\n", i)
+	}
+	module.WriteString(")\n")
+	for i := range 3 {
+		dir := filepath.Join(root, fmt.Sprintf("module%d", i))
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(module.String()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run, err := s.Scan(t.Context(), scout.Path(root))
+	if len(run.Targets) != 1 || len(run.Targets[0].Analysis.Dependencies.Manifests) != 3 {
+		t.Fatalf("dependency inventory lost: %v", err)
+	}
+	analysis := run.Targets[0].Analysis
+	if analysis.Dependencies.Manifests[2].InventoryComplete() || len(analysis.Dependencies.Declarations) != 8192 {
+		t.Fatal("fixture must reach the shared declaration limit")
+	}
+	if !errors.Is(err, scout.ErrIncomplete) || run.State != report.RunIncomplete {
+		t.Fatalf("incomplete dependencies became a complete scan: state=%s err=%v", run.State, err)
+	}
+	gate, err := policy.New(policy.Options{FailAt: report.High, Scope: policy.SelectedScope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate.Evaluate(run, time.Now()).Decision == report.Allow {
+		t.Fatal("uninspected dependency declarations authorized admission")
+	}
+	if err := report.ValidateSealedRun(run); err != nil {
+		t.Fatal(err)
 	}
 }
 
