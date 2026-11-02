@@ -649,7 +649,11 @@ func (a familyAnalyzer) findTextWhere(ctx context.Context, text string, budget i
 	result := Result{Matches: []Match{}}
 
 	if budget < 1 {
-		return Result{Truncated: true}, nil
+		// Reaching the retention quota is not itself an omission. Probe for one
+		// accepted observation, preserving work limits and cancellation, then
+		// discard it because the caller cannot retain another match.
+		probe, err := a.findTextWhere(ctx, text, 1, accepts)
+		return Result{Truncated: probe.Truncated || len(probe.Matches) > 0}, err
 	}
 
 	emit := collectMatches(&result, budget).span

@@ -24,6 +24,7 @@ type Catalog struct {
 
 func NewCatalog(selection Selection) Catalog {
 	catalog := Catalog{base: literalRules()}
+	catalog.base = append(catalog.base, providerTokenRules()...)
 	catalog.base = append(catalog.base, opaque{}, moduleCheck{id: ruleSC002}, moduleCheck{id: ruleSC003})
 	catalog.base = append(catalog.base, rendertext.Rules()...)
 	// Preserve the established order: Go database/TLS checks follow SQL.

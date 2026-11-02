@@ -28,6 +28,9 @@ without installing additional scanners:
 - **Code and data flows:** selected command execution, `eval`, secret reads,
   network transfers, unsafe deserialization, SQL construction and TLS verification
   bypasses. Go, Shell, JavaScript/TypeScript, Python and SQL have different coverage.
+- **Credential literals:** private-key markers and selected GitHub, GitLab, Slack,
+  Stripe, OpenAI and Anthropic token shapes in all captured files, including hidden
+  files, documentation and binary byte streams. No credential is used or sent to a provider.
 - **Dependencies and package contents:** redirected package sources, local Go module
   replacements, automatic installation entry points, uninspected local components
   and opaque executable attachments.
@@ -59,6 +62,36 @@ descriptors. This is a capabilities catalog, not a list of checks actually run:
 the report records the selected plan, applicability and outcomes.
 See [language support](../reference/languages.md) for analysis boundaries and
 [adaptation sources](../reference/port-manifest.md) for rule provenance.
+
+### Provider token checks
+
+These built-in checks also run in the reduced core build:
+
+- `SE002`: selected GitHub PAT, OAuth, user, refresh and legacy installation tokens.
+- `SE003`: GitLab tokens with the default `glpat-` prefix.
+- `SE004`: selected Slack bot and user tokens.
+- `SE005`: Stripe live/test secret and restricted keys; publishable keys are excluded.
+- `SE006`: selected OpenAI project, service-account, admin and legacy key shapes.
+- `SE007`: selected Anthropic `api03` and `admin01` key shapes.
+
+Checks require token boundaries and at least 3 bits/byte of secret-payload Shannon
+entropy, and filter whole-payload placeholders such as
+`glpat-REPLACE_WITH_YOUR_GITLAB_TOKEN` and `glpat-your-personal-access-token`.
+For Slack, these filters inspect only the final secret segment; numeric segments
+do not contribute entropy or dilute the entropy of that secret segment.
+An example label, file path or inline suppression comment cannot exempt adjacent
+credentials. Raw bytes, supported security views and decoded structured scalars
+are checked; transformed evidence can identify an enclosing original scalar or carrier.
+Each rule admits at most 65,536 candidates per inspected text representation;
+exhaustion leaves the check incomplete, including when all candidates were filtered.
+Reaching the retained-match quota exactly does not make subsequent clean files
+incomplete; a zero-quota probe checks for an additional accepted match.
+Findings contain source coordinates and hashes, not credential values or excerpts.
+
+The rules report credential-shaped material, not verified live secrets. Low-entropy
+credentials, custom GitLab prefixes, newer stateless GitHub installation tokens,
+unlisted Slack token types, other encodings and dynamically constructed values
+remain outside this selected coverage. Provider formats can change.
 
 ## Optional extensions
 

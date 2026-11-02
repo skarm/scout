@@ -3028,5 +3028,125 @@
         "relationship": "Original bounded Scout implementation; external concept comparison is documented in docs/reference/hardening-2026-10-29.md."
       }
     ]
+  },
+  "SE002": {
+    "explanation": "Captured content contains a selected GitHub credential shape with sufficient payload entropy; validity and live use are not established.",
+    "remediation": "Determine whether the owner exposed a real credential; remove it and rotate exposed live credentials through the trusted secret-management process.",
+    "review_checks": [
+      "Inspect the cited original bytes locally; do not copy credential values into reports or verify them by making provider requests.",
+      "Distinguish synthetic examples, public identifiers and secret credentials. A documentation label or test path does not establish that adjacent token-shaped values are inert.",
+      "Read the selected prefix, length, placeholder and entropy limitations; a missing finding is not a full secret inventory."
+    ],
+    "benign_considerations": [
+      "A synthetic token can have the same shape as a live credential; the detector does not establish ownership or liveness.",
+      "Whole-payload placeholders and low-entropy bodies are filtered; surrounding claims such as example or safe do not suppress other occurrences."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE002",
+        "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
+      }
+    ]
+  },
+  "SE003": {
+    "explanation": "Captured content contains a selected GitLab credential shape with sufficient payload entropy; validity and live use are not established.",
+    "remediation": "Determine whether the owner exposed a real credential; remove it and rotate exposed live credentials through the trusted secret-management process.",
+    "review_checks": [
+      "Inspect the cited original bytes locally; do not copy credential values into reports or verify them by making provider requests.",
+      "Distinguish synthetic examples, public identifiers and secret credentials. A documentation label or test path does not establish that adjacent token-shaped values are inert.",
+      "Read the selected prefix, length, placeholder and entropy limitations; a missing finding is not a full secret inventory."
+    ],
+    "benign_considerations": [
+      "A synthetic token can have the same shape as a live credential; the detector does not establish ownership or liveness.",
+      "Whole-payload placeholders and low-entropy bodies are filtered; surrounding claims such as example or safe do not suppress other occurrences."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE003",
+        "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
+      }
+    ]
+  },
+  "SE004": {
+    "explanation": "Captured content contains a selected Slack credential shape whose final secret segment has sufficient entropy; numeric segments do not contribute to the filter, and validity and live use are not established.",
+    "remediation": "Determine whether the owner exposed a real credential; remove it and rotate exposed live credentials through the trusted secret-management process.",
+    "review_checks": [
+      "Inspect the cited original bytes locally; do not copy credential values into reports or verify them by making provider requests.",
+      "Distinguish synthetic examples, public identifiers and secret credentials. A documentation label or test path does not establish that adjacent token-shaped values are inert.",
+      "Read the selected prefix, length, placeholder and entropy limitations; a missing finding is not a full secret inventory."
+    ],
+    "benign_considerations": [
+      "A synthetic token can have the same shape as a live credential; the detector does not establish ownership or liveness.",
+      "Whole-payload placeholders and low-entropy bodies are filtered; surrounding claims such as example or safe do not suppress other occurrences."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE004",
+        "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
+      }
+    ]
+  },
+  "SE005": {
+    "explanation": "Captured content contains a selected Stripe credential shape with sufficient payload entropy; validity and live use are not established.",
+    "remediation": "Determine whether the owner exposed a real credential; remove it and rotate exposed live credentials through the trusted secret-management process.",
+    "review_checks": [
+      "Inspect the cited original bytes locally; do not copy credential values into reports or verify them by making provider requests.",
+      "Distinguish synthetic examples, public identifiers and secret credentials. A documentation label or test path does not establish that adjacent token-shaped values are inert.",
+      "Read the selected prefix, length, placeholder and entropy limitations; a missing finding is not a full secret inventory."
+    ],
+    "benign_considerations": [
+      "A synthetic token can have the same shape as a live credential; the detector does not establish ownership or liveness.",
+      "Whole-payload placeholders and low-entropy bodies are filtered; surrounding claims such as example or safe do not suppress other occurrences."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE005",
+        "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
+      }
+    ]
+  },
+  "SE006": {
+    "explanation": "Captured content contains a selected OpenAI credential shape with sufficient payload entropy; validity and live use are not established.",
+    "remediation": "Determine whether the owner exposed a real credential; remove it and rotate exposed live credentials through the trusted secret-management process.",
+    "review_checks": [
+      "Inspect the cited original bytes locally; do not copy credential values into reports or verify them by making provider requests.",
+      "Distinguish synthetic examples, public identifiers and secret credentials. A documentation label or test path does not establish that adjacent token-shaped values are inert.",
+      "Read the selected prefix, length, placeholder and entropy limitations; a missing finding is not a full secret inventory."
+    ],
+    "benign_considerations": [
+      "A synthetic token can have the same shape as a live credential; the detector does not establish ownership or liveness.",
+      "Whole-payload placeholders and low-entropy bodies are filtered; surrounding claims such as example or safe do not suppress other occurrences."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE006",
+        "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
+      }
+    ]
+  },
+  "SE007": {
+    "explanation": "Captured content contains a selected Anthropic credential shape with sufficient payload entropy; validity and live use are not established.",
+    "remediation": "Determine whether the owner exposed a real credential; remove it and rotate exposed live credentials through the trusted secret-management process.",
+    "review_checks": [
+      "Inspect the cited original bytes locally; do not copy credential values into reports or verify them by making provider requests.",
+      "Distinguish synthetic examples, public identifiers and secret credentials. A documentation label or test path does not establish that adjacent token-shaped values are inert.",
+      "Read the selected prefix, length, placeholder and entropy limitations; a missing finding is not a full secret inventory."
+    ],
+    "benign_considerations": [
+      "A synthetic token can have the same shape as a live credential; the detector does not establish ownership or liveness.",
+      "Whole-payload placeholders and low-entropy bodies are filtered; surrounding claims such as example or safe do not suppress other occurrences."
+    ],
+    "sources": [
+      {
+        "url": "",
+        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE007",
+        "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
+      }
+    ]
   }
 }
