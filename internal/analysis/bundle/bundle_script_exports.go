@@ -154,7 +154,8 @@ func (b *bundleAnalysis) scriptScope(p *bundleProgram, n *scriptsyntax.Node, out
 		if n.Kind == "for_in_statement" {
 			b.gap = errors.New("script iterator binding values are unresolved")
 			// Do not reuse an outer value as the iterator's assigned value.
-			binding := &bundleNode{kind: nodeAssign, name: scriptText(p, n.Child("left")), span: out.span}
+			binding := &bundleNode{span: out.span}
+			b.scriptBindingWrite(p, n.Child("left"), nil, binding, depth)
 			out.children = append([]*bundleNode{binding}, out.children...)
 		}
 	}
@@ -318,6 +319,10 @@ func (b *bundleAnalysis) scriptGlobalWrites(nodes []*bundleNode, locals map[stri
 			n.globalWrite = true
 		}
 
+		if n.kind == nodeWrite {
+			n.globalWrite = true
+		}
+
 		b.scriptGlobalWrites(n.children, scope, depth+1)
 	}
 }
@@ -378,6 +383,15 @@ func (b *bundleAnalysis) scriptCallNode(p *bundleProgram, n *scriptsyntax.Node, 
 }
 
 func (b *bundleAnalysis) scriptMutation(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
+	left := n.Child("left")
+	if left == nil {
+		left = n.Child("argument")
+	}
+
+	if left != nil && (left.Kind == "member_expression" || left.Kind == "subscript_expression") {
+		return b.scriptMemberWrite(p, left, n.Child("right"), out, depth)
+	}
+
 	out.kind, out.name = nodeMutate, scriptText(p, n.Child("left"))
 	if argument := n.Child("argument"); argument != nil {
 		out.name = scriptText(p, argument)

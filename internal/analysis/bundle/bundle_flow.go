@@ -4,6 +4,7 @@ import (
 	"errors"
 	"maps"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -23,10 +24,17 @@ type bundleValue struct {
 	remoteKind        uint8 // 1=response object; 2=body bytes/text; 3=body reader method
 	uncertainFunction bool
 	containsFunctions bool
+	returned          bool // Control flow within a function; cleared at call boundaries.
+	resolver          *bundleResolver
+	resolverReceiver  *bundleNode
 }
 
 func (v bundleValue) hasCallableIdentity() bool {
-	return v.function != nil || v.module != nil || v.containsFunctions || v.uncertainFunction
+	return v.function != nil || v.module != nil || v.resolver != nil || v.containsFunctions || v.uncertainFunction
+}
+
+func (v bundleValue) hasSymbolicName() bool {
+	return v.name != "" && v.secret == nil && v.remote == nil
 }
 
 func (b *bundleAnalysis) inspectProgram(p *bundleProgram) {
@@ -212,11 +220,18 @@ func (b *bundleAnalysis) exportValue(p *bundleProgram, name string) bundleValue 
 }
 
 func mergeBundleValue(a, c bundleValue) bundleValue {
+	a.known = a.known && c.known && a.text == c.text
+	if !a.known {
+		a.text = ""
+	}
+
 	a.containsFunctions = a.containsFunctions || c.containsFunctions
 
 	if a.uncertainFunction || c.uncertainFunction {
 		a.uncertainFunction = true
 		a.function, a.module, a.name = nil, nil, ""
+		a.resolver = nil
+		a.resolverReceiver = nil
 	}
 
 	if a.secret == nil {
@@ -228,6 +243,8 @@ func mergeBundleValue(a, c bundleValue) bundleValue {
 		a.remoteKind = c.remoteKind
 	}
 
+	cloned := false
+
 	for _, ref := range c.refs {
 		seen := false
 		for _, r := range a.refs {
@@ -235,6 +252,11 @@ func mergeBundleValue(a, c bundleValue) bundleValue {
 		}
 
 		if !seen && len(a.refs) < 6 {
+			if !cloned {
+				a.refs = slices.Clone(a.refs)
+				cloned = true
+			}
+
 			a.refs = append(a.refs, ref)
 		}
 	}
@@ -243,24 +265,18 @@ func mergeBundleValue(a, c bundleValue) bundleValue {
 }
 
 func (b *bundleAnalysis) evalBlock(p *bundleProgram, nodes []*bundleNode, env map[string]bundleValue, depth int) bundleValue {
-	var out bundleValue
-
 	for _, n := range nodes {
 		if n == nil {
 			continue
 		}
 
 		v := b.eval(p, n, env, depth+1)
-		if n.kind == nodeReturn {
+		if v.returned {
 			return v
-		}
-		// A return nested in an aggregate block is evaluated conservatively.
-		if n.kind == nodeAggregate || n.kind == nodeScope {
-			out = mergeBundleValue(out, v)
 		}
 	}
 
-	return out
+	return bundleValue{}
 }
 
 func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
@@ -285,15 +301,19 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 	case nodeName:
 		return b.name(p, n.name, env)
 	case nodeLiteral:
-		return bundleValue{text: n.text, known: n.known}
+		return b.literalValue(p, n)
 	case nodeFunction:
 		return bundleValue{function: n.function}
 	case nodeAssign, nodeDeclare, nodeMutate:
 		return b.evalAssignment(p, n, env, depth)
+	case nodeAssignGroup:
+		return b.evalAssignmentGroup(p, n, env, depth)
 	case nodeMember, nodeIndex:
 		return b.evalMember(p, n, env, depth)
 	case nodeCall, nodeConstruct:
 		return b.evalCall(p, n, env, depth+1)
+	case nodeResolver, nodeAddress, nodeWrite:
+		return b.evalResolverNode(p, n, env, depth)
 	case nodeScope:
 		return b.evalScope(p, n, env, depth)
 	case nodeSequence:
@@ -318,34 +338,69 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 			b.gap = errors.New("compound bundle callable or module value is unresolved")
 			v.function, v.module, v.items = nil, nil, nil
 			v.uncertainFunction = true
+			v.resolver = nil
+			v.resolverReceiver = nil
 		}
 
 		return v
 	case nodeBranch:
 		return b.evalBranch(p, n, env, depth)
-	case nodeReturn:
-		if len(n.children) == 1 {
-			return child(0)
-		}
-
-		fallthrough
+	case nodeReturn, nodeAwait:
+		return b.evalValueNode(p, n, env, depth)
+	case nodeStatement:
+		b.evalBlock(p, n.children, env, depth+1)
+		return bundleValue{}
 	default:
-		var v bundleValue
+		return b.evalAggregate(p, n, env, depth)
+	}
+}
 
-		for _, c := range n.children {
-			x := b.eval(p, c, env, depth+1)
-			if (n.kind == nodeObject || n.kind == nodeArray) && x.hasCallableIdentity() {
-				v.containsFunctions = true
-			}
+func (b *bundleAnalysis) evalValueNode(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
+	var v bundleValue
+	if len(n.children) == 1 {
+		v = b.eval(p, n.children[0], env, depth+1)
+	} else {
+		for _, child := range n.children {
+			v = mergeBundleValue(v, b.eval(p, child, env, depth+1))
+		}
+	}
 
-			v = mergeBundleValue(v, x)
-			if n.kind == nodeArray {
-				v.items = append(v.items, x)
-			}
+	v.returned = n.kind == nodeReturn
+
+	return v
+}
+
+func (b *bundleAnalysis) evalAggregate(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
+	var v bundleValue
+
+	for _, child := range n.children {
+		x := b.eval(p, child, env, depth+1)
+		if n.kind == nodeAggregate && x.returned {
+			return x
 		}
 
-		return v
+		if (n.kind == nodeObject || n.kind == nodeArray) && x.hasCallableIdentity() {
+			v.containsFunctions = true
+		}
+
+		v = mergeBundleValue(v, x)
+		if n.kind == nodeArray {
+			v.items = append(v.items, x)
+		}
 	}
+
+	return v
+}
+
+func (b *bundleAnalysis) literalValue(p *bundleProgram, n *bundleNode) bundleValue {
+	v := bundleValue{text: n.text, known: n.known}
+	if n.credential {
+		ref := b.refNode(p, n)
+		v.secret = &ref
+		b.secret(p.file, ref)
+	}
+
+	return v
 }
 
 func (b *bundleAnalysis) evalAssignment(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
@@ -354,16 +409,64 @@ func (b *bundleAnalysis) evalAssignment(p *bundleProgram, n *bundleNode, env map
 		v = b.eval(p, n.children[0], env, depth+1)
 	}
 
+	return b.assignValue(p, n, env, v)
+}
+
+func (b *bundleAnalysis) evalAssignmentGroup(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
+	// Go evaluates all right-hand expressions before updating any binding.
+	values := make([]bundleValue, len(n.children))
+	for i, assignment := range n.children {
+		if !b.step() {
+			return bundleValue{}
+		}
+
+		values[i] = b.eval(p, assignment.children[0], env, depth+1)
+	}
+
+	for i, assignment := range n.children {
+		if !b.step() {
+			return bundleValue{}
+		}
+
+		b.assignValue(p, assignment, env, values[i])
+	}
+
+	return bundleValue{}
+}
+
+func (b *bundleAnalysis) assignValue(p *bundleProgram, n *bundleNode, env map[string]bundleValue, v bundleValue) bundleValue {
 	if n.globalWrite && b.err == nil {
 		// Cross-frame global state is not modeled. Stop this evaluation before
 		// another frame can read a stale copied global value.
 		b.err = errors.New("script global binding writes are unresolved")
+		if p.language == language.Python {
+			b.err = errors.New("complex Python binding writes are unresolved")
+		}
+
 		b.globalWriteStop = true
 
 		return bundleValue{}
 	}
 
+	if n.locals != nil {
+		b.gap = errors.New("destructured script binding values are unresolved")
+		for name := range n.locals {
+			b.bindValue(env, name, bundleValue{uncertainFunction: true})
+		}
+
+		return bundleValue{}
+	}
+
 	previous, exists := env[n.name]
+	if n.rebind && previous.resolver != nil && (v.resolver != previous.resolver || v.name != previous.name) {
+		// Go frames currently copy global bindings. A rebinding must stop
+		// before a caller can continue with an obsolete resolver value.
+		b.err = errors.New("resolver rebinding in Go is unresolved")
+		b.globalWriteStop = true
+
+		return bundleValue{}
+	}
+
 	if n.kind == nodeDeclare && exists {
 		return previous
 	}
@@ -376,15 +479,37 @@ func (b *bundleAnalysis) evalAssignment(p *bundleProgram, n *bundleNode, env map
 		}
 
 		v.function, v.module, v.name, v.known = nil, nil, "", false
+		v.resolver = nil
+		v.resolverReceiver = nil
 	}
 
-	if env["*conditional*"].known && (v.hasCallableIdentity() || previous.hasCallableIdentity()) {
-		b.gap = errors.New("conditional bundle function binding is unresolved")
-		v.function, v.module, v.name, v.uncertainFunction = nil, nil, "", true
+	if env["*conditional*"].known {
+		v = b.conditionalAssignment(previous, v, exists)
 	}
 
 	if n.name != "" {
 		b.bindValue(env, n.name, v)
+	}
+
+	return v
+}
+
+func (b *bundleAnalysis) conditionalAssignment(previous, v bundleValue, exists bool) bundleValue {
+	if previous.secret != nil && v.secret == nil || previous.remote != nil && v.remote == nil {
+		// Flattened alternatives cannot establish which overwrite executes.
+		b.gap = errors.New("conditional bundle provenance overwrite is unresolved")
+	}
+
+	if exists && (!previous.known || !v.known || previous.text != v.text) {
+		v.text, v.known = "", false
+	}
+
+	if v.hasCallableIdentity() || previous.hasCallableIdentity() ||
+		v.name != previous.name && (v.hasSymbolicName() || previous.hasSymbolicName()) {
+		b.gap = errors.New("conditional bundle function binding is unresolved")
+		v.function, v.module, v.name, v.uncertainFunction = nil, nil, "", true
+		v.resolver = nil
+		v.resolverReceiver = nil
 	}
 
 	return v
@@ -419,17 +544,28 @@ func (b *bundleAnalysis) evalBranch(p *bundleProgram, n *bundleNode, env map[str
 
 	for _, c := range n.children {
 		x := b.eval(p, c, local, depth+1)
+		if x.returned {
+			b.gap = errors.New("conditional bundle returns are unresolved")
+			local["*conditional-return*"] = bundleValue{known: true}
+		}
+
 		if x.hasCallableIdentity() {
 			b.gap = errors.New("conditional bundle function value is unresolved")
 			x.function, x.module, x.uncertainFunction = nil, nil, true
+			x.resolver = nil
+			x.resolverReceiver = nil
 		}
 
 		v = mergeBundleValue(v, x)
 	}
-	// Facts from either branch may survive, but a local overwrite cannot
-	// erase the other branch's secret provenance.
+	// Join the observed state with the entry bindings. Unsupported provenance
+	// erasures within flattened alternatives already leave an explicit gap.
 	for name, value := range local {
-		if name != "*conditional*" {
+		switch name {
+		case "*conditional-return*":
+			env[name] = value
+		case "*conditional*":
+		default:
 			env[name] = mergeBundleValue(env[name], value)
 		}
 	}
@@ -462,7 +598,7 @@ func (b *bundleAnalysis) callFunction(fn *bundleFunction, args []bundleValue, de
 	maps.Copy(env, fn.program.globals)
 
 	for name := range fn.locals {
-		b.bindValue(env, name, bundleValue{})
+		b.bindValue(env, name, bundleValue{uncertainFunction: fn.python != nil})
 	}
 
 	if fn.self != "" {
@@ -478,6 +614,11 @@ func (b *bundleAnalysis) callFunction(fn *bundleFunction, args []bundleValue, de
 	}
 
 	v := b.evalBlock(fn.program, fn.body, env, depth+1)
+	if env["*conditional-return*"].known {
+		return bundleValue{}
+	}
+
+	v.returned = false
 
 	return v
 }
@@ -525,13 +666,17 @@ func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[strin
 		}
 
 		if (v.secret != nil || v.remote != nil) && len(v.refs) < 6 {
-			v.refs = append(v.refs, ref)
+			v.refs = append(slices.Clone(v.refs), ref)
 		}
 
 		return v
 	}
 
 	name := callee.name
+	if value, ok := b.resolverConstructor(p, n, name, args); ok {
+		return value
+	}
+
 	if name == "require" && len(args) == 1 && args[0].known {
 		return b.requireValue(p, args[0].text)
 	}
@@ -546,7 +691,7 @@ func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[strin
 		return bundleValue{secret: &ref}
 	}
 
-	if b.dnsCall(p, n, name, args, ref) {
+	if b.dnsCall(p, n, callee, args, ref) {
 		// Resolver results are not HTTP response bodies or executable downloads.
 		return bundleValue{}
 	}
@@ -759,7 +904,7 @@ func (b *bundleAnalysis) evalMember(p *bundleProgram, n *bundleNode, env map[str
 
 	if v.uncertainFunction {
 		b.gap = errors.New("uncertain bundle callable or module member is unresolved")
-		return bundleValue{}
+		return bundleValue{uncertainFunction: true}
 	}
 
 	if v.module != nil {
@@ -774,6 +919,10 @@ func (b *bundleAnalysis) evalMember(p *bundleProgram, n *bundleNode, env map[str
 	if v.containsFunctions {
 		b.gap = errors.New("collection bundle function member is unresolved")
 		return bundleValue{}
+	}
+
+	if value, ok := b.resolverMember(p, v, property, n); ok {
+		return value
 	}
 
 	if v.name == "" && v.remote == nil {
@@ -818,6 +967,10 @@ func (b *bundleAnalysis) evalMember(p *bundleProgram, n *bundleNode, env map[str
 }
 
 func (b *bundleAnalysis) goFunction(p *bundleProgram, name string) *bundleFunction {
+	if p.embedded {
+		return nil
+	}
+
 	var found *bundleFunction
 
 	for _, other := range b.programs {
@@ -868,6 +1021,8 @@ func (b *bundleAnalysis) callOutput(callee bundleValue, args []bundleValue, ref 
 
 	if callee.secret != nil || callee.remote != nil && callee.remoteKind == 2 {
 		if strings.HasSuffix(name, ".hex") || strings.HasSuffix(name, ".toString") {
+			callee.text, callee.known = "", false
+
 			return callee
 		}
 	}
@@ -875,6 +1030,8 @@ func (b *bundleAnalysis) callOutput(callee bundleValue, args []bundleValue, ref 
 	for _, method := range []string{".read", ".read_text", ".read_bytes", ".text", ".json", ".encode", ".decode"} {
 		if strings.HasSuffix(name, method) && (callee.remote != nil || callee.secret != nil) {
 			callee.remoteKind = 2
+			callee.text, callee.known = "", false
+
 			return callee
 		}
 	}

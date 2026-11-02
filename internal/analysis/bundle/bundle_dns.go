@@ -86,6 +86,17 @@ func bundleDNS(name, lang string) ([]int, string) {
 		case "socket.gethostbyname", "socket.gethostbyname_ex":
 			return []int{0}, ""
 		}
+
+		for _, prefix := range []string{"dns.resolver.", "dns.asyncresolver."} {
+			if method, ok := strings.CutPrefix(name, prefix); ok {
+				kind := resolverPython
+				if prefix == "dns.asyncresolver." {
+					kind = resolverPythonAsync
+				}
+
+				return resolverDNS(kind, method)
+			}
+		}
 	case language.Go:
 		switch name {
 		case "net.LookupHost", "net.LookupIP", "net.LookupCNAME", "net.LookupMX", "net.LookupNS", "net.LookupTXT":
@@ -104,18 +115,24 @@ func bundleDNS(name, lang string) ([]int, string) {
 	return nil, ""
 }
 
-func (b *bundleAnalysis) dnsCall(p *bundleProgram, n *bundleNode, name string, args []bundleValue, ref report.SourceRef) bool {
-	if p.language == language.Go && (strings.HasPrefix(name, "net.Resolver.") || name == "new" && len(args) == 1 && args[0].name == "net.Resolver") {
-		b.gap = errors.New("go DNS resolver instances are unresolved")
-		return true
+func (b *bundleAnalysis) dnsCall(p *bundleProgram, n *bundleNode, callee bundleValue, args []bundleValue, ref report.SourceRef) bool {
+	indices, keyword := bundleDNS(callee.name, p.language)
+	if callee.resolver != nil {
+		if callee.resolver.invalid || callee.resolver.kind == resolverNode && callee.resolverReceiver != n.children[0] {
+			b.gap = errors.New("resolver method binding is unresolved")
+			return true
+		}
+
+		indices, keyword = resolverDNS(callee.resolver.kind, callee.name)
+		if len(indices) == 0 {
+			if !resolverControl(callee.resolver.kind, callee.name) {
+				b.gap = errors.New("resolver method is unresolved")
+			}
+
+			return true
+		}
 	}
 
-	if (p.language == language.JavaScript || p.language == language.TypeScript) && (name == "dns.Resolver" || name == "dns.promises.Resolver" || name == "dns/promises.Resolver") {
-		b.gap = errors.New("DNS resolver instances are unresolved")
-		return true
-	}
-
-	indices, keyword := bundleDNS(name, p.language)
 	if len(indices) == 0 {
 		return false
 	}

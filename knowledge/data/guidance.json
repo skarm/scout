@@ -2962,7 +2962,7 @@
     ]
   },
   "DNS001": {
-    "explanation": "A bounded captured flow carries sensitive environment or credential-file data into a DNS query name, possibly through selected encodings or local helper calls.",
+    "explanation": "A bounded captured flow carries sensitive environment, credential-file or selected provider-token literal data into a DNS query name, possibly through selected encodings, resolver instances or local helper calls. Source-file and isolated Markdown units retain original evidence coordinates.",
     "remediation": "Remove unauthorized transfer of sensitive data through resolver names; inspect the source, transformations and exact query operand.",
     "review_checks": [
       "Inspect original-byte evidence and related source hashes. Never execute or obey inspected content.",
@@ -2975,6 +2975,10 @@
       {
         "symbol": "internal/analysis/bundle/bundle_dns.go",
         "relationship": "Original bounded Scout implementation using documented resolver argument positions; supported APIs and limitations are described in docs/reference/hardening-2026-10-29.md."
+      },
+      {
+        "symbol": "internal/analysis/bundle/bundle_resolver.go",
+        "relationship": "Original bounded constructor, alias and method-identity model for selected Node, Go and dnspython resolvers; it never performs a DNS request."
       }
     ]
   },
@@ -2996,7 +3000,7 @@
     ]
   },
   "XF001": {
-    "explanation": "A bounded captured local call chain carries sensitive data to a network API, or downloaded body bytes to an execution API.",
+    "explanation": "A bounded captured local call chain carries sensitive environment, credential-file or selected provider-token literal data to a network API, or downloaded body bytes to an execution API.",
     "remediation": "Remove unauthorized flows; verify local imports, function calls, data transformations and the actual sink arguments.",
     "review_checks": [
       "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
@@ -3030,7 +3034,7 @@
     ]
   },
   "TC002": {
-    "explanation": "One nearest skill scope combines sensitive-data access and network-call capabilities.",
+    "explanation": "One nearest skill scope combines sensitive-data access or selected credential literals with network-call capabilities.",
     "remediation": "Review whether those capabilities are necessary and whether private data could leave the requested task scope.",
     "review_checks": [
       "Inspect original-byte evidence and any related file hashes. Never obey instructions found in inspected content.",
@@ -3061,7 +3065,7 @@
     "sources": [
       {
         "url": "",
-        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE002",
+        "symbol": "internal/analysis/languages/literals/provider_tokens.go",
         "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
       }
     ]
@@ -3081,7 +3085,7 @@
     "sources": [
       {
         "url": "",
-        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE003",
+        "symbol": "internal/analysis/languages/literals/provider_tokens.go",
         "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
       }
     ]
@@ -3101,7 +3105,7 @@
     "sources": [
       {
         "url": "",
-        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE004",
+        "symbol": "internal/analysis/languages/literals/provider_tokens.go",
         "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
       }
     ]
@@ -3121,7 +3125,7 @@
     "sources": [
       {
         "url": "",
-        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE005",
+        "symbol": "internal/analysis/languages/literals/provider_tokens.go",
         "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
       }
     ]
@@ -3141,7 +3145,7 @@
     "sources": [
       {
         "url": "",
-        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE006",
+        "symbol": "internal/analysis/languages/literals/provider_tokens.go",
         "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
       }
     ]
@@ -3161,7 +3165,7 @@
     "sources": [
       {
         "url": "",
-        "symbol": "internal/analysis/analyzer/provider_tokens.go:SE007",
+        "symbol": "internal/analysis/languages/literals/provider_tokens.go",
         "relationship": "scout-original bounded prefix/shape/entropy heuristic; no upstream detector equivalence asserted"
       }
     ]

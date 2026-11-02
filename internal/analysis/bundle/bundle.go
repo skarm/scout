@@ -37,6 +37,8 @@ type bundleAnalysis struct {
 	addresses         map[string]document.Address
 	scopes            []bundleScope
 	programs          map[string]*bundleProgram
+	embedded          []*bundleProgram
+	defaultResolver   *bundleResolver
 	results           map[string]map[string]result
 	limit, operations int
 	err               error
@@ -85,16 +87,20 @@ func (a bundleCheck) Rule() report.Rule {
 
 	if a.id == ruleCrossFile {
 		severity = report.High
-		version = "5"
+		version = "10"
 	}
 
 	if a.id == ruleDNS001 {
 		severity = report.High
-		version = "2"
+		version = "7"
 	}
 
-	if a.id == ruleNET001 || a.id == ruleTC002 {
-		version = "3"
+	if a.id == ruleNET001 {
+		version = "7"
+	}
+
+	if a.id == ruleTC002 {
+		version = "8"
 	}
 
 	return report.Rule{
@@ -105,7 +111,7 @@ func (a bundleCheck) Rule() report.Rule {
 		Severity:    severity,
 		Category:    category,
 		Method:      "bounded-captured-bundle-analysis",
-		Limitation:  "Offline, same captured namespace; nearest SKILL scope controls declarations and capability aggregation, not explicit local call flows. Selected literal HTTP endpoints, DNS query names, installation declarations and Go/JS/TS/Python local imports/functions plus bounded shell DNS commands only; syntactic API candidates, no type checking, dependency resolution or proof of execution. Resolver calls may use caches or local host files; transmission, valid DNS encoding and runtime success are unverified. Unresolved dynamic network destinations and exhausted budgets remain incomplete. Declared hosts confer no trust and suppress no other rules. Capability combinations and tool collisions require review; they are not proven flows.",
+		Limitation:  "Offline, same captured namespace; nearest SKILL scope controls declarations and capability aggregation, not explicit local call flows. Selected literal HTTP endpoints, DNS query names, installation declarations and Go/JS/TS/Python local imports/functions plus bounded shell DNS commands only; syntactic API candidates, no type checking, dependency resolution or proof of execution. Selected provider-token literals share signature grammars and filters and retain original source evidence; literal classification consumes the shared quota. Markdown fences have isolated state and do not join Go source packages; explicit captured local imports may reach source-file modules. Resolver calls may use caches or local host files; transmission, valid DNS encoding and runtime success are unverified. Unresolved dynamic network destinations and exhausted budgets remain incomplete. Declared hosts confer no trust and suppress no other rules. Capability combinations and tool collisions require review; they are not proven flows.",
 	}
 }
 
@@ -197,6 +203,14 @@ func bind(ctx context.Context, checks []analyzer, docs []document.File, extracti
 		}
 	}
 
+	for _, p := range b.embedded {
+		if !b.beginEmbedded() {
+			break
+		}
+
+		b.inspectProgram(p)
+	}
+
 	b.finishScopes()
 
 	if surface != nil {
@@ -213,6 +227,32 @@ func bind(ctx context.Context, checks []analyzer, docs []document.File, extracti
 	}
 
 	return out
+}
+
+// Fences are independent entry points. Re-evaluate explicitly imported source
+// modules under fresh runtime state, while retaining the shared quota and facts.
+func (b *bundleAnalysis) beginEmbedded() bool {
+	if b.globalWriteStop {
+		b.gap = errors.Join(b.gap, b.err)
+		b.err, b.globalWriteStop = nil, false
+	}
+
+	if !b.step() {
+		return false
+	}
+
+	b.defaultResolver = nil
+
+	for _, p := range b.programs {
+		if !b.step() {
+			return false
+		}
+
+		p.globals = nil
+		p.initialized, p.initializing, p.failed = false, false, false
+	}
+
+	return true
 }
 
 func (b *bundleAnalysis) step() bool {

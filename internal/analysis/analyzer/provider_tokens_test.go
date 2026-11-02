@@ -6,9 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/languages/literals"
 	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/report"
 )
 
 // Deterministic synthetic bodies exercise token shapes without live credentials.
@@ -78,6 +82,9 @@ func TestProviderTokenVariants(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := providerTokenAnalyzer(t, tc.id)
+			if !literals.HasProviderToken(tc.token) {
+				t.Fatal("shared flow classifier rejected a supported token variant")
+			}
 			doc := document.Prepare(t.Context(), artifact.NewFile("notes.txt", []byte(tc.token), false))
 			r, err := a.Find(t.Context(), doc, 10)
 			if err != nil || r.Truncated || len(r.Matches) != 1 || r.Matches[0].Start != 0 || r.Matches[0].End != len(tc.token) {
@@ -115,6 +122,9 @@ func TestProviderTokensRejectPlaceholdersAndPartialIdentifiers(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := providerTokenAnalyzer(t, tc.id)
+			if literals.HasProviderToken(tc.text) {
+				t.Fatal("shared flow classifier accepted a rejected token shape")
+			}
 			doc := document.Prepare(t.Context(), artifact.NewFile("notes.txt", []byte(tc.text), false))
 			r, err := a.Find(t.Context(), doc, 10)
 			if err != nil || r.Truncated || len(r.Matches) != 0 {
@@ -239,10 +249,47 @@ func TestProviderTokenEntropyBoundary(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			text := "Credential: glpat-" + tc.payload
+			if literals.HasProviderToken(text) != (tc.matches > 0) {
+				t.Fatal("shared flow classifier changed the entropy boundary")
+			}
 			doc := document.Prepare(t.Context(), artifact.NewFile("notes.txt", []byte(text), false))
 			result, err := a.Find(t.Context(), doc, 1)
 			if err != nil || result.Truncated || len(result.Matches) != tc.matches {
 				t.Fatalf("matches=%d want=%d truncated=%t error=%v", len(result.Matches), tc.matches, result.Truncated, err)
+			}
+		})
+	}
+}
+
+func TestProviderTokenLiteralFlowWorkIsBounded(t *testing.T) {
+	value := providerTokenExamples()["SE002"]
+	for _, tc := range []struct {
+		name, code string
+		quota      uint64
+		limited    bool
+		cancelled  bool
+	}{
+		{name: "small", code: `var value = "public"`, quota: 200},
+		{name: "large-literal", code: `var value = "` + strings.Repeat("x", 1<<16) + `"`, quota: 200, limited: true},
+		{name: "repeated-source", code: `func Value() string {return "` + value + strings.Repeat(".", 4000) + `"}` + "\nfunc main(){" + strings.Repeat("Value();", 200) + "}", quota: 10000},
+		{name: "cancelled", code: `var value = "` + value + `"`, quota: 10000, cancelled: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := document.Prepare(t.Context(), artifact.NewFile("value.go", []byte("package main\n"+tc.code), false))
+			ctx := analysisbudget.WithLimit(t.Context(), tc.quota)
+			if tc.cancelled {
+				cancelled, cancel := context.WithCancel(ctx)
+				cancel()
+				ctx = cancelled
+			}
+			checks := []analyzer.Analyzer{providerTokenAnalyzer(t, "DNS001")}
+			bound := bundle.Bind(ctx, checks, []document.File{doc}, report.ExtractionReport{}, 10)
+			result, err := bound[0].Find(ctx, doc, 10)
+			if (err != nil) != (tc.limited || tc.cancelled) || len(result.Matches) != 0 {
+				t.Fatalf("literal analysis quota: matches=%d error=%v", len(result.Matches), err)
+			}
+			if analysisbudget.Exhausted(ctx) != tc.limited || tc.cancelled && !errors.Is(err, context.Canceled) {
+				t.Fatal("literal classification lost quota or cancellation state")
 			}
 		})
 	}
