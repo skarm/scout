@@ -13,19 +13,45 @@ import (
 )
 
 type bundleValue struct {
-	secret, remote *report.SourceRef
-	function       *bundleFunction
-	module         *bundleProgram
-	name, text     string
-	refs           []report.SourceRef
-	items          []bundleValue
-	known          bool
-	remoteKind     uint8 // 1=response object; 2=body bytes/text; 3=body reader method
+	secret, remote    *report.SourceRef
+	function          *bundleFunction
+	module            *bundleProgram
+	name, text        string
+	refs              []report.SourceRef
+	items             []bundleValue
+	known             bool
+	remoteKind        uint8 // 1=response object; 2=body bytes/text; 3=body reader method
+	uncertainFunction bool
+	containsFunctions bool
+}
+
+func (v bundleValue) hasCallableIdentity() bool {
+	return v.function != nil || v.module != nil || v.containsFunctions || v.uncertainFunction
 }
 
 func (b *bundleAnalysis) inspectProgram(p *bundleProgram) {
 	b.initializeProgram(p)
 
+	for _, key := range bundleFunctionNames(p) {
+		if b.err != nil {
+			return
+		}
+
+		b.callFunction(p.functions[key], nil, 0)
+
+		if b.globalWriteStop {
+			// A hypothetical standalone invocation must not abort independent
+			// module inspection. Its unsupported state still leaves a gap.
+			if b.gap == nil {
+				b.gap = b.err
+			}
+
+			b.err, b.globalWriteStop = nil, false
+		}
+	}
+}
+
+func bundleFunctionNames(p *bundleProgram) []string {
 	keys := make([]string, 0, len(p.functions))
 	for key := range p.functions {
 		keys = append(keys, key)
@@ -33,9 +59,7 @@ func (b *bundleAnalysis) inspectProgram(p *bundleProgram) {
 
 	sort.Strings(keys)
 
-	for _, key := range keys {
-		b.callFunction(p.functions[key], nil, 0)
-	}
+	return keys
 }
 
 func (b *bundleAnalysis) initializeProgram(p *bundleProgram) {
@@ -45,9 +69,19 @@ func (b *bundleAnalysis) initializeProgram(p *bundleProgram) {
 
 	p.initializing = true
 	p.globals = map[string]bundleValue{}
+
+	if p.language == language.JavaScript || p.language == language.TypeScript {
+		for _, name := range bundleFunctionNames(p) {
+			if !strings.HasPrefix(name, "*function@") {
+				b.bindValue(p.globals, name, bundleValue{function: p.functions[name]})
+			}
+		}
+	}
+
 	b.evalBlock(p, p.body, p.globals, 0)
 	p.initializing = false
 	p.initialized = true
+	p.failed = b.err != nil
 }
 
 func (b *bundleAnalysis) refNode(p *bundleProgram, n *bundleNode) report.SourceRef {
@@ -109,15 +143,14 @@ func (b *bundleAnalysis) name(p *bundleProgram, name string, env map[string]bund
 	}
 
 	if imp, ok := p.imports[name]; ok {
+		if imp.module == "" {
+			b.gap = errors.New("imported module binding is unresolved")
+			return bundleValue{}
+		}
+
 		if target := b.localModule(p, imp); target != nil {
 			if imp.symbol != "" {
-				if fn := target.functions[imp.symbol]; fn != nil && fn.exported {
-					return bundleValue{function: fn}
-				}
-
-				b.gap = errors.New("captured local export is unresolved")
-
-				return bundleValue{}
+				return b.exportValue(target, imp.symbol)
 			}
 
 			return bundleValue{module: target}
@@ -136,6 +169,12 @@ func (b *bundleAnalysis) name(p *bundleProgram, name string, env map[string]bund
 		return v
 	}
 
+	if p.declared[name] {
+		// A lexical declaration masks API candidates even before initialization
+		// or when its unsupported value could not be projected.
+		return bundleValue{}
+	}
+
 	if fn := p.functions[name]; fn != nil {
 		return bundleValue{function: fn}
 	}
@@ -149,7 +188,37 @@ func (b *bundleAnalysis) name(p *bundleProgram, name string, env map[string]bund
 	return bundleValue{name: name}
 }
 
+func (b *bundleAnalysis) exportValue(p *bundleProgram, name string) bundleValue {
+	if p.language == language.JavaScript || p.language == language.TypeScript {
+		if binding, ok := p.exports[name]; ok && !p.initializing {
+			b.initializeProgram(p)
+
+			if p.failed {
+				b.gap = errors.New("captured module initialization is incomplete")
+				return bundleValue{}
+			}
+
+			if value, exists := p.globals[binding]; exists {
+				return value
+			}
+		}
+	} else if fn := p.functions[name]; fn != nil && fn.exported {
+		return bundleValue{function: fn}
+	}
+
+	b.gap = errors.New("captured local export or cyclic initialization is unresolved")
+
+	return bundleValue{}
+}
+
 func mergeBundleValue(a, c bundleValue) bundleValue {
+	a.containsFunctions = a.containsFunctions || c.containsFunctions
+
+	if a.uncertainFunction || c.uncertainFunction {
+		a.uncertainFunction = true
+		a.function, a.module, a.name = nil, nil, ""
+	}
+
 	if a.secret == nil {
 		a.secret = c.secret
 	}
@@ -186,7 +255,7 @@ func (b *bundleAnalysis) evalBlock(p *bundleProgram, nodes []*bundleNode, env ma
 			return v
 		}
 		// A return nested in an aggregate block is evaluated conservatively.
-		if n.kind == nodeAggregate {
+		if n.kind == nodeAggregate || n.kind == nodeScope {
 			out = mergeBundleValue(out, v)
 		}
 	}
@@ -200,7 +269,7 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 	}
 
 	if depth > 64 {
-		b.gap = errors.New("bundle expression depth limit")
+		b.err = errors.New("bundle expression depth limit")
 		return bundleValue{}
 	}
 
@@ -217,22 +286,23 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 		return b.name(p, n.name, env)
 	case nodeLiteral:
 		return bundleValue{text: n.text, known: n.known}
-	case nodeAssign:
-		v := child(0)
-
-		if n.name != "" {
-			if len(env) >= 1024 {
-				b.gap = errors.New("bundle binding limit")
-			} else {
-				env[n.name] = v
-			}
+	case nodeFunction:
+		return bundleValue{function: n.function}
+	case nodeAssign, nodeDeclare, nodeMutate:
+		return b.evalAssignment(p, n, env, depth)
+	case nodeMember, nodeIndex:
+		return b.evalMember(p, n, env, depth)
+	case nodeCall, nodeConstruct:
+		return b.evalCall(p, n, env, depth+1)
+	case nodeScope:
+		return b.evalScope(p, n, env, depth)
+	case nodeSequence:
+		var v bundleValue
+		for _, c := range n.children {
+			v = b.eval(p, c, env, depth+1)
 		}
 
 		return v
-	case nodeMember, nodeIndex:
-		return b.evalMember(p, n, env, depth)
-	case nodeCall:
-		return b.evalCall(p, n, env, depth+1)
 	case nodeConcat:
 		a, c := child(0), child(1)
 		v := mergeBundleValue(a, c)
@@ -244,27 +314,29 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 
 		v.name = ""
 
+		if a.hasCallableIdentity() || c.hasCallableIdentity() {
+			b.gap = errors.New("compound bundle callable or module value is unresolved")
+			v.function, v.module, v.items = nil, nil, nil
+			v.uncertainFunction = true
+		}
+
 		return v
 	case nodeBranch:
-		local := map[string]bundleValue{}
-		maps.Copy(local, env)
-
-		var v bundleValue
-		for _, c := range n.children {
-			v = mergeBundleValue(v, b.eval(p, c, local, depth+1))
-		}
-		// Facts from either branch may survive, but a local overwrite cannot
-		// erase the other branch's secret provenance.
-		for name, value := range local {
-			env[name] = mergeBundleValue(env[name], value)
+		return b.evalBranch(p, n, env, depth)
+	case nodeReturn:
+		if len(n.children) == 1 {
+			return child(0)
 		}
 
-		return v
+		fallthrough
 	default:
 		var v bundleValue
 
 		for _, c := range n.children {
 			x := b.eval(p, c, env, depth+1)
+			if (n.kind == nodeObject || n.kind == nodeArray) && x.hasCallableIdentity() {
+				v.containsFunctions = true
+			}
 
 			v = mergeBundleValue(v, x)
 			if n.kind == nodeArray {
@@ -274,6 +346,95 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 
 		return v
 	}
+}
+
+func (b *bundleAnalysis) evalAssignment(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
+	v := bundleValue{}
+	if len(n.children) > 0 {
+		v = b.eval(p, n.children[0], env, depth+1)
+	}
+
+	if n.globalWrite && b.err == nil {
+		// Cross-frame global state is not modeled. Stop this evaluation before
+		// another frame can read a stale copied global value.
+		b.err = errors.New("script global binding writes are unresolved")
+		b.globalWriteStop = true
+
+		return bundleValue{}
+	}
+
+	previous, exists := env[n.name]
+	if n.kind == nodeDeclare && exists {
+		return previous
+	}
+
+	if n.kind == nodeMutate {
+		v = mergeBundleValue(v, previous)
+		if previous.hasCallableIdentity() || v.hasCallableIdentity() {
+			b.gap = errors.New("compound bundle function write is unresolved")
+			v.uncertainFunction = true
+		}
+
+		v.function, v.module, v.name, v.known = nil, nil, "", false
+	}
+
+	if env["*conditional*"].known && (v.hasCallableIdentity() || previous.hasCallableIdentity()) {
+		b.gap = errors.New("conditional bundle function binding is unresolved")
+		v.function, v.module, v.name, v.uncertainFunction = nil, nil, "", true
+	}
+
+	if n.name != "" {
+		b.bindValue(env, n.name, v)
+	}
+
+	return v
+}
+
+func (b *bundleAnalysis) evalScope(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
+	local := map[string]bundleValue{}
+	maps.Copy(local, env)
+
+	for name := range n.locals {
+		b.bindValue(local, name, bundleValue{})
+	}
+
+	v := b.evalBlock(p, n.children, local, depth+1)
+	for name, value := range local {
+		if !n.locals[name] {
+			env[name] = value
+		}
+	}
+
+	return v
+}
+
+func (b *bundleAnalysis) evalBranch(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
+	local := map[string]bundleValue{}
+	maps.Copy(local, env)
+	// This source-inaccessible key marks writes in conditional blocks.
+	// Function alternatives cannot be represented by one function pointer.
+	local["*conditional*"] = bundleValue{known: true}
+
+	var v bundleValue
+
+	for _, c := range n.children {
+		x := b.eval(p, c, local, depth+1)
+		if x.hasCallableIdentity() {
+			b.gap = errors.New("conditional bundle function value is unresolved")
+			x.function, x.module, x.uncertainFunction = nil, nil, true
+		}
+
+		v = mergeBundleValue(v, x)
+	}
+	// Facts from either branch may survive, but a local overwrite cannot
+	// erase the other branch's secret provenance.
+	for name, value := range local {
+		if name != "*conditional*" {
+			env[name] = mergeBundleValue(env[name], value)
+		}
+	}
+
+	return v
 }
 
 func (b *bundleAnalysis) callFunction(fn *bundleFunction, args []bundleValue, depth int) bundleValue {
@@ -293,13 +454,26 @@ func (b *bundleAnalysis) callFunction(fn *bundleFunction, args []bundleValue, de
 
 	b.initializeProgram(fn.program)
 
+	if fn.program.failed {
+		b.gap = errors.New("captured module initialization is incomplete")
+		return bundleValue{}
+	}
+
 	maps.Copy(env, fn.program.globals)
+
+	for name := range fn.locals {
+		b.bindValue(env, name, bundleValue{})
+	}
+
+	if fn.self != "" {
+		b.bindValue(env, fn.self, bundleValue{function: fn})
+	}
 
 	for i, name := range fn.params {
 		if i < len(args) {
-			env[name] = args[i]
+			b.bindValue(env, name, args[i])
 		} else {
-			env[name] = bundleValue{}
+			b.bindValue(env, name, bundleValue{})
 		}
 	}
 
@@ -308,21 +482,43 @@ func (b *bundleAnalysis) callFunction(fn *bundleFunction, args []bundleValue, de
 	return v
 }
 
+func (b *bundleAnalysis) bindValue(env map[string]bundleValue, name string, value bundleValue) {
+	if b.err != nil {
+		return
+	}
+
+	if _, exists := env[name]; !exists && len(env) >= 1024 {
+		// Continuing with a rejected shadow/overwrite could resolve a stale
+		// function or import instead. Keep earlier observations and stop work.
+		b.err = errors.New("bundle binding limit")
+		return
+	}
+
+	env[name] = value
+}
+
 func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
 	if len(n.children) == 0 {
 		return bundleValue{}
 	}
 
-	callee := b.eval(p, n.children[0], env, depth+1)
-
-	var args []bundleValue
-	for _, c := range n.children[1:] {
-		args = append(args, b.eval(p, c, env, depth+1))
+	callee, args := b.evalCallArguments(p, n, env, depth)
+	if b.err != nil {
+		return bundleValue{}
 	}
 
 	ref := b.refNode(p, n)
 	if callee.function != nil {
+		if n.kind == nodeConstruct {
+			b.gap = errors.New("local bundle constructor result is unresolved")
+			return bundleValue{}
+		}
+
 		v := b.callFunction(callee.function, args, depth+1)
+		if b.err != nil {
+			return bundleValue{}
+		}
+
 		if (v.secret != nil || v.remote != nil) && len(v.refs) < 6 {
 			v.refs = append(v.refs, ref)
 		}
@@ -376,6 +572,26 @@ func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[strin
 	}
 
 	return b.callOutput(callee, args, ref)
+}
+
+func (b *bundleAnalysis) evalCallArguments(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) (bundleValue, []bundleValue) {
+	callee := b.eval(p, n.children[0], env, depth+1)
+	if b.err != nil {
+		return bundleValue{}, nil
+	}
+
+	var args []bundleValue
+
+	for _, c := range n.children[1:] {
+		value := b.eval(p, c, env, depth+1)
+		if b.err != nil {
+			return bundleValue{}, nil
+		}
+
+		args = append(args, value)
+	}
+
+	return callee, args
 }
 
 func (b *bundleAnalysis) crossFlow(sink, origin report.SourceRef, via []report.SourceRef) {
@@ -459,20 +675,42 @@ func (b *bundleAnalysis) evalMember(p *bundleProgram, n *bundleNode, env map[str
 	if n.kind == nodeIndex {
 		key := child(1)
 		if !key.known {
+			if v.hasCallableIdentity() {
+				b.gap = errors.New("dynamic bundle module or function member is unresolved")
+			}
+
 			return bundleValue{}
 		}
 
 		property = key.text
 	}
 
+	if v.uncertainFunction {
+		b.gap = errors.New("uncertain bundle callable or module member is unresolved")
+		return bundleValue{}
+	}
+
 	if v.module != nil {
-		if fn := v.module.functions[property]; fn != nil && fn.exported {
-			return bundleValue{function: fn}
+		return b.exportValue(v.module, property)
+	}
+
+	if v.function != nil {
+		b.gap = errors.New("bundle function member is unresolved")
+		return bundleValue{}
+	}
+
+	if v.containsFunctions {
+		b.gap = errors.New("collection bundle function member is unresolved")
+		return bundleValue{}
+	}
+
+	if v.name == "" && v.remote == nil {
+		if v.secret == nil {
+			// An unknown receiver's property is not a rooted global API name.
+			return bundleValue{}
 		}
 
-		b.gap = errors.New("captured local member is unresolved")
-
-		return bundleValue{}
+		v.name = "$source"
 	}
 
 	if v.remote != nil {

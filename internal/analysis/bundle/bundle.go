@@ -41,6 +41,7 @@ type bundleAnalysis struct {
 	limit, operations int
 	err               error
 	gap               error
+	globalWriteStop   bool
 	active            map[*bundleFunction]bool
 	endpoints         map[string][]bundleEndpoint
 	secrets           map[string][]report.SourceRef
@@ -78,13 +79,16 @@ func (a bundleCheck) Rule() report.Rule {
 	}
 
 	severity := report.Medium
+	version := "2"
+
 	if a.id == ruleCrossFile {
 		severity = report.High
+		version = "3"
 	}
 
 	return report.Rule{
 		ID:          a.id,
-		Version:     "2",
+		Version:     version,
 		Title:       title,
 		Description: title,
 		Severity:    severity,
