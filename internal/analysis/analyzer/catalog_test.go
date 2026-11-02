@@ -14,10 +14,10 @@ func TestCatalogPreservesLanguageRegistrationAndOptionalSelection(t *testing.T) 
 		selection analyzer.Selection
 		count     int
 	}{
-		{name: "base", count: 68},
-		{name: "python", selection: analyzer.Selection{Python: true}, count: 84},
-		{name: "patterns", selection: analyzer.Selection{Patterns: true}, count: 144},
-		{name: "all", selection: analyzer.Selection{Patterns: true, Python: true}, count: 160},
+		{name: "base", count: 69},
+		{name: "python", selection: analyzer.Selection{Python: true}, count: 85},
+		{name: "patterns", selection: analyzer.Selection{Patterns: true}, count: 145},
+		{name: "all", selection: analyzer.Selection{Patterns: true, Python: true}, count: 161},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			catalog := analyzer.NewCatalog(tc.selection)
@@ -33,7 +33,7 @@ func TestCatalogPreservesLanguageRegistrationAndOptionalSelection(t *testing.T) 
 				}
 				selected[rule.ID] = rule
 			}
-			for _, id := range []string{"PI001", "SE002", "SE003", "SE004", "SE005", "SE006", "SE007", "GO001", "GO005", "GO006", "JS001", "SH001", "SQL001"} {
+			for _, id := range []string{"PI001", "SE002", "SE003", "SE004", "SE005", "SE006", "SE007", "GO001", "GO005", "GO006", "JS001", "SH001", "SQL001", "DNS001"} {
 				if _, exists := selected[id]; !exists {
 					t.Errorf("base rule missing: %s", id)
 				}
@@ -64,7 +64,7 @@ func TestCatalogPreservesLanguageRegistrationAndOptionalSelection(t *testing.T) 
 func TestCatalogRetainsIndependentOrderingAndDetachedLists(t *testing.T) {
 	catalog := analyzer.NewCatalog(analyzer.Selection{Patterns: true, Python: true})
 	checks, descriptors := catalog.Analyzers(), catalog.Rules()
-	if checks[68].Rule().ID != "PY-AST1" || checks[84].Rule().ID != "NV-P1" || descriptors[68].ID != "NV-P1" || descriptors[144].ID != "PY-AST1" {
+	if checks[69].Rule().ID != "PY-AST1" || checks[85].Rule().ID != "NV-P1" || descriptors[69].ID != "NV-P1" || descriptors[145].ID != "PY-AST1" {
 		t.Fatal("execution or public catalog ordering changed")
 	}
 	checks[0] = nil

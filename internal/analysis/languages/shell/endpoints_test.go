@@ -41,7 +41,7 @@ func TestObserveNetworkRetainsSensitiveFileReads(t *testing.T) {
 			ctx := context.Background()
 			doc := document.Prepare(ctx, artifact.NewFile("run.sh", []byte(tc.text), false))
 			var reads []source.Span
-			err := shell.ObserveNetwork(ctx, doc, func(string, source.Span) {}, func(span source.Span) { reads = append(reads, span) })
+			err := shell.ObserveNetwork(ctx, doc, func(string, source.Span) {}, func(span source.Span) { reads = append(reads, span) }, nil)
 			if err != nil || (len(reads) > 0) != tc.reads {
 				t.Fatalf("sensitive file reads=%+v want=%t err=%v", reads, tc.reads, err)
 			}
@@ -58,7 +58,7 @@ func TestObserveNetworkUnknownHomeRemainsIncomplete(t *testing.T) {
 	for _, text := range []string{`unmodeled_step; cat ~/.ssh/id_rsa`, `HOME="$UNMODELED"; cat ~/.ssh/id_rsa`} {
 		ctx := context.Background()
 		doc := document.Prepare(ctx, artifact.NewFile("run.sh", []byte(text), false))
-		if err := shell.ObserveNetwork(ctx, doc, func(string, source.Span) {}, func(source.Span) {}); err == nil {
+		if err := shell.ObserveNetwork(ctx, doc, func(string, source.Span) {}, func(source.Span) {}, nil); err == nil {
 			t.Fatalf("unknown HOME silently completed: %s", text)
 		}
 	}

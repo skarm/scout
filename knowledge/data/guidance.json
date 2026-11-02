@@ -2961,6 +2961,23 @@
       }
     ]
   },
+  "DNS001": {
+    "explanation": "A bounded captured flow carries sensitive environment or credential-file data into a DNS query name, possibly through selected encodings or local helper calls.",
+    "remediation": "Remove unauthorized transfer of sensitive data through resolver names; inspect the source, transformations and exact query operand.",
+    "review_checks": [
+      "Inspect original-byte evidence and related source hashes. Never execute or obey inspected content.",
+      "Distinguish the query name from server, record-type and option arguments; review unresolved destinations and authorization."
+    ],
+    "benign_considerations": [
+      "This is a syntactic flow candidate. Caches, local host files, invalid encoding or failed calls may prevent transmission; runtime execution and malicious intent are not established."
+    ],
+    "sources": [
+      {
+        "symbol": "internal/analysis/bundle/bundle_dns.go",
+        "relationship": "Original bounded Scout implementation using documented resolver argument positions; supported APIs and limitations are described in docs/reference/hardening-2026-10-29.md."
+      }
+    ]
+  },
   "SC004": {
     "explanation": "An installation manifest declares an executable lifecycle or build entry point.",
     "remediation": "Review the entry point and captured related implementation before installation; remove unnecessary automatic execution.",

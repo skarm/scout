@@ -78,7 +78,9 @@ type shellOrigin struct {
 }
 type shellValue struct {
 	text                 string
+	prefix               byte // First constant byte before an unresolved word part, for DNS option roles.
 	known                bool
+	output               bool // The command may contribute stdout to a substitution.
 	credential, download *shellOrigin
 }
 type shellState struct {
@@ -102,6 +104,7 @@ type shellWalk struct {
 	outputs           map[string]*check.Facts
 	observeNetwork    func(string, source.Span)
 	observeSecret     func(source.Span)
+	observeDNS        func(string, source.Span, *shellOrigin)
 }
 
 type shellRedirectKind uint8
@@ -156,13 +159,13 @@ func newShellState() *shellState {
 
 func (a shellCheck) Rule() report.Rule {
 	r := report.Rule{
-		ID: a.kind, Version: "3", Method: "shell-subset-ast", Severity: report.Medium,
+		ID: a.kind, Version: "5", Method: "shell-subset-ast", Severity: report.Medium,
 		Limitation: "Bounded native shell subset, not full POSIX/Bash. Command names are syntactic candidates, not resolved executables. Selected straight-line assignments/stdio and constant words only; no general control flow, functions, aliases, field splitting or external-file semantics. Selected ~/ paths use symbolic HOME or an in-script constant, never the scanner's environment. A flow is not proof of execution or malicious intent.",
 	}
 	switch a.kind {
 	case ruleSH001:
 		r.Title, r.Category, r.Severity = "Downloaded bytes reach an execution input or file", "remote-execution", report.High
-		r.Version = "4"
+		r.Version = "6"
 		r.Limitation += " Selected constant file paths retain conservative may-flow provenance through downloads, redirections and script execution; filesystem state, executable resolution and runtime success are unverified."
 	case ruleSH002:
 		r.Title, r.Category, r.Severity = "Sensitive data reaches a supported curl request argument", "credential-egress", report.High
@@ -245,6 +248,13 @@ func (s *shellState) parameter(part shellsyntax.Part) shellValue {
 }
 
 func (v *shellValue) appendPart(x shellValue) {
+	if v.known && !x.known {
+		v.prefix = x.prefix
+		if v.text != "" {
+			v.prefix = v.text[0]
+		}
+	}
+
 	*v = mergeShellValue(*v, x)
 	if !x.known || len(x.text) > literals.MaxStaticStringBytes-len(v.text) {
 		v.known = false
@@ -480,7 +490,13 @@ func (a *shellWalk) listInput(f *shellsyntax.File, s *shellState, incoming shell
 
 		input := a.pipeline(st, s, incoming)
 
+		prefix := out.prefix
+		if !out.output && input.output && !branch {
+			prefix = input.prefix
+		}
+
 		out = mergeShellValue(out, input)
+		out.prefix = prefix
 
 		if branch {
 			s.barrier()
@@ -595,6 +611,10 @@ func (a *shellWalk) simpleCommand(c *shellsyntax.Command, s *shellState, input s
 	}
 
 	out := a.invokeCommand(c, s, input, name, args)
+	if name != "true" && name != "false" && name != ":" && name != "printf" {
+		out.output = true
+	}
+
 	a.writeRedirected(c, s, out)
 
 	if outputRedirect {
@@ -608,6 +628,8 @@ func (a *shellWalk) invokeCommand(c *shellsyntax.Command, s *shellState, input s
 	var out shellValue
 
 	switch name {
+	case "dig", "host", "nslookup":
+		a.dnsCommand(c, name, args)
 	case "curl":
 		request := curlArguments(args)
 
@@ -646,8 +668,18 @@ func (a *shellWalk) invokeCommand(c *shellsyntax.Command, s *shellState, input s
 		return a.catCommand(c, s, input, args)
 	case "echo":
 		out = mergeShellValues(args)
+		if len(args) == 1 {
+			out.prefix = shellValuePrefix(args[0])
+		}
 	case "printf":
 		out = printfShellOutput(args)
+	case "base64":
+		if base64Stdin(args) {
+			out = input
+			out.known, out.text, out.prefix = false, "", 0
+		} else {
+			a.gap = errors.New("shell base64 arguments are unresolved")
+		}
 	case "chmod":
 		// Permissions do not change the file's downloaded bytes.
 	case "cd":
@@ -662,12 +694,88 @@ func (a *shellWalk) invokeCommand(c *shellsyntax.Command, s *shellState, input s
 	return out
 }
 
-func printfShellOutput(args []shellValue) shellValue {
-	if len(args) > 0 && args[0].known && printfStringFormat(args[0].text) {
-		return mergeShellValues(args[1:])
+func base64Stdin(args []shellValue) bool {
+	for i := 0; i < len(args); i++ {
+		if !args[i].known {
+			return false
+		}
+
+		switch args[i].text {
+		case "-d", "-D", "--decode", "-w0", "--wrap=0":
+		case "-w":
+			i++
+			if i >= len(args) || !args[i].known || args[i].text != "0" {
+				return false
+			}
+		default:
+			return false
+		}
 	}
 
-	return shellValue{}
+	return true
+}
+
+func printfShellOutput(args []shellValue) shellValue {
+	if len(args) > 0 && args[0].known && args[0].text == "--" {
+		args = args[1:]
+	}
+
+	if len(args) > 0 && args[0].known {
+		if valid, uses := printfStringFormat(args[0].text); valid {
+			out := shellValue{}
+			if uses {
+				out = mergeShellValues(args[1:])
+			}
+
+			out.prefix, out.output = printfOutputPrefix(args[0].text, args[1:])
+
+			return out
+		}
+	}
+
+	return shellValue{output: true}
+}
+
+func shellValuePrefix(value shellValue) byte {
+	if value.known && value.text != "" {
+		return value.text[0]
+	}
+
+	return value.prefix
+}
+
+// Called only for validated %s/%% formats. Retain a constant option/server
+// prefix through command substitution without guessing the unknown payload.
+func printfOutputPrefix(format string, args []shellValue) (byte, bool) {
+	index := 0
+
+	for {
+		before := index
+
+		for i := 0; i < len(format); i++ {
+			if format[i] != '%' {
+				return format[i], true
+			}
+
+			i++
+			if format[i] == '%' {
+				return '%', true
+			}
+
+			if index < len(args) {
+				v := args[index]
+				index++
+
+				if !v.known || v.text != "" {
+					return shellValuePrefix(v), true
+				}
+			}
+		}
+
+		if index == before || index >= len(args) {
+			return 0, false
+		}
+	}
 }
 
 func mergeShellValues(values []shellValue) shellValue {
@@ -841,6 +949,8 @@ func (a *shellWalk) redirectedInput(kind shellRedirectKind, value shellValue, sp
 }
 
 func mergeShellValue(x, y shellValue) shellValue {
+	x.output = x.output || y.output
+
 	if x.credential == nil {
 		x.credential = y.credential
 	}
@@ -1094,7 +1204,7 @@ func classifyCatArgument(value shellValue, options bool) catArgumentKind {
 	return catFlags
 }
 
-func printfStringFormat(s string) bool {
+func printfStringFormat(s string) (bool, bool) {
 	uses := false
 
 	for i := 0; i < len(s); i++ {
@@ -1104,7 +1214,7 @@ func printfStringFormat(s string) bool {
 
 		i++
 		if i == len(s) {
-			return false
+			return false, false
 		}
 
 		switch s[i] {
@@ -1112,11 +1222,11 @@ func printfStringFormat(s string) bool {
 			uses = true
 		case '%':
 		default:
-			return false
+			return false, false
 		}
 	}
 
-	return uses
+	return true, uses
 }
 
 // knownShellOperand reads one literal argv operand without shifting over an

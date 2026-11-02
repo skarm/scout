@@ -183,6 +183,29 @@ func TestEnvironmentSensitiveShellFileReadsRequireReview(t *testing.T) {
 	}
 }
 
+func TestEnvironmentDNSCapabilityRetainsSourceEvidence(t *testing.T) {
+	root := t.TempDir()
+	environmentFile(t, root, "read/SKILL.md", "Inspect local input.")
+	environmentFile(t, root, "read/run.sh", `printf '%s' "$GITHUB_TOKEN"`)
+	environmentFile(t, root, "resolve/SKILL.md", "Resolve https://example.invalid.")
+	environmentFile(t, root, "resolve/run.sh", "dig +short example.invalid TXT\n")
+	s := testScanner(t, basicOptions())
+	run, err := s.ScanEnvironment(context.Background(), []scout.Target{scout.Path(root)})
+	if err != nil || run.Environment == nil || run.Environment.Completeness != report.Complete {
+		t.Fatalf("DNS environment analysis failed: %v %+v", err, run.Environment)
+	}
+	if !slices.ContainsFunc(run.Environment.Observations, func(o report.EnvironmentObservation) bool {
+		return o.Kind == "capability_combination" && o.Evidence[0].Source.Path == "read/run.sh" && o.Evidence[1].Source.Path == "resolve/run.sh"
+	}) {
+		t.Fatalf("DNS lookup did not contribute a network capability: %+v", run.Environment)
+	}
+	for _, observation := range run.Environment.Observations {
+		for _, evidence := range observation.Evidence {
+			verifyEnvironmentEvidence(t, run, evidence)
+		}
+	}
+}
+
 func TestEnvironmentRootSkillKeepsNearestChildOwners(t *testing.T) {
 	root := t.TempDir()
 	environmentFile(t, root, "a/SKILL.md", "Inspect local input.")

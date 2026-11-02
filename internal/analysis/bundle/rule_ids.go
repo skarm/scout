@@ -7,4 +7,5 @@ const (
 	ruleTC001     = "TC001"
 	ruleTC002     = "TC002"
 	ruleCrossFile = "XF001"
+	ruleDNS001    = "DNS001"
 )

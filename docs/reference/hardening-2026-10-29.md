@@ -26,6 +26,35 @@ through selected Python, JS/TS and Go imports/functions. It considers parameters
 returns, assignments, globals and selected transforms. Required related evidence
 retains file identities and source spans.
 
+`DNS001` (High) links sensitive environment values or credential-file reads to a DNS
+query name, within one file or through the same captured local call chains as `XF001`.
+Selected string concatenation, templates and encodings retain provenance. The bundle
+projection uses JS/TS, Python and Go source-file units; shell also covers captured code
+fences. It covers
+Node `dns`/`dns/promises` lookup and resolve APIs, Python `socket.getaddrinfo` (including
+`host=`), `gethostbyname`/`gethostbyname_ex`, Go `net.Lookup*` and `net.DefaultResolver`
+name lookups, and bounded single-query `dig`, `host` and `nslookup` commands.
+Go SRV service/protocol/name components all contribute to the queried name.
+Shell supports selected stdin-only `base64` forms; file operands are unresolved.
+Ordinary resolution and sensitive data in unrelated API arguments do not establish
+this flow. Cross-file DNS flows also retain `XF001` evidence.
+
+Python helper binding respects positional-only, keyword-only and required parameters;
+invalid or expanded calls leave a gap. Omitted default values remain unknown;
+dynamic default expressions also leave an explicit bundle-analysis gap.
+`Buffer.from` propagates its data argument, not its encoding/offset controls.
+Shell retains supported `printf`/single-argument `echo` option and server prefixes
+through command substitution so those values are not invented query names.
+
+Resolver instances, shell batch/reverse/multiple-query forms and unknown options
+remain outside this DNS model. Dynamic query names retain an incomplete result even
+when the sensitive-data flow is found. No resolver is called during scanning.
+The finding does not prove execution, valid DNS encoding, transmission or malicious
+intent: OS resolver APIs may use caches or local host files.
+Argument positions follow the [Node DNS API](https://nodejs.org/api/dns.html),
+[Python socket API](https://docs.python.org/3/library/socket.html),
+[Go net API](https://pkg.go.dev/net) and [BIND command manuals](https://bind9.readthedocs.io/en/v9.20.0/manpages.html).
+
 Recursion, depth limits, ambiguous/unresolved exports and quota exhaustion leave gaps.
 The bounded resolver supports module-level JS/TS arrow functions with simple identifier
 parameters, block or expression bodies, named/default exports, local export aliases and
@@ -61,7 +90,7 @@ arguments. Observations completed before the stop remain available.
 
 ## Network and capability checks
 
-`NET001` compares selected network-call hosts with visible declarations in the nearest
+`NET001` compares selected HTTP hosts and literal DNS query names with visible declarations in the nearest
 SKILL.md namespace. Matching normalizes case, trailing dots and IPs; unrelated suffixes
 do not match. Comments, hidden HTML and frontmatter do not declare hosts.
 Unresolved dynamic destinations leave gaps.

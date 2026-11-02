@@ -514,6 +514,11 @@ func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[strin
 			return bundleValue{}
 		}
 
+		args, valid := b.functionArguments(callee.function, n.argumentNames, args)
+		if !valid {
+			return bundleValue{}
+		}
+
 		v := b.callFunction(callee.function, args, depth+1)
 		if b.err != nil {
 			return bundleValue{}
@@ -528,20 +533,7 @@ func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[strin
 
 	name := callee.name
 	if name == "require" && len(args) == 1 && args[0].known {
-		imp := bundleImport{
-			module: strings.TrimPrefix(args[0].text, "node:"),
-			local:  strings.HasPrefix(args[0].text, "."),
-		}
-		if target := b.localModule(p, imp); target != nil {
-			return bundleValue{module: target}
-		}
-
-		if imp.local {
-			b.gap = errors.New("commonjs local module is unresolved")
-			return bundleValue{}
-		}
-
-		return bundleValue{name: imp.module}
+		return b.requireValue(p, args[0].text)
 	}
 
 	if bundleEnvironment(name) && len(args) > 0 && args[0].known && literals.SensitiveName(args[0].text) {
@@ -552,6 +544,11 @@ func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[strin
 	if bundleFileRead(name) && len(args) > 0 && args[0].known && literals.SensitivePath(args[0].text) {
 		b.secret(p.file, ref)
 		return bundleValue{secret: &ref}
+	}
+
+	if b.dnsCall(p, n, name, args, ref) {
+		// Resolver results are not HTTP response bodies or executable downloads.
+		return bundleValue{}
 	}
 
 	if index, ok := bundleNetwork(name); ok {
@@ -572,6 +569,81 @@ func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[strin
 	}
 
 	return b.callOutput(callee, args, ref)
+}
+
+// Python keywords retain their parameter identity across captured helper calls.
+// Unknown expansions, duplicate assignments and unknown names cannot be flattened
+// into positional arguments without inventing a flow.
+func (b *bundleAnalysis) functionArguments(fn *bundleFunction, names []string, args []bundleValue) ([]bundleValue, bool) {
+	if fn.python == nil {
+		return args, true
+	}
+
+	if len(fn.params) > 1024 {
+		b.err = errors.New("bundle function parameter budget exceeded")
+		return nil, false
+	}
+
+	parameters := make(map[string]int, len(fn.params))
+	for i, name := range fn.params {
+		if !b.step() {
+			return nil, false
+		}
+
+		parameters[name] = i
+	}
+
+	bound := make([]bundleValue, len(fn.params))
+	assigned := make([]bool, len(fn.params))
+
+	for i, value := range args {
+		if !b.step() {
+			return nil, false
+		}
+
+		index, valid := i, false
+		if i >= len(names) {
+			valid = false
+		} else if names[i] != "" {
+			index, valid = parameters[names[i]]
+			valid = valid && index >= fn.python.positionalOnly
+		} else {
+			valid = i < fn.python.positional
+		}
+
+		if !valid || index >= len(bound) || assigned[index] {
+			b.gap = errors.New("captured Python call arguments are unresolved")
+			return nil, false
+		}
+
+		bound[index], assigned[index] = value, true
+	}
+
+	for i, required := range fn.python.required {
+		if required && !assigned[i] {
+			b.gap = errors.New("required captured Python call argument is missing")
+			return nil, false
+		}
+	}
+
+	return bound, true
+}
+
+func (b *bundleAnalysis) requireValue(p *bundleProgram, specifier string) bundleValue {
+	imp := bundleImport{
+		module: strings.TrimPrefix(specifier, "node:"),
+		local:  strings.HasPrefix(specifier, "."),
+	}
+	if target := b.localModule(p, imp); target != nil {
+		return bundleValue{module: target}
+	}
+
+	if imp.local {
+		b.gap = errors.New("commonjs local module is unresolved")
+		return bundleValue{}
+	}
+
+	return bundleValue{name: imp.module}
 }
 
 func (b *bundleAnalysis) evalCallArguments(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) (bundleValue, []bundleValue) {
@@ -654,7 +726,7 @@ func bundleExecution(name string) bool {
 
 func bundlePureWrapper(name string) bool {
 	switch name {
-	case "str", "bytes", "bytearray", "string", "[]byte", "strings.NewReader", "strings.NewReplacer", "strings.TrimSpace", "io.ReadAll", "io/ioutil.ReadAll", "JSON.stringify", "json.dumps", "json.loads", "Buffer.from", "base64.b64decode", "base64.b64encode", "atob", "btoa", "encodeURIComponent":
+	case "str", "bytes", "bytearray", "string", "[]byte", "strings.NewReader", "strings.NewReplacer", "strings.TrimSpace", "io.ReadAll", "io/ioutil.ReadAll", "JSON.stringify", "json.dumps", "json.loads", "Buffer.from", "base64.b64decode", "base64.b64encode", "base64.b32encode", "encoding/hex.EncodeToString", "encoding/base32.StdEncoding.EncodeToString", "encoding/base64.StdEncoding.EncodeToString", "encoding/base64.RawURLEncoding.EncodeToString", "atob", "btoa", "encodeURIComponent":
 		return true
 	}
 
@@ -780,12 +852,24 @@ func (b *bundleAnalysis) callOutput(callee bundleValue, args []bundleValue, ref 
 	}
 
 	if bundlePureWrapper(name) {
+		if name == "Buffer.from" && len(args) > 1 {
+			// Encoding/offset/length select how input bytes are interpreted;
+			// they are not copied into the returned buffer as secret data.
+			args = args[:1]
+		}
+
 		v := bundleValue{}
 		for _, a := range args {
 			v = mergeBundleValue(v, a)
 		}
 
 		return v
+	}
+
+	if callee.secret != nil || callee.remote != nil && callee.remoteKind == 2 {
+		if strings.HasSuffix(name, ".hex") || strings.HasSuffix(name, ".toString") {
+			return callee
+		}
 	}
 
 	for _, method := range []string{".read", ".read_text", ".read_bytes", ".text", ".json", ".encode", ".decode"} {

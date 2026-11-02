@@ -44,6 +44,7 @@ type bundleNode struct {
 	function         *bundleFunction
 	locals           map[string]bool
 	globalWrite      bool
+	argumentNames    []string // Python call arguments: empty=positional, *=unresolved expansion.
 }
 type bundleImport struct {
 	module, symbol string
@@ -57,6 +58,11 @@ type bundleFunction struct {
 	body     []*bundleNode
 	exported bool
 	self     string
+	python   *bundlePythonParameters
+}
+type bundlePythonParameters struct {
+	positionalOnly, positional int
+	required                   []bool
 }
 type bundleProgram struct {
 	file, language, pkg       string
@@ -166,11 +172,8 @@ func (b *bundleAnalysis) pythonNode(p *bundleProgram, n *frontend.Node, depth in
 
 		fn := &bundleFunction{program: p, name: n.String(frontend.FieldName), exported: true}
 
-		args := n.Child(frontend.Args)
-		for _, key := range []frontend.FieldKind{frontend.Posonlyargs, frontend.Args, frontend.KWOnlyargs} {
-			for _, arg := range args.List(key) {
-				fn.params = append(fn.params, arg.String(frontend.FieldArg))
-			}
+		if pythonParameters(fn, n.Child(frontend.Args)) {
+			b.gap = errors.New("dynamic Python parameter defaults are unresolved")
 		}
 
 		p.buildingFunction++
@@ -199,14 +202,7 @@ func (b *bundleAnalysis) pythonNode(p *bundleProgram, n *frontend.Node, depth in
 	case frontend.Call:
 		out.kind = nodeCall
 		out.children = append(out.children, child(n.Child(frontend.Func)))
-
-		out.children = append(out.children, b.pythonNodes(p, n.List(frontend.Args), depth+1)...)
-		for _, kw := range n.List(frontend.Keywords) {
-			v := child(kw.Child(frontend.FieldValue))
-			if v != nil {
-				out.children = append(out.children, v)
-			}
-		}
+		b.pythonCallArguments(p, n, out, depth)
 	case frontend.Return:
 		out.kind = nodeReturn
 		out.children = []*bundleNode{child(n.Child(frontend.FieldValue))}
@@ -235,6 +231,63 @@ func (b *bundleAnalysis) pythonNode(p *bundleProgram, n *frontend.Node, depth in
 	}
 
 	return out
+}
+
+func pythonParameters(fn *bundleFunction, args *frontend.Node) bool {
+	posonly, positional, kwonly := args.List(frontend.Posonlyargs), args.List(frontend.Args), args.List(frontend.KWOnlyargs)
+	fn.python = &bundlePythonParameters{positionalOnly: len(posonly), positional: len(posonly) + len(positional)}
+
+	for _, group := range [][]*frontend.Node{posonly, positional, kwonly} {
+		for _, arg := range group {
+			fn.params = append(fn.params, arg.String(frontend.FieldArg))
+			fn.python.required = append(fn.python.required, true)
+		}
+	}
+
+	dynamic := false
+	for i, value := range args.List(frontend.Defaults) {
+		dynamic = dynamic || value != nil && value.Kind() != frontend.Constant
+
+		index := fn.python.positional - len(args.List(frontend.Defaults)) + i
+		if index >= 0 && index < fn.python.positional {
+			fn.python.required[index] = false
+		}
+	}
+
+	for i, value := range args.List(frontend.KWDefaults) {
+		dynamic = dynamic || value != nil && value.Kind() != frontend.Constant
+		if index := fn.python.positional + i; value != nil && index < len(fn.params) {
+			fn.python.required[index] = false
+		}
+	}
+
+	return dynamic
+}
+
+func (b *bundleAnalysis) pythonCallArguments(p *bundleProgram, n *frontend.Node, out *bundleNode, depth int) {
+	for _, arg := range n.List(frontend.Args) {
+		if v := b.pythonNode(p, arg, depth+1); v != nil {
+			name := ""
+			if arg.Kind() == frontend.Starred {
+				name = "*"
+			}
+
+			out.children = append(out.children, v)
+			out.argumentNames = append(out.argumentNames, name)
+		}
+	}
+
+	for _, kw := range n.List(frontend.Keywords) {
+		if v := b.pythonNode(p, kw.Child(frontend.FieldValue), depth+1); v != nil {
+			name := kw.String(frontend.FieldArg)
+			if name == "" {
+				name = "*"
+			}
+
+			out.children = append(out.children, v)
+			out.argumentNames = append(out.argumentNames, name)
+		}
+	}
 }
 
 func scriptText(p *bundleProgram, n *scriptsyntax.Node) string {
@@ -480,6 +533,10 @@ func (b *bundleAnalysis) goExpr(p *bundleProgram, fs *token.FileSet, e ast.Expr,
 	switch e := e.(type) {
 	case *ast.Ident:
 		n.kind, n.name = nodeName, e.Name
+	case *ast.ArrayType:
+		if element, ok := e.Elt.(*ast.Ident); ok && element.Name == "byte" && e.Len == nil {
+			n.kind, n.name = nodeName, "[]byte"
+		}
 	case *ast.BasicLit:
 		n.kind = nodeLiteral
 
@@ -510,6 +567,12 @@ func (b *bundleAnalysis) goExpr(p *bundleProgram, fs *token.FileSet, e ast.Expr,
 	case *ast.KeyValueExpr:
 		n.children = []*bundleNode{child(e.Value)}
 	case *ast.CompositeLit:
+		if selector, ok := e.Type.(*ast.SelectorExpr); ok && selector.Sel.Name == "Resolver" {
+			if qualifier, ok := selector.X.(*ast.Ident); ok && p.imports[qualifier.Name].module == "net" {
+				b.gap = errors.New("go DNS resolver instances are unresolved")
+			}
+		}
+
 		if _, ok := e.Type.(*ast.ArrayType); ok {
 			n.kind = nodeArray
 		}

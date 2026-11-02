@@ -17,7 +17,7 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-var bundleURLs = regexp.MustCompile(`(?i)https?://[^\s<>"'\x60)\]]+`)
+var bundleURLs = regexp.MustCompile(`(?i)https?://(?:\[[0-9a-f:.]+\]|[^\s<>"'\x60)\[\]])+`)
 
 func canonicalHost(raw string) string {
 	u, e := url.Parse(strings.TrimRight(raw, ".,;"))
@@ -36,7 +36,21 @@ func canonicalHost(raw string) string {
 func (b *bundleAnalysis) shellEndpoints(d document.File) {
 	name := d.Artifact().Metadata().Path
 
-	err := shell.ObserveNetwork(b.ctx, d, func(value string, s source.Span) { b.endpoint(name, value, b.reference(name, s.Start, s.End)) }, func(s source.Span) { b.secret(name, b.reference(name, s.Start, s.End)) })
+	err := shell.ObserveNetwork(b.ctx, d, func(value string, s source.Span) { b.endpoint(name, value, b.reference(name, s.Start, s.End)) }, func(s source.Span) { b.secret(name, b.reference(name, s.Start, s.End)) }, func(query shell.DNSQuery) {
+		ref := b.reference(name, query.Span.Start, query.Span.End)
+		b.dnsEndpoint(name, query.Name, ref)
+
+		if len(query.Trace) > 0 {
+			origin := b.reference(name, query.Trace[0].Start, query.Trace[0].End)
+
+			via := make([]report.SourceRef, 0, len(query.Trace)-1)
+			for _, span := range query.Trace[1:] {
+				via = append(via, b.reference(name, span.Start, span.End))
+			}
+
+			b.dnsFlow(ref, origin, via)
+		}
+	})
 	if err != nil {
 		b.gap = errors.Join(b.gap, err)
 	}

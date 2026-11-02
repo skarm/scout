@@ -54,8 +54,8 @@ type bundleEndpoint struct {
 }
 
 func Rules() []analyzer {
-	out := make([]analyzer, 0, 5)
-	for _, id := range []string{ruleNET001, ruleSC004, ruleCrossFile, ruleTC001, ruleTC002} {
+	out := make([]analyzer, 0, 6)
+	for _, id := range []string{ruleNET001, ruleSC004, ruleCrossFile, ruleTC001, ruleTC002, ruleDNS001} {
 		out = append(out, bundleCheck{id: id})
 	}
 
@@ -76,6 +76,8 @@ func (a bundleCheck) Rule() report.Rule {
 		title, category = "Captured tools share a colliding identifier", "tool-poisoning"
 	case ruleTC002:
 		title, category = "Skill combines sensitive-data access and outbound network capabilities", "capability-combination"
+	case ruleDNS001:
+		title, category = "Sensitive data reaches a DNS query name", "credential-egress"
 	}
 
 	severity := report.Medium
@@ -83,6 +85,15 @@ func (a bundleCheck) Rule() report.Rule {
 
 	if a.id == ruleCrossFile {
 		severity = report.High
+		version = "5"
+	}
+
+	if a.id == ruleDNS001 {
+		severity = report.High
+		version = "2"
+	}
+
+	if a.id == ruleNET001 || a.id == ruleTC002 {
 		version = "3"
 	}
 
@@ -94,7 +105,7 @@ func (a bundleCheck) Rule() report.Rule {
 		Severity:    severity,
 		Category:    category,
 		Method:      "bounded-captured-bundle-analysis",
-		Limitation:  "Offline, same captured namespace; nearest SKILL scope controls declarations and capability aggregation, not explicit local call flows. Selected literal endpoints, installation declarations and Go/JS/TS/Python local imports/functions only; syntactic API candidates, no type checking, dependency resolution or proof of execution. Unresolved dynamic network destinations and exhausted budgets remain incomplete. Declared hosts confer no trust and suppress no other rules. Capability combinations and tool collisions require review; they are not proven flows.",
+		Limitation:  "Offline, same captured namespace; nearest SKILL scope controls declarations and capability aggregation, not explicit local call flows. Selected literal HTTP endpoints, DNS query names, installation declarations and Go/JS/TS/Python local imports/functions plus bounded shell DNS commands only; syntactic API candidates, no type checking, dependency resolution or proof of execution. Resolver calls may use caches or local host files; transmission, valid DNS encoding and runtime success are unverified. Unresolved dynamic network destinations and exhausted budgets remain incomplete. Declared hosts confer no trust and suppress no other rules. Capability combinations and tool collisions require review; they are not proven flows.",
 	}
 }
 
