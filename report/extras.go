@@ -38,6 +38,9 @@ func writeExtras(b *strings.Builder, r Analysis, evaluation Evaluation, md bool)
 func writeSignatureExtras(b *strings.Builder, r Analysis, q func(string) string) {
 	if r.Signatures.Enabled {
 		_, _ = fmt.Fprintf(b, "YARA: %s; %d planned objects; rules %s. Engine absence is not a clean result.\n\n", q(r.Signatures.Completeness), len(r.Signatures.Outcomes), q(r.Signatures.RulesSHA256))
+		if p := r.Signatures.Rulepack; p != nil {
+			_, _ = fmt.Fprintf(b, "Rulepack %s, version %s, ABI %s; artifact SHA256 %s; source SHA256 %s. Publisher authentication is not implied.\n\n", q(p.ID), q(p.Version), q(p.ABI), q(p.SHA256), q(p.RulesSHA256))
+		}
 
 		for _, o := range r.Signatures.Outcomes {
 			if o.Status != OutcomeCompleted || o.Truncated {

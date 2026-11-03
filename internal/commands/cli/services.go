@@ -30,6 +30,8 @@ func bindServices(fs *flag.FlagSet, p *argvPatch) {
 	fs.StringVar(&r.revision, "revision", "", "pinned commit revision")
 	fs.StringVar(&r.sha256, "download-sha256", "", "pinned response hash")
 	fs.StringVar(&r.settings.ExtraRulesPath, "yara-rules", r.settings.ExtraRulesPath, "trusted additional rules file")
+	fs.StringVar(&r.settings.RulepackPath, "rulepack", r.settings.RulepackPath, "trusted versioned YARA source artifact")
+	fs.StringVar(&r.settings.Scanner.Signatures.RulepackSHA256, "rulepack-sha256", r.settings.Scanner.Signatures.RulepackSHA256, "expected SHA-256 of all rulepack artifact bytes")
 	fs.BoolVar(&p.vulnerabilities, "vuln", p.vulnerabilities, "enable exact vulnerability queries")
 	fs.StringVar(&r.settings.OSVCachePath, "osv-cache", r.settings.OSVCachePath, "trusted exact-query cache (v1 vulnerabilities; v2 malicious packages)")
 	fs.StringVar(&r.settings.Scanner.Vulnerabilities.Endpoint, "osv-endpoint", r.settings.Scanner.Vulnerabilities.Endpoint, "query endpoint")

@@ -60,6 +60,7 @@ scout mcp [flags]
 scout doctor [flags]
 scout baseline create|approve [flags]
 scout rules list [--all]
+scout rules pack create|inspect [flags]
 scout profiles
 scout capabilities
 scout knowledge [--mode MODE]
@@ -177,6 +178,12 @@ See [checks and extensions](../user/inspection-profiles.md).
 
 ### Concurrency and budgets
 
+- `--rulepack FILE`: explicit trusted `scout.rulepack/v1` additional YARA source
+  artifact; unset by default. Requires YARA selection and is mutually exclusive
+  with `--yara-rules`. The file must be outside every inspected input.
+- `--rulepack-sha256 DIGEST`: optional lowercase 64-digit SHA-256 pin for all
+  artifact bytes. Requires `--rulepack`; version metadata and whitespace are bound.
+  A mismatch or incompatible ABI fails initialization. No automatic download or fallback.
 - `--workers N`: analyzer workers shared across the operation's targets; default
   `4`, range 1..32.
 - `--target-workers N`: simultaneous targets; default `1`, range 1..32.
@@ -437,3 +444,22 @@ Available reports are still useful on nonzero exit codes.
 For attestation verification: `0` = agreement, `1` = signature or subject mismatch,
 `2` = malformed input or operational failure. Doctor returns `2` when a native
 self-test fails. Other operator commands use `0` for success and `2` for failure.
+
+### Rulepack artifacts
+
+`scout rules pack create --id ID --version VERSION --yara FILE [--output FILE]`
+packages trusted UTF-8 additional source as deterministic JSON. With no `--output`,
+the artifact goes to stdout. Publication cannot overwrite the source file.
+`--id`, `--version` and `--yara` are required; positional arguments are rejected.
+Creation validates metadata and bounds; it does not compile YARA.
+
+`scout rules pack inspect [--sha256 DIGEST] FILE` validates exact schema fields,
+`scout.yara-source/v1` compatibility, the embedded source checksum and an optional
+independent artifact pin. It prints only identity JSON, without the rule source.
+No installation, compilation or network access occurs. Scanner initialization
+compiles selected rules and rejects invalid YARA, includes and console usage.
+
+Both commands require explicitly selected local files. The artifact is limited to
+256 KiB, including JSON escaping and metadata; source also has the backend's
+256 KiB ceiling. A hash is byte identity, not publisher authentication. See
+[rulepack usage](../user/usage.md#versioned-rulepacks) for configuration and rollback.

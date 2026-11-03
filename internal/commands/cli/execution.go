@@ -14,6 +14,7 @@ import (
 	"github.com/skarm/scout/fetch"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
+	"github.com/skarm/scout/rulepack"
 )
 
 func scanCommand(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -132,6 +133,19 @@ func (r *request) loadBaseline(inputs []string) error {
 }
 
 func (r *request) loadTrustedServices(inputs []string) error {
+	if r.settings.RulepackPath != "" {
+		if r.settings.ExtraRulesPath != "" {
+			return errors.New("rulepack and yara-rules are mutually exclusive")
+		}
+
+		data, err := readTrusted(r.settings.RulepackPath, inputs, rulepack.MaxBytes)
+		if err != nil {
+			return errors.New("cannot read rulepack artifact")
+		}
+
+		r.settings.Scanner.Signatures.Rulepack = data
+	}
+
 	if r.settings.ExtraRulesPath != "" {
 		data, err := readTrusted(r.settings.ExtraRulesPath, inputs, 256<<10)
 		if err != nil {

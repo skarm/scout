@@ -25,7 +25,7 @@ func cliFormat(value string) (report.Format, error) {
 
 func (r *request) protectedInputs() []string {
 	inputs := r.localInputs()
-	for _, name := range []string{r.configPath, r.settings.BaselinePath, r.settings.ExtraRulesPath, r.settings.OSVCachePath} {
+	for _, name := range []string{r.configPath, r.settings.BaselinePath, r.settings.ExtraRulesPath, r.settings.OSVCachePath, r.settings.RulepackPath} {
 		if name != "" {
 			inputs = append(inputs, name)
 		}

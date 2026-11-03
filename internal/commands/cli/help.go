@@ -47,6 +47,17 @@ baseline create / baseline approve:
 rules list (also: rules):
   --all                      Include adapted, Python and YARA rules (default: false).
 
+rules pack create:
+  --id ID --version VERSION  Required package identity and release label.
+  --yara FILE                Required trusted UTF-8 additional YARA source.
+  --output FILE              Artifact destination; omitted writes JSON to stdout.
+  Packages source without compiling; scanner initialization compiles selected rules.
+
+rules pack inspect:
+  --sha256 DIGEST            Optional independent pin for exact artifact bytes.
+  Takes one artifact path; validates schema, ABI and hashes; prints identity JSON.
+  Does not compile, install, fetch or execute rules.
+
 profiles / capabilities / version:
   No command flags. Print profile names, compiled backends or the build version.
   --version is also accepted at the root.
@@ -139,7 +150,7 @@ func scanFlagGroup(name string) string {
 		return "Reports"
 	case "baseline", "allow-baseline-globs", "fail-on", "block-at", "scope":
 		return "Policy"
-	case "checks", "yara-rules":
+	case "checks", "yara-rules", "rulepack", "rulepack-sha256":
 		return "Checks"
 	case "allow-download", "revision":
 		return "Downloads"

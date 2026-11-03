@@ -59,9 +59,15 @@ func New(ctx context.Context, options Options) (*Scanner, error) {
 	}
 
 	options = cloneOptions(options)
+
+	signatureOptions, err := options.signatureOptions(checks)
+	if err != nil {
+		return nil, err
+	}
+
 	catalog := analyzer.NewCatalog(analyzer.Selection{Patterns: checks.Patterns, Python: checks.Python}).Analyzers()
 
-	execution, err := configuredEngine(options, checks, catalog)
+	execution, err := configuredEngine(options, checks, catalog, signatureOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -72,13 +78,13 @@ func New(ctx context.Context, options Options) (*Scanner, error) {
 	}
 
 	if checks.YARA {
-		scanner.signatures, err = signatures.Open(ctx, options.signatureOptions(checks), options.Concurrency.Workers)
+		scanner.signatures, err = signatures.Open(ctx, signatureOptions, options.Concurrency.Workers)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	scanner.identity = engineIdentity(options, checks, catalog)
+	scanner.identity = engineIdentity(options, checks, catalog, signatureOptions.Rulepack)
 
 	return scanner, nil
 }
@@ -171,7 +177,7 @@ func validateConstruction(ctx context.Context, options Options) (Checks, error) 
 	return checks, nil
 }
 
-func configuredEngine(options Options, checks Checks, catalog []check.Analyzer) (*engine.Engine, error) {
+func configuredEngine(options Options, checks Checks, catalog []check.Analyzer, signatureOptions signatures.Options) (*engine.Engine, error) {
 	registry, err := parse.WithFrontends(options.parserOptions(checks))
 	if err != nil {
 		return nil, err
@@ -188,7 +194,7 @@ func configuredEngine(options Options, checks Checks, catalog []check.Analyzer) 
 		return nil, err
 	}
 
-	return execution.WithSignatures(options.signatureOptions(checks))
+	return execution.WithSignatures(signatureOptions)
 }
 
 func validateAvailableChecks(plan report.InspectionPlan) error {
@@ -201,7 +207,7 @@ func validateAvailableChecks(plan report.InspectionPlan) error {
 	return nil
 }
 
-func engineIdentity(options Options, checks Checks, catalog []check.Analyzer) report.EngineIdentity {
+func engineIdentity(options Options, checks Checks, catalog []check.Analyzer, rulepack *report.RulepackIdentity) report.EngineIdentity {
 	var (
 		signaturesDigest string
 		extraRules       []byte
@@ -219,6 +225,7 @@ func engineIdentity(options Options, checks Checks, catalog []check.Analyzer) re
 		Signatures string
 		Knowledge  string
 		ExtraRules []byte
+		Rulepack   *report.RulepackIdentity `json:",omitempty"`
 	}{
 		Checks:     checks,
 		Semantic:   options.Review != nil,
@@ -226,6 +233,7 @@ func engineIdentity(options Options, checks Checks, catalog []check.Analyzer) re
 		Signatures: signaturesDigest,
 		Knowledge:  knowledge.Inventory().SHA256,
 		ExtraRules: extraRules,
+		Rulepack:   rulepack,
 	})
 	digest := sha256.Sum256(data)
 
@@ -245,6 +253,8 @@ func cloneOptions(o Options) Options {
 	}
 
 	o.Signatures.ExtraRules = append([]byte(nil), o.Signatures.ExtraRules...)
+
+	o.Signatures.Rulepack = append([]byte(nil), o.Signatures.Rulepack...)
 	if o.Download != nil {
 		v := *o.Download
 		if v.RootCAs != nil {

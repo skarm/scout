@@ -11,6 +11,7 @@ import (
 	"github.com/skarm/scout/osv"
 	"github.com/skarm/scout/report"
 	"github.com/skarm/scout/review"
+	"github.com/skarm/scout/rulepack"
 )
 
 // Profile names an inspection preset. Use Custom to select checks explicitly.
@@ -124,6 +125,11 @@ type (
 type SignatureOptions struct {
 	// ExtraRules contains additional trusted operator-supplied YARA source.
 	ExtraRules []byte
+	// Rulepack is a trusted versioned artifact, mutually exclusive with ExtraRules.
+	// Nil selects no artifact; an explicitly empty artifact is invalid.
+	Rulepack []byte
+	// RulepackSHA256 optionally pins every byte of the selected artifact.
+	RulepackSHA256 string
 	// Timeout bounds signature execution for an input through the native backend's
 	// timeout mechanism.
 	Timeout time.Duration
@@ -288,17 +294,36 @@ func (o Options) parserOptions(c Checks) frontend.Options {
 	return frontend.Options{Python: c.Python, YAML: c.YAML, TOML: c.TOML, Timeout: o.Limits.Analysis.ParserTimeout}
 }
 
-func (o Options) signatureOptions(c Checks) signatures.Options {
+func (o Options) signatureOptions(c Checks) (signatures.Options, error) {
 	s := signatures.DefaultOptions()
 	s.Enabled = c.YARA
 
-	s.ExtraRules = append([]byte(nil), o.Signatures.ExtraRules...)
+	if o.Signatures.Rulepack != nil {
+		if len(o.Signatures.ExtraRules) > 0 {
+			return s, errors.New("rulepack and unversioned extra rules are mutually exclusive")
+		}
+
+		selection, err := rulepack.Parse(o.Signatures.Rulepack, o.Signatures.RulepackSHA256)
+		if err != nil {
+			return s, err
+		}
+
+		s.ExtraRules = selection.Rules
+		s.Rulepack = &selection.Identity
+	} else {
+		if o.Signatures.RulepackSHA256 != "" {
+			return s, errors.New("rulepack SHA-256 requires a rulepack artifact")
+		}
+
+		s.ExtraRules = append([]byte(nil), o.Signatures.ExtraRules...)
+	}
+
 	s.Timeout = o.Signatures.Timeout
 	s.MaxFiles = min(o.Limits.Capture.MaxFiles, 4096)
 	s.MaxFileBytes = int(min(o.Limits.Capture.MaxFileBytes, 4<<20))
 	s.MaxTotalBytes = int(max(int64(s.MaxFileBytes), o.Limits.MaxCaptureBytes))
 
-	return s
+	return s, nil
 }
 
 func (o Options) validate(c Checks) error {
@@ -334,7 +359,12 @@ func (o Options) validatePipeline(c Checks) error {
 		return err
 	}
 
-	if err := o.signatureOptions(c).Validate(); err != nil {
+	signatureOptions, err := o.signatureOptions(c)
+	if err != nil {
+		return err
+	}
+
+	if err := signatureOptions.Validate(); err != nil {
 		return err
 	}
 

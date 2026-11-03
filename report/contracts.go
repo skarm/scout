@@ -235,6 +235,8 @@ type SignatureReport struct {
 	Engine SignatureCapability `json:"engine"`
 	// RulesSHA256 identifies the selected signature source bytes.
 	RulesSHA256 string `json:"rules_sha256,omitempty"`
+	// Rulepack identifies an explicitly selected versioned additional rule source.
+	Rulepack *RulepackIdentity `json:"rulepack,omitempty"`
 	// Completeness records whether all selected signature inputs were checked
 	// without gaps.
 	Completeness string `json:"completeness"`

@@ -88,6 +88,7 @@ func applySignatures(ctx context.Context, r *report.Analysis, docs []document.Fi
 	for _, step := range out.Outcomes {
 		if !collectSignatureMatches(step, byPath, rules, r.Signatures.RulesSHA256, collector) {
 			partial = true
+			step.Status = report.OutcomePartial
 		}
 
 		signatureFileCoverage(r, step, fileIndex)
@@ -118,9 +119,20 @@ func signatureFileCoverage(r *report.Analysis, step signatures.Outcome, fileInde
 	if i, ok := fileIndex[step.Path]; ok {
 		fc := &r.Coverage.Files[i]
 
-		fc.Checks = append(fc.Checks, report.FileCheck{AnalyzerID: "yara-x", Status: step.Status})
-		if step.Status != report.OutcomeCompleted || step.Truncated {
-			fc.Gaps = append(fc.Gaps, "yara:"+step.Status)
+		status := step.Status
+		if step.Truncated && status == report.OutcomeCompleted {
+			status = report.OutcomePartial
+		}
+
+		fc.Checks = append(fc.Checks, report.FileCheck{AnalyzerID: "yara-x", Status: status})
+		// Every category shares the same compiled rule set and native input plan.
+		// Comparison checks the finding descriptor ID, not the backend name.
+		for _, id := range [...]string{ruleYR1, ruleYR2, ruleYR3, ruleYR4, ruleYR5} {
+			fc.Checks = append(fc.Checks, report.FileCheck{AnalyzerID: id, Status: status})
+		}
+
+		if status != report.OutcomeCompleted {
+			fc.Gaps = append(fc.Gaps, "yara:"+status)
 		}
 
 		return

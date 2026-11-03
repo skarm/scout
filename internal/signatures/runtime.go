@@ -32,6 +32,7 @@ func Open(ctx context.Context, options Options, workers int) (*Runtime, error) {
 	}
 
 	options.ExtraRules = slices.Clone(options.ExtraRules)
+	options.Rulepack = cloneRulepack(options.Rulepack)
 	parent, err := compileRules(ctx, builtinRules+"\n"+string(options.ExtraRules))
 
 	parent, err = checkedEngine(parent, err, "YARA-X compiler returned no engine")

@@ -316,6 +316,10 @@ func validateTargets(targets []TargetResult) error {
 		}
 
 		seen[target.ID] = true
+		if err := validateRulepack(target.Analysis.Signatures); err != nil {
+			return fmt.Errorf("target %d: %w", i, err)
+		}
+
 		if err := target.Analysis.Vulnerabilities.ValidateMetadata(); err != nil {
 			return fmt.Errorf("target %d: %w", i, err)
 		}

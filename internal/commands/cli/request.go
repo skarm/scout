@@ -183,6 +183,8 @@ func (p argvPatch) applySettings(s *configfile.Settings) {
 	applyArgument(p.present, "target-workers", &s.Scanner.Concurrency.Targets, v.Scanner.Concurrency.Targets)
 	applyArgument(p.present, "timeout", &s.Scanner.Limits.Timeout, v.Scanner.Limits.Timeout)
 	applyArgument(p.present, "yara-rules", &s.ExtraRulesPath, v.ExtraRulesPath)
+	applyArgument(p.present, "rulepack", &s.RulepackPath, v.RulepackPath)
+	applyArgument(p.present, "rulepack-sha256", &s.Scanner.Signatures.RulepackSHA256, v.Scanner.Signatures.RulepackSHA256)
 	applyArgument(p.present, "osv-cache", &s.OSVCachePath, v.OSVCachePath)
 	p.applyBudgets(&s.Scanner.Limits)
 }

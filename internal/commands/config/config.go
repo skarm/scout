@@ -26,11 +26,11 @@ const schema = "scout.config/v1"
 type Grants struct{ Download, VulnerabilityNetwork, SourceUpload bool }
 
 type Settings struct {
-	Scanner                                    scout.Options
-	Policy                                     policy.Options
-	BaselinePath, OSVCachePath, ExtraRulesPath string
-	RemotePins                                 map[string]scout.RemotePin
-	Reviewer                                   *Reviewer
+	Scanner                                                  scout.Options
+	Policy                                                   policy.Options
+	BaselinePath, OSVCachePath, ExtraRulesPath, RulepackPath string
+	RemotePins                                               map[string]scout.RemotePin
+	Reviewer                                                 *Reviewer
 }
 
 // Reviewer preserves the operator's declarative provider settings until all
@@ -112,8 +112,10 @@ type retentionLimits struct {
 	MaxFindings *int `json:"max_findings"`
 }
 type signatures struct {
-	RulesFile *string `json:"rules_file"`
-	Timeout   *string `json:"timeout"`
+	RulesFile      *string `json:"rules_file"`
+	RulepackFile   *string `json:"rulepack_file"`
+	RulepackSHA256 *string `json:"rulepack_sha256"`
+	Timeout        *string `json:"timeout"`
 }
 type download struct {
 	Timeout       *string `json:"timeout"`
@@ -318,6 +320,8 @@ func (d document) applyPolicyAndSignatures(s *Settings) error {
 
 	if d.Signatures != nil {
 		assign(&s.ExtraRulesPath, d.Signatures.RulesFile)
+		assign(&s.RulepackPath, d.Signatures.RulepackFile)
+		assign(&s.Scanner.Signatures.RulepackSHA256, d.Signatures.RulepackSHA256)
 
 		if err := duration(&s.Scanner.Signatures.Timeout, d.Signatures.Timeout, 10*time.Second); err != nil {
 			return err

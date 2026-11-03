@@ -417,3 +417,22 @@ func parseResolved(data []byte, grants config.Grants, lookup func(string) (strin
 	}
 	return settings, nil
 }
+
+func TestVersionedRulepackSettingsArePassive(t *testing.T) {
+	pin := strings.Repeat("a", 64)
+	doc := `{"schema":"scout.config/v1","signatures":{"rulepack_file":"DO_NOT_OPEN.json","rulepack_sha256":"` + pin + `"}}`
+	settings, err := config.Parse([]byte(doc), config.Grants{})
+	if err != nil || settings.RulepackPath != "DO_NOT_OPEN.json" || settings.Scanner.Signatures.RulepackSHA256 != pin || len(settings.Scanner.Signatures.Rulepack) != 0 || settings.ExtraRulesPath != "" {
+		t.Fatalf("rulepack paths/data resolved during passive parse: %+v error=%v", settings, err)
+	}
+	for _, bad := range []string{
+		strings.Replace(doc, "rulepack_file", "Rulepack_file", 1),
+		strings.Replace(doc, "rulepack_sha256", "rulepack_SHA256", 1),
+		strings.Replace(doc, `"DO_NOT_OPEN.json"`, "null", 1),
+		strings.Replace(doc, `"DO_NOT_OPEN.json"`, "123", 1),
+	} {
+		if _, err := config.Parse([]byte(bad), config.Grants{}); err == nil {
+			t.Fatal("ambiguous package settings accepted")
+		}
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/report"
@@ -512,4 +513,40 @@ func benchmarkRun(b *testing.B, count int) report.Run {
 		b.Fatal(err)
 	}
 	return sealed
+}
+
+func TestSelectedRulepackIdentityValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(*report.SignatureReport)
+	}{
+		{"disabled", func(r *report.SignatureReport) { r.Enabled = false }},
+		{"missing-combined-hash", func(r *report.SignatureReport) { r.RulesSHA256 = "" }},
+		{"missing-id", func(r *report.SignatureReport) { r.Rulepack.ID = "" }},
+		{"missing-version", func(r *report.SignatureReport) { r.Rulepack.Version = "" }},
+		{"unsupported-abi", func(r *report.SignatureReport) { r.Rulepack.ABI = "scout.yara-source/v2" }},
+		{"invalid-artifact-hash", func(r *report.SignatureReport) { r.Rulepack.SHA256 = strings.Repeat("z", 64) }},
+		{"missing-source-hash", func(r *report.SignatureReport) { r.Rulepack.RulesSHA256 = "" }},
+	} {
+		for _, state := range []report.State{report.RunComplete, report.RunIncomplete} {
+			t.Run(tc.name+"/"+string(state), func(t *testing.T) {
+				run := runFixture()
+				run.State, run.Targets[0].State = state, state
+				if state == report.RunIncomplete {
+					run.Targets[0].Analysis.Coverage.Completeness = report.Partial
+				}
+				run.Targets[0].Analysis.Signatures = report.SignatureReport{
+					Enabled: true, RulesSHA256: strings.Repeat("a", 64), Completeness: string(report.Complete),
+					Rulepack: &report.RulepackIdentity{ID: "team/agent", Version: "1.2.3", ABI: report.RulepackABI, SHA256: strings.Repeat("b", 64), RulesSHA256: strings.Repeat("c", 64)},
+				}
+				if _, err := report.SealRun(run); err != nil {
+					t.Fatal("valid package fixture rejected", err)
+				}
+				tc.edit(&run.Targets[0].Analysis.Signatures)
+				if _, err := report.SealRun(run); err == nil {
+					t.Fatal("invalid selected package identity sealed")
+				}
+			})
+		}
+	}
 }

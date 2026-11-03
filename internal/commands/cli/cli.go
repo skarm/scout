@@ -19,6 +19,7 @@ const usage = `Usage:
   scout compare [flags] <before> <after>
   scout discover [flags] [--scan -- <scan flags>]
   scout rules list [--all]
+  scout rules pack create|inspect [flags]
   scout profiles
   scout capabilities
   scout doctor [--format json|text]
@@ -78,6 +79,8 @@ func inspectionCommand(ctx context.Context, args []string, stdout, stderr io.Wri
 
 func operatorCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
+	case "rules":
+		return rulesCommand(ctx, args[1:], stdout, stderr)
 	case "config":
 		return configCommand(ctx, args[1:], stdout, stderr)
 	case "baseline":
@@ -107,8 +110,6 @@ func informationalCommand(args []string, stdout, stderr io.Writer) int {
 		}
 
 		return writeText(stdout, scout.Version()+"\n")
-	case "rules":
-		return rulesCommand(args[1:], stdout, stderr)
 	case "capabilities":
 		if len(args) != 1 {
 			return usageError(stderr, "capabilities takes no arguments")
@@ -128,7 +129,11 @@ func informationalCommand(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-func rulesCommand(args []string, stdout, stderr io.Writer) int {
+func rulesCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "pack" {
+		return rulepackCommand(ctx, args[1:], stdout, stderr)
+	}
+
 	if len(args) > 0 && args[0] == "list" {
 		args = args[1:]
 	}

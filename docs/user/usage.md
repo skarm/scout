@@ -212,6 +212,64 @@ coordinates, but leave a `classification_not_cached` gap for malware coverage.
 Those incomplete coordinates are excluded from cache export. A match identifies
 a captured declaration; it does not prove installation or execution.
 
+### Versioned rulepacks
+
+A `scout.rulepack/v1` artifact carries additional YARA source, a package ID, a
+release label, ABI `scout.yara-source/v1` and a source SHA-256. Built-in checks
+remain selected by the profile. This format carries data rules; adding native
+Go analyzers requires a scanner release. Artifacts are explicitly selected local
+operator files outside the inspected roots.
+
+```sh
+scout rules pack create --id team/agent --version 1.2.3 \
+  --yara /ci/agent.yar --output /ci/agent-1.2.3.rulepack.json
+scout rules pack inspect /ci/agent-1.2.3.rulepack.json
+scout scan --rulepack /ci/agent-1.2.3.rulepack.json \
+  --rulepack-sha256 <trusted-64-digit-sha256> --format json ./my-plugin
+```
+
+Use a hash obtained through your trusted release process. `inspect --sha256 HASH`
+can verify the pin before a scan. The pin covers the entire artifact, including
+ID, version, ABI, source checksum and JSON whitespace. The embedded source checksum
+alone detects corruption; an editor who can replace the artifact can also replace
+that checksum. Neither checksum authenticates a publisher.
+
+Equivalent configuration:
+
+```json
+{
+  "schema": "scout.config/v1",
+  "signatures": {
+    "rulepack_file": "/ci/agent-1.2.3.rulepack.json",
+    "rulepack_sha256": "<trusted-64-digit-sha256>"
+  }
+}
+```
+
+Replace the placeholder with the actual lowercase digest. Standard and review
+profiles already select YARA. Custom profiles must include `--checks yara`.
+`--yara-rules` and `--rulepack` cannot be combined. Packages never grant network
+access or change the selected profile. The scanner does not discover packages
+in targets or download updates.
+
+To update, publish a new versioned artifact and explicitly change both its path
+and pin. To roll back, select the previous artifact and its trusted pin. A running
+Scanner owns its loaded source; changing the file or caller buffers does not
+update that instance. There is no global installation state.
+
+JSON/SARIF and human reports retain package ID, version, ABI, artifact hash and
+source hash under signature metadata. The selected package also contributes to
+`RulepackDigest`; changing the version changes that fingerprint even when source
+is identical. The combined signature-source hash remains separately visible.
+Package source is not copied into scan reports.
+
+Creation and inspection work without the native backend and do not compile YARA.
+Scanning compiles the package with the selected backend before capturing input;
+unsupported syntax, duplicate rule names, includes and console usage fail the
+operation. Existing YARA-X budgets and timeout limitations apply. Both encoded
+artifact and raw source are bounded to 256 KiB; metadata and JSON escaping consume
+artifact space. The format does not load compiled YARA binaries or executable plugins.
+
 `--yara-rules` adds trusted operator rules. Includes and console access are prohibited;
 invalid rules fail the operation. LLM review requires separate
 [source-upload consent](semantic-review.md).

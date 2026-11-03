@@ -125,6 +125,11 @@ func (e *Engine) WithSignatures(o signatures.Options) (*Engine, error) {
 	}
 
 	o.ExtraRules = append([]byte(nil), o.ExtraRules...)
+	if o.Rulepack != nil {
+		identity := *o.Rulepack
+		o.Rulepack = &identity
+	}
+
 	n := *e
 	n.signatures = o
 

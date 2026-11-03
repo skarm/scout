@@ -49,6 +49,7 @@ var replyStatuses = map[string]bool{
 type Options struct {
 	Enabled                               bool
 	ExtraRules                            []byte
+	Rulepack                              *scanreport.RulepackIdentity
 	Timeout                               time.Duration
 	MaxFileBytes, MaxTotalBytes, MaxFiles int
 }
@@ -116,6 +117,16 @@ func (o Options) Validate() error {
 		return errors.New("YARA-X rules require explicit enablement")
 	}
 
+	if o.Rulepack != nil {
+		if err := o.Rulepack.Validate(); err != nil {
+			return err
+		}
+
+		if !o.Enabled || o.Rulepack.RulesSHA256 != hash(o.ExtraRules) {
+			return errors.New("rulepack identity does not match selected signature source")
+		}
+	}
+
 	return nil
 }
 
@@ -126,6 +137,7 @@ func checkCompiled(ctx context.Context, inputs []Input, o Options, engine compil
 func check(ctx context.Context, inputs []Input, o Options, engine compiledEngine, ownsEngine bool) (Report, error) {
 	r := Report{
 		Enabled:      o.Enabled,
+		Rulepack:     cloneRulepack(o.Rulepack),
 		Engine:       Backend(),
 		Completeness: string(scanreport.Complete),
 		Outcomes:     []Outcome{},
@@ -302,4 +314,14 @@ func (s *signatureScan) prepareEngine(ctx context.Context) string {
 	}
 
 	return s.fatal
+}
+
+func cloneRulepack(p *scanreport.RulepackIdentity) *scanreport.RulepackIdentity {
+	if p == nil {
+		return nil
+	}
+
+	cloned := *p
+
+	return &cloned
 }
