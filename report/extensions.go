@@ -28,6 +28,22 @@ type Vulnerability struct {
 	Aliases []string `json:"aliases,omitempty"`
 	// DatabaseModified records the advisory modification time reported by the database.
 	DatabaseModified string `json:"database_modified,omitempty"`
+	// Kind is an explicit advisory classification; empty retains legacy vulnerability semantics.
+	Kind string `json:"kind,omitempty"`
+	// Source preserves operator-supplied provenance for classified advisory records.
+	Source AdvisorySource `json:"source,omitzero"`
+}
+
+// AdvisoryMaliciousPackage marks an explicit, provenance-bearing malware assertion.
+// An advisory ID prefix alone never establishes this classification.
+const AdvisoryMaliciousPackage = "malicious-package"
+
+// AdvisorySource identifies the producer and pinned revision asserted by a trusted
+// cache. These fields are not authentication and URLs are never fetched.
+type AdvisorySource struct {
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Revision string `json:"revision"`
 }
 
 // VulnerabilityQuery records whether an exact captured dependency coordinate
@@ -52,6 +68,9 @@ type VulnerabilityQuery struct {
 type VulnerabilityReport struct {
 	// Enabled records whether advisory lookup was selected.
 	Enabled bool `json:"enabled"`
+	// ClassifiedCache selects malicious-package coverage in addition to legacy
+	// vulnerability lookup. Only exact answers from a version-2 cache cover it.
+	ClassifiedCache bool `json:"classified_cache,omitempty"`
 	// Source identifies the explicit offline-cache or network advisory source.
 	Source string `json:"source"`
 	// DatabaseSHA256 identifies the supplied offline advisory cache bytes.

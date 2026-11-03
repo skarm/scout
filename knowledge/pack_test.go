@@ -52,6 +52,7 @@ func TestInstructionsAreDistinctAndEvidenceBound(t *testing.T) {
 func TestEveryPublishedRuleHasReviewedGuidance(t *testing.T) {
 	rules := analyzer.NewCatalog(analyzer.Selection{Patterns: true, Python: true}).Rules()
 	rules = append(rules, engine.SignatureRules()...)
+	rules = append(rules, engine.AdvisoryRules()...)
 	for _, r := range rules {
 		t.Run(r.ID, func(t *testing.T) {
 			g, ok := knowledge.Lookup(r.ID)
@@ -60,7 +61,7 @@ func TestEveryPublishedRuleHasReviewedGuidance(t *testing.T) {
 			}
 		})
 	}
-	for _, id := range []string{"OSV001", "SSD-1", "SSD-4", "SDI-3", "SQP-2"} {
+	for _, id := range []string{"OSV001", "MAL001", "SSD-1", "SSD-4", "SDI-3", "SQP-2"} {
 		if _, ok := knowledge.Lookup(id); !ok {
 			t.Fatal(id)
 		}
@@ -132,14 +133,17 @@ func TestContextHintsDoNotContainSource(t *testing.T) {
 }
 
 func TestExportedVulnerabilityDescriptorDoesNotExposeGlobalGuidance(t *testing.T) {
-	a := engine.VulnerabilityRule()
-	if a.Guidance == nil {
-		t.Fatal("missing guidance")
-	}
-	a.Guidance.ReviewChecks[0] = "POISON"
-	b := engine.VulnerabilityRule()
-	if b.Guidance.ReviewChecks[0] == "POISON" {
-		t.Fatal("shared vulnerability catalog mutated")
+	for _, rule := range engine.AdvisoryRules() {
+		a := rule
+		if a.Guidance == nil {
+			t.Fatal("missing guidance")
+		}
+		a.Guidance.ReviewChecks[0] = "POISON"
+		for _, b := range engine.AdvisoryRules() {
+			if b.Guidance.ReviewChecks[0] == "POISON" {
+				t.Fatal("shared advisory catalog mutated")
+			}
+		}
 	}
 }
 

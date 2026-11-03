@@ -31,7 +31,7 @@ func bindServices(fs *flag.FlagSet, p *argvPatch) {
 	fs.StringVar(&r.sha256, "download-sha256", "", "pinned response hash")
 	fs.StringVar(&r.settings.ExtraRulesPath, "yara-rules", r.settings.ExtraRulesPath, "trusted additional rules file")
 	fs.BoolVar(&p.vulnerabilities, "vuln", p.vulnerabilities, "enable exact vulnerability queries")
-	fs.StringVar(&r.settings.OSVCachePath, "osv-cache", r.settings.OSVCachePath, "trusted offline query cache")
+	fs.StringVar(&r.settings.OSVCachePath, "osv-cache", r.settings.OSVCachePath, "trusted exact-query cache (v1 vulnerabilities; v2 malicious packages)")
 	fs.StringVar(&r.settings.Scanner.Vulnerabilities.Endpoint, "osv-endpoint", r.settings.Scanner.Vulnerabilities.Endpoint, "query endpoint")
 	fs.BoolVar(&r.settings.Scanner.Vulnerabilities.AllowLoopback, "osv-allow-loopback", r.settings.Scanner.Vulnerabilities.AllowLoopback, "allow explicit local query endpoint")
 	fs.IntVar(&r.settings.Scanner.Vulnerabilities.MaxRequests, "osv-max-requests", r.settings.Scanner.Vulnerabilities.MaxRequests, "request ceiling")

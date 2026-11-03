@@ -284,7 +284,7 @@ func ruleCatalog(checks []check.Analyzer, yara, vulnerabilities bool) []report.R
 	}
 
 	if vulnerabilities {
-		rules = append(rules, engine.VulnerabilityRule())
+		rules = append(rules, engine.AdvisoryRules()...)
 	}
 
 	return rules

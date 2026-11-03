@@ -316,6 +316,14 @@ func validateTargets(targets []TargetResult) error {
 		}
 
 		seen[target.ID] = true
+		if err := target.Analysis.Vulnerabilities.ValidateMetadata(); err != nil {
+			return fmt.Errorf("target %d: %w", i, err)
+		}
+
+		if err := validateClassifiedInventory(target.Analysis); err != nil {
+			return fmt.Errorf("target %d: %w", i, err)
+		}
+
 		if target.State == RunComplete {
 			if err := validateCompleteAnalysis(target.Analysis); err != nil {
 				return fmt.Errorf("target %d: %w", i, err)
@@ -579,7 +587,11 @@ func runDigest(run Run) (string, error) {
 	for i := range run.Targets {
 		run.Targets[i].Label = ""
 		run.Targets[i].Analysis.Source = nil
-		run.Targets[i].Analysis.Vulnerabilities.QueriedAt = ""
+		// Classified caches bind their freshness assertion to the digest. Legacy
+		// query times retain their historical acquisition-metadata semantics.
+		if !run.Targets[i].Analysis.Vulnerabilities.ClassifiedCache {
+			run.Targets[i].Analysis.Vulnerabilities.QueriedAt = ""
+		}
 	}
 
 	data, err := canonicalValue(nil, reflect.ValueOf(struct {

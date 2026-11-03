@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	algorithmVersion = "4"
+	algorithmVersion = "5"
 	maxOperations    = 2_000_000
 )
 

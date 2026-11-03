@@ -72,7 +72,7 @@ type Record struct {
 // Cache is a versioned set of exact advisory query results with one query
 // timestamp.
 type Cache struct {
-	// Version is the exact-query cache schema version; the supported value is 1.
+	// Version is 1 for legacy IDs or 2 for explicit classified advisory metadata.
 	Version int `json:"version"`
 	// QueriedAt is the supplied trusted query time used to assess cache age.
 	QueriedAt time.Time `json:"queried_at"`
@@ -86,6 +86,10 @@ type ID struct {
 	ID string `json:"id"`
 	// Modified retains the advisory modification timestamp reported by the database.
 	Modified string `json:"modified,omitempty"`
+	// Kind explicitly classifies a version-2 cached advisory; IDs alone are unclassified.
+	Kind string `json:"kind,omitempty"`
+	// Source pins the operator-supplied producer and source revision for classified records.
+	Source report.AdvisorySource `json:"source,omitzero"`
 }
 
 type query struct {
@@ -99,9 +103,16 @@ type query struct {
 
 type response struct {
 	Results []struct {
-		Vulns []ID   `json:"vulns"`
-		Next  string `json:"next_page_token"`
+		Vulns []queryID `json:"vulns"`
+		Next  string    `json:"next_page_token"`
 	} `json:"results"`
+}
+
+// Querybatch identities do not carry the classification supplied by a trusted
+// enriched cache. Unknown provider fields cannot select a higher-severity rule.
+type queryID struct {
+	ID       string `json:"id"`
+	Modified string `json:"modified,omitempty"`
 }
 
 type queryGroup struct {
@@ -146,11 +157,11 @@ func ParseCache(data []byte) (Cache, error) {
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 
-	if d.Decode(&c) != nil || c.Version != 1 || c.QueriedAt.IsZero() || c.Records == nil {
+	if d.Decode(&c) != nil || c.Version != 1 && c.Version != 2 || c.QueriedAt.IsZero() || c.Records == nil || !validCacheMetadataShape(shape, c.Version) {
 		return c, errors.New("invalid cache schema")
 	}
 
-	if err := validateCacheRecords(c.Records); err != nil {
+	if err := validateCacheRecords(c); err != nil {
 		return c, err
 	}
 
@@ -166,7 +177,7 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 		Completeness: report.Complete,
 		Queries:      []report.VulnerabilityQuery{},
 		Matches:      []report.Vulnerability{},
-		Limitations:  []string{"Exact captured coordinates only; not dependency reachability, integrity, full install closure or proof that a package is installed.", "No built-in complete offline CVE database. A supplied cache covers only its exact records and age."},
+		Limitations:  []string{"Exact captured coordinates only; not dependency reachability, integrity, full install closure or proof that a package is installed.", "No built-in complete offline CVE or malware database. A supplied cache covers only its exact records and age.", "Malicious-package classification requires explicit version-2 cache metadata and operator-trusted provenance. ID prefixes and ordinary querybatch responses are not malware classification. Source URLs are never fetched."},
 	}
 	if err := o.Validate(); err != nil {
 		return r, err
@@ -181,7 +192,7 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 	}
 
 	r.Source = "OSV-querybatch"
-	r.QueriedAt = now.UTC().Format(time.RFC3339)
+	r.QueriedAt = now.UTC().Format(time.RFC3339Nano)
 	cached, cachedAt := prepareCache(o, now, &r)
 
 	for _, m := range deps.Manifests {
@@ -191,12 +202,13 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 	}
 
 	groups := groupQueries(deps, o, &r)
+
 	set := func(g *queryGroup, status string) { setQueryStatus(g, status, &r) }
 	fallback := func(g *queryGroup, status string) {
 		if x, ok := cached[key(g.q.Package.Ecosystem, g.q.Package.Name, g.q.Version)]; ok {
 			// A report and its exported cache have one timestamp. Use the oldest
 			// included source so a network fallback cannot renew cached answers.
-			r.QueriedAt = cachedAt.UTC().Format(time.RFC3339)
+			r.QueriedAt = cachedAt.UTC().Format(time.RFC3339Nano)
 
 			if !g.appendResults(x.Vulnerabilities) {
 				set(g, "result_limit")
@@ -209,12 +221,24 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 		}
 	}
 
+	// A classified cache is authoritative for both advisory kinds. Prefer its
+	// fresh exact answers; an ordinary online response cannot replace malware
+	// classification or turn a missing classified coordinate into a clean one.
+	if r.ClassifiedCache {
+		for _, g := range groups {
+			if _, ok := cached[key(g.q.Package.Ecosystem, g.q.Package.Name, g.q.Version)]; ok {
+				fallback(g, "not_cached")
+			}
+		}
+	}
+
 	requests := 0
 	for start := 0; start < len(groups); start += 64 {
 		queryBatch(ctx, groups[start:min(start+64, len(groups))], o, &requests, set, fallback)
 	}
 
 	collectMatches(groups, &r)
+	markClassificationGaps(&r)
 
 	return r, nil
 }
@@ -223,15 +247,24 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 // queries using the oldest included query time. It does not encode JSON or
 // renew cached answers.
 func Export(r report.VulnerabilityReport) (Cache, error) {
+	if r.ClassifiedCache {
+		if err := r.ValidateMetadata(); err != nil {
+			return Cache{}, err
+		}
+	}
+
 	at, err := time.Parse(time.RFC3339, r.QueriedAt)
-	if err != nil {
+	if err != nil || at.IsZero() {
 		return Cache{}, errors.New("report has no query time")
 	}
 
 	c := Cache{Version: 1, QueriedAt: at, Records: []Record{}}
+	if r.ClassifiedCache {
+		c.Version = 2
+	}
 
 	c.Records = exportRecords(r)
-	if err := validateCacheRecords(c.Records); err != nil {
+	if err := validateCacheRecords(c); err != nil {
 		return Cache{}, err
 	}
 
@@ -328,14 +361,14 @@ func (g *queryGroup) appendResults(values []ID) bool {
 
 func safeID(s string) bool { return textmatch.Token(s, 160, "._:-") && textmatch.Alnum(s[0]) }
 
-func validateCacheRecords(records []Record) error {
-	if len(records) > maxCacheRecords {
+func validateCacheRecords(cache Cache) error {
+	if len(cache.Records) > maxCacheRecords {
 		return errors.New("cache record limit")
 	}
 
-	seen := map[string]bool{}
+	seen := map[coordinateKey]bool{}
 
-	for _, r := range records {
+	for _, r := range cache.Records {
 		if !cacheRecordValid(r) {
 			return errors.New("invalid cache record")
 		}
@@ -347,10 +380,22 @@ func validateCacheRecords(records []Record) error {
 
 		seen[k] = true
 
+		ids := map[string]ID{}
+
 		for _, v := range r.Vulnerabilities {
 			if !safeID(v.ID) {
 				return errors.New("invalid vulnerability id")
 			}
+
+			if err := validateCachedMetadata(v, cache); err != nil {
+				return err
+			}
+
+			if previous, exists := ids[v.ID]; exists && cache.Version == 2 && previous != v {
+				return errors.New("conflicting advisory metadata")
+			}
+
+			ids[v.ID] = v
 		}
 	}
 
@@ -361,13 +406,14 @@ func cacheRecordValid(r Record) bool {
 	return r.Ecosystem != "" && r.Name != "" && r.Version != "" && len(r.Name) <= 256 && len(r.Version) <= 256 && r.Vulnerabilities != nil && len(r.Vulnerabilities) <= maxCoordinateResults
 }
 
-func prepareCache(o Options, now time.Time, r *report.VulnerabilityReport) (map[string]Record, time.Time) {
-	cached := map[string]Record{}
+func prepareCache(o Options, now time.Time, r *report.VulnerabilityReport) (map[coordinateKey]Record, time.Time) {
+	cached := map[coordinateKey]Record{}
 
 	var queriedAt time.Time
 
 	if len(o.Offline) > 0 {
 		c, _ := ParseCache(o.Offline)
+		r.ClassifiedCache = c.Version == 2
 		age := now.Sub(c.QueriedAt)
 
 		if age >= 0 && age <= o.MaxCacheAge {
@@ -382,7 +428,7 @@ func prepareCache(o Options, now time.Time, r *report.VulnerabilityReport) (map[
 		r.DatabaseSHA256 = hex.EncodeToString(h[:])
 		if !o.AllowNetwork {
 			r.Source = "operator-exact-query-cache"
-			r.QueriedAt = c.QueriedAt.Format(time.RFC3339)
+			r.QueriedAt = c.QueriedAt.Format(time.RFC3339Nano)
 		}
 	}
 
@@ -391,7 +437,7 @@ func prepareCache(o Options, now time.Time, r *report.VulnerabilityReport) (map[
 
 func groupQueries(deps report.DependencyReport, o Options, r *report.VulnerabilityReport) []*queryGroup {
 	groups := make([]*queryGroup, 0)
-	byKey := map[string]*queryGroup{}
+	byKey := map[coordinateKey]*queryGroup{}
 
 	for _, d := range deps.Declarations {
 		qi := len(r.Queries)
@@ -561,7 +607,12 @@ func applyQueryResponse(out response, pending []*queryGroup, set func(*queryGrou
 	for i, g := range pending {
 		res := out.Results[i]
 
-		if !g.appendResults(res.Vulns) {
+		ids := make([]ID, len(res.Vulns))
+		for i, v := range res.Vulns {
+			ids[i] = ID{ID: v.ID, Modified: v.Modified}
+		}
+
+		if !g.appendResults(ids) {
 			set(g, "result_limit")
 
 			continue
@@ -597,6 +648,8 @@ func collectMatches(groups []*queryGroup, r *report.VulnerabilityReport) {
 				ID:               v.ID,
 				DependencyIDs:    ids,
 				DatabaseModified: v.Modified,
+				Kind:             v.Kind,
+				Source:           v.Source,
 			})
 		}
 	}
@@ -615,16 +668,16 @@ func exportRecords(r report.VulnerabilityReport) []Record {
 
 	for _, match := range r.Matches {
 		for _, dep := range match.DependencyIDs {
-			byDependency[dep] = append(byDependency[dep], ID{ID: match.ID, Modified: match.DatabaseModified})
+			byDependency[dep] = append(byDependency[dep], ID{ID: match.ID, Modified: match.DatabaseModified, Kind: match.Kind, Source: match.Source})
 		}
 	}
 
 	records := make([]Record, 0)
-	positions := map[string]int{}
-	seen := map[int]map[string]bool{}
+	positions := map[coordinateKey]int{}
+	seen := map[int]map[string]ID{}
 
 	for _, q := range r.Queries {
-		if q.Status != report.OutcomeCompleted && q.Status != report.OutcomeCached {
+		if q.Status != report.OutcomeCached && (q.Status != report.OutcomeCompleted || r.ClassifiedCache) {
 			continue
 		}
 
@@ -641,23 +694,31 @@ func exportRecords(r report.VulnerabilityReport) []Record {
 				Version:         q.Version,
 				Vulnerabilities: []ID{},
 			})
-			seen[at] = map[string]bool{}
+			seen[at] = map[string]ID{}
 		}
 
 		for _, v := range byDependency[q.DependencyID] {
-			if seen[at][v.ID] {
-				continue
+			if previous, exists := seen[at][v.ID]; exists {
+				legacy := previous.Kind == "" && v.Kind == "" && previous.Source == (report.AdvisorySource{}) && v.Source == (report.AdvisorySource{})
+				if previous == v || legacy {
+					continue
+				}
 			}
 
 			records[at].Vulnerabilities = append(records[at].Vulnerabilities, v)
-			seen[at][v.ID] = true
+			seen[at][v.ID] = v
 		}
 	}
 
 	return records
 }
 
-func key(e, n, v string) string { return e + "\x00" + n + "\x00" + v }
+// Keep components distinct even for control characters supplied through the API.
+type coordinateKey struct {
+	ecosystem, name, version string
+}
+
+func key(e, n, v string) coordinateKey { return coordinateKey{e, n, v} }
 
 func validateResponseShape(root *jsonconfig.Node, count int) error {
 	if root == nil || root.Kind != jsonconfig.KindObject || fieldAliases(root, "results") {
@@ -754,7 +815,7 @@ func cacheAliases(root *jsonconfig.Node) bool {
 
 			if vulnerabilities := record.Get("vulnerabilities"); vulnerabilities != nil {
 				for _, vulnerability := range vulnerabilities.Elements {
-					if fieldAliases(vulnerability, "id", "modified") {
+					if fieldAliases(vulnerability, "id", "modified", "kind", "source") || fieldAliases(vulnerability.Get("source"), "name", "url", "revision") {
 						return true
 					}
 				}

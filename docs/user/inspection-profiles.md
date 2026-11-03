@@ -128,7 +128,10 @@ scout scan --vuln --allow-vulnerability-network ./my-plugin
 
 Lookup by exact captured dependency coordinates is enabled separately. Select a
 compatible service with `--osv-endpoint`, or use a trusted offline cache with
-`--osv-cache`. Scout does not embed an up-to-date CVE database. See
+`--osv-cache`. A version-2 cache additionally selects Critical `MAL001` for explicit
+`malicious-package` records with provenance. Unclassified results retain High
+`OSV001`; ordinary network responses do not close malware coverage gaps.
+Scout does not embed an up-to-date CVE or malware database. See
 [CLI usage](usage.md#network-services-and-extra-rules) for examples and limitations.
 
 ### LLM review

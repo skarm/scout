@@ -15,40 +15,47 @@ import (
 // This wire oracle pins compatibility with the original digest contract. The
 // production path works directly from concrete Go values instead of this tree.
 func TestConcreteCanonicalDigestMatchesWireContract(t *testing.T) {
-	for _, message := range []string{"ordinary", "<tag>&\u2028\u2029", "Привет🙂\x00", string([]byte{0xff, 'x'})} {
-		run := runFixture()
-		run.Targets[0].Analysis.Findings[0].Message = message
-		got, err := report.SealRun(run)
-		if err != nil {
-			t.Fatal(err)
-		}
-		run.Digest = ""
-		for i := range run.Targets {
-			run.Targets[i].Label = ""
-			run.Targets[i].Analysis.Source = nil
-			run.Targets[i].Analysis.Vulnerabilities.QueriedAt = ""
-		}
-		encoded, err := json.Marshal(run)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var value any
-		decoder := json.NewDecoder(bytes.NewReader(encoded))
-		decoder.UseNumber()
-		if err := decoder.Decode(&value); err != nil {
-			t.Fatal(err)
-		}
-		value = canonicalOracle(value, "")
-		encoded, err = json.Marshal(struct {
-			Operation report.Operation `json:"operation"`
-			Run       any              `json:"run"`
-		}{Operation: run.Operation, Run: value})
-		if err != nil {
-			t.Fatal(err)
-		}
-		digest := sha256.Sum256(encoded)
-		if want := "sha256:" + hex.EncodeToString(digest[:]); got.Digest != want {
-			t.Fatalf("canonical wire drift for %q: got %s want %s", message, got.Digest, want)
+	for _, classified := range []bool{false, true} {
+		for _, message := range []string{"ordinary", "<tag>&\u2028\u2029", "Привет🙂\x00", string([]byte{0xff, 'x'})} {
+			run := runFixture()
+			if classified {
+				run = classifiedReportFixture()
+			}
+			run.Targets[0].Analysis.Findings[0].Message = message
+			got, err := report.SealRun(run)
+			if err != nil {
+				t.Fatal(err)
+			}
+			run.Digest = ""
+			for i := range run.Targets {
+				run.Targets[i].Label = ""
+				run.Targets[i].Analysis.Source = nil
+				if !classified {
+					run.Targets[i].Analysis.Vulnerabilities.QueriedAt = ""
+				}
+			}
+			encoded, err := json.Marshal(run)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var value any
+			decoder := json.NewDecoder(bytes.NewReader(encoded))
+			decoder.UseNumber()
+			if err := decoder.Decode(&value); err != nil {
+				t.Fatal(err)
+			}
+			value = canonicalOracle(value, "")
+			encoded, err = json.Marshal(struct {
+				Operation report.Operation `json:"operation"`
+				Run       any              `json:"run"`
+			}{Operation: run.Operation, Run: value})
+			if err != nil {
+				t.Fatal(err)
+			}
+			digest := sha256.Sum256(encoded)
+			if want := "sha256:" + hex.EncodeToString(digest[:]); got.Digest != want {
+				t.Fatalf("canonical wire drift for %q: got %s want %s", message, got.Digest, want)
+			}
 		}
 	}
 }

@@ -88,7 +88,11 @@ func writeVulnerabilityExtras(b *strings.Builder, r Analysis, q func(string) str
 				packages = append(packages, label)
 			}
 
-			_, _ = fmt.Fprintf(b, "Advisory %s matches captured exact coordinate(s) %s; not proof of exploitability.\n\n", q(v.ID), q(strings.Join(packages, ", ")))
+			if v.Kind == AdvisoryMaliciousPackage {
+				_, _ = fmt.Fprintf(b, "Malicious-package advisory %s matches captured exact coordinate(s) %s; source %s, revision %s, URL %s, modified %s; not proof of installation or execution.\n\n", q(v.ID), q(strings.Join(packages, ", ")), q(v.Source.Name), q(v.Source.Revision), q(v.Source.URL), q(v.DatabaseModified))
+			} else {
+				_, _ = fmt.Fprintf(b, "Advisory %s matches captured exact coordinate(s) %s; not proof of exploitability.\n\n", q(v.ID), q(strings.Join(packages, ", ")))
+			}
 		}
 
 		for _, v := range r.Vulnerabilities.Queries {

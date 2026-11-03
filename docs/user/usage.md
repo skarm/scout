@@ -144,6 +144,74 @@ scout scan --vuln --osv-cache /ci/osv-cache.json \
 OSV checks exact captured package coordinates. Offline caches are operator-supplied;
 missing or stale records leave gaps. An advisory does not establish reachability.
 
+### Known malicious dependencies
+
+An operator-supplied cache with `"version": 2` additionally selects `MAL001`.
+An exact coordinate explicitly classified as `malicious-package` produces a Critical
+finding with evidence from the captured manifest or lockfile. Version 1 and
+unclassified advisories continue to use `OSV001` (High). An ID beginning with
+`MAL-` does not select `MAL001`.
+
+Use the same `--vuln --osv-cache FILE` command above. Store the trusted cache outside
+the inspected target. This fictitious example illustrates the schema; replace it
+with verified intelligence and the actual query time before use:
+
+```json
+{
+  "version": 2,
+  "queried_at": "2026-11-03T12:00:00Z",
+  "records": [{
+    "ecosystem": "npm",
+    "name": "sample",
+    "version": "1.2.3",
+    "vulnerabilities": [{
+      "id": "MAL-fixture",
+      "kind": "malicious-package",
+      "modified": "2026-11-03T11:00:00Z",
+      "source": {
+        "name": "operator-intel",
+        "url": "https://example.invalid/intel/MAL-fixture",
+        "revision": "snapshot-1"
+      }
+    }]
+  }]
+}
+```
+
+A producer must verify the upstream classification and affected versions, then
+materialize exact ecosystem/name/version answers. For example,
+[OpenSSF malicious-packages](https://github.com/ossf/malicious-packages) publishes
+malicious-package reports in [OSV format](https://ossf.github.io/osv-schema/).
+Scout does not download that dataset or import its version ranges. Package names,
+age and publisher reputation alone do not establish malware.
+
+For every malicious record, `source.name`, `source.url`, `source.revision` and an
+RFC3339 `modified` time are required. The modification time cannot exceed
+`queried_at`. Source names and revisions are bounded ASCII tokens; URLs require
+HTTPS and cannot contain credentials, a query or a fragment. Provenance is the
+operator's assertion; Scout does not authenticate it or fetch these URLs.
+JSON and SARIF retain the metadata, query time and supplied cache SHA-256; human
+reports show the source and revision. Export through `osv.Export` preserves version
+2, negative answers and the original query time. Classified-cache query times are
+bound to the sealed run digest. Sealing and export reject inconsistent classified
+coverage or malicious matches without an associated cached coordinate. Sealing also
+checks that queries cover and match the captured dependency inventory. In `compare`,
+cached answers establish completed coverage only when every matching file check
+succeeded; an incomplete check cannot be masked by a successful one.
+
+An empty `vulnerabilities` array explicitly asserts a checked negative for that
+exact coordinate and both advisory kinds. Missing records, unresolved versions,
+future or stale caches remain gaps; they cannot yield a complete clean scan.
+The cache is bounded to 256 KiB, 4096 coordinates and 4096 advisory entries per
+coordinate. Conflicting metadata for one advisory ID in a coordinate is rejected.
+This is a bounded query cache, not a bundled or complete malware database.
+
+If network access is also granted, fresh version-2 cache answers take precedence.
+OSV querybatch responses can retain ordinary vulnerability matches for missing
+coordinates, but leave a `classification_not_cached` gap for malware coverage.
+Those incomplete coordinates are excluded from cache export. A match identifies
+a captured declaration; it does not prove installation or execution.
+
 `--yara-rules` adds trusted operator rules. Includes and console access are prohibited;
 invalid rules fail the operation. LLM review requires separate
 [source-upload consent](semantic-review.md).

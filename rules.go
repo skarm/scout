@@ -24,7 +24,7 @@ func Rules(all bool) []Rule {
 
 	if all {
 		rules = append(rules, engine.SignatureRules()...)
-		rules = append(rules, engine.VulnerabilityRule())
+		rules = append(rules, engine.AdvisoryRules()...)
 	}
 
 	return rules

@@ -422,7 +422,7 @@ func TestCacheValidationBoundaries(t *testing.T) {
 		t.Fatal(got, err)
 	}
 	for _, alter := range []func(*Cache){
-		func(c *Cache) { c.Version = 2 }, func(c *Cache) { c.QueriedAt = time.Time{} }, func(c *Cache) { c.Records = nil },
+		func(c *Cache) { c.Version = 3 }, func(c *Cache) { c.QueriedAt = time.Time{} }, func(c *Cache) { c.Records = nil },
 		func(c *Cache) { c.Records = append(c.Records, c.Records[0]) },
 		func(c *Cache) { c.Records[0].Name = "" }, func(c *Cache) { c.Records[0].Version = "" },
 		func(c *Cache) { c.Records[0].Ecosystem = "" }, func(c *Cache) { c.Records[0].Name = strings.Repeat("a", 257) },
@@ -742,4 +742,318 @@ func cachedOptions(t *testing.T, at time.Time) (Options, Cache) {
 		t.Fatal(err)
 	}
 	return options, cache
+}
+
+func classifiedCache(at time.Time) Cache {
+	return Cache{Version: 2, QueriedAt: at, Records: []Record{{
+		Ecosystem: "npm", Name: "sample", Version: "1.2.3",
+		Vulnerabilities: []ID{{ID: "MAL-fixture", Kind: report.AdvisoryMaliciousPackage, Modified: at.Add(-time.Hour).Format(time.RFC3339Nano), Source: report.AdvisorySource{
+			Name: "operator-intel", URL: "https://example.invalid/intel/MAL-fixture", Revision: "snapshot-1",
+		}}},
+	}}}
+}
+
+func TestClassifiedCacheValidation(t *testing.T) {
+	at := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	valid := classifiedCache(at)
+	raw, _ := json.Marshal(valid)
+	parsed, err := ParseCache(raw)
+	if err != nil || !reflect.DeepEqual(parsed, valid) {
+		t.Fatalf("classified cache did not round trip: %+v %v", parsed, err)
+	}
+	for _, tc := range []struct {
+		name  string
+		alter func(*Cache)
+	}{
+		{"legacy-with-metadata", func(c *Cache) { c.Version = 1 }},
+		{"unknown-kind", func(c *Cache) { c.Records[0].Vulnerabilities[0].Kind = "source-controlled-severity" }},
+		{"missing-source", func(c *Cache) { c.Records[0].Vulnerabilities[0].Source = report.AdvisorySource{} }},
+		{"missing-revision", func(c *Cache) { c.Records[0].Vulnerabilities[0].Source.Revision = "" }},
+		{"invalid-source-name", func(c *Cache) { c.Records[0].Vulnerabilities[0].Source.Name = "PRIVATE\nSOURCE" }},
+		{"credential-url", func(c *Cache) {
+			c.Records[0].Vulnerabilities[0].Source.URL = "https://user:PRIVATE@example.invalid/feed"
+		}},
+		{"query-url", func(c *Cache) {
+			c.Records[0].Vulnerabilities[0].Source.URL = "https://example.invalid/feed?token=PRIVATE"
+		}},
+		{"non-https-source", func(c *Cache) { c.Records[0].Vulnerabilities[0].Source.URL = "file:///PRIVATE/feed" }},
+		{"missing-modified", func(c *Cache) { c.Records[0].Vulnerabilities[0].Modified = "" }},
+		{"invalid-modified", func(c *Cache) { c.Records[0].Vulnerabilities[0].Modified = "PRIVATE" }},
+		{"future-modified", func(c *Cache) { c.Records[0].Vulnerabilities[0].Modified = at.Add(time.Hour).Format(time.RFC3339) }},
+		{"conflicting-source", func(c *Cache) {
+			v := c.Records[0].Vulnerabilities[0]
+			v.Source.Revision = "other"
+			c.Records[0].Vulnerabilities = append(c.Records[0].Vulnerabilities, v)
+		}},
+		{"conflicting-kind", func(c *Cache) {
+			c.Records[0].Vulnerabilities = append(c.Records[0].Vulnerabilities, ID{ID: "MAL-fixture"})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var c Cache
+			if json.Unmarshal(raw, &c) != nil {
+				t.Fatal("invalid fixture")
+			}
+			tc.alter(&c)
+			data, _ := json.Marshal(c)
+			if _, err := ParseCache(data); err == nil || strings.Contains(err.Error(), "PRIVATE") {
+				t.Fatalf("invalid classified metadata accepted or leaked: %v", err)
+			}
+		})
+	}
+	for _, tc := range []struct{ name, from, to string }{
+		{"null-kind", `"kind":"malicious-package"`, `"kind":null`},
+		{"kind-alias", `"kind":`, `"Kind":`},
+		{"source-alias", `"source":`, `"Source":`},
+		{"url-alias", `"url":`, `"URL":`},
+		{"null-provenance", `"source":{"name":"operator-intel","url":"https://example.invalid/intel/MAL-fixture","revision":"snapshot-1"}`, `"source":null`},
+		{"null-revision", `"revision":"snapshot-1"`, `"revision":null`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := ParseCache([]byte(strings.Replace(string(raw), tc.from, tc.to, 1))); err == nil {
+				t.Fatal("ambiguous classified cache accepted")
+			}
+		})
+	}
+}
+
+func TestClassifiedCacheExactnessFreshnessAndExport(t *testing.T) {
+	at := time.Date(2026, 11, 3, 12, 0, 0, 250000000, time.UTC)
+	for _, tc := range []struct {
+		name                string
+		alter               func(*Cache, *report.Dependency)
+		wantMatch, complete bool
+	}{
+		{name: "malicious", wantMatch: true, complete: true},
+		{name: "no-ids", alter: func(c *Cache, _ *report.Dependency) { c.Records[0].Vulnerabilities = []ID{} }, complete: true},
+		{name: "wrong-version", alter: func(_ *Cache, d *report.Dependency) { d.DeclaredVersion = "1.2.4" }},
+		{name: "wrong-package", alter: func(_ *Cache, d *report.Dependency) { d.Module = "sample-other" }},
+		{name: "wrong-ecosystem", alter: func(_ *Cache, d *report.Dependency) { d.Ecosystem = "PyPI" }},
+		{name: "range", alter: func(_ *Cache, d *report.Dependency) { d.VersionSemantics = report.VersionUnresolved }},
+		{name: "stale", alter: func(c *Cache, _ *report.Dependency) {
+			c.QueriedAt = at.Add(-8 * 24 * time.Hour)
+			c.Records[0].Vulnerabilities[0].Modified = c.QueriedAt.Add(-time.Hour).Format(time.RFC3339Nano)
+		}},
+		{name: "future-cache", alter: func(c *Cache, _ *report.Dependency) { c.QueriedAt = at.Add(time.Hour) }},
+		{name: "duplicate-identical", alter: func(c *Cache, _ *report.Dependency) {
+			c.Records[0].Vulnerabilities = append(c.Records[0].Vulnerabilities, c.Records[0].Vulnerabilities[0])
+		}, wantMatch: true, complete: true},
+		{name: "fractional-modified", alter: func(c *Cache, _ *report.Dependency) {
+			c.Records[0].Vulnerabilities[0].Modified = at.Add(-time.Millisecond).Format(time.RFC3339Nano)
+		}, wantMatch: true, complete: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cache, dep := classifiedCache(at), cachedDependency()
+			if tc.alter != nil {
+				tc.alter(&cache, &dep)
+			}
+			o := DefaultOptions()
+			o.Enabled = true
+			o.Offline, _ = json.Marshal(cache)
+			r, err := Check(t.Context(), report.DependencyReport{Declarations: []report.Dependency{dep}}, o, at)
+			if err != nil || (len(r.Matches) == 1) != tc.wantMatch || (r.Completeness == report.Complete) != tc.complete {
+				t.Fatalf("classified query mismatch: %+v %v", r, err)
+			}
+			if !tc.wantMatch {
+				return
+			}
+			v := r.Matches[0]
+			if v.Kind != report.AdvisoryMaliciousPackage || v.Source != cache.Records[0].Vulnerabilities[0].Source || v.DatabaseModified != cache.Records[0].Vulnerabilities[0].Modified || r.DatabaseSHA256 == "" {
+				t.Fatal("classified evidence lost", v)
+			}
+			exported, err := Export(r)
+			if err != nil || exported.Version != 2 || !exported.QueriedAt.Equal(cache.QueriedAt) || len(exported.Records[0].Vulnerabilities) != 1 {
+				t.Fatalf("export downgraded metadata, lost age or precision: %+v %v", exported, err)
+			}
+			data, _ := json.Marshal(exported)
+			if _, err := ParseCache(data); err != nil {
+				t.Fatal(err)
+			}
+			r.Matches = append(r.Matches, report.Vulnerability{ID: v.ID, DependencyIDs: v.DependencyIDs})
+			if _, err := Export(r); err == nil {
+				t.Fatal("export silently erased conflicting classification")
+			}
+		})
+	}
+}
+
+func TestQuerybatchCannotSupplyCacheClassification(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"results":[{"vulns":[{"id":"MAL-unclassified","kind":"malicious-package","source":"PRIVATE_UNTRUSTED_FIELD"}]}]}`))
+	}))
+	defer srv.Close()
+	o := DefaultOptions()
+	o.Enabled, o.AllowNetwork, o.AllowLoopback, o.Endpoint = true, true, true, srv.URL
+	r, err := Check(t.Context(), report.DependencyReport{Declarations: []report.Dependency{cachedDependency()}}, o, time.Now())
+	if err != nil || r.Completeness != report.Complete || calls.Load() != 1 || len(r.Matches) != 1 || r.Matches[0].Kind != "" || r.Matches[0].Source != (report.AdvisorySource{}) {
+		t.Fatalf("querybatch fields changed trusted classification: %+v %v", r, err)
+	}
+}
+
+func TestClassifiedCacheRemainsAuthoritativeWithNetwork(t *testing.T) {
+	var sourceCalls atomic.Int32
+	source := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		sourceCalls.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer source.Close()
+	at := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name              string
+		negative, missing bool
+		stale, mixed      bool
+		calls, matches    int
+		complete          bool
+	}{
+		{name: "malicious", matches: 1, complete: true},
+		{name: "negative", negative: true, complete: true},
+		{name: "missing", missing: true, calls: 1, matches: 1},
+		{name: "stale", stale: true, calls: 1, matches: 1},
+		{name: "mixed", mixed: true, calls: 1, matches: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls.Add(1)
+				_, _ = w.Write([]byte(`{"results":[{"vulns":[{"id":"GHSA-live"}]}]}`))
+			}))
+			defer server.Close()
+			cache := classifiedCache(at.Add(-time.Hour))
+			cache.Records[0].Vulnerabilities[0].Source.URL = source.URL + "/intel"
+			if tc.negative {
+				cache.Records[0].Vulnerabilities = []ID{}
+			}
+			if tc.missing {
+				cache.Records = []Record{}
+			}
+			if tc.stale {
+				cache.QueriedAt = at.Add(-8 * 24 * time.Hour)
+				cache.Records[0].Vulnerabilities[0].Modified = cache.QueriedAt.Add(-time.Hour).Format(time.RFC3339)
+			}
+			o := DefaultOptions()
+			o.Enabled, o.AllowNetwork, o.AllowLoopback, o.Endpoint = true, true, true, server.URL
+			o.Offline, _ = json.Marshal(cache)
+			deps := report.DependencyReport{Declarations: []report.Dependency{cachedDependency()}}
+			if tc.mixed {
+				deps.Declarations = append(deps.Declarations, report.Dependency{ID: "other", Ecosystem: "npm", Module: "other", DeclaredVersion: "2.0.0", VersionSemantics: report.VersionExactDeclaration})
+			}
+			r, err := Check(t.Context(), deps, o, at)
+			if err != nil || !r.ClassifiedCache || (r.Completeness == report.Complete) != tc.complete || calls.Load() != int32(tc.calls) || len(r.Matches) != tc.matches {
+				t.Fatalf("network replaced classified coverage: %+v calls=%d error=%v", r, calls.Load(), err)
+			}
+			if !tc.complete && r.Queries[len(r.Queries)-1].Status != "classification_not_cached" {
+				t.Fatalf("unclassified network response closed malware gap: %+v", r.Queries)
+			}
+			exported, err := Export(r)
+			if err != nil || exported.Version != 2 {
+				t.Fatalf("export lost classification scope: %+v %v", exported, err)
+			}
+			if tc.missing || tc.stale {
+				if len(exported.Records) != 0 {
+					t.Fatal("ordinary online result exported as malware negative")
+				}
+			} else if !exported.QueriedAt.Equal(cache.QueriedAt) || len(exported.Records) != 1 || tc.negative && len(exported.Records[0].Vulnerabilities) != 0 || !tc.negative && exported.Records[0].Vulnerabilities[0].Kind != report.AdvisoryMaliciousPackage {
+				t.Fatalf("classified cache evidence or negative scope lost: %+v", exported)
+			}
+		})
+	}
+	if sourceCalls.Load() != 0 {
+		t.Fatal("advisory provenance URL was fetched")
+	}
+}
+
+func TestExportCannotInventClassifiedCacheCoverage(t *testing.T) {
+	at := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	r := report.VulnerabilityReport{
+		Enabled: true, QueriedAt: at.Format(time.RFC3339), Completeness: report.Complete,
+		Queries: []report.VulnerabilityQuery{{DependencyID: "dep", Ecosystem: "npm", Name: "sample", Version: "1.2.3", Status: report.OutcomeCompleted}},
+		Matches: []report.Vulnerability{{ID: "GHSA-fixture", DependencyIDs: []string{"dep"}, Kind: "vulnerability"}},
+	}
+	if _, err := Export(r); err == nil {
+		t.Fatal("metadata silently promoted ordinary query results to malware coverage")
+	}
+	r.ClassifiedCache = true
+	r.DatabaseSHA256 = strings.Repeat("a", 64)
+	if _, err := Export(r); err == nil {
+		t.Fatal("ordinary online outcome exported as a classified answer")
+	}
+}
+
+func TestExactCacheCoordinatesCannotAlias(t *testing.T) {
+	at := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	for _, version := range []int{1, 2} {
+		t.Run(strconv.Itoa(version), func(t *testing.T) {
+			cache := classifiedCache(at)
+			cache.Version = version
+			if version == 1 {
+				cache.Records[0].Vulnerabilities = []ID{{ID: "GHSA-fixture"}}
+			}
+			cache.Records[0].Name = "sample\x00scope"
+			dep := cachedDependency()
+			dep.Ecosystem, dep.Module = "npm\x00sample", "scope"
+			o := DefaultOptions()
+			o.Enabled = true
+			o.Offline, _ = json.Marshal(cache)
+			r, err := Check(t.Context(), report.DependencyReport{Declarations: []report.Dependency{dep}}, o, at)
+			if err != nil || len(r.Matches) != 0 || r.Completeness != report.Partial {
+				t.Errorf("different coordinate tuples aliased: %+v %v", r, err)
+			}
+			cache.Records = append(cache.Records, Record{Ecosystem: dep.Ecosystem, Name: dep.Module, Version: dep.DeclaredVersion, Vulnerabilities: []ID{}})
+			o.Offline, _ = json.Marshal(cache)
+			if _, err := ParseCache(o.Offline); err != nil {
+				t.Errorf("distinct coordinate records rejected as duplicates: %v", err)
+			}
+			exported, err := Export(report.VulnerabilityReport{Enabled: true, ClassifiedCache: version == 2, DatabaseSHA256: strings.Repeat("a", 64), QueriedAt: at.Format(time.RFC3339), Queries: []report.VulnerabilityQuery{
+				{DependencyID: "first", Ecosystem: "npm", Name: "sample\x00scope", Version: "1.2.3", Status: report.OutcomeCached},
+				{DependencyID: "second", Ecosystem: dep.Ecosystem, Name: dep.Module, Version: dep.DeclaredVersion, Status: report.OutcomeCached},
+			}})
+			if err != nil || len(exported.Records) != 2 {
+				t.Errorf("export merged distinct coordinate tuples: %+v %v", exported, err)
+			}
+		})
+	}
+}
+
+func TestExportRejectsZeroQueryTime(t *testing.T) {
+	for _, classified := range []bool{false, true} {
+		_, err := Export(report.VulnerabilityReport{ClassifiedCache: classified, QueriedAt: "0001-01-01T00:00:00Z"})
+		if err == nil {
+			t.Fatal("Export returned a cache which ParseCache rejects as undated")
+		}
+	}
+}
+
+func TestExportRejectsBrokenClassifiedReports(t *testing.T) {
+	at := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	o := DefaultOptions()
+	o.Enabled = true
+	o.Offline, _ = json.Marshal(classifiedCache(at))
+	original, err := Check(t.Context(), report.DependencyReport{Declarations: []report.Dependency{cachedDependency()}}, o, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		edit func(*report.VulnerabilityReport)
+	}{
+		{"disabled", func(r *report.VulnerabilityReport) { r.Enabled = false }},
+		{"missing-hash", func(r *report.VulnerabilityReport) { r.DatabaseSHA256 = "" }},
+		{"missing-association", func(r *report.VulnerabilityReport) { r.Matches[0].DependencyIDs = nil }},
+		{"unknown-association", func(r *report.VulnerabilityReport) { r.Matches[0].DependencyIDs = []string{"unknown"} }},
+		{"online-outcome", func(r *report.VulnerabilityReport) { r.Queries[0].Status = report.OutcomeCompleted }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, _ := json.Marshal(original)
+			var changed report.VulnerabilityReport
+			if err := json.Unmarshal(data, &changed); err != nil {
+				t.Fatal(err)
+			}
+			tc.edit(&changed)
+			if cache, err := Export(changed); err == nil {
+				t.Fatalf("malformed classified evidence exported, possibly as a clean coordinate: %+v", cache)
+			}
+		})
+	}
 }

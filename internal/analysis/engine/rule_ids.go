@@ -2,6 +2,7 @@ package engine
 
 // Stable check identities shared by metadata, dispatch and evidence emission.
 const (
+	ruleMAL001 = "MAL001"
 	ruleOSV001 = "OSV001"
 	ruleYR1    = "YR1"
 	ruleYR2    = "YR2"

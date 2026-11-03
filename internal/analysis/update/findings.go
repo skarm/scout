@@ -196,7 +196,11 @@ func absenceCheckComplete(f report.Finding, objectID string, x inventory, checks
 
 	for _, c := range coverage.Checks {
 		if c.AnalyzerID == f.RuleID {
-			completed = c.Status == report.OutcomeCompleted
+			if c.Status != report.OutcomeCompleted && c.Status != report.OutcomeCached {
+				return false
+			}
+
+			completed = true
 		}
 	}
 

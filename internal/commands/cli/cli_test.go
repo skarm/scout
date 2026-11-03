@@ -22,6 +22,7 @@ import (
 	scenario "github.com/skarm/scout/internal/scantest/scenarios"
 	"github.com/skarm/scout/internal/signatures"
 	"github.com/skarm/scout/internal/syntax/frontend"
+	"github.com/skarm/scout/osv"
 	"github.com/skarm/scout/report"
 )
 
@@ -447,3 +448,66 @@ func assertMachineReport(t *testing.T, format string, data []byte, exit int) {
 }
 
 func (failWriter) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
+
+func TestClassifiedDependencyCacheCLI(t *testing.T) {
+	root, trusted := t.TempDir(), t.TempDir()
+	input, path := filepath.Join(root, "requirements-dev.txt"), filepath.Join(trusted, "cache.json")
+	if err := os.WriteFile(input, []byte("sample==1.2.3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Add(-time.Minute)
+	cache := osv.Cache{Version: 2, QueriedAt: at, Records: []osv.Record{{
+		Ecosystem: "PyPI", Name: "sample", Version: "1.2.3", Vulnerabilities: []osv.ID{{
+			ID: "MAL-fixture", Kind: report.AdvisoryMaliciousPackage, Modified: at.Add(-time.Hour).Format(time.RFC3339),
+			Source: report.AdvisorySource{Name: "operator-intel", URL: "https://example.invalid/MAL-fixture", Revision: "snapshot-1"},
+		}},
+	}}}
+	for _, tc := range []struct {
+		name string
+		edit func(*osv.Cache)
+		code int
+	}{
+		{name: "malicious", code: 1},
+		{name: "negative", edit: func(c *osv.Cache) { c.Records[0].Vulnerabilities = []osv.ID{} }},
+		{name: "missing", edit: func(c *osv.Cache) { c.Records = []osv.Record{} }, code: 2},
+		{name: "invalid-provenance", edit: func(c *osv.Cache) { c.Records[0].Vulnerabilities[0].Source.Revision = "" }, code: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, _ := json.Marshal(cache)
+			var fixture osv.Cache
+			if err := json.Unmarshal(data, &fixture); err != nil {
+				t.Fatal(err)
+			}
+			if tc.edit != nil {
+				tc.edit(&fixture)
+			}
+			data, _ = json.Marshal(fixture)
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var out, diagnostics bytes.Buffer
+			args := []string{"scan", "--profile", "custom", "--checks", "none", "--scope", "selected", "--fail-on", "critical", "--osv-cache", path, "--format", "json", input}
+			code := cli.Run(t.Context(), args, &out, &diagnostics)
+			if code != tc.code {
+				t.Fatalf("code=%d want=%d stderr=%s", code, tc.code, &diagnostics)
+			}
+			if tc.name == "invalid-provenance" {
+				if out.Len() != 0 || !strings.Contains(diagnostics.String(), "invalid_options") {
+					t.Fatal("invalid metadata did not fail preflight")
+				}
+				return
+			}
+			var decoded report.Document
+			if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if err := decoded.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			v := decoded.Run.Targets[0].Analysis.Vulnerabilities
+			if !v.ClassifiedCache || (len(v.Matches) == 1) != (tc.name == "malicious") || tc.name == "malicious" && !bytes.Contains(out.Bytes(), []byte(`"rule_id": "MAL001"`)) {
+				t.Fatalf("cache classification not preserved in CLI output: %s", &out)
+			}
+		})
+	}
+}

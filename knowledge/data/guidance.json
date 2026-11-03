@@ -1880,6 +1880,24 @@
       }
     ]
   },
+  "MAL001": {
+    "explanation": "An operator-trusted exact-coordinate cache explicitly identifies this captured package version as malicious and preserves its source revision and modification time.",
+    "remediation": "Verify the advisory and actual dependency selection, remove or replace affected versions, and review credential exposure if the package was installed or executed.",
+    "review_checks": [
+      "Check the cache hash, query age, advisory modification time and source revision against the operator's trusted intelligence source.",
+      "Confirm exact ecosystem, package and version in the cited captured manifest bytes; ranges and advisory ID prefixes do not establish a malware match."
+    ],
+    "benign_considerations": [
+      "A declaration does not prove installation, execution or credential compromise. Source metadata is an operator assertion, not authentication."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/ossf/malicious-packages",
+        "symbol": "exact affected package/version reports in OSV format",
+        "relationship": "data-format and threat-intelligence reference; Scout-owned cache matcher, not a port of upstream detection code"
+      }
+    ]
+  },
   "OSV001": {
     "explanation": "A database advisory matched an exact supported package coordinate.",
     "remediation": "Check affected ranges and patched versions, verify actual resolved dependency and applicability, then update or mitigate.",
