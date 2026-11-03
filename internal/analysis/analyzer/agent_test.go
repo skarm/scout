@@ -3,12 +3,15 @@ package analyzer_test
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/analyzer"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/internal/syntax/parse"
+	"github.com/skarm/scout/internal/syntax/source"
 )
 
 func TestAgentConfigurationRules(t *testing.T) {
@@ -295,6 +298,8 @@ func FuzzAgentConfigChecks(f *testing.F) {
 	f.Add(`{"permissions":{"defaultMode":"bypassPermissions"}}`)
 	f.Add(`{"mcpServers":{"x":{"command":"npx","args":["server@latest"]}}}`)
 	f.Add(`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"nothing"}]}]}}`)
+	f.Add(`{"tools":[{"inputSchema":{"$ref":"https://example.invalid/schema"}}]}`)
+	f.Add(`{"tools":[{"inputSchema":{"$ref":123}}]}`)
 	f.Fuzz(func(t *testing.T, text string) {
 		if len(text) > 64<<10 {
 			t.Skip()
@@ -306,7 +311,9 @@ func FuzzAgentConfigChecks(f *testing.F) {
 			}
 			da := a
 			r, err := da.Find(context.Background(), prepared(context.Background(), doc), 5)
-			if err != nil {
+			// MC004 reports unsupported schema semantics as an error. Its partial
+			// results must still obey the same budget and evidence invariants.
+			if err != nil && a.Rule().ID != "MC004" {
 				t.Fatal(err)
 			}
 			if len(r.Matches) > 5 {
@@ -330,4 +337,197 @@ func agentRule(t testing.TB, id string) analyzer.Analyzer {
 	}
 	t.Fatalf("missing %s", id)
 	return nil
+}
+
+func TestMCPExternalSchemaReferences(t *testing.T) {
+	for _, tc := range []struct {
+		name, schema string
+		want         int
+		invalid      bool
+	}{
+		{name: "https", schema: `{"$ref":"https://schema.example.invalid/PRIVATE_REF"}`, want: 1},
+		{name: "boolean-schema", schema: `false`},
+		{name: "boolean-children", schema: `{"properties":{"x":false},"items":true}`},
+		{name: "schema-array-is-unsupported", schema: `[]`, invalid: true},
+		{name: "schema-string-is-unsupported", schema: `"https://example.invalid/PRIVATE_REF"`, invalid: true},
+		{name: "bad-properties-shape", schema: `{"properties":[{"$ref":"https://example.invalid/PRIVATE_REF"}]}`, invalid: true},
+		{name: "bad-composition-shape", schema: `{"allOf":{"$ref":"https://example.invalid/PRIVATE_REF"}}`, invalid: true},
+		{name: "legacy-items-shape", schema: `{"items":[{"$ref":"https://example.invalid/PRIVATE_REF"}]}`, invalid: true},
+		{name: "dynamic-external", schema: `{"$dynamicRef":"https://schema.example.invalid/PRIVATE_REF#value"}`, want: 1},
+		{name: "dynamic-local", schema: `{"$dynamicRef":"#value","$dynamicAnchor":"value"}`},
+		{name: "dynamic-bundled", schema: `{"$id":"https://schema.example.invalid/root","$dynamicRef":"child#value","$defs":{"child":{"$id":"child","$dynamicAnchor":"value"}}}`},
+		{name: "both-reference-keywords", schema: `{"$ref":"https://schema.example.invalid/one","$dynamicRef":"https://schema.example.invalid/two#value"}`, want: 2},
+		{name: "bad-dynamic-ref", schema: `{"$dynamicRef":123}`, invalid: true},
+		{name: "bad-ref-does-not-hide-child", schema: `{"$ref":123,"properties":{"x":{"$ref":"https://schema.example.invalid/PRIVATE_REF"}}}`, want: 1, invalid: true},
+		{name: "bad-ref-does-not-hide-sibling", schema: `{"properties":{"x":{"$ref":123},"y":{"$ref":"https://schema.example.invalid/PRIVATE_REF"}}}`, want: 1, invalid: true},
+		{name: "metadata-ip", schema: `{"$ref":"http://169.254.169.254/latest/meta-data/"}`, want: 1},
+		{name: "file", schema: `{"$ref":"file:///etc/PRIVATE_REF"}`, want: 1},
+		{name: "relative", schema: `{"$ref":"../PRIVATE_REF.json#/$defs/value"}`, want: 1},
+		{name: "network-path", schema: `{"$ref":"//schema.example.invalid/PRIVATE_REF"}`, want: 1},
+		{name: "urn", schema: `{"$ref":"urn:PRIVATE_REF"}`, want: 1},
+		{name: "escaped-key", schema: `{"\u0024ref":"https://schema.example.invalid/PRIVATE_REF"}`, want: 1},
+		{name: "fragment", schema: `{"$ref":"#/$defs/value","$defs":{"value":{"type":"string"}}}`},
+		{name: "anchor", schema: `{"$ref":"#value","$defs":{"value":{"$anchor":"value","type":"string"}}}`},
+		{name: "empty-reference", schema: `{"$ref":""}`},
+		{name: "self", schema: `{"$id":"https://schema.example.invalid/self","$ref":"https://schema.example.invalid/self#/$defs/value"}`},
+		{name: "self-host-case", schema: `{"$id":"https://SCHEMA.EXAMPLE.INVALID/self","$ref":"https://schema.example.invalid/self#value"}`},
+		{name: "ipv6-zone-is-unsupported", schema: `{"$id":"https://[fe80::1%25Zone]/self","$ref":"https://[fe80::1%25zone]/self"}`, invalid: true},
+		{name: "ipv6-zone-reference-is-unsupported", schema: `{"$ref":"https://[fe80::1%25zone]/self"}`, invalid: true},
+		{name: "unicode-hosts-are-not-case-folded", schema: `{"$id":"https://İ.example.invalid/self","$ref":"https://i.example.invalid/self"}`, want: 1},
+		{name: "self-default-port", schema: `{"$id":"https://schema.example.invalid:443/self","$ref":"https://schema.example.invalid/self"}`},
+		{name: "self-empty-path", schema: `{"$id":"https://schema.example.invalid","$ref":"https://schema.example.invalid/"}`},
+		{name: "self-escaped-unreserved", schema: `{"$id":"https://schema.example.invalid/%7euser","$ref":"https://schema.example.invalid/~user"}`},
+		{name: "self-escaped-dot-segments", schema: `{"$id":"https://schema.example.invalid/value","$ref":"https://schema.example.invalid/nested/%2e%2e/value"}`},
+		{name: "escaped-reserved-is-distinct", schema: `{"$id":"https://schema.example.invalid/a%2fb","$ref":"https://schema.example.invalid/a/b"}`, want: 1},
+		{name: "escaped-reserved-case", schema: `{"$id":"https://schema.example.invalid/a%2fb","$ref":"https://schema.example.invalid/a%2Fb"}`},
+		{name: "query-is-distinct", schema: `{"$id":"https://schema.example.invalid/self?version=1","$ref":"https://schema.example.invalid/self?version=2"}`, want: 1},
+		{name: "urn-self-fragment", schema: `{"$id":"urn:example:self","$ref":"#value"}`},
+		{name: "urn-relative", schema: `{"$id":"urn:example:self","$ref":"child"}`, invalid: true},
+		{name: "anonymous-relative-id", schema: `{"$id":"foo.json","$ref":"foo.json"}`, invalid: true},
+		{name: "anonymous-relative-id-alias", schema: `{"$ref":"../foo","$defs":{"child":{"$id":"foo"}}}`, invalid: true},
+		{name: "declared-id-only", schema: `{"$id":"http://169.254.169.254/PRIVATE_REF"}`},
+		{name: "bundled-forward", schema: `{"$id":"https://schema.example.invalid/root","$ref":"child","$defs":{"child":{"$id":"child","type":"string"}}}`},
+		{name: "nested-base", schema: `{"$id":"https://schema.example.invalid/root","$defs":{"child":{"$id":"child","$ref":"other"}}}`, want: 1},
+		{name: "sibling-bases", schema: `{"$id":"https://schema.example.invalid/root","$defs":{"a":{"$id":"dir/a"},"b":{"$ref":"dir/a"},"c":{"$ref":"a"}}}`, want: 1},
+		{name: "examples", schema: `{"examples":[{"$ref":"file:///PRIVATE_REF"}],"default":{"$ref":"file:///PRIVATE_REF"},"const":{"$ref":"file:///PRIVATE_REF"},"enum":[{"$ref":"file:///PRIVATE_REF"}]}`},
+		{name: "example-id-cannot-suppress", schema: `{"$ref":"https://schema.example.invalid/PRIVATE_REF","examples":[{"$id":"https://schema.example.invalid/PRIVATE_REF"}]}`, want: 1},
+		{name: "property-named-ref", schema: `{"properties":{"$ref":{"type":"string"}}}`},
+		{name: "not-schema-data", schema: `{"extensions":{"$ref":"file:///PRIVATE_REF"}}`},
+		{name: "meta-schema-only", schema: `{"$schema":"https://json-schema.org/draft/2020-12/schema"}`},
+		{name: "composition", schema: `{"allOf":[{"$ref":"relative.json"}],"if":{"$ref":"test.json"},"then":{"$ref":"yes.json"},"else":{"$ref":"no.json"},"prefixItems":[{"$ref":"item.json"}]}`, want: 5},
+		{name: "maps", schema: `{"properties":{"p":{"$ref":"p.json"}},"patternProperties":{"x":{"$ref":"x.json"}},"dependentSchemas":{"p":{"$ref":"d.json"}}}`, want: 3},
+		{name: "items", schema: `{"items":{"$ref":"item.json"},"contains":{"$ref":"value.json"},"unevaluatedProperties":{"$ref":"props.json"}}`, want: 3},
+		{name: "ref-number", schema: `{"$ref":123}`, invalid: true},
+		{name: "bad-uri", schema: `{"$ref":"http://[PRIVATE_REF"}`, invalid: true},
+		{name: "bad-query-escape", schema: `{"$ref":"https://example.invalid/schema?value=%ZZ"}`, invalid: true},
+		{name: "bad-opaque-escape", schema: `{"$ref":"urn:example:%ZZ"}`, invalid: true},
+		{name: "uri-space", schema: `{"$ref":"PRIVATE REF"}`, invalid: true},
+		{name: "id-fragment", schema: `{"$id":"https://schema.example.invalid/root#PRIVATE_REF","$ref":"other"}`, invalid: true},
+		{name: "duplicate-identity", schema: `{"$id":"https://schema.example.invalid/root","$defs":{"child":{"$id":"https://schema.example.invalid/root"}}}`, invalid: true},
+		{name: "unsupported-dialect", schema: `{"$schema":"https://example.invalid/PRIVATE_REF","$ref":"other"}`, invalid: true},
+		{name: "oversized-id", schema: `{"$id":"https://example.invalid/` + strings.Repeat("x", 4096) + `","$ref":"other"}`, invalid: true},
+		{name: "oversized-ref", schema: `{"$ref":"https://example.invalid/` + strings.Repeat("x", 4096) + `"}`, invalid: true},
+		{name: "uri-exact-limit", schema: `{"$ref":"https://example.invalid/` + strings.Repeat("x", 4096-len("https://example.invalid/")) + `"}`, want: 1},
+		{name: "resolved-uri-limit", schema: `{"$id":"https://example.invalid/` + strings.Repeat("x", 3000) + `/root","$ref":"` + strings.Repeat("y", 2000) + `"}`, invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, field := range []string{"inputSchema", "outputSchema"} {
+				tool := `{"name":"fixture","` + field + `":` + tc.schema + `}`
+				for _, text := range []string{
+					`{"tools":[` + tool + `]}`,
+					`{"jsonrpc":"2.0","result":{"tools":[` + tool + `]}}`,
+					`{"tools":null,"result":{"tools":[` + tool + `]}}`,
+					`{"tools":[],"result":{"tools":[` + tool + `]}}`,
+					`{"schema":"scout.mcp-snapshot/v1","tools":{"tools":[` + tool + `]}}`,
+				} {
+					a := agentRule(t, "MC004")
+					r, err := a.Find(t.Context(), prepared(t.Context(), artifact.NewFile("tools.json", []byte(text), false)), 20)
+					if (err != nil) != tc.invalid || len(r.Matches) != tc.want || r.Truncated {
+						t.Fatalf("%s got %+v, error=%v", field, r, err)
+					}
+					if err != nil && strings.Contains(err.Error(), "PRIVATE_REF") {
+						t.Fatal("reference leaked through error")
+					}
+					for _, m := range r.Matches {
+						var value string
+						if m.Start < 0 || m.End <= m.Start || m.End > len(text) || json.Unmarshal([]byte(text[m.Start:m.End]), &value) != nil {
+							t.Fatal("reference evidence is not the original string scalar")
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestMCPReferenceErrorsDoNotHideOtherUnits(t *testing.T) {
+	bad := `{"tools":[{"inputSchema":{"$schema":"https://example.invalid/unsupported"}}]}`
+	good := `{"tools":[{"inputSchema":{"$ref":"https://schema.example.invalid/PRIVATE_REF"}}]}`
+	for _, parts := range [][]string{{bad, good}, {good, bad}} {
+		text := "```json\n" + parts[0] + "\n```\n\n```json\n" + parts[1] + "\n```\n"
+		r, err := agentRule(t, "MC004").Find(t.Context(), prepared(t.Context(), artifact.NewFile("SKILL.md", []byte(text), false)), 20)
+		if err == nil || len(r.Matches) != 1 || r.Truncated {
+			t.Fatalf("independent unit hidden by schema error: %+v error=%v", r, err)
+		}
+	}
+}
+
+func FuzzMCPReferenceIsolation(f *testing.F) {
+	f.Add("resource")
+	f.Add("../nested/value?name=sample")
+	f.Add("%2e%2e/значение")
+	f.Fuzz(func(t *testing.T, value string) {
+		if len(value) > 512 {
+			t.Skip()
+		}
+		// The resource is outside the anonymous schema for every generated
+		// suffix. Escaping keeps the URI valid independently of fuzzed bytes.
+		reference := "https://unprovided.example.invalid/" + url.PathEscape(value)
+		encoded, err := json.Marshal(reference)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bad := `{"tools":[{"inputSchema":{"$schema":"https://example.invalid/unsupported"}}]}`
+		for _, keyword := range []string{"$ref", "$dynamicRef"} {
+			good := `{"tools":[{"inputSchema":{"` + keyword + `":` + string(encoded) + `}}]}`
+			for _, parts := range [][]string{{bad, good}, {good, bad}} {
+				text := "```json\n" + parts[0] + "\n```\n\n```json\n" + parts[1] + "\n```\n"
+				file := prepared(t.Context(), artifact.NewFile("SKILL.md", []byte(text), false))
+				result, err := agentRule(t, "MC004").Find(t.Context(), file, 1)
+				if err == nil || len(result.Matches) != 1 || result.Truncated || text[result.Matches[0].Start:result.Matches[0].End] != string(encoded) {
+					t.Fatalf("independent reference lost or evidence changed: %+v error=%v", result, err)
+				}
+			}
+		}
+	})
+}
+
+func TestMCPExternalSchemaReferenceLimitsAndCancellation(t *testing.T) {
+	a := agentRule(t, "MC004")
+	text := "  ```json\r\n  {\"tools\":[{\"inputSchema\":{\"$ref\":\"one.json\"},\"outputSchema\":{\"$ref\":\"two.json\"}}]}\r\n  ```\r\n"
+	file := prepared(t.Context(), artifact.NewFile("LICENSE", []byte(text), false))
+	for _, budget := range []int{0, 1, 2} {
+		r, err := a.Find(t.Context(), file, budget)
+		if err != nil || len(r.Matches) != budget || r.Truncated != (budget < 2) {
+			t.Fatalf("budget=%d result=%+v error=%v", budget, r, err)
+		}
+		if budget > 0 && text[r.Matches[0].Start:r.Matches[0].End] != `"one.json"` {
+			t.Fatal("Markdown evidence mapping lost")
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if r, err := a.Find(ctx, file, 20); err == nil || len(r.Matches) != 0 {
+		t.Fatal("cancelled reference check completed")
+	}
+}
+
+func TestAgentConfigurationPreservesEvidenceMappingErrors(t *testing.T) {
+	for _, tc := range []struct{ rule, text string }{
+		{"MC004", `{"tools":[{"inputSchema":{"$ref":"https://example.invalid/schema"}}]}`},
+		{"AC002", `{"permissions":{"allow":["Bash"]}}`},
+		{"AC003", `{"fixture":{"Stop":[{"hooks":[{"type":"command","command":"inert-command"}]}]}}`},
+	} {
+		t.Run(tc.rule, func(t *testing.T) {
+			file := prepared(t.Context(), artifact.NewFile("config.json", []byte(tc.text), false))
+			tree := file.Units()[0].Tree.(parse.JSONTree)
+			node := tree.Root
+			switch tc.rule {
+			case "MC004":
+				node = node.Get("tools").Elements[0].Get("inputSchema").Get("$ref")
+			case "AC002":
+				node = node.Get("permissions").Get("allow").Elements[0]
+			case "AC003":
+				file = file.WithConfigScopes([]document.ConfigScope{{Role: "hook_config", Span: node.Get("fixture").Span}})
+				node = node.Get("fixture").Get("Stop").Elements[0].Get("hooks").Elements[0].Get("command")
+			}
+			// Simulate a faulty trusted frontend returning an unmappable span.
+			// No finding may be emitted and the check must retain the failure.
+			node.Span = source.Span{Start: len(tc.text), End: len(tc.text) + 1}
+			result, err := agentRule(t, tc.rule).Find(t.Context(), file, 20)
+			if err == nil || len(result.Matches) != 0 || result.Truncated {
+				t.Fatalf("evidence mapping error was lost: %+v error=%v", result, err)
+			}
+		})
+	}
 }

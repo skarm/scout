@@ -4,23 +4,200 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/internal/scantest"
 	scenario "github.com/skarm/scout/internal/scantest/scenarios"
+	"github.com/skarm/scout/internal/syntax/mcpsnapshot"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
 )
+
+func TestMCPSchemaReferencesAcrossSurfaces(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte(`{"type":"string"}`))
+	}))
+	defer server.Close()
+	reference := server.URL + "/PRIVATE_MCP_REF?token=PRIVATE_MCP_REF"
+	encoded, _ := json.Marshal(reference)
+	list := `{"tools":[{"name":"fixture","inputSchema":{"type":"object","properties":{"x":{"$ref":` + string(encoded) + `}}}}]}`
+	capture := `{"initialize":{"protocolVersion":"2025-11-25","serverInfo":{"name":"fixture","version":"1"},"capabilities":{}},"tools":` + list + `}`
+	snapshot, err := mcpsnapshot.Create(t.Context(), "PRIVATE_SOURCE", []byte(capture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := scantest.DefaultConfig()
+	config.Gate.Scope = policy.SelectedScope
+	scanner := scenario.Scanner(t, config)
+	for _, tc := range []struct{ name, filename, text string }{
+		{"list", "tools.json", list},
+		{"dynamic", "tools.json", strings.Replace(list, "$ref", "$dynamicRef", 1)},
+		{"response", "tools.json", `{"jsonrpc":"2.0","id":1,"result":` + list + `}`},
+		{"capture", "tools.json", capture},
+		{"snapshot", "tools.json", string(snapshot)},
+		{"fence", "LICENSE", "  ```json\r\n  " + list + "\r\n  ```\r\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, err := scanner.ScanBytes(t.Context(), tc.filename, []byte(tc.text))
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			var findings []report.Finding
+			for _, finding := range r.Findings {
+				if finding.RuleID == "MC004" {
+					findings = append(findings, finding)
+				}
+			}
+			if len(findings) != 1 || findings[0].Severity != report.Medium || r.Evaluation.Decision != report.Review {
+				t.Fatalf("schema reference signal lost or escalated: findings=%+v decision=%s", findings, r.Evaluation.Decision)
+			}
+			f := findings[0]
+			start, end := f.Location.ByteStart, f.Location.ByteEnd
+			if start < 0 || end > len(tc.text) || end <= start || tc.text[start:end] != string(encoded) {
+				t.Fatal("reference source coordinates changed")
+			}
+			digest := sha256.Sum256([]byte(tc.text[start:end]))
+			if f.Evidence.SpanSHA256 != hex.EncodeToString(digest[:]) {
+				t.Fatal("reference evidence is not bound to captured bytes")
+			}
+			for _, format := range []report.Format{report.JSON, report.SARIF, report.Text, report.Markdown} {
+				var out bytes.Buffer
+				if err := report.Write(&out, format, r.Document); err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(out.String(), reference) || strings.Contains(out.String(), "PRIVATE_MCP_REF") || strings.Contains(out.String(), "PRIVATE_SOURCE") {
+					t.Fatal("schema reference or source identity leaked into report")
+				}
+			}
+		})
+	}
+	if requests.Load() != 0 {
+		t.Fatal("scanner fetched a schema reference")
+	}
+}
+
+func TestMCPSchemaReferenceRetainsFindingsAcrossFailures(t *testing.T) {
+	config := scantest.DefaultConfig()
+	config.Gate.Scope = policy.SelectedScope
+	scanner := scenario.Scanner(t, config)
+	bad := `{"tools":[{"inputSchema":{"$schema":"https://example.invalid/unsupported"}}]}`
+	good := `{"tools":[{"inputSchema":{"$dynamicRef":"https://example.invalid/PRIVATE_MCP_REF#value"}}]}`
+	for _, text := range []string{
+		`{"tools":[{"inputSchema":{"$ref":123,"properties":{"x":{"$ref":"https://example.invalid/PRIVATE_MCP_REF"}}}}]}`,
+		"```json\n" + bad + "\n```\n\n```json\n" + good + "\n```\n",
+	} {
+		r, err := scanner.ScanBytes(t.Context(), "SKILL.md", []byte(text))
+		if !errors.Is(err, scantest.ErrIncomplete) || r.Run.State != report.RunIncomplete {
+			t.Fatal("schema failure did not retain incomplete state", err)
+		}
+		found := 0
+		for _, finding := range r.Findings {
+			if finding.RuleID == "MC004" {
+				found++
+				if finding.RuleVersion != "5" || finding.Evidence.SpanSHA256 == "" {
+					t.Fatal("reference finding lost version or evidence")
+				}
+			}
+		}
+		if found != 1 {
+			t.Fatal("known reference lost alongside a schema failure")
+		}
+		foundCheck := false
+		for _, check := range r.Coverage.Checks {
+			if check.AnalyzerID == "MC004" {
+				foundCheck = true
+				if check.Status != report.OutcomeFailed || check.Findings != 1 {
+					t.Fatalf("partial findings do not agree with coverage: %+v", check)
+				}
+			}
+		}
+		if !foundCheck {
+			t.Fatal("reference coverage missing")
+		}
+	}
+}
+
+func TestMCPSchemaReferenceGapsRemainExplicit(t *testing.T) {
+	config := scantest.DefaultConfig()
+	config.Gate.Scope = policy.SelectedScope
+	scanner := scenario.Scanner(t, config)
+	for _, schema := range []string{
+		`{"$ref":null}`,
+		`{"properties":[{"$ref":"https://example.invalid/schema"}]}`,
+		`{"$ref":"http://[PRIVATE_MCP_REF"}`,
+		`{"$schema":"https://example.invalid/custom-dialect"}`,
+		`{"$id":"https://example.invalid/root","$defs":{"child":{"$id":"https://example.invalid/root"}}}`,
+	} {
+		text := `{"tools":[{"inputSchema":` + schema + `}]}`
+		r, err := scanner.ScanBytes(t.Context(), "tools.json", []byte(text))
+		if !errors.Is(err, scantest.ErrIncomplete) || r.Run.State != report.RunIncomplete {
+			t.Fatal("unsupported schema produced a complete scan", err)
+		}
+		found := false
+		for _, check := range r.Coverage.Checks {
+			if check.AnalyzerID == "MC004" {
+				found = true
+				if check.Status != report.OutcomeFailed {
+					t.Fatalf("schema uncertainty hidden by unrelated JSON gaps: %+v", check)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("MC004 coverage missing")
+		}
+	}
+}
+
+func TestMCPSchemaReferenceComparisonUsesItsCoverage(t *testing.T) {
+	config := scantest.DefaultConfig()
+	config.Gate.Scope = policy.SelectedScope
+	scanner := scenario.Scanner(t, config)
+	external := `{"tools":[{"inputSchema":{"$ref":"https://schemas.example.invalid/value"}}]}`
+	local := `{"tools":[{"inputSchema":{"$ref":"#/$defs/value","$defs":{"value":{"type":"string"}}}}]}`
+	unsupported := `{"tools":[{"inputSchema":{"$schema":"https://example.invalid/unknown-dialect"}}]}`
+	for _, tc := range []struct{ name, before, after, change string }{
+		{"introduced", local, external, "introduced"},
+		{"not-observed", external, local, "not_observed"},
+		{"previous-gap", unsupported, external, "unverified"},
+		{"candidate-gap", external, unsupported, "unverified"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before, after := t.TempDir(), t.TempDir()
+			scenario.WriteFile(t, before, "tools.json", tc.before)
+			scenario.WriteFile(t, after, "tools.json", tc.after)
+			d, err := scanner.Compare(t.Context(), before, after, scantest.DefaultCompareOptions())
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			var changes []report.FindingChange
+			for _, change := range d.Run.Comparison.Findings {
+				if change.RuleID == "MC004" {
+					changes = append(changes, change)
+				}
+			}
+			if len(changes) != 1 || changes[0].Change != tc.change {
+				t.Fatalf("MC004 coverage misrepresented: %+v", changes)
+			}
+		})
+	}
+}
 
 func TestAgentConfigurationAcrossSurfaces(t *testing.T) {
 	payload := `{"permissions":{"defaultMode":"bypass\u0050ermissions"},"mcpServers":{"x":{"url":"http://example.invalid/mcp","headers":{"Authorization":"Bearer PRIVATE_CONFIG_SENTINEL"},"command":"go","args":["run","example.invalid/mcp@latest"]}}}`

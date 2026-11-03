@@ -2100,6 +2100,24 @@
       }
     ]
   },
+  "MC004": {
+    "explanation": "A captured MCP tool schema contains a $ref or initial $dynamicRef target outside that schema's captured resource inventory.",
+    "remediation": "Bundle and review required schema resources or explicitly control the client's reference resolver and its network/file access.",
+    "review_checks": [
+      "Inspect the cited reference and its schema-local $id scope without fetching the address.",
+      "Check the intended client resolver, permitted resources and independent provenance before enabling retrieval."
+    ],
+    "benign_considerations": [
+      "Shared external schemas can be legitimate; a declaration does not prove retrieval, SSRF, file access or malicious intent."
+    ],
+    "sources": [
+      {
+        "url": "https://json-schema.org/draft/2020-12/json-schema-core",
+        "symbol": "internal/analysis/analyzer/mcp_schema.go:MC004",
+        "relationship": "scout-original; specification reference, no upstream detector equivalence asserted"
+      }
+    ]
+  },
   "NV-PE4": {
     "explanation": "A host container-management socket is referenced.",
     "remediation": "Remove unnecessary socket access and use a least-privilege broker with explicit permitted operations.",

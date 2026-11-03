@@ -58,6 +58,12 @@ var agentRuleMetadataByID = map[string]agentRuleMetadata{
 		category:   "sensitive-data-request",
 		limitation: " Selected inputSchema property names; legitimate auth tools can also match. readOnlyHint is not treated as a safety guarantee.",
 	},
+	ruleMC004: {
+		title:      "MCP tool schema references an external resource",
+		category:   "external-schema-reference",
+		version:    "5",
+		limitation: " Selected JSON Schema 2020-12 $ref and initial $dynamicRef resource targets in inputSchema/outputSchema, with fragment-free $id resources scoped to each schema. References to captured embedded resources are local. URIs over 4096 bytes and unsupported or ambiguous resource scopes leave the check incomplete. No URI is fetched, no schema is evaluated, and no client retrieval or SSRF is proven. Custom vocabularies, runtime dynamic scope and anchor/JSON Pointer validity are outside this check.",
+	},
 }
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
@@ -135,10 +141,10 @@ type agentConfigCheck struct {
 }
 
 type agentRuleMetadata struct {
-	title, category string
-	severity        report.Severity
-	limitation      string
-	harness         bool
+	title, category, version string
+	severity                 report.Severity
+	limitation               string
+	harness                  bool
 }
 
 type nodeLauncherTokenKind uint8
@@ -179,6 +185,11 @@ func (a agentConfigCheck) Rule() report.Rule {
 		severity = report.Medium
 	}
 
+	version := metadata.version
+	if version == "" {
+		version = "4"
+	}
+
 	limitation := "Strict bounded JSON and supported field shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. YAML/TOML require an explicitly selected trusted parser; TOML positions cover the whole unit." + metadata.limitation
 	if metadata.harness {
 		limitation += " Includes harness-linked inline/custom-path config objects without assuming activation."
@@ -186,7 +197,7 @@ func (a agentConfigCheck) Rule() report.Rule {
 
 	return report.Rule{
 		ID:          a.id,
-		Version:     "4",
+		Version:     version,
 		Title:       metadata.title,
 		Description: metadata.title,
 		Category:    metadata.category,
@@ -208,8 +219,8 @@ func (agentConfigCheck) AppliesTo(f document.File) bool {
 
 func (a agentConfigCheck) Find(ctx context.Context, f document.File, budget int) (Result, error) {
 	var (
-		out        Result
-		mappingErr error
+		out     Result
+		problem error
 	)
 
 	seen := make(map[source.Span]bool)
@@ -224,15 +235,20 @@ func (a agentConfigCheck) Find(ctx context.Context, f document.File, budget int)
 			continue
 		}
 
-		emit := configEmitter(u, &out, &mappingErr, seen, budget)
-		a.inspectConfigUnit(ctx, f, u, tree.Root, &out, emit, &mappingErr)
+		var unitErr error
 
-		if out.Truncated || mappingErr != nil || ctx.Err() != nil {
+		emit := configEmitter(u, &out, &unitErr, seen, budget)
+		a.inspectConfigUnit(ctx, f, u, tree.Root, &out, emit, &unitErr)
+		problem = errors.Join(problem, unitErr)
+
+		// Schema failures belong to their independent parsed unit. Preserve the
+		// failure while still inspecting later declarations and code blocks.
+		if out.Truncated || unitErr != nil && a.id != ruleMC004 || ctx.Err() != nil {
 			break
 		}
 	}
 
-	return out, errors.Join(mappingErr, ctx.Err())
+	return out, errors.Join(problem, ctx.Err())
 }
 
 func (a agentConfigCheck) inspectConfigUnit(ctx context.Context, f document.File, u document.Unit, root *jsonconfig.Node, out *Result, emit func(source.Span), mappingErr *error) {
@@ -240,14 +256,15 @@ func (a agentConfigCheck) inspectConfigUnit(ctx context.Context, f document.File
 
 	actualHook := u.Origin == "file" && (hookpolicy.IsSettings(f.Artifact().Metadata().Path) || path.Base(f.Artifact().Metadata().Path) == "hooks.json")
 	if a.id != ruleAC003 || !state.Disabled || !actualHook {
-		a.inspect(ctx, root, emit)
+		err := a.inspect(ctx, root, emit)
+		*mappingErr = errors.Join(*mappingErr, err)
 	}
 
 	if a.id == ruleAC003 && state.Uncertain {
 		*mappingErr = errors.New("hook disable semantics incomplete")
 	}
 
-	a.inspectConfigScopes(ctx, f, u, root, state, out, emit)
+	a.inspectConfigScopes(ctx, f, u, root, state, out, emit, mappingErr)
 }
 
 func configEmitter(u document.Unit, out *Result, mappingErr *error, seen map[source.Span]bool, budget int) func(source.Span) {
@@ -293,7 +310,7 @@ func (a agentConfigCheck) hookState(f document.File, u document.Unit, root *json
 	return state
 }
 
-func (a agentConfigCheck) inspectConfigScopes(ctx context.Context, f document.File, u document.Unit, root *jsonconfig.Node, state hookpolicy.State, out *Result, emit func(source.Span)) {
+func (a agentConfigCheck) inspectConfigScopes(ctx context.Context, f document.File, u document.Unit, root *jsonconfig.Node, state hookpolicy.State, out *Result, emit func(source.Span), mappingErr *error) {
 	if u.Origin == "file" {
 		for _, scope := range f.ConfigScopes() {
 			if out.Truncated || ctx.Err() != nil {
@@ -303,7 +320,8 @@ func (a agentConfigCheck) inspectConfigScopes(ctx context.Context, f document.Fi
 			n := scopedConfigNode(root, scope.Span, len(f.Artifact().Content()))
 
 			if n != nil && !(a.id == ruleAC003 && scope.Role == "hook_config" && state.Disabled) {
-				a.inspectScope(ctx, n, scope.Role, emit)
+				err := a.inspectScope(ctx, n, scope.Role, emit)
+				*mappingErr = errors.Join(*mappingErr, err)
 			}
 		}
 	}
@@ -317,9 +335,9 @@ func scopedConfigNode(root *jsonconfig.Node, span source.Span, bytes int) *jsonc
 	return scopedNode(root, span)
 }
 
-func (a agentConfigCheck) inspect(ctx context.Context, root *jsonconfig.Node, emit func(source.Span)) {
+func (a agentConfigCheck) inspect(ctx context.Context, root *jsonconfig.Node, emit func(source.Span)) error {
 	if root.Kind != jsonconfig.KindObject {
-		return
+		return nil
 	}
 
 	switch a.id {
@@ -331,9 +349,13 @@ func (a agentConfigCheck) inspect(ctx context.Context, root *jsonconfig.Node, em
 		inspectCommandHooks(ctx, root.Get("hooks"), emit)
 	case ruleMC003:
 		inspectSensitiveToolParameters(ctx, root, emit)
+	case ruleMC004:
+		return inspectToolSchemaReferences(ctx, root, emit)
 	default:
 		a.inspectServers(ctx, root, emit)
 	}
+
+	return nil
 }
 
 func inspectApprovalPolicy(root *jsonconfig.Node, emit func(source.Span)) {
@@ -549,9 +571,9 @@ func inspectURLCredential(n *jsonconfig.Node, emit func(source.Span)) {
 
 // Scoped trees retain ORIGINAL source spans; only a wrapper role is supplied by
 // discovery. This is not execution or trust in configuration field contents.
-func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, role string, emit func(source.Span)) {
+func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, role string, emit func(source.Span)) error {
 	if n.Kind != jsonconfig.KindObject {
-		return
+		return nil
 	}
 
 	if role == "mcp_config" && serverConfigRules[a.id] {
@@ -560,13 +582,15 @@ func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, 
 
 	if role == "hook_config" && a.id == ruleAC003 {
 		if n.Get("hooks") != nil {
-			a.inspect(ctx, n, emit)
-			return
+			return a.inspect(ctx, n, emit)
 		}
 
 		wrapper := &jsonconfig.Node{Kind: jsonconfig.KindObject, Members: []jsonconfig.Member{{Key: "hooks", Value: n}}}
-		a.inspect(ctx, wrapper, emit)
+
+		return a.inspect(ctx, wrapper, emit)
 	}
+
+	return nil
 }
 
 func (a agentConfigCheck) inspectServerScope(ctx context.Context, n *jsonconfig.Node, emit func(source.Span)) {
@@ -617,6 +641,7 @@ func buildAgentRules() []Analyzer {
 		agentConfigCheck{id: ruleMC001},
 		agentConfigCheck{id: ruleMC002},
 		agentConfigCheck{id: ruleMC003},
+		agentConfigCheck{id: ruleMC004},
 		bundledSurface{id: ruleBH1},
 		bundledSurface{id: ruleBH2},
 		bundledSurface{id: ruleBH3},

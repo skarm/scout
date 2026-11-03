@@ -93,6 +93,52 @@ credentials, custom GitLab prefixes, newer stateless GitHub installation tokens,
 unlisted Slack token types, other encodings and dynamically constructed values
 remain outside this selected coverage. Provider formats can change.
 
+### MCP schema references
+
+`MC004` is a built-in Medium signal for a tool's `inputSchema` or `outputSchema`
+referencing a resource outside that schema's captured resource inventory through
+`$ref` or the initial target of `$dynamicRef`. It
+inspects tool lists, JSON-RPC `result.tools`, imported captures and Scout MCP
+snapshots, including supported JSON code blocks. For example:
+
+```json
+{"tools":[{"name":"lookup","inputSchema":{"type":"object","properties":{"value":{"$ref":"https://schemas.example.invalid/value.json"}}}}]}
+```
+
+The check follows selected schema-bearing keywords such as `properties`, `$defs`,
+`allOf` and `items`. Fragment references and references to embedded `$id` resources
+within the same input/output schema are local; forward references are supported.
+URI identity normalizes ASCII scheme/host case, HTTP default ports and unreserved percent
+escapes and removes dot segments after decoding unreserved escapes. Escaped path
+delimiters and distinct queries remain distinct. References
+in `examples`, `default`, `const`, `enum` and arbitrary extension data are ignored.
+Declaring an `$id` or the standard `$schema` alone is not a finding.
+
+Scout never fetches these addresses or opens referenced files. Findings contain
+the original reference scalar's coordinates and hash, without the URI value.
+Optional YAML/TOML frontends retain their existing evidence-mapping limits;
+TOML evidence may cover the enclosing unit.
+An external reference can be legitimate; the signal requires review and does not
+prove client retrieval, SSRF or malicious behavior.
+
+This selected model uses [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/json-schema-core).
+Unsupported declared dialects, malformed schema-bearing positions, invalid
+reference URIs, duplicate resource IDs and URIs exceeding 4096 bytes (literal or
+resolved) leave `MC004` incomplete. Relative
+document references against opaque URN bases and relative `$id` values without
+a known absolute base are also unsupported, as are IPv6 zone identifiers. Custom
+vocabularies, runtime dynamic scope, `$recursiveRef`, client resource registries, JSON Pointer
+and anchor validity, and full schema validation are outside this check. A local
+classification does not establish that the schema or reference is valid. General
+JSON-analysis limitations and report completeness remain independent.
+
+Unsupported resource identity/dialect prevents classification of that individual
+schema's resource inventory; other input/output schemas and independent code
+blocks are still inspected. A malformed reference does not hide other valid
+references in the same schema. Known findings are retained alongside incomplete
+coverage. Version 5 adds this isolation and initial `$dynamicRef` classification;
+it does not evaluate instances or runtime dynamic-anchor overrides.
+
 ## Optional extensions
 
 ### Custom and third-party YARA rules

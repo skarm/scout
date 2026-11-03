@@ -46,6 +46,7 @@ const (
 	ruleMC001             = "MC001"
 	ruleMC002             = "MC002"
 	ruleMC003             = "MC003"
+	ruleMC004             = "MC004"
 	ruleMCPOfficialStatus = "MCP-OFFICIAL-STATUS"
 	ruleMCPPackageVersion = "MCP-PACKAGE-VERSION"
 	ruleMCPPlainHTTP      = "MCP-PLAIN-HTTP"
