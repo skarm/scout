@@ -35,16 +35,26 @@ scout mcp --profile standard --transport http --listen 127.0.0.1:8837 \
   --auth-token-env SCOUT_MCP_TOKEN --target candidate=/absolute/review/candidate
 ```
 
-`scan_skill` accepts an authorized target key or filename/base64 upload up to 128 KiB.
+`scan_skill` accepts an authorized target key or an upload with a filename and
+base64 content. Decoded upload content is limited to 128 KiB.
 `compare_skills` uses two authorized target keys. Tool arguments cannot choose
 arbitrary paths or change the configured profile, provider or approvals.
 Without named targets, stdio supports uploads only.
 
-HTTP requires a numeric loopback bind and an explicit bearer secret of at least
-32 bytes. Browser origins are denied unless allowed through `--origin`.
+The CLI HTTP transport requires a numeric loopback bind and an explicit bearer secret of
+32–512 bytes. Browser origins are denied unless allowed through `--origin`.
 The server supports JSON responses, without SSE or GET streaming.
 
-Go's `mcp.New` borrows a Scanner and trusted policy Gate. See [API ownership](../development/go-api.md#coordinates-limits-and-trust).
+The server negotiates MCP `2025-06-18` over JSON-RPC 2.0. Request parameter names
+are case-sensitive; request metadata belongs in an optional `_meta` object within `params`.
+Numeric request IDs use the signed 64-bit range; decimal and exponent spellings
+of integers are accepted and echoed unchanged. Message, depth and node limits
+still apply. HTTP authentication scheme names are case-insensitive; bearer
+secrets are compared exactly. Responses with status 401 include a
+`WWW-Authenticate` header with the Bearer scheme.
+
+Go's `mcp.New` borrows a Scanner and trusted `policy.Gate`.
+See [API ownership](../development/go-api.md#coordinates-limits-and-trust).
 
 ## Verification
 

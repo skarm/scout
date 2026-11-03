@@ -16,7 +16,10 @@ scout scan --allow-download --follow-external \
 
 Traversal requires both `--follow-external` and `--allow-download`.
 Repeat `--external-origin` to replace the default GitHub origins with an exact
-allowlist. GitHub repositories require an immutable commit.
+allowlist. An origin contains a scheme, host and optional port; its path must be
+empty or `/`. Traversal does not verify that a literal file URL names an immutable
+commit. Top-level GitHub repository downloads require a full commit SHA through
+`--revision`.
 
 Supported literal URLs are captured under `.scout-external/` and scanned through
 the normal pipeline. Reports retain source references, hashes and outcomes.

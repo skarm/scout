@@ -3,6 +3,18 @@ package textmatch
 
 import "strings"
 
+// FoldASCII returns an immutable lowercase view only when every input byte is
+// ASCII. Unicode and invalid UTF-8 must bypass ASCII-only necessary conditions.
+func FoldASCII(s string) (string, bool) {
+	for i := range len(s) {
+		if s[i] >= 128 {
+			return "", false
+		}
+	}
+
+	return strings.ToLower(s), true
+}
+
 // Alnum reports whether b is an ASCII letter or digit.
 func Alnum(b byte) bool {
 	return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9'

@@ -255,6 +255,34 @@ func FuzzZIPNoPanic(f *testing.F) {
 	})
 }
 
+func TestSelectedArchiveCannotBypassArchiveByteBudget(t *testing.T) {
+	data := makeZIP(t, member{name: "README.txt", content: "plain text"})
+	limits := report.DefaultCaptureLimits()
+	limits.MaxArchiveBytes = 16
+	limits.MaxFileBytes = 1024
+	for _, name := range []string{"bundle.zip", "bundle.tar", "bundle.gz", "bundle.whl", "disguised.txt"} {
+		t.Run(name, func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), name)
+			if err := os.WriteFile(target, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := ingest.Read(context.Background(), target, limits)
+			if len(snapshot.Files()) != 0 || snapshot.Complete() {
+				t.Fatalf("archive larger than MaxArchiveBytes captured: files=%d complete=%t err=%v", len(snapshot.Files()), snapshot.Complete(), err)
+			}
+		})
+	}
+	target := filepath.Join(t.TempDir(), "ordinary.txt")
+	plain := strings.Repeat("x", 64)
+	if err := os.WriteFile(target, []byte(plain), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := ingest.Read(context.Background(), target, limits)
+	if err != nil || !snapshot.Complete() || len(snapshot.Files()) != 1 || snapshot.Files()[0].Content() != plain {
+		t.Fatalf("archive budget incorrectly applied to plain text: %+v %v", snapshot, err)
+	}
+}
+
 type member struct {
 	name, content string
 	mode          os.FileMode

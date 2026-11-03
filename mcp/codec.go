@@ -5,11 +5,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"mime"
+	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+)
+
+var (
+	errInvalidJSON    = errors.New("invalid JSON")
+	errInvalidRequest = errors.New("invalid JSON-RPC request")
+	errInvalidParams  = errors.New("invalid JSON-RPC parameters")
 )
 
 type request struct {
@@ -48,18 +57,22 @@ func parseRequest(data []byte) (request, error) {
 
 	n, err := jsonconfig.Parse(context.Background(), string(data))
 	if err != nil {
-		return r, errors.New("invalid JSON-RPC message")
+		if !utf8.Valid(data) || !json.Valid(data) {
+			return r, errInvalidJSON
+		}
+
+		return r, errInvalidRequest
 	}
 
 	if !requestObject(n) {
-		return r, errors.New("invalid JSON-RPC request")
+		return r, errInvalidRequest
 	}
 
 	r.JSONRPC, _ = n.Get("jsonrpc").Text()
 
 	r.Method, _ = n.Get("method").Text()
 	if r.JSONRPC != "2.0" || r.Method == "" || len(r.Method) > 128 {
-		return r, errors.New("invalid JSON-RPC request")
+		return r, errInvalidRequest
 	}
 
 	r.ID, r.key, err = requestID(n.Get("id"), data)
@@ -106,8 +119,8 @@ func requestID(n *jsonconfig.Node, data []byte) (json.RawMessage, requestKey, er
 			return nil, requestKey{}, errors.New("invalid request ID")
 		}
 	case jsonconfig.KindNumber:
-		number, err := strconv.ParseInt(n.String, 10, 64)
-		if err != nil {
+		number, ok := integerID(n.String)
+		if !ok {
 			return nil, requestKey{}, errors.New("invalid request ID")
 		}
 
@@ -119,27 +132,82 @@ func requestID(n *jsonconfig.Node, data []byte) (json.RawMessage, requestKey, er
 	return bytes.Clone(data[n.Span.Start:n.Span.End]), key, nil
 }
 
+// JSON integers are values, not a restriction on decimal/exponent spelling.
+// Bound the exponent before big.Rat allocation and keep the existing int64 range.
+func integerID(raw string) (int64, bool) {
+	if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		return value, true
+	}
+
+	mantissa, exponent, hasExponent := strings.Cut(strings.ToLower(raw), "e")
+	if hasExponent {
+		e, err := strconv.Atoi(exponent)
+		if err != nil || e < -256 || e > 256 {
+			return 0, strings.Trim(mantissa, "-+.0") == ""
+		}
+	}
+
+	value, ok := new(big.Rat).SetString(raw)
+	if !ok || !value.IsInt() || !value.Num().IsInt64() {
+		return 0, false
+	}
+
+	return value.Num().Int64(), true
+}
+
 func requestParams(n *jsonconfig.Node, data []byte) (json.RawMessage, error) {
 	if n == nil {
 		return nil, nil
 	}
 
 	if n.Kind != jsonconfig.KindObject {
-		return nil, errors.New("params must be an object")
+		return nil, errInvalidParams
+	}
+
+	if meta := n.Get("_meta"); meta != nil && meta.Kind != jsonconfig.KindObject {
+		return nil, errInvalidParams
 	}
 
 	return bytes.Clone(data[n.Span.Start:n.Span.End]), nil
 }
 
-func strictParams(raw []byte, v any) error {
+func strictParams(raw []byte, v any, names ...string) error {
 	if len(raw) == 0 {
 		raw = []byte("{}")
+	}
+	// encoding/json also matches struct fields without regard to case. RPC
+	// parameter names must instead match exactly (JSON-RPC 2.0 section 4.2).
+	n, err := jsonconfig.Parse(context.Background(), string(raw))
+	if err != nil || n.Kind != jsonconfig.KindObject {
+		return errInvalidParams
+	}
+
+	for _, field := range n.Members {
+		if !slices.Contains(names, field.Key) {
+			return errInvalidParams
+		}
 	}
 
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
 
 	return d.Decode(v)
+}
+
+func requestFailure(r request, err error) *response {
+	if errors.Is(err, errInvalidJSON) {
+		return rpcFailure(nil, -32700, "Invalid JSON")
+	}
+
+	if errors.Is(err, errInvalidParams) {
+		if len(r.ID) == 0 {
+			return nil // A notification never has a JSON-RPC response.
+		}
+
+		return rpcFailure(r.ID, -32602, "Invalid parameters")
+	}
+
+	return rpcFailure(nil, -32600, "Invalid JSON-RPC request")
 }
 
 func encodeResponse(r *response) []byte {

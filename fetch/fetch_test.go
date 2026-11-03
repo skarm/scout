@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -17,6 +18,62 @@ import (
 
 	"github.com/skarm/scout/fetch"
 )
+
+func TestResponseBodyPreservesCancellation(t *testing.T) {
+	for _, method := range []string{"get", "post"} {
+		for _, stop := range []string{"cancel", "context-deadline", "client-deadline", "client-header-deadline"} {
+			t.Run(method+"/"+stop, func(t *testing.T) {
+				started := make(chan struct{})
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if _, err := io.Copy(io.Discard, r.Body); err != nil {
+						t.Error(err)
+					}
+					if stop == "client-header-deadline" {
+						<-r.Context().Done()
+						return
+					}
+					w.Header().Set("Content-Type", "application/json")
+					w.(http.Flusher).Flush()
+					close(started)
+					<-r.Context().Done()
+				}))
+				defer server.Close()
+				opts := enabled()
+				if strings.HasPrefix(stop, "client-") {
+					opts.Timeout = 100 * time.Millisecond
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				if stop == "context-deadline" {
+					cancel()
+					ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+				}
+				defer cancel()
+				if stop == "cancel" {
+					go func() {
+						select {
+						case <-started:
+							cancel()
+						case <-ctx.Done():
+						}
+					}()
+				}
+				var err error
+				if method == "get" {
+					_, err = fetch.Get(ctx, server.URL, opts)
+				} else {
+					_, err = fetch.PostJSON(ctx, server.URL, []byte(`{}`), opts)
+				}
+				want := context.DeadlineExceeded
+				if stop == "cancel" {
+					want = context.Canceled
+				}
+				if !errors.Is(err, want) {
+					t.Fatalf("body read lost cancellation: %v, want %v", err, want)
+				}
+			})
+		}
+	}
+}
 
 func TestResolveAndValidation(t *testing.T) {
 	sha := strings.Repeat("a", 40)

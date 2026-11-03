@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -29,7 +30,12 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if status, message := s.authorizeHTTP(r); status != 0 {
+		if status == http.StatusUnauthorized {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="scout"`)
+		}
+
 		http.Error(w, message, status)
+
 		return
 	}
 
@@ -130,8 +136,10 @@ func (s *Server) httpSession(req request, id string) (*session, string, int) {
 }
 
 func (s *Server) authorizeHTTP(r *http.Request) (int, string) {
-	want, auth := "Bearer "+s.options.HTTPToken, r.Header.Get("Authorization")
-	if len(auth) != len(want) || subtle.ConstantTimeCompare([]byte(auth), []byte(want)) != 1 {
+	scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+
+	token = strings.TrimLeft(token, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || subtle.ConstantTimeCompare([]byte(token), []byte(s.options.HTTPToken)) != 1 {
 		return http.StatusUnauthorized, "unauthorized"
 	}
 
@@ -191,8 +199,9 @@ func decodeHTTP(w http.ResponseWriter, r *http.Request) (request, bool) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(400)
 
-		x := failure(nil, -32700, "Invalid JSON-RPC message")
-		_, _ = w.Write(encodeResponse(&x))
+		if x := requestFailure(req, err); x != nil {
+			_, _ = w.Write(encodeResponse(x))
+		}
 
 		return request{}, false
 	}

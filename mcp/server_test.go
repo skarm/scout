@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/skarm/scout"
@@ -193,6 +194,74 @@ func TestMCPRejectsAmbiguousAndOversizedInput(t *testing.T) {
 	}
 }
 
+func TestMCPMessageLimitExcludesStdioFraming(t *testing.T) {
+	options := mcp.DefaultOptions()
+	options.HTTPToken = strings.Repeat("T", 40)
+	server := newServer(t, options)
+	handler, err := server.HTTPHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkInitialized := func(t *testing.T, body []byte) {
+		t.Helper()
+		var answer conformanceResponse
+		if err := json.Unmarshal(body, &answer); err != nil {
+			t.Fatal(err)
+		}
+		var result struct{ ProtocolVersion string }
+		if err := json.Unmarshal(answer.Result, &result); err != nil {
+			t.Fatal(err)
+		}
+		if string(answer.ID) != "1" || answer.Error != nil || result.ProtocolVersion != mcp.ProtocolVersion {
+			t.Fatalf("initialization failed: %s", body)
+		}
+	}
+	for _, size := range []struct {
+		name  string
+		bytes int
+	}{
+		{"below", mcp.MaxMessageBytes - 1},
+		{"at", mcp.MaxMessageBytes},
+		{"above", mcp.MaxMessageBytes + 1},
+	} {
+		body := initMessage + strings.Repeat(" ", size.bytes-len(initMessage))
+		for _, framing := range []struct{ name, suffix string }{{"eof", ""}, {"lf", "\n"}, {"crlf", "\r\n"}} {
+			t.Run(size.name+"/stdio/"+framing.name, func(t *testing.T) {
+				var output bytes.Buffer
+				err := server.Serve(t.Context(), io.NopCloser(strings.NewReader(body+framing.suffix)), &output)
+				if size.bytes > mcp.MaxMessageBytes {
+					if err == nil || output.Len() != 0 {
+						t.Fatalf("oversized message accepted: err=%v, output=%s", err, &output)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				checkInitialized(t, output.Bytes())
+			})
+		}
+		t.Run(size.name+"/http", func(t *testing.T) {
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "http://localhost/mcp", strings.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+options.HTTPToken)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Accept", "application/json")
+			output := httptest.NewRecorder()
+			handler.ServeHTTP(output, req)
+			if size.bytes > mcp.MaxMessageBytes {
+				if output.Code != http.StatusRequestEntityTooLarge {
+					t.Fatalf("oversized message status: %d", output.Code)
+				}
+				return
+			}
+			if output.Code != http.StatusOK {
+				t.Fatalf("initialization status: %d", output.Code)
+			}
+			checkInitialized(t, output.Body.Bytes())
+		})
+	}
+}
+
 func TestMCPRejectsCaseAliasedEnvelopeAndKeepsServing(t *testing.T) {
 	for _, bad := range []string{
 		`{"jsonrpc":"2.0","id":1,"method":"ping","Params":{}}`,
@@ -253,6 +322,43 @@ func TestStdioCancellationAndOutputFailure(t *testing.T) {
 	if err := s.Serve(ctx, cancelOnRead{input: strings.NewReader(initMessage + "\n"), cancel: cancel}, io.Discard); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
+}
+
+func TestStdioClosesOwnedInputOnEveryExit(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		input  io.ReadCloser
+		output io.Writer
+		want   error
+	}{
+		{name: "eof", input: io.NopCloser(strings.NewReader("")), output: io.Discard},
+		{name: "read-error", input: io.NopCloser(brokenBody{}), output: io.Discard, want: io.ErrUnexpectedEOF},
+		{name: "write-error", input: io.NopCloser(strings.NewReader(initMessage + "\n")), output: brokenOutput{}, want: io.ErrClosedPipe},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := &countedStdioInput{ReadCloser: tc.input}
+			err := newServer(t, mcp.DefaultOptions()).Serve(t.Context(), input, tc.output)
+			if !errors.Is(err, tc.want) || input.closes.Load() != 1 {
+				t.Fatalf("Serve: err=%v want=%v close calls=%d", err, tc.want, input.closes.Load())
+			}
+		})
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	input := &countedStdioInput{ReadCloser: cancelOnRead{input: strings.NewReader(initMessage + "\n"), cancel: cancel}}
+	if err := newServer(t, mcp.DefaultOptions()).Serve(ctx, input, io.Discard); !errors.Is(err, context.Canceled) || input.closes.Load() != 1 {
+		t.Fatalf("cancelled Serve: err=%v close calls=%d", err, input.closes.Load())
+	}
+}
+
+type countedStdioInput struct {
+	io.ReadCloser
+	closes atomic.Int32
+}
+
+func (r *countedStdioInput) Close() error {
+	r.closes.Add(1)
+	return r.ReadCloser.Close()
 }
 
 func TestProtocolLifecycleAndUnsupportedMethods(t *testing.T) {
@@ -477,6 +583,193 @@ func TestHTTPAdmissionAndFailedInitialization(t *testing.T) {
 				t.Fatal(response.Code, response.Header(), response.Body)
 			}
 		})
+	}
+}
+
+type conformanceResponse struct {
+	ID     json.RawMessage `json:"id"`
+	Result json.RawMessage `json:"result"`
+	Error  *struct {
+		Code int `json:"code"`
+	} `json:"error"`
+}
+
+func conformanceMessages(t *testing.T, messages ...string) []conformanceResponse {
+	t.Helper()
+	s := newServer(t, mcp.DefaultOptions())
+	var output bytes.Buffer
+	if err := s.Serve(t.Context(), io.NopCloser(strings.NewReader(strings.Join(messages, "\n")+"\n")), &output); err != nil {
+		t.Fatal(err)
+	}
+	var responses []conformanceResponse
+	for line := range bytes.SplitSeq(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var response conformanceResponse
+		if err := json.Unmarshal(line, &response); err != nil {
+			t.Fatal(err)
+		}
+		responses = append(responses, response)
+	}
+	return responses
+}
+
+// JSON-RPC 2.0 sections 5.1 and 7 distinguish syntax from invalid requests.
+func TestConformanceRPCErrorClassification(t *testing.T) {
+	for _, tc := range []struct {
+		wire string
+		code int
+	}{
+		{`{"jsonrpc":"2.0","method":`, -32700},
+		{`{"jsonrpc":"2.0","method":1,"params":"bar"}`, -32600},
+		{`{"jsonrpc":"1.0","method":"ping","id":1}`, -32600},
+		{`42`, -32600},
+		{`[]`, -32600},
+	} {
+		t.Run(tc.wire, func(t *testing.T) {
+			x := conformanceMessages(t, tc.wire)
+			if len(x) != 1 || x[0].Error == nil || x[0].Error.Code != tc.code || string(x[0].ID) != "null" {
+				t.Fatalf("expected error %d with unknown ID, got %s", tc.code, mustJSON(t, x))
+			}
+		})
+	}
+}
+
+// Named parameter matching is case-sensitive (JSON-RPC 2.0 section 4.2).
+func TestConformanceRPCNamedParameterCase(t *testing.T) {
+	for _, params := range []string{
+		`{"Name":"scan_skill","arguments":{"name":"sample.txt","data_base64":"b3JkaW5hcnk="}}`,
+		`{"name":"scan_skill","Arguments":{"name":"sample.txt","data_base64":"b3JkaW5hcnk="}}`,
+	} {
+		x := conformanceMessages(t, initMessage, readyMessage, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":`+params+`}`)
+		if len(x) != 2 || x[1].Error == nil || x[1].Error.Code != -32602 {
+			t.Fatal("incorrectly cased parameter reached execution")
+		}
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// MCP integer IDs retain their value across legal JSON number spellings.
+func TestConformanceMCPIntegerID(t *testing.T) {
+	for _, id := range []string{"1.0", "1e1", "10e-1", "-0.0", "0e9999999999999999999999", "9.223372036854775807e18"} {
+		x := conformanceMessages(t, `{"jsonrpc":"2.0","method":"ping","id":`+id+`}`)
+		if len(x) != 1 || x[0].Error != nil || string(x[0].ID) != id {
+			t.Fatalf("valid integer ID %s rejected or changed", id)
+		}
+	}
+	for _, id := range []string{"1.5", "1e-1", "1e99999999999999999999999", "1e-99999999999999999999999", "9.223372036854775808e18"} {
+		x := conformanceMessages(t, `{"jsonrpc":"2.0","method":"ping","id":`+id+`}`)
+		if len(x) != 1 || x[0].Error == nil || x[0].Error.Code != -32600 {
+			t.Fatalf("invalid or out-of-range ID %s accepted", id)
+		}
+	}
+}
+
+func TestConformanceRPCInvalidParameters(t *testing.T) {
+	for _, params := range []string{`false`, `[]`, `{"_meta":null}`, `{"_meta":[]}`} {
+		x := conformanceMessages(t, `{"jsonrpc":"2.0","method":"ping","id":"fixture","params":`+params+`}`)
+		if len(x) != 1 || x[0].Error == nil || x[0].Error.Code != -32602 || string(x[0].ID) != `"fixture"` {
+			t.Fatalf("wrong parameter error: %s", mustJSON(t, x))
+		}
+		x = conformanceMessages(t, `{"jsonrpc":"2.0","method":"ping","params":`+params+`}`)
+		if len(x) != 0 {
+			t.Fatal("response to invalid notification")
+		}
+	}
+}
+
+// MCP Request.params permits an optional metadata object, including on initialize.
+func TestConformanceMCPRequestMetadata(t *testing.T) {
+	initialize := strings.Replace(initMessage, `"capabilities":{}`, `"capabilities":{},"_meta":{"example.test/trace":"fixture"}`, 1)
+	x := conformanceMessages(t, initialize, readyMessage,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{"_meta":{"example.test/trace":"fixture"}}}`)
+	if len(x) != 2 || x[0].Error != nil || x[1].Error != nil {
+		t.Fatalf("valid request metadata rejected: %+v", x)
+	}
+}
+
+// RFC 9110 sections 11.1 and 15.5.2 define scheme matching and 401 challenges.
+func TestConformanceHTTPAuthentication(t *testing.T) {
+	o := mcp.DefaultOptions()
+	o.HTTPToken = strings.Repeat("T", 40)
+	s := newServer(t, o)
+	handler, err := s.HTTPHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scheme := range []string{"Bearer ", "bearer ", "BEARER   "} {
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://localhost/mcp", nil)
+		r.Header.Set("Authorization", scheme+o.HTTPToken)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("valid authentication scheme %q rejected: HTTP %d", scheme, w.Code)
+		}
+	}
+	for _, auth := range []string{"Basic " + o.HTTPToken, "Bearer " + strings.ToLower(o.HTTPToken), "Bearer\t" + o.HTTPToken} {
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://localhost/mcp", nil)
+		r.Header.Set("Authorization", auth)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != http.StatusUnauthorized || w.Header().Get("WWW-Authenticate") == "" {
+			t.Errorf("invalid credential accepted or challenge missing: HTTP %d", w.Code)
+		}
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://localhost/mcp", nil))
+	if w.Code != http.StatusUnauthorized || !strings.HasPrefix(w.Header().Get("WWW-Authenticate"), "Bearer") {
+		t.Fatalf("missing authentication challenge: HTTP %d, %v", w.Code, w.Header())
+	}
+}
+
+func TestConformanceHTTPRPCErrorClassification(t *testing.T) {
+	o := mcp.DefaultOptions()
+	o.HTTPToken = strings.Repeat("T", 40)
+	handler, err := newServer(t, o).HTTPHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		wire string
+		code int
+		id   string
+	}{
+		{`{"jsonrpc":`, -32700, "null"},
+		{`{"jsonrpc":"2.0","method":1}`, -32600, "null"},
+		{`{"jsonrpc":"2.0","method":"ping","id":7,"params":false}`, -32602, "7"},
+		{`{"jsonrpc":"2.0","method":"ping","params":false}`, 0, ""},
+	} {
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "http://localhost/mcp", strings.NewReader(tc.wire))
+		r.Header.Set("Authorization", "Bearer "+o.HTTPToken)
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Accept", "application/json, text/event-stream")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("invalid request accepted: HTTP %d", w.Code)
+		}
+		if tc.code == 0 {
+			if w.Body.Len() != 0 {
+				t.Fatal("JSON-RPC response to a notification")
+			}
+			continue
+		}
+		var x conformanceResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &x); err != nil {
+			t.Fatal(err)
+		}
+		if x.Error == nil || x.Error.Code != tc.code || string(x.ID) != tc.id {
+			t.Fatalf("incorrect HTTP RPC error: %s", w.Body.Bytes())
+		}
 	}
 }
 

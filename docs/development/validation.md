@@ -14,8 +14,9 @@ make host-test
 ```
 
 `test-core` checks the reduced build and unavailable backends. `test` and `race`
-exercise native parsers and signatures. `host-test` requires Node and checks host
-adapters against SDK fixtures and the real CLI. Go tests do not require Python.
+exercise native parsers and signatures. `host-test` requires Node.js and checks host
+adapters against SDK fixtures and the real CLI. CI uses Node.js 24.
+Go tests do not require Python.
 
 Make test targets use `-vet=off`; linting runs separately.
 

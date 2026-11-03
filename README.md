@@ -33,7 +33,7 @@ scout scan --input - --name SKILL.md --format json < ./SKILL.md
 ```
 
 The default `standard` profile runs static checks offline. `review` adds a configured
-LLM reviewer and requires source-upload consent. `custom` lets you choose checks.
+large language model (LLM) and requires source-upload consent. `custom` lets you choose checks.
 Downloads and network vulnerability lookup require separate permissions.
 
 Reports retain findings, inspection gaps and the policy decision. Incomplete checks
@@ -52,9 +52,10 @@ selected data flows in Go, Shell, JS/TS, Python and SQL. The `standard` profile
 also includes adapted SkillSpector rules and embedded YARA-X signatures for
 malware, webshells, cryptominers, hacktools and agent skill threats.
 
-Without rebuilding, add custom or third-party YARA rules with `--yara-rules`,
-enable OSV with `--vuln`, or connect an LLM through the `review`
-profile. Network access and source uploads require separate grants.
+Without rebuilding, add custom or third-party YARA rules with `--yara-rules` or
+a versioned artifact with `--rulepack`. Enable OSV with `--vuln`, or connect an
+LLM through the `review` profile. Network access and source uploads require
+separate grants.
 
 ```sh
 scout rules list --all
@@ -68,8 +69,8 @@ limitations and extension examples.
 ## Go API and integrations
 
 Create a Scanner with `scout.New(ctx, scout.DefaultOptions())` and release it with
-`Close`. Use `Scan`, `ScanMany`, `ScanEnvironment` or `Compare`, then evaluate the result with a trusted
-`policy.Gate` and prepare it for output with `report.Prepare`.
+`Close`. Use `Scan`, `ScanMany`, `ScanEnvironment` or `Compare`. Evaluate the result
+with a trusted `policy.Gate` and prepare it for output with `report.Prepare`.
 [API contracts](docs/development/go-api.md) · [Go API example](examples/go-api/README.md).
 
 [Integration guides](docs/user/integrations.md) cover MCP and reviewer bundles for

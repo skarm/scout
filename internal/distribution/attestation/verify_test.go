@@ -90,6 +90,12 @@ func signedEnvelope(t *testing.T, key crypto.Signer) (attestation.Artifact, []by
 	sum := sha256.Sum256([]byte("inert artifact bytes"))
 	hash := hex.EncodeToString(sum[:])
 	payload := []byte(`{"_type":"https://in-toto.io/Statement/v1","subject":[{"name":"bundle.zip","digest":{"sha256":"` + hash + `"}}],"predicateType":"https://example.invalid/test"}`)
+	envelope, trusted := signStatement(t, key, payload)
+	return attestation.Artifact{Name: "bundle.zip", SHA256: hash}, envelope, trusted
+}
+
+func signStatement(t *testing.T, key crypto.Signer, payload []byte) ([]byte, []byte) {
+	t.Helper()
 	kind := "application/vnd.in-toto+json"
 	// Construct the verifier's input from the DSSE protocol, independently of
 	// the product implementation. Key IDs are intentionally irrelevant hints.
@@ -124,8 +130,42 @@ func signedEnvelope(t *testing.T, key crypto.Signer) (attestation.Artifact, []by
 	if err != nil {
 		t.Fatal(err)
 	}
-	return attestation.Artifact{Name: "bundle.zip", SHA256: hash}, envelope, pem.EncodeToMemory(&pem.Block{
+	return envelope, pem.EncodeToMemory(&pem.Block{
 		Type:  "PUBLIC KEY",
 		Bytes: der,
 	})
+}
+
+// in-toto Statement v1 and v0.1 require predicateType and typed subject fields,
+// even when the consumer only evaluates an explicit-key/artifact binding.
+func TestConformanceSignedStatementShape(t *testing.T) {
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, _, _ := signedEnvelope(t, key)
+	for _, version := range []string{"v1", "v0.1"} {
+		valid := `{"_type":"https://in-toto.io/Statement/` + version + `","subject":[{"name":"bundle.zip","digest":{"sha256":"` + artifact.SHA256 + `"}}],"predicateType":"https://example.invalid/test"}`
+		for _, payload := range []string{
+			strings.Replace(valid, `,"predicateType":"https://example.invalid/test"`, "", 1),
+			strings.Replace(valid, `"predicateType":"https://example.invalid/test"`, `"predicateType":42`, 1),
+			strings.Replace(valid, `"predicateType":"https://example.invalid/test"`, `"predicateType":"relative"`, 1),
+			strings.Replace(valid, `"predicateType":"https://example.invalid/test"`, `"predicateType":"https://example.invalid/test","predicate":[]`, 1),
+			strings.Replace(valid, `"subject":[`, `"subject":[{},`, 1),
+		} {
+			envelope, trusted := signStatement(t, key, []byte(payload))
+			r, err := attestation.Verify(t.Context(), trusted, envelope, artifact)
+			if err == nil || r.Verified {
+				t.Errorf("signed malformed %s statement accepted: %s", version, payload)
+			}
+		}
+		// Unknown predicate types and extension fields must remain interoperable.
+		for _, payload := range []string{valid, strings.TrimSuffix(valid, "}") + `,"predicate":{},"example.test/extension":{"anything":true}}`} {
+			envelope, trusted := signStatement(t, key, []byte(payload))
+			r, err := attestation.Verify(t.Context(), trusted, envelope, artifact)
+			if err != nil || !r.Verified {
+				t.Fatalf("valid %s statement rejected: %+v %v", version, r, err)
+			}
+		}
+	}
 }

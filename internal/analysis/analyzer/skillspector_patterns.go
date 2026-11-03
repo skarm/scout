@@ -441,6 +441,25 @@ type familyAnalyzer struct {
 	shellFacts     shellPatternFacts
 }
 
+type patternInput struct {
+	text, folded string
+	ascii        bool
+}
+
+func preparedPatternInput(d document.File) patternInput {
+	folded, ascii := d.FoldedASCII()
+	return patternInput{text: d.Artifact().Content(), folded: folded, ascii: ascii}
+}
+
+func (a familyAnalyzer) patternInput(text string) patternInput {
+	input := patternInput{text: text}
+	if len(a.patternHints) > 0 {
+		input.folded, input.ascii = asciiPatternText(text)
+	}
+
+	return input
+}
+
 func PatternRules() []Analyzer {
 	return append([]Analyzer(nil), compiledPatternCatalog()...)
 }
@@ -534,15 +553,29 @@ func (a familyAnalyzer) acceptsSecurityMatch(d document.File, view source.View, 
 
 func (a familyAnalyzer) findDocument(ctx context.Context, d document.File, budget int, stages patternStages) (Result, error) {
 	var accepts func(int, int) bool
+
 	if a.filter != nil || a.pythonRule != "" {
-		accepts = func(start, end int) bool { return a.acceptsLiteral(d, Match{Start: start, End: end}) }
+		// Confine captured copies to checks that need a filter. Capturing the
+		// large parameters moves them to the heap even on the unfiltered path.
+		check, doc := a, d
+		accepts = func(start, end int) bool { return check.acceptsLiteral(doc, Match{Start: start, End: end}) }
 	}
 
-	out, err := a.findTextWhere(ctx, d.Artifact().Content(), budget, accepts)
+	out, err := a.findTextWhere(ctx, preparedPatternInput(d), budget, accepts)
 	if err != nil || out.Truncated {
 		return out, err
 	}
 
+	if stages.before == nil && !d.HasAdditionalViews() {
+		return out, ctx.Err()
+	}
+
+	return a.inspectDocumentViews(ctx, d, budget, out, stages)
+}
+
+// Keep addressable result/filter state off the raw-only path. Most extracted
+// JSON strings have neither parsed units nor reconstructed security views.
+func (a familyAnalyzer) inspectDocumentViews(ctx context.Context, d document.File, budget int, out Result, stages patternStages) (Result, error) {
 	if stages.before != nil {
 		if err := stages.before(ctx, d, budget, &out); err != nil {
 			return out, err
@@ -554,7 +587,7 @@ func (a familyAnalyzer) findDocument(ctx context.Context, d document.File, budge
 		return out, err
 	}
 
-	err = a.inspectPreparedUnits(ctx, d, budget, &out, collected, stages)
+	err := a.inspectPreparedUnits(ctx, d, budget, &out, collected, stages)
 
 	return out, err
 }
@@ -581,7 +614,7 @@ func (a familyAnalyzer) inspectSecurityViews(ctx context.Context, d document.Fil
 func (a familyAnalyzer) inspectTransformedViews(ctx context.Context, d document.File, views []source.View, collected *boundedMatches) (bool, error) {
 	budget, out := collected.budget, collected.out
 	for _, v := range views {
-		result, e := a.findTextWhere(ctx, v.Text(), budget+1, func(start, end int) bool {
+		result, e := a.findTextWhere(ctx, a.patternInput(v.Text()), budget+1, func(start, end int) bool {
 			return a.acceptsSecurityMatch(d, v, start, end)
 		})
 		if e != nil {
@@ -642,17 +675,17 @@ func (a familyAnalyzer) inspectScalars(ctx context.Context, d document.File, u t
 }
 
 func (a familyAnalyzer) findText(ctx context.Context, text string, budget int) (Result, error) {
-	return a.findTextWhere(ctx, text, budget, nil)
+	return a.findTextWhere(ctx, a.patternInput(text), budget, nil)
 }
 
-func (a familyAnalyzer) findTextWhere(ctx context.Context, text string, budget int, accepts func(int, int) bool) (Result, error) {
+func (a familyAnalyzer) findTextWhere(ctx context.Context, input patternInput, budget int, accepts func(int, int) bool) (Result, error) {
 	result := Result{Matches: []Match{}}
 
 	if budget < 1 {
 		// Reaching the retention quota is not itself an omission. Probe for one
 		// accepted observation, preserving work limits and cancellation, then
 		// discard it because the caller cannot retain another match.
-		probe, err := a.findTextWhere(ctx, text, 1, accepts)
+		probe, err := a.findTextWhere(ctx, input, 1, accepts)
 		return Result{Truncated: probe.Truncated || len(probe.Matches) > 0}, err
 	}
 
@@ -664,11 +697,11 @@ func (a familyAnalyzer) findTextWhere(ctx context.Context, text string, budget i
 		a.candidateLimit = max(a.candidateLimit, 65536)
 	}
 
-	if !a.findPatternMatches(ctx, text, budget, emit, &result) {
+	if !a.findPatternMatches(ctx, input, budget, emit, &result) {
 		return result, ctx.Err()
 	}
 
-	if a.supplement != nil && !a.supplement(ctx, text, emit, &result) {
+	if a.supplement != nil && !a.supplement(ctx, input.text, emit, &result) {
 		return result, ctx.Err()
 	}
 
@@ -684,20 +717,13 @@ func (a familyAnalyzer) findTextWhere(ctx context.Context, text string, budget i
 	return result, ctx.Err()
 }
 
-func (a familyAnalyzer) findPatternMatches(ctx context.Context, text string, budget int, emit func(int, int) bool, result *Result) bool {
-	var folded string
-
-	ascii := false
-	if len(a.patternHints) > 0 {
-		folded, ascii = asciiPatternText(text)
-	}
-
+func (a familyAnalyzer) findPatternMatches(ctx context.Context, input patternInput, budget int, emit func(int, int) bool, result *Result) bool {
 	for i, p := range a.patterns {
 		if e := ctx.Err(); e != nil {
 			return false
 		}
 
-		if ascii && i < len(a.patternHints) && !a.patternHints[i].allows(folded) {
+		if input.ascii && i < len(a.patternHints) && !a.patternHints[i].allows(input.folded) {
 			continue
 		}
 
@@ -708,7 +734,7 @@ func (a familyAnalyzer) findPatternMatches(ctx context.Context, text string, bud
 			matchLimit = a.candidateLimit
 		}
 
-		matches := p.FindAllStringIndex(text, matchLimit+1)
+		matches := p.FindAllStringIndex(input.text, matchLimit+1)
 		if len(matches) > matchLimit {
 			result.Truncated = true
 			matches = matches[:matchLimit]
@@ -719,7 +745,7 @@ func (a familyAnalyzer) findPatternMatches(ctx context.Context, text string, bud
 				return false
 			}
 
-			if a.exempt != nil && a.exempt(text, m[0], m[1]) {
+			if a.exempt != nil && a.exempt(input.text, m[0], m[1]) {
 				continue
 			}
 

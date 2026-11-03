@@ -9,7 +9,7 @@
 
 [English](commands.md) · Русский
 
-Соберите developer CLI вместе со Scout:
+Соберите CLI разработчика вместе со Scout:
 
 ```sh
 make build build-dev
@@ -22,18 +22,18 @@ scout-dev releasecheck --binary "$(command -v scout)"
 
 Для команд сохранённых данных без нативных проверок используйте
 `go run -tags=coreonly ./cmd/scout-dev <command> [flags]`.
-При запуске из другого каталога maintenance-команды принимают `--root PROJECT_ROOT`.
+При запуске из другого каталога команды обслуживания принимают `--root PROJECT_ROOT`.
 
 ## Измерения и приёмка сборки
 
 - `evaluate [--profile standard|custom] [--timeout 2m] CORPUS_JSON`: проверить
-  размеченный корпус отдельных файлов (schema 1) или пакетов (schema 2).
-  Здесь custom выбирает только встроенные проверки. `--split train|tune|holdout`
+  размеченный корпус отдельных файлов (схема 1) или пакетов (схема 2).
+  Здесь `custom` выбирает только встроенные проверки. `--split train|tune|holdout`
   фильтрует после проверки всего корпуса. `--llm-config FILE --allow-source-upload`
   добавляет отдельный LLM-прогон; `--input-usd-per-million N --output-usd-per-million N`
   задают тарифы для оценки стоимости.
-- `releasecheck --binary SCOUT`: проверить linkage и metadata, затем запустить
-  нативные selftests. `--inspect-only` ограничивает работу чтением бинарника.
+- `releasecheck --binary SCOUT`: проверить компоновку и метаданные, затем запустить
+  нативные самопроверки. `--inspect-only` ограничивает работу чтением бинарника.
 
 См. [измерения](evaluation.ru.md) и [проверки](validation.ru.md).
 
@@ -42,7 +42,7 @@ scout-dev releasecheck --binary "$(command -v scout)"
 - `verify-knowledge-sources --cache DIR`: сверить закреплённые байты исходников.
   `--download` разрешает загрузку недостающих файлов.
 - `check-knowledge-runtime --binary SCOUT --output NEW_DIR`: проверить статические
-  scans и scripted reviewer на локальном сервере.
+  сканирования и провайдер проверки с заданными ответами на локальном сервере.
 
 ```sh
 scout-dev replay --input captures.jsonl.gz --output replay-results.jsonl \
@@ -54,9 +54,9 @@ Replay анализирует захваченный код как данные 
 
 ## Source-bound provenance
 
-Сохранённый receipt — `testdata/provenance/scout-current-review.json`.
+Сохранённая запись измерения — `testdata/provenance/scout-current-review.json`.
 Обычная проверка сверяет сохранённые артефакты без обращения к сегодняшним исходникам.
-Правки кода не требуют нового receipt. Явная проверка `provenance verify --current-sources`
+Правки кода не требуют новой записи. Явная проверка `provenance verify --current-sources`
 показывает, соответствует ли измерение текущим исходникам; поле результата
 `current_sources_checked` отличает её от проверки сохранённых данных.
 
@@ -80,13 +80,13 @@ scout-dev provenance verify --root . \
   --manifest "$SCOUT_EVIDENCE_DIR/receipt.json"
 ```
 
-Artifacts должны находиться внутри корня проекта. Перед генерацией receipt
-изменившиеся наблюдения требуют причины и ссылки на regression test.
+Артефакты должны находиться внутри корня проекта. Перед созданием записи
+изменившиеся наблюдения требуют причины и ссылки на регрессионный тест.
 Приёмка использует `testdata/acceptance/upstream-inputs.jsonl.gz`.
-Для отдельных проверок без capture есть явный `--input-mode pinned`.
+Для отдельных проверок без захваченных входов есть явный `--input-mode pinned`.
 
 Поле `engine_version` обозначает проверенную сборку; до первого релиза достаточно
-SHA коммита. Проверка требует, чтобы replay и selftests бинарника относились
+SHA коммита. Проверка требует, чтобы повторное сканирование и самопроверки бинарника относились
 к записанному идентификатору. Хеши текущих исходников сверяются только с флагом
 `--current-sources`. Тег или автоматически
 определённая версия самой программы проверки могут отличаться.
@@ -95,7 +95,7 @@ SHA коммита. Проверка требует, чтобы replay и selfte
 
 ## Проверки памяти Tree-sitter
 
-C harness требует Go, Clang и загруженных Go modules:
+Тестовая программа на C требует Go, Clang и загруженных модулей Go:
 
 ```sh
 go run ./internal/dev/treeparsecheck --sanitizer address --output /tmp/treeparse-asan

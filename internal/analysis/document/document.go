@@ -69,6 +69,8 @@ type ConfigScope struct {
 }
 
 type File struct {
+	foldedASCII    string
+	isASCII        bool
 	securityViews  []source.View
 	configScopes   []ConfigScope
 	file           artifact.File
@@ -141,7 +143,15 @@ func (f File) WithConfigScopes(scopes []ConfigScope) File {
 }
 func (f File) ConfigScopes() []ConfigScope { return append([]ConfigScope(nil), f.configScopes...) }
 
-func (f File) Artifact() artifact.File      { return f.file }
+func (f File) Artifact() artifact.File { return f.file }
+
+// FoldedASCII is prepared once and shared by concurrent read-only checks.
+func (f File) FoldedASCII() (string, bool) { return f.foldedASCII, f.isASCII }
+
+// HasAdditionalViews reports whether checks have prepared units or reconstructed
+// security text to inspect beyond the original bytes.
+func (f File) HasAdditionalViews() bool { return len(f.units) > 0 || len(f.securityViews) > 0 }
+
 func (f File) SecurityViews() []source.View { return append([]source.View(nil), f.securityViews...) }
 func (f File) Index() source.Index          { return f.index }
 func (f File) Regions() []region            { return append([]region(nil), f.regions...) }
@@ -535,6 +545,8 @@ func prepare(ctx context.Context, file artifact.File, budget *parseBudget, regis
 		projection.issue("preparation_cancelled", "Document preparation was cancelled.")
 		return out
 	}
+
+	out.foldedASCII, out.isASCII = textmatch.FoldASCII(file.Content())
 
 	if file.Metadata().Kind != "text" {
 		return out

@@ -3,7 +3,7 @@
 [English](layout.md) · Русский
 
 Scout использует один Go-модуль. Публичные пакеты: `scout`, `report`, `policy`,
-`baseline`, `review`, `fetch`, `osv`, `knowledge`, `mcp`.
+`baseline`, `review`, `fetch`, `osv`, `knowledge`, `rulepack`, `mcp`.
 
 ```text
 scout/
@@ -17,6 +17,7 @@ scout/
 ├── fetch/                       # public download configuration
 ├── osv/                         # OSV and offline cache
 ├── knowledge/{data,prompts,sources}/
+├── rulepack/                    # публичный формат доверенных rulepack-артефактов
 ├── mcp/                         # public server API
 ├── internal/
 │   ├── buildinfo/               # module versions embedded in the running binary
@@ -34,11 +35,13 @@ scout/
 │   ├── signatures/{rules,testdata}/
 │   ├── distribution/{integrations,skills,registry,attestation}/
 │   ├── discovery/               # пассивный инвентарь конфигураций и компонентов агентов
-│   ├── commands/{cli,devcli,output}/
-│   ├── dev/{maintenance,evaluation,replay,replaywire,provenance,releasecheck}/
+│   ├── commands/{cli,config,devcli,output}/
+│   ├── dev/                     # builddeps, evaluation, maintenance, provenance,
+│   │                            # releasecheck, releasepack, replay, replaywire, treeparsecheck
 │   ├── nativecheck/
 │   ├── nativecontract/
 │   ├── netpolicy/
+│   ├── promptguard/             # общий guard для литеральных и нативных проверок
 │   ├── textmatch/
 │   ├── architecture/
 │   └── scantest/scenarios/
@@ -52,6 +55,10 @@ scout/
 ```
 
 ## Владение кодом
+
+`internal/promptguard` владеет узкой проверкой прямого запрета в исходных байтах,
+общей для литеральных правил и нативных сигнатур. Он зависит только от стандартной
+библиотеки; сигнатурные движки не зависят от `internal/analysis`.
 
 Языковая семантика принадлежит `internal/analysis/languages/<language>`, разбор
 и координаты — `internal/syntax`. Языковые пакеты экспортируют

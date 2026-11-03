@@ -5,7 +5,7 @@ package signatures
 import (
 	"strings"
 
-	"github.com/skarm/scout/internal/analysis/promptguard"
+	"github.com/skarm/scout/internal/promptguard"
 	"github.com/skarm/scout/report"
 
 	yrx "github.com/VirusTotal/yara-x/go"

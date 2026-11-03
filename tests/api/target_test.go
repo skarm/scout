@@ -1,17 +1,110 @@
 package scout_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/skarm/scout"
+	"github.com/skarm/scout/fetch"
 	"github.com/skarm/scout/report"
 )
+
+func TestRemoteCaptureUsesTheBudgetForItsContentType(t *testing.T) {
+	var archive bytes.Buffer
+	zw := zip.NewWriter(&archive)
+	member, err := zw.Create("README.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(member, "plain text"); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, filename     string
+		body               []byte
+		file, archive, max int64
+		accept             bool
+	}{
+		{name: "file-with-smaller-archive-budget", filename: "input.txt", body: bytes.Repeat([]byte("x"), 512), file: 1024, archive: 64, max: 2048, accept: true},
+		{name: "archive-with-smaller-file-budget", filename: "input.zip", body: archive.Bytes(), file: 64, archive: 1024, max: 2048, accept: true},
+		{name: "file-over-budget", filename: "input.txt", body: bytes.Repeat([]byte("x"), 512), file: 64, archive: 1024, max: 2048},
+		{name: "archive-over-budget", filename: "input.zip", body: archive.Bytes(), file: 1024, archive: 64, max: 2048},
+		{name: "download-over-budget", filename: "input.txt", body: bytes.Repeat([]byte("x"), 512), file: 1024, archive: 1024, max: 64},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if _, err := w.Write(tc.body); err != nil {
+					t.Error(err)
+				}
+			}))
+			defer server.Close()
+			opts := basicOptions()
+			opts.Limits.Capture.MaxFileBytes = tc.file
+			opts.Limits.Capture.MaxArchiveBytes = tc.archive
+			download := fetch.DefaultOptions()
+			download.Enabled, download.AllowLoopback = true, true
+			download.MaxBytes = tc.max
+			opts.Download = &download
+			target, err := scout.Remote(server.URL+"/"+tc.filename, scout.RemotePin{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			run, err := testScanner(t, opts).Scan(context.Background(), target)
+			if tc.accept {
+				source := run.Targets[0].Analysis.Source
+				if (err != nil && !errors.Is(err, scout.ErrIncomplete)) || !run.Targets[0].Analysis.Artifact.InventoryComplete || source == nil || source.Status != report.CaptureCaptured || source.Bytes != int64(len(tc.body)) {
+					t.Fatalf("input within its byte budget rejected: state=%s err=%v diagnostics=%+v", run.State, err, run.Targets[0].Analysis.Diagnostics)
+				}
+			} else if err == nil || run.State == report.RunComplete {
+				t.Fatalf("input over its byte budget accepted: state=%s err=%v", run.State, err)
+			}
+		})
+	}
+}
+
+func TestRemoteCaptureHonorsInventoryPathPolicy(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := io.WriteString(w, "plain text"); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	for _, tc := range []struct {
+		filename string
+		maxPath  int
+	}{
+		{filename: "input.txt", maxPath: 4},
+		{filename: "CON.txt", maxPath: 1024},
+	} {
+		t.Run(tc.filename, func(t *testing.T) {
+			opts := basicOptions()
+			opts.Limits.Capture.MaxPathBytes = tc.maxPath
+			download := fetch.DefaultOptions()
+			download.Enabled, download.AllowLoopback = true, true
+			opts.Download = &download
+			target, err := scout.Remote(server.URL+"/"+tc.filename, scout.RemotePin{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			run, err := testScanner(t, opts).Scan(context.Background(), target)
+			if err == nil || run.State == report.RunComplete || len(run.Targets[0].Analysis.Artifact.Files) != 0 {
+				t.Fatalf("invalid inventory path captured: state=%s err=%v", run.State, err)
+			}
+		})
+	}
+}
 
 func TestReaderContextOwnsCancellationAndRetainsCapturedPrefix(t *testing.T) {
 	const prefix = "captured before cancellation\n"

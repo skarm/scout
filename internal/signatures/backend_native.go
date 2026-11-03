@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/skarm/scout/internal/analysis/promptguard"
 	"github.com/skarm/scout/internal/buildinfo"
+	"github.com/skarm/scout/internal/promptguard"
 	"github.com/skarm/scout/report"
 
 	yrx "github.com/VirusTotal/yara-x/go"

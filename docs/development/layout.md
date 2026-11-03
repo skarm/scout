@@ -3,7 +3,7 @@
 English · [Русский](layout.ru.md)
 
 Scout uses one Go module. Public packages are `scout`, `report`, `policy`, `baseline`,
-`review`, `fetch`, `osv`, `knowledge` and `mcp`.
+`review`, `fetch`, `osv`, `knowledge`, `rulepack` and `mcp`.
 
 ```text
 scout/
@@ -17,6 +17,7 @@ scout/
 ├── fetch/                       # public download configuration
 ├── osv/                         # OSV and offline cache
 ├── knowledge/{data,prompts,sources}/
+├── rulepack/                    # public versioned trusted-rulepack format
 ├── mcp/                         # public server API
 ├── internal/
 │   ├── buildinfo/               # module versions embedded in the running binary
@@ -34,11 +35,13 @@ scout/
 │   ├── signatures/{rules,testdata}/
 │   ├── distribution/{integrations,skills,registry,attestation}/
 │   ├── discovery/               # passive agent configuration and component inventory
-│   ├── commands/{cli,devcli,output}/
-│   ├── dev/{maintenance,evaluation,replay,replaywire,provenance,releasecheck}/
+│   ├── commands/{cli,config,devcli,output}/
+│   ├── dev/                     # builddeps, evaluation, maintenance, provenance,
+│   │                            # releasecheck, releasepack, replay, replaywire, treeparsecheck
 │   ├── nativecheck/
 │   ├── nativecontract/
 │   ├── netpolicy/
+│   ├── promptguard/             # raw-byte guard shared by literal and native checks
 │   ├── textmatch/
 │   ├── architecture/
 │   └── scantest/scenarios/
@@ -59,6 +62,10 @@ coordinates belong to `internal/syntax`. Language packages export
 Shared checks belong to `analyzer`, facts to `check`, and quotas to `analysisbudget`.
 Consumers use check contracts directly from `check`. Filename-based display
 surfaces live in `syntax/filetype`; they never grant trust or suppress checks.
+
+`internal/promptguard` owns the narrow raw-byte prohibition shared by literal and
+native signature checks. It depends only on the standard library; signature
+backends do not depend on `internal/analysis`.
 
 Keep unit tests and fixtures beside their package. Use `foo_test.go` for tests of
 `foo.go`; separate files when build constraints or a substantial component justify it.

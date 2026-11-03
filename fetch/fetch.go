@@ -153,7 +153,7 @@ func Get(ctx context.Context, raw string, o Options) (Payload, error) {
 	req.Header.Set("User-Agent", "scout-offline-first-mvp")
 	req.Header.Set("Accept-Encoding", "identity")
 
-	data, err := downloadData(ctx, req, o)
+	data, err := downloadResponse(ctx, req, o)
 	if err != nil {
 		return out, err
 	}

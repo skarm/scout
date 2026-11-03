@@ -258,6 +258,13 @@ func canonicalSet(out []byte, value reflect.Value) ([]byte, error) {
 		}
 
 		items[i] = span{start: itemStart, end: len(out) - start}
+		if i == 0 && value.Len() > 1 {
+			// Similar-sized records are common in reports. Reserve from the
+			// first encoded item without a second reflective walk. Cap the
+			// estimate so one unusually large item cannot multiply memory use.
+			itemBytes := len(out) - start + 1
+			out = slices.Grow(out, min(value.Len()-1, (1<<20)/itemBytes)*itemBytes)
+		}
 	}
 
 	encoded := out[start:]

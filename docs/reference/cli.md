@@ -302,10 +302,10 @@ leave inspection gaps. See [OSV usage](../user/usage.md#network-services-and-ext
   range 128..8192.
 - `--llm-max-response-bytes N`: provider HTTP response byte ceiling; default `65536`
   (64 KiB). This does not increase the separate decoded-review response budget.
-- `--llm-max-requests N`: review request budget shared across passes; default `64`,
-  range 1..256. The shared service budget can reduce it.
-- `--llm-max-input-bytes N`: aggregate serialized user-request bytes; default
-  `2097152` (2 MiB), range 32768..8388608.
+- `--llm-max-requests N`: review requests per target, shared across passes; default
+  `64`, range 1..256. The run's shared service budget can reduce it.
+- `--llm-max-input-bytes N`: serialized user-request bytes across the run, shared
+  across targets and passes; default `2097152` (2 MiB), range 32768..8388608.
 - `--llm-timeout DURATION`: deadline per provider request; default `30s`, positive
   and at most `2m`, also bounded by the overall operation deadline.
 

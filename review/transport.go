@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/skarm/scout/internal/netpolicy"
 )
@@ -27,6 +28,14 @@ func (p *HTTPProvider) readResponse(ctx context.Context, req *http.Request) ([]b
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(p.maxBytes)+1))
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, context.DeadlineExceeded
+		}
+
 		return nil, transportError("response_read_failed")
 	}
 
@@ -67,7 +76,7 @@ func validateResponseHeaders(resp *http.Response, maxBytes int) error {
 		return transportError("content_type")
 	}
 
-	if encoding := resp.Header.Get("Content-Encoding"); encoding != "" && encoding != "identity" {
+	if encoding := resp.Header.Get("Content-Encoding"); encoding != "" && !strings.EqualFold(encoding, "identity") {
 		return transportError("content_encoding")
 	}
 

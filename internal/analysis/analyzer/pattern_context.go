@@ -12,7 +12,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/skarm/scout/internal/analysis/promptguard"
+	"github.com/skarm/scout/internal/promptguard"
 )
 
 var credentialNounPrefix = regexp.MustCompile(`(?i)\b(?:validate|verify|refresh|rotate|expire|parse|manage|revoke)\s+$`)

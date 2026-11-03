@@ -2,7 +2,11 @@ package analyzer
 
 import (
 	"regexp/syntax"
+	"slices"
 	"strings"
+	"unicode"
+
+	"github.com/skarm/scout/internal/textmatch"
 )
 
 // A prefilter is a necessary condition, never evidence. Every accepted input
@@ -113,6 +117,10 @@ func requiredLiterals(tree *syntax.Regexp) []string {
 		var choices []string
 
 		for _, child := range tree.Sub {
+			if !canMatchASCII(child) {
+				continue
+			}
+
 			literals := requiredLiterals(child)
 			if len(literals) == 0 || len(choices)+len(literals) > 64 {
 				return nil
@@ -128,6 +136,61 @@ func requiredLiterals(tree *syntax.Regexp) []string {
 	}
 
 	return nil
+}
+
+// Filters run only on ASCII input. An alternative requiring a non-ASCII
+// literal cannot match that input and need not disable its siblings' hints.
+// This is a conservative possibility check, not a replacement for RE2.
+func canMatchASCII(tree *syntax.Regexp) bool {
+	switch tree.Op {
+	case syntax.OpNoMatch:
+		return false
+	case syntax.OpLiteral:
+		for _, r := range tree.Rune {
+			if r < 128 {
+				continue
+			}
+
+			if tree.Flags&syntax.FoldCase == 0 || !hasASCIIFold(r) {
+				return false
+			}
+		}
+	case syntax.OpCharClass:
+		for i := 0; i < len(tree.Rune); i += 2 {
+			if tree.Rune[i] < 128 {
+				return true
+			}
+		}
+
+		return false
+	case syntax.OpCapture, syntax.OpPlus:
+		return canMatchASCII(tree.Sub[0])
+	case syntax.OpRepeat:
+		return tree.Min == 0 || canMatchASCII(tree.Sub[0])
+	case syntax.OpConcat:
+		for _, child := range tree.Sub {
+			if !canMatchASCII(child) {
+				return false
+			}
+		}
+	case syntax.OpAlternate:
+		return slices.ContainsFunc(tree.Sub, canMatchASCII)
+	default:
+		// Optional terms and assertions can admit ASCII.
+		return true
+	}
+
+	return true
+}
+
+func hasASCIIFold(r rune) bool {
+	for folded := unicode.SimpleFold(r); folded != r; folded = unicode.SimpleFold(folded) {
+		if folded < 128 {
+			return true
+		}
+	}
+
+	return false
 }
 
 func literalScore(literals []string) int {
@@ -158,13 +221,5 @@ func containsPatternLiteral(text string, literals []string) bool {
 }
 
 func asciiPatternText(text string) (string, bool) {
-	for i := range len(text) {
-		if text[i] >= 128 {
-			// Unicode simple folding includes Kelvin sign and long s. Bypass
-			// the filter entirely for Unicode and invalid UTF-8 inputs.
-			return "", false
-		}
-	}
-
-	return strings.ToLower(text), true
+	return textmatch.FoldASCII(text)
 }

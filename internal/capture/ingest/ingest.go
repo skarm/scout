@@ -14,6 +14,7 @@ import (
 	"github.com/skarm/scout/internal/capture/archiveutil"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/capture/rootfs"
+	"github.com/skarm/scout/internal/syntax/filetype"
 	"github.com/skarm/scout/report"
 )
 
@@ -111,6 +112,11 @@ func readFile(ctx context.Context, target string, info os.FileInfo, limits repor
 	data, err := readSelectedFile(ctx, target, info, limits.MaxFileBytes)
 	if err != nil {
 		return artifact.Snapshot{}, err
+	}
+
+	if int64(len(data)) > limits.MaxArchiveBytes && filetype.Inspect(name, string(data), info.Mode()&0o111 != 0).Category == "archive" {
+		b.skip(name, "file", "archive_size_limit", "Source archive exceeds the archive byte budget; no prefix was scanned.", info.Size())
+		return b.snapshot("file"), nil
 	}
 
 	b.files = append(b.files, artifact.NewFile(name, data, info.Mode()&0o111 != 0))

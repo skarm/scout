@@ -19,7 +19,8 @@ benign examples, including SQL topics. Their code is never executed.
 
 ```sh
 go test -mod=readonly -tags=coreonly -run 'TestKnowledge' -v ./tests/scan
-go test -mod=readonly -tags=static_link -run 'TestKnowledge' -v ./tests/scan
+go run -mod=readonly ./internal/dev/builddeps -- \
+  go test -mod=readonly -tags=static_link -run 'TestKnowledge' -v ./tests/scan
 go test -mod=readonly -tags=coreonly ./internal/analysis/semantic ./knowledge ./review
 ```
 

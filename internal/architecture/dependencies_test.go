@@ -110,6 +110,14 @@ func TestPackageDependencyBoundaries(t *testing.T) {
 			root:      "internal/analysis/sourcepolicy",
 			forbidden: []string{"internal/analysis/analyzer", "internal/analysis/languages", "internal/commands", "internal/dev"},
 		},
+		{
+			root:      "internal/signatures",
+			forbidden: []string{"internal/analysis", "internal/commands", "internal/dev"},
+		},
+		{
+			root:      "internal/promptguard",
+			forbidden: []string{"internal/analysis", "internal/signatures", "internal/commands", "internal/dev"},
+		},
 	} {
 		t.Run(tc.root, func(t *testing.T) {
 			imports := localDependencies(t, tc.root, map[string]bool{})

@@ -54,9 +54,10 @@ func (s *Server) initialize(sess *session, r request) *response {
 		ProtocolVersion string          `json:"protocolVersion"`
 		Capabilities    json.RawMessage `json:"capabilities"`
 		ClientInfo      json.RawMessage `json:"clientInfo"`
+		Meta            json.RawMessage `json:"_meta,omitempty"`
 	}
 
-	if strictParams(r.Params, &params) != nil || params.ProtocolVersion == "" || len(params.ProtocolVersion) > 64 || !validClientInfo(params.Capabilities, params.ClientInfo) {
+	if strictParams(r.Params, &params, "protocolVersion", "capabilities", "clientInfo", "_meta") != nil || params.ProtocolVersion == "" || len(params.ProtocolVersion) > 64 || !validClientInfo(params.Capabilities, params.ClientInfo) {
 		return rpcFailure(r.ID, -32602, "Invalid initialization parameters")
 	}
 
@@ -95,7 +96,7 @@ func (s *Server) prepareCall(ctx context.Context, sess *session, r request) (too
 		Arguments json.RawMessage `json:"arguments"`
 		Meta      json.RawMessage `json:"_meta,omitempty"`
 	}
-	if strictParams(r.Params, &params) != nil {
+	if strictParams(r.Params, &params, "name", "arguments", "_meta") != nil {
 		return toolCall{}, nil, nil, rpcFailure(r.ID, -32602, "Invalid tool call")
 	}
 
@@ -157,10 +158,11 @@ func (s *Server) executeToolCall(ctx context.Context, call toolCall) *response {
 
 func (s *Server) listTools(r request) *response {
 	var params struct {
-		Cursor string `json:"cursor,omitempty"`
+		Cursor string          `json:"cursor,omitempty"`
+		Meta   json.RawMessage `json:"_meta,omitempty"`
 	}
 
-	if strictParams(r.Params, &params) != nil || params.Cursor != "" {
+	if strictParams(r.Params, &params, "cursor", "_meta") != nil || params.Cursor != "" {
 		return rpcFailure(r.ID, -32602, "Invalid cursor")
 	}
 

@@ -30,7 +30,8 @@ without installing additional scanners:
   bypasses. Go, Shell, JavaScript/TypeScript, Python and SQL have different coverage.
 - **Credential literals:** private-key markers and selected GitHub, GitLab, Slack,
   Stripe, OpenAI and Anthropic token shapes in all captured files, including hidden
-  files, documentation and binary byte streams. No credential is used or sent to a provider.
+  files, documentation and binary byte streams. These checks run offline and do
+  not verify whether a credential is live.
 - **Dependencies and package contents:** redirected package sources, local Go module
   replacements, automatic installation entry points, uninspected local components
   and opaque executable attachments.
@@ -165,6 +166,20 @@ the operation. A signature match remains a finding to assess in context.
 In this example it appears as `YR5` with `medium` severity; `--fail-on medium`
 sets the corresponding blocking threshold. A finding and the policy decision
 are separate parts of the report.
+
+For versioned distribution, package the same trusted source as a rulepack:
+
+```sh
+scout rules pack create --id organization --version 1 \
+  --yara /etc/scout/organization.yar --output /etc/scout/organization.rules.json
+scout rules pack inspect /etc/scout/organization.rules.json
+scout scan --rulepack /etc/scout/organization.rules.json --fail-on medium ./my-plugin
+```
+
+`--rulepack` and `--yara-rules` are mutually exclusive and require YARA to be selected.
+An optional `--rulepack-sha256` pins the entire artifact's SHA-256 from a trusted
+source. Keep the artifact outside inspected inputs. The format validates source
+hashes and compatibility; it does not authenticate the publisher.
 
 ### Known-vulnerability lookup with OSV
 

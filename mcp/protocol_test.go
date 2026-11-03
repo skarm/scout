@@ -15,7 +15,7 @@ func TestExactRequestWireContract(t *testing.T) {
 			t.Fatal(r, err)
 		}
 	}
-	for _, id := range []string{`null`, `true`, `[]`, `{}`, `1.0`, `1e1`, `9223372036854775808`, `"` + strings.Repeat("x", 97) + `"`, `"` + strings.Repeat(`\u0061`, 24) + `"`} {
+	for _, id := range []string{`null`, `true`, `[]`, `{}`, `1.5`, `1e-1`, `9223372036854775808`, `"` + strings.Repeat("x", 97) + `"`, `"` + strings.Repeat(`\u0061`, 24) + `"`} {
 		if _, err := parseRequest([]byte(`{"jsonrpc":"2.0","method":"ping","id":` + id + `}`)); err == nil {
 			t.Fatal("invalid ID accepted", id)
 		}

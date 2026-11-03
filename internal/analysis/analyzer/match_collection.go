@@ -12,7 +12,11 @@ type boundedMatches struct {
 }
 
 func collectMatches(out *Result, budget int) *boundedMatches {
-	collection := &boundedMatches{out: out, budget: budget, seen: map[source.Span]bool{}}
+	collection := &boundedMatches{out: out, budget: budget}
+	if len(out.Matches) > 0 {
+		collection.seen = make(map[source.Span]bool, len(out.Matches))
+	}
+
 	for _, m := range out.Matches {
 		collection.seen[source.Span{Start: m.Start, End: m.End}] = true
 	}
@@ -24,6 +28,10 @@ func (c *boundedMatches) add(m Match) bool {
 	at := source.Span{Start: m.Start, End: m.End}
 	if c.seen[at] {
 		return true
+	}
+
+	if c.seen == nil {
+		c.seen = make(map[source.Span]bool)
 	}
 
 	c.seen[at] = true

@@ -23,7 +23,7 @@ func (s *Server) compare(ctx context.Context, raw json.RawMessage) (report.Prepa
 		Previous  string `json:"previous"`
 		Candidate string `json:"candidate"`
 	}
-	if strictParams(raw, &a) != nil {
+	if strictParams(raw, &a, "previous", "candidate") != nil {
 		return report.PreparedDocument{}, errors.New("invalid arguments")
 	}
 
@@ -39,7 +39,7 @@ func (s *Server) compare(ctx context.Context, raw json.RawMessage) (report.Prepa
 
 func (s *Server) scan(ctx context.Context, raw json.RawMessage) (report.PreparedDocument, error) {
 	var a scanArguments
-	if strictParams(raw, &a) != nil {
+	if strictParams(raw, &a, "target", "name", "data_base64") != nil {
 		return report.PreparedDocument{}, errors.New("invalid arguments")
 	}
 

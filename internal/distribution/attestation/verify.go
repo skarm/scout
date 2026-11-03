@@ -16,6 +16,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
@@ -160,15 +161,25 @@ func matchesSubject(ctx context.Context, payload []byte, artifact Artifact) (boo
 		return false, errors.New("unsupported signed statement")
 	}
 
+	if !validPredicate(statement) {
+		return false, errors.New("invalid signed predicate declaration")
+	}
+
 	subjects := statement.Get("subject")
 	if subjects == nil || subjects.Kind != jsonconfig.KindArray || len(subjects.Elements) > 256 {
 		return false, errors.New("invalid signed subjects")
 	}
 
 	matches := 0
+	names := make(map[string]bool)
 
 	for _, subject := range subjects.Elements {
-		name, _ := subject.Get("name").Text()
+		name, ok := subject.Get("name").Text()
+		if !validSubject(subject) || kind == "https://in-toto.io/Statement/v0.1" && (!ok || name == "" || names[name]) {
+			return false, errors.New("invalid signed subject")
+		}
+
+		names[name] = true
 		hash, _ := subject.Get("digest").Get("sha256").Text()
 
 		if name != artifact.Name {
@@ -183,6 +194,50 @@ func matchesSubject(ctx context.Context, payload []byte, artifact Artifact) (boo
 	}
 
 	return matches == 1, nil
+}
+
+// The predicate's content is deliberately not evaluated as an installation
+// policy. Its required type declaration and optional object still belong to
+// both supported versions of the signed Statement, not to an extension.
+func validPredicate(statement *jsonconfig.Node) bool {
+	typ, ok := statement.Get("predicateType").Text()
+	if !ok || typ == "" {
+		return false
+	}
+
+	u, err := url.Parse(typ)
+	if err != nil || !u.IsAbs() || u.Scheme != strings.ToLower(u.Scheme) || u.Host != strings.ToLower(u.Host) {
+		return false
+	}
+
+	if predicate := statement.Get("predicate"); predicate != nil && predicate.Kind != jsonconfig.KindObject {
+		return false
+	}
+
+	return true
+}
+
+func validSubject(subject *jsonconfig.Node) bool {
+	if subject.Kind != jsonconfig.KindObject {
+		return false
+	}
+
+	if name := subject.Get("name"); name != nil && name.Kind != jsonconfig.KindString {
+		return false
+	}
+
+	digests := subject.Get("digest")
+	if digests == nil || digests.Kind != jsonconfig.KindObject || len(digests.Members) == 0 {
+		return false
+	}
+
+	for _, digest := range digests.Members {
+		if digest.Value.Kind != jsonconfig.KindString {
+			return false
+		}
+	}
+
+	return true
 }
 
 func parseKey(data []byte) (crypto.PublicKey, []byte, error) {

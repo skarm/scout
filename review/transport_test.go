@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +28,48 @@ func TestDownloadAndReviewerUseTheSameAddressPolicy(t *testing.T) {
 				t.Fatalf("address policy differs: download=%v review=%v", downloadErr, reviewErr)
 			}
 		})
+	}
+}
+
+func TestProviderFamiliesTreatContentCodingNamesWithoutCase(t *testing.T) {
+	for _, family := range []string{"chat", "messages"} {
+		for _, coding := range []string{"", "identity", "Identity", "IDENTITY", "gzip", "GZip", "br", "identity, gzip"} {
+			t.Run(family+"/"+coding, func(t *testing.T) {
+				body := apiEnvelope("{}")
+				if family == "messages" {
+					body = `{"type":"message","role":"assistant","model":"fixture","stop_reason":"end_turn","content":[{"type":"text","text":"{}"}]}`
+				}
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					if coding != "" {
+						w.Header().Set("Content-Encoding", coding)
+					}
+					if _, err := io.WriteString(w, body); err != nil {
+						t.Error(err)
+					}
+				}))
+				defer server.Close()
+				opts := httpOptions(server.URL + "/review")
+				var provider review.Provider
+				var err error
+				if family == "chat" {
+					provider, err = review.NewHTTP(opts)
+				} else {
+					provider, err = review.NewMessages(review.MessagesOptions{HTTPOptions: opts, Transport: "anthropic"})
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				completion, err := provider.Complete(context.Background(), payload())
+				if coding == "" || strings.EqualFold(coding, "identity") {
+					if err != nil || string(completion.Output) != "{}" {
+						t.Fatalf("uncompressed JSON rejected: output=%q err=%v", completion.Output, err)
+					}
+				} else if review.ErrorCode(err) != "transport_content_encoding" {
+					t.Fatalf("unsupported content coding accepted: err=%v", err)
+				}
+			})
+		}
 	}
 }
 
@@ -65,6 +109,63 @@ func TestProviderFamiliesPreserveClientDeadline(t *testing.T) {
 		_, err = p.Complete(context.Background(), payload)
 		if !errors.Is(err, context.DeadlineExceeded) || review.ErrorCode(err) != "timeout" {
 			t.Fatalf("%s lost timeout identity: %v (%s)", p.Identity().Provider, err, review.ErrorCode(err))
+		}
+	}
+}
+
+func TestProviderFamiliesPreserveCancellationDuringResponseBody(t *testing.T) {
+	for _, family := range []string{"chat", "messages"} {
+		for _, stop := range []string{"cancel", "context-deadline", "client-deadline"} {
+			t.Run(family+"/"+stop, func(t *testing.T) {
+				started := make(chan struct{})
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if _, err := io.Copy(io.Discard, r.Body); err != nil {
+						t.Error(err)
+					}
+					w.Header().Set("Content-Type", "application/json")
+					w.(http.Flusher).Flush()
+					close(started)
+					<-r.Context().Done()
+				}))
+				defer server.Close()
+				opts := httpOptions(server.URL + "/review")
+				if stop == "client-deadline" {
+					opts.Timeout = 100 * time.Millisecond
+				}
+				var provider review.Provider
+				var err error
+				if family == "chat" {
+					provider, err = review.NewHTTP(opts)
+				} else {
+					provider, err = review.NewMessages(review.MessagesOptions{HTTPOptions: opts, Transport: "anthropic"})
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				if stop == "context-deadline" {
+					cancel()
+					ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+				}
+				defer cancel()
+				if stop == "cancel" {
+					go func() {
+						select {
+						case <-started:
+							cancel()
+						case <-ctx.Done():
+						}
+					}()
+				}
+				_, err = provider.Complete(ctx, payload())
+				want, code := context.DeadlineExceeded, "timeout"
+				if stop == "cancel" {
+					want, code = context.Canceled, "cancelled"
+				}
+				if !errors.Is(err, want) || review.ErrorCode(err) != code {
+					t.Fatalf("body read lost cancellation: %v (%s), want %v", err, review.ErrorCode(err), want)
+				}
+			})
 		}
 	}
 }

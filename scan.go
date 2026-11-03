@@ -528,14 +528,24 @@ func captureRemote(ctx context.Context, target Target, options Options) (artifac
 	download := *options.Download
 	download.Revision = target.pin.Revision
 	download.ExpectedSHA256 = target.pin.SHA256
-	download.MaxBytes = min(download.MaxBytes, options.Limits.Capture.MaxArchiveBytes, options.Limits.Capture.MaxTotalBytes)
+	download.MaxBytes = min(download.MaxBytes, max(options.Limits.Capture.MaxFileBytes, options.Limits.Capture.MaxArchiveBytes), options.Limits.Capture.MaxTotalBytes)
 
 	payload, err := fetch.Get(ctx, target.name, download)
 	if err != nil {
 		return artifact.Snapshot{}, &payload.Source, err
 	}
 
-	if int64(len(payload.Data)) > options.Limits.Capture.MaxFileBytes && filetype.Inspect(payload.Name, string(payload.Data), false).Category != "archive" {
+	if err := ingest.ValidatePath(payload.Name, options.Limits.Capture.MaxPathBytes, options.Limits.Capture.MaxDepth); err != nil {
+		payload.Source.Status = "rejected_path"
+		return artifact.Snapshot{}, &payload.Source, err
+	}
+
+	allowed := options.Limits.Capture.MaxFileBytes
+	if filetype.Inspect(payload.Name, string(payload.Data), false).Category == "archive" {
+		allowed = options.Limits.Capture.MaxArchiveBytes
+	}
+
+	if int64(len(payload.Data)) > allowed {
 		payload.Source.Status = "rejected_file_budget"
 		return artifact.Snapshot{}, &payload.Source, errors.New("remote file budget exceeded")
 	}

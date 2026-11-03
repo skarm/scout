@@ -38,9 +38,16 @@ the host or inspected package. Redirects, retries and provider fallback are disa
 - `proposal_assessment`: recheck hypotheses against original evidence.
 - `quality`: optional quality/policy criteria, enabled by `--quality-review`.
 
-Both review passes share the request and input budgets. Defaults are 64 requests,
-2 MiB aggregate user-request bytes and 30 seconds per request; relevant `--llm-*`
-flags adjust them. `--timeout` bounds the entire scan. Omitted or invalid tasks remain gaps.
+Both review passes share the request and input budgets. Defaults are up to
+64 requests per target, 2 MiB of serialized user-request bytes across the run,
+and 30 seconds per request. Requests also share the run's service budget:
+64 requests by default, divided among targets and enabled services.
+System instructions, schemas and provider envelopes are outside the input-byte budget.
+
+Use the relevant `--llm-*` flags to adjust review limits. Set
+`limits.max_service_requests` in the configuration file to adjust the shared
+service budget; it has no CLI flag. `--timeout` bounds the entire scan.
+Omitted or invalid tasks remain gaps.
 
 ## Results
 

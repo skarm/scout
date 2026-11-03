@@ -9,7 +9,7 @@ Import `github.com/skarm/scout`. Use `go doc` for individual types and fields.
 ## Construct and close a Scanner
 
 Start with `scout.DefaultOptions()`; zero options are invalid. Standard and Review
-require nil `Checks`; Custom requires an explicit value. Unavailable selected
+require `Checks == nil`; Custom requires `Checks != nil`. Unavailable selected
 backends fail construction.
 
 ```go
@@ -64,13 +64,13 @@ if err := prepared.Write(output, report.JSON); err != nil {
 ```
 
 The example assumes an existing run, Gate and writer. Handle scan and writer errors
-separately from `policy.PreparedCode(prepared)`. `Snapshot` returns an independent copy; rendering
-does not close the writer.
+separately from `policy.PreparedCode(prepared)`. `Snapshot` returns an independent
+copy. Rendering does not close the writer.
 
 ## Coordinates, limits and trust
 
-Byte spans are zero-based and half-open. Text coordinates use one-based Unicode
-code points. Binary locations have zero line/column values. Derived offsets refer
+Byte spans are zero-based and half-open. Lines and columns are one-based;
+columns count Unicode code points. Binary locations have zero line/column values. Derived offsets refer
 to the child's bytes; `ParentRange` is an enclosing representation, not an exact
 map through compression or decoding.
 
@@ -79,4 +79,4 @@ findings apply across the run. Native limits and cancellation are cooperative.
 Downloads, advisory networking and source uploads require separate permissions.
 
 MCP borrows its Scanner and Gate. Its `Serve` method owns the input `io.ReadCloser`
-and closes it on cancellation; that reader must unblock when closed.
+and closes it on return or cancellation; that reader must unblock when closed.

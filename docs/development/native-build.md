@@ -68,9 +68,17 @@ and installed copies. Pass the same `BIN_DIR` when cleaning a custom build.
 
 ## External installation
 
+For native Go commands on supported platforms, use the same dependency wrapper
+as Make. Run it from the repository root:
+
+```sh
+go run -mod=readonly ./internal/dev/builddeps -- \
+  go test -mod=readonly -tags=static_link ./...
+```
+
 Use `PKG_CONFIG_PATH` to select a trusted YARA-X C API 1.22.0 installation containing
 `libyara_x_capi.a`, `yara_x.h` and its pkg-config file. This is required on platforms
-without a pinned prepared package and for direct native Go commands outside Make.
+without a pinned prepared package, or when bypassing both Make and the wrapper.
 See [upstream C API instructions](https://virustotal.github.io/yara-x/docs/api/c/c-/)
 for source builds.
 

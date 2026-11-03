@@ -29,8 +29,8 @@ The model passes `{"target":"candidate","semantic":false}` to `scout_scan`.
 OpenCode also offers `/scout candidate`. Arguments cannot choose arbitrary paths,
 executables or flags. Keep target roots stable during review.
 
-The default profile is standard. Missing required backends fail preflight.
-`SCOUT_REDUCED_CORE=1` explicitly selects reduced custom checks.
+The default profile is `standard`. Missing required backends fail preflight.
+`SCOUT_REDUCED_CORE=1` explicitly selects reduced `custom` checks.
 The tool returns a bounded summary and omitted-record counts; rerun the CLI with
 an approved `--output` for a full report. The wrapper does not create a baseline,
 query OSV, add custom YARA rules or install the target.

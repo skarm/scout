@@ -10,15 +10,6 @@ import (
 	"github.com/skarm/scout/internal/netpolicy"
 )
 
-func downloadData(ctx context.Context, req *http.Request, options Options) ([]byte, error) {
-	data, err := downloadResponse(ctx, req, options)
-	if typed, ok := errors.AsType[*Error](err); ok && typed.Code == "body_read_failed" && ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-
-	return data, err
-}
-
 // Download and exact API queries share transport admission and bounded reads.
 // Their callers retain the separate payload/checksum and API response policies.
 func downloadResponse(ctx context.Context, req *http.Request, options Options) ([]byte, error) {
@@ -37,6 +28,14 @@ func downloadResponse(ctx context.Context, req *http.Request, options Options) (
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, options.MaxBytes+1))
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, context.DeadlineExceeded
+		}
+
 		return nil, fail("body_read_failed")
 	}
 
@@ -58,6 +57,10 @@ func requestFailure(ctx context.Context, err error) error {
 
 	if typed, ok := errors.AsType[*netpolicy.Error](err); ok {
 		return fail(typed.Code)
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
 	}
 
 	return fail("request_failed")

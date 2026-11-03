@@ -11,7 +11,7 @@ import (
 )
 
 func TestLogicalRequestIDsShareCancellationAndDuplicateDetection(t *testing.T) {
-	for _, ids := range [][2]string{{`"\u0061"`, `"a"`}, {`"a\/b"`, `"a/b"`}, {`-0`, `0`}} {
+	for _, ids := range [][2]string{{`"\u0061"`, `"a"`}, {`"a\/b"`, `"a/b"`}, {`-0`, `0`}, {`1.0`, `1`}, {`1e1`, `10`}, {`10e-1`, `1`}} {
 		t.Run(ids[0], func(t *testing.T) {
 			server := &Server{options: Options{Timeout: time.Second}, slots: make(chan struct{}, 2)}
 			sess := newSession()

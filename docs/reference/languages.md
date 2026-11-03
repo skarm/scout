@@ -14,8 +14,9 @@ general type resolution and a complete call graph are unavailable.
 
 ## Python
 
-The full build uses Tree-sitter and a bounded CST-to-IR projection, without Python
-runtime. Checks cover selected process/eval/import operations, sensitive files,
+The full build uses Tree-sitter and a bounded projection from a concrete syntax tree
+(CST) to an intermediate representation (IR), without a Python runtime.
+Checks cover selected process/eval/import operations, sensitive files,
 network arguments, deserialization, reconstruction and local flows.
 Unsupported constructs and unresolved flows remain gaps.
 
@@ -38,14 +39,15 @@ Unsupported control flow leaves gaps. Core/no-CGO builds report unavailable gram
 ## SQL
 
 The Go parser works in core builds. SQL001–SQL004 check selected destructive
-operations, authority/RLS changes, server filesystem/program I/O and disabled limits.
+operations, authority and row-level security (RLS) changes, server filesystem/program I/O and disabled limits.
 Comments, strings and identifiers are distinguished. Dollar-quoted procedural bodies
 remain unsupported. Go and JS/TS SQL interpolation is checked on their own ASTs.
 
 ## Configuration formats
 
 JSON checks duplicate decoded keys. YAML and TOML require full-build backends.
-YAML aliases, merges and custom tags are unsupported; TOML spans are conservative.
+YAML aliases, merges and custom tags are unsupported. TOML byte spans may cover
+the entire parsed unit.
 Parsing does not establish compatibility with every host loader.
 
 ## Scope

@@ -122,8 +122,9 @@ scout scan --config "$HOME/.config/scout/review.json" --allow-source-upload \
   --format markdown ./my-skill
 ```
 
-The preset allows up to 32 review requests and 2 MiB of serialized user-request
-bytes, with a 30-second request timeout and five-minute operation deadline.
+The preset allows up to 32 review requests per target and 2 MiB of serialized
+user-request bytes across the run. The request timeout is 30 seconds, and the
+operation deadline is five minutes. The shared service budget can further limit requests.
 Quality review is optional; add `--quality-review` to select it. Source upload
 consent is required on each invocation because excerpts can contain secrets.
 Validation checks settings and local backends; provider availability is checked

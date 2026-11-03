@@ -80,7 +80,7 @@ func (a literal) Find(ctx context.Context, d document.File, budget int) (Result,
 		matcher.patternHints = []patternLiteralFilter{*a.hint}
 	}
 
-	out, err := matcher.findText(ctx, d.Artifact().Content(), max(1, budget))
+	out, err := matcher.findTextWhere(ctx, preparedPatternInput(d), max(1, budget), nil)
 	if budget < 1 && len(out.Matches) > 0 {
 		return Result{Truncated: true}, err
 	}
