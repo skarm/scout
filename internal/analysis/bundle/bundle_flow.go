@@ -673,6 +673,8 @@ func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[strin
 	}
 
 	name := callee.name
+	b.observeCallCapabilities(p, n, callee, args, ref)
+
 	if value, ok := b.resolverConstructor(p, n, name, args); ok {
 		return value
 	}

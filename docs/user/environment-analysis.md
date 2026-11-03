@@ -38,9 +38,11 @@ using `scout.environment-analysis/v1`. It records:
   the same unqualified name in different files or targets. Host qualification
   and precedence remain unknown. Arbitrary nested examples are not joined.
 - `capability_combination`: selected code observers find sensitive-data access
-  and an outbound network operation in different skill scopes or roots. Shared
-  domains, the words “token” or “config”, or a skill description alone do not
-  establish these capabilities. A pairing does not prove a transfer or a call.
+  plus a network operation, or untrusted input plus command execution, file
+  mutation or infrastructure mutation, in different skill scopes or roots.
+  Evidence roles identify the ordered pair. Shared domains, keywords or a skill
+  description alone do not establish these capabilities. A pairing does not
+  prove a transfer or a call.
 - `skill_reference`: a literal relative Markdown link names another captured
   `SKILL.md` in the same target. This records a reference, including quoted
   links; it does not establish invocation or authority. Remote, escaped and
@@ -54,6 +56,40 @@ Supported Shell file reads include `cat`, input redirections and curl file bodie
 or uploads. Literal `~/` paths use symbolic HOME or an in-script constant; the
 scanner's environment and credential files are never consulted. Unresolved HOME
 after unknown shell effects leaves analysis incomplete.
+
+The additional capability roles are:
+
+- `untrusted_input`: selected HTTP response APIs, Python `input`, or Shell `read`.
+  Request construction alone is excluded. Responses from authenticated endpoints
+  still count as external content; this is not a claim that they are malicious.
+  A modeled stdin read from a fully literal here-string/document is excluded;
+  unknown expansions or input descriptors retain an untrusted-input candidate.
+- `command_execution`: selected Go `os/exec`, Node `child_process`/`vm`, Python
+  process/evaluation APIs, and explicit Shell interpreter/eval/source/exec calls.
+  Constructing a process is a capability candidate even without a visible start.
+  Shell builtin help requests and `exec` options without a command are excluded.
+- `file_write`: selected filesystem write, append, create, remove, rename,
+  directory and permission APIs; Python `open` with a literal writing mode;
+  Shell output redirections and selected file-mutating commands. Pure descriptor
+  duplication and `/dev/null` output do not contribute file-write facts.
+  Operands after Shell `--` remain file operands, including dynamic or dash-prefixed names.
+- `infrastructure_mutation`: selected modifying verbs of `kubectl`, `terraform`,
+  `helm` and `docker`, either as Shell commands or literal argv passed to modeled
+  process APIs. Known global options retain operand roles. Read-only verbs such
+  as `get`, `plan` and `list`, help requests, supported dry-run/local modes and
+  quoted command descriptions do not contribute this role. Shell command strings inside process API arguments,
+  unknown option grammars and arbitrary cloud SDK methods are outside this model.
+  Node/Python argv arrays must be inline literals; mutable array bindings and
+  Python `shell`/`executable` overrides are excluded. The executable and verb
+  must resolve to strings. The broader command-execution capability remains visible.
+  Required option values, including values spelled `--help` or `--dry-run`, do
+  not act as control flags. Known pflag short clusters preserve their value operand.
+  Boolean help/list/local flags retain accepted true/false forms, including `1` and `TRUE`.
+
+Python observations require Python checks to be selected (`standard`, or custom
+`--checks python`) and its backend to be available. JS/TS require native grammar
+support. Dynamic receivers, general type inference and complete filesystem or
+cloud API coverage are not provided. Existing parser and flow gaps remain visible.
 Missing parser support, failed capture, cancellation or an exhausted budget
 cannot become a complete environment result.
 

@@ -52,3 +52,33 @@ func TestEnvironmentRejectsRemoteAndStdinBeforeCapture(t *testing.T) {
 		}
 	}
 }
+
+func TestEnvironmentCommandCapabilityRequiresReviewWithoutFlowFinding(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	for _, item := range []struct{ root, text string }{
+		{a, "curl https://example.invalid/status\n"},
+		{b, "kubectl --context local delete pod PRIVATE_CAPABILITY\n"},
+	} {
+		if err := os.WriteFile(filepath.Join(item.root, "run.sh"), []byte(item.text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out, diagnostics bytes.Buffer
+	code := cli.Run(t.Context(), []string{"scan", "--environment", "--profile", "custom", "--checks", "none", "--scope", "selected", "--format", "json", a, b}, &out, &diagnostics)
+	var doc report.Document
+	if json.Unmarshal(out.Bytes(), &doc) != nil || doc.Validate() != nil || doc.Run.Environment == nil || code != 1 || doc.Evaluation.Decision != report.Review {
+		t.Fatalf("capability CLI review failed: code=%d diagnostics=%s output=%s", code, &diagnostics, &out)
+	}
+	observations := doc.Run.Environment.Observations
+	if len(observations) != 1 || observations[0].Kind != "capability_combination" || observations[0].Evidence[0].Role != "untrusted_input" || observations[0].Evidence[1].Role != "infrastructure_mutation" {
+		t.Fatalf("wrong capability evidence: %+v", observations)
+	}
+	for _, target := range doc.Run.Targets {
+		if len(target.Analysis.Findings) != 0 {
+			t.Fatal("environment capability pair invented a per-target flow finding")
+		}
+	}
+	if strings.Contains(out.String(), "PRIVATE_CAPABILITY") {
+		t.Fatal("CLI report leaked a command operand")
+	}
+}

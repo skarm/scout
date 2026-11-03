@@ -10,33 +10,57 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
-// ObserveNetwork uses the same native command/option grammar as SH001/SH002/SH004.
+// Observers receive captured syntax for trusted analysis only, never public logs.
+type Observers struct {
+	Network    func(string, source.Span)
+	Secret     func(source.Span)
+	DNS        func(DNSQuery)
+	Capability func(string, source.Span)
+}
+
+// Observe uses the same native command/option grammar as SH001/SH002/SH004.
 // Sensitive reads include parameter expansion and supported cat, input redirect
 // and curl file-body operations, independently of their eventual use in a sink.
 // Callbacks contain captured text for trusted analysis only, never public logs.
-func ObserveNetwork(ctx context.Context, doc document.File, network func(string, source.Span), secret func(source.Span), dns func(DNSQuery)) error {
+func Observe(ctx context.Context, doc document.File, observers Observers) error {
 	w := shellWalk{ctx: ctx, outputs: map[string]*check.Facts{}}
-	w.observeNetwork = func(value string, s source.Span) {
-		at, e := w.view.Original(s)
-		if e != nil {
-			w.err = e
-			return
-		}
+	if observers.Network != nil {
+		w.observeNetwork = func(value string, s source.Span) {
+			at, e := w.view.Original(s)
+			if e != nil {
+				w.err = e
+				return
+			}
 
-		network(value, at)
+			observers.Network(value, at)
+		}
 	}
 
-	w.observeSecret = func(s source.Span) {
-		at, e := w.view.Original(s)
-		if e != nil {
-			w.err = e
-			return
-		}
+	if observers.Secret != nil {
+		w.observeSecret = func(s source.Span) {
+			at, e := w.view.Original(s)
+			if e != nil {
+				w.err = e
+				return
+			}
 
-		secret(at)
+			observers.Secret(at)
+		}
 	}
 
-	if dns != nil {
+	if observers.Capability != nil {
+		w.observeCapability = func(kind string, span source.Span) {
+			at, err := w.view.Original(span)
+			if err != nil {
+				w.err = err
+				return
+			}
+
+			observers.Capability(kind, at)
+		}
+	}
+
+	if observers.DNS != nil {
 		w.observeDNS = func(name string, span source.Span, origin *shellOrigin) {
 			at, err := w.view.Original(span)
 			if err != nil {
@@ -58,7 +82,7 @@ func ObserveNetwork(ctx context.Context, doc document.File, network func(string,
 				}
 			}
 
-			dns(query)
+			observers.DNS(query)
 		}
 	}
 
@@ -86,7 +110,7 @@ func (a *shellWalk) sensitiveFileRead(span source.Span) *shellOrigin {
 }
 
 func (a *shellWalk) observeWget(c *shellsyntax.Command, args []shellValue) {
-	if a.observeNetwork == nil {
+	if a.observeNetwork == nil && a.observeCapability == nil {
 		return
 	}
 
@@ -94,14 +118,21 @@ func (a *shellWalk) observeWget(c *shellsyntax.Command, args []shellValue) {
 	for i := 0; i < len(args); i++ {
 		next, valid := r.argument(args, i)
 		if !valid {
-			a.observeNetwork("", c.Span)
+			if a.observeNetwork != nil {
+				a.observeNetwork("", c.Span)
+			}
+
 			return
 		}
 
-		if wgetOption(args[i]) == wgetOperand && httpURL(args[i].text) {
+		if a.observeNetwork != nil && wgetOption(args[i]) == wgetOperand && httpURL(args[i].text) {
 			a.observeNetwork(args[i].text, c.Span)
 		}
 
 		i = next
+	}
+
+	if r.remote {
+		a.capability("untrusted_input", c.Span)
 	}
 }

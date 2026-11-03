@@ -81,6 +81,7 @@ type shellValue struct {
 	prefix               byte // First constant byte before an unresolved word part, for DNS option roles.
 	known                bool
 	output               bool // The command may contribute stdout to a substitution.
+	fixedInput           bool // A complete inline literal supplied to stdin, not a guessed environment value.
 	credential, download *shellOrigin
 }
 type shellState struct {
@@ -105,6 +106,7 @@ type shellWalk struct {
 	observeNetwork    func(string, source.Span)
 	observeSecret     func(source.Span)
 	observeDNS        func(string, source.Span, *shellOrigin)
+	observeCapability func(string, source.Span)
 }
 
 type shellRedirectKind uint8
@@ -610,6 +612,8 @@ func (a *shellWalk) simpleCommand(c *shellsyntax.Command, s *shellState, input s
 		return a.function(body, s, input)
 	}
 
+	a.commandCapabilities(c, name, args, input)
+
 	out := a.invokeCommand(c, s, input, name, args)
 	if name != "true" && name != "false" && name != ":" && name != "printf" {
 		out.output = true
@@ -632,6 +636,7 @@ func (a *shellWalk) invokeCommand(c *shellsyntax.Command, s *shellState, input s
 		a.dnsCommand(c, name, args)
 	case "curl":
 		request := curlArguments(args)
+		a.curlCapabilities(request, c.Span)
 
 		if a.observeNetwork != nil {
 			observed := false
@@ -659,6 +664,7 @@ func (a *shellWalk) invokeCommand(c *shellsyntax.Command, s *shellState, input s
 
 		if target, ok := wgetFile(args); ok {
 			a.writeFile(s, shellValue{text: target, known: true}, &shellOrigin{source: c.Span})
+			a.fileCapability(">", shellValue{text: target, known: true}, c.Span)
 		}
 
 		if wgetStdout(args) {
@@ -835,6 +841,10 @@ func (a *shellWalk) catCommand(c *shellsyntax.Command, s *shellState, input shel
 			out = input
 		}
 
+		if len(files) > 0 {
+			out.fixedInput = false
+		}
+
 		for _, v := range files {
 			out.download = mergeShellValue(out, shellValue{download: s.fileOrigin(v)}).download
 			if v.known && literals.SensitivePath(v.text) {
@@ -913,6 +923,11 @@ func (a *shellWalk) redirects(c *shellsyntax.Command, s *shellState, input shell
 			value = a.word(redirect.Body, s)
 		}
 
+		switch redirect.Op {
+		case ">", ">>", ">|", ">&", "&>", "&>>", "<>":
+			a.fileCapability(redirect.Op, value, redirect.Span)
+		}
+
 		if !spec.applies(redirect.FD) {
 			continue
 		}
@@ -923,6 +938,8 @@ func (a *shellWalk) redirects(c *shellsyntax.Command, s *shellState, input shell
 
 		if spec.input {
 			input = a.redirectedInput(spec.kind, value, redirect.Span)
+			input.fixedInput = a.observeCapability != nil && shellFixedInputRedirect(redirect)
+
 			if spec.kind == shellReadFile {
 				input.download = s.fileOrigin(value)
 			}
@@ -950,6 +967,7 @@ func (a *shellWalk) redirectedInput(kind shellRedirectKind, value shellValue, sp
 
 func mergeShellValue(x, y shellValue) shellValue {
 	x.output = x.output || y.output
+	x.fixedInput = x.fixedInput && y.fixedInput
 
 	if x.credential == nil {
 		x.credential = y.credential

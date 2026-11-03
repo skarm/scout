@@ -27,9 +27,10 @@ type builder struct {
 }
 
 type factIndex struct {
-	identifiers              map[string][]fact
-	secrets, networks, links []fact
-	skills                   map[string]fact
+	identifiers  map[string][]fact
+	capabilities map[string][]fact
+	links        []fact
+	skills       map[string]fact
 }
 
 // Build combines source-bound facts without merging the underlying analyses.
@@ -44,6 +45,7 @@ func Build(ctx context.Context, surfaces []bundle.Surface, targets []report.Targ
 			"Identifiers cover root-level mcpServers/mcp_servers aliases and captured root tools or result.tools arrays. Saved project maps are not merged; server alias collisions and unqualified tool-name collisions are distinct observations. MCP tool schemas are never fetched.",
 			"Captured identifiers and capabilities are syntactic candidates, not effective runtime names, permissions, activation or proven cross-component data flow. All cached versions and disabled declarations remain visible.",
 			"Capability observers cover selected Go/JS/TS/Python/Shell/SQL syntax. Literal relative Markdown links to captured SKILL.md files are recorded as references, not calls. Archive and other derived-object relationships are outside this environment scope.",
+			"Untrusted-input candidates cover selected HTTP response APIs, Python input and shell read; authenticated responses are not assumed safe. Command/process construction, selected file mutations and literal kubectl/terraform/helm/docker modifying verbs are capabilities, not proof of execution. Request construction alone is not an external-input fact. Python syntax requires the Python check to be enabled and its backend available.",
 			"Observations require review, independently of per-target baselines. No source excerpts, raw identifiers or endpoint values are included.",
 		},
 	}}
@@ -57,7 +59,7 @@ func Build(ctx context.Context, surfaces []bundle.Surface, targets []report.Targ
 		return b.result()
 	}
 
-	index := factIndex{identifiers: map[string][]fact{}, skills: map[string]fact{}}
+	index := factIndex{identifiers: map[string][]fact{}, capabilities: map[string][]fact{}, skills: map[string]fact{}}
 
 	for i, surface := range surfaces {
 		if !surface.Complete || targets[i].State != report.RunComplete {
@@ -86,10 +88,8 @@ func (b *builder) collect(facts []bundle.SurfaceFact, target string, index *fact
 			if !b.identifiers(item, index) {
 				return false
 			}
-		case "sensitive_read":
-			index.secrets = append(index.secrets, item)
-		case "network":
-			index.networks = append(index.networks, item)
+		case "sensitive_read", "network", "untrusted_input", "command_execution", "file_write", "infrastructure_mutation":
+			index.capabilities[f.Kind] = append(index.capabilities[f.Kind], item)
 		case "skill_reference":
 			index.links = append(index.links, item)
 		case "skill":
@@ -133,17 +133,29 @@ func (b *builder) relate(index factIndex) {
 		}
 	}
 
-	for _, secret := range index.secrets {
-		for _, network := range index.networks {
-			if !b.step() {
+	for _, input := range []string{"sensitive_read", "untrusted_input"} {
+		for _, effect := range []string{"network", "command_execution", "file_write", "infrastructure_mutation"} {
+			if report.EnvironmentCapabilityPair(input, effect) && !b.relateCapabilities(index.capabilities[input], index.capabilities[effect]) {
 				return
-			}
-
-			if secret.target != network.target || secret.Scope != network.Scope {
-				b.emit("capability_combination", secret, network)
 			}
 		}
 	}
+}
+
+func (b *builder) relateCapabilities(inputs, effects []fact) bool {
+	for _, input := range inputs {
+		for _, effect := range effects {
+			if !b.step() {
+				return false
+			}
+
+			if input.target != effect.target || input.Scope != effect.Scope {
+				b.emit("capability_combination", input, effect)
+			}
+		}
+	}
+
+	return true
 }
 
 func (b *builder) result() report.EnvironmentReport {

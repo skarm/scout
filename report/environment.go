@@ -77,6 +77,10 @@ func validateEnvironment(run Run) error {
 
 func validateEnvironmentObservation(o EnvironmentObservation, files map[string]File) error {
 	a, c := environmentRoles(o.Kind)
+	if o.Kind == "capability_combination" && len(o.Evidence) == 2 && EnvironmentCapabilityPair(o.Evidence[0].Role, o.Evidence[1].Role) {
+		a, c = o.Evidence[0].Role, o.Evidence[1].Role
+	}
+
 	if a == "" || len(o.Evidence) != 2 {
 		return errors.New("invalid environment observation kind or evidence count")
 	}
@@ -108,11 +112,22 @@ func environmentRoles(kind string) (string, string) {
 		return "tool_identifier", "tool_identifier"
 	case "mcp_name_collision":
 		return "mcp_identifier", "mcp_identifier"
-	case "capability_combination":
-		return "sensitive_read", "network"
 	case "skill_reference":
 		return "skill_reference", "skill"
 	default:
 		return "", ""
+	}
+}
+
+// EnvironmentCapabilityPair defines the ordered capability combinations that
+// require review. It does not establish activation or a data flow between them.
+func EnvironmentCapabilityPair(input, effect string) bool {
+	switch input {
+	case "sensitive_read":
+		return effect == "network"
+	case "untrusted_input":
+		return effect == "command_execution" || effect == "file_write" || effect == "infrastructure_mutation"
+	default:
+		return false
 	}
 }
