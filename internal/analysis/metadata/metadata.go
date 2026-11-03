@@ -45,6 +45,10 @@ func Collect(ctx context.Context, docs []document.File, host string) report.Meta
 }
 
 func collectFile(d document.File, host string, r *report.MetadataReport) bool {
+	if handled, proceed := collectMCPSnapshot(d, r); handled {
+		return proceed
+	}
+
 	if handled, proceed := collectStructured(d, r); handled {
 		return proceed
 	}

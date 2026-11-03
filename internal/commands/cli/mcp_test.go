@@ -16,6 +16,8 @@ import (
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/internal/signatures"
 	"github.com/skarm/scout/internal/syntax/frontend"
+	"github.com/skarm/scout/internal/syntax/jsonconfig"
+	"github.com/skarm/scout/internal/syntax/mcpsnapshot"
 	"github.com/skarm/scout/mcp"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
@@ -146,4 +148,133 @@ func (w mcpStarted) Write(p []byte) (int, error) {
 	default:
 	}
 	return len(p), nil
+}
+
+const mcpCaptureFixture = `{"initialize":{"protocolVersion":"2026-07-28","serverInfo":{"name":"PRIVATE_SERVER","version":"1"},"capabilities":{"tools":{}},"instructions":"PRIVATE_INSTRUCTION"},"tools":{"tools":[{"name":"PRIVATE_TOOL","description":"PRIVATE_DESCRIPTION","inputSchema":{"type":"object"}}]}}`
+
+func TestMCPSnapshotImportAndPublication(t *testing.T) {
+	input := filepath.Join(t.TempDir(), "capture.json")
+	if err := os.WriteFile(input, []byte(mcpCaptureFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	output := filepath.Join(t.TempDir(), "approved.mcp-snapshot.json")
+	for _, path := range []string{"", output} {
+		var out, diag bytes.Buffer
+		args := []string{"mcp", "snapshot", "--source-id", "PRIVATE_SOURCE"}
+		if path != "" {
+			args = append(args, "--output", path)
+		}
+
+		args = append(args, input)
+		if code := Run(t.Context(), args, &out, &diag); code != 0 {
+			t.Fatalf("snapshot import failed: %d %s", code, &diag)
+		}
+
+		data := out.Bytes()
+		if path != "" {
+			var err error
+			data, err = os.ReadFile(path)
+			if err != nil || out.Len() != 0 {
+				t.Fatal("snapshot publication failed", err)
+			}
+		}
+
+		root, err := jsonconfig.Parse(t.Context(), string(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		doc, err := mcpsnapshot.Inspect(root)
+		if err != nil || doc.Source.String != "PRIVATE_SOURCE" || doc.Initialize.Get("instructions").String != "PRIVATE_INSTRUCTION" ||
+			doc.List.Get("tools").Elements[0].Get("description").String != "PRIVATE_DESCRIPTION" {
+			t.Fatal("import did not preserve captured declarations", err)
+		}
+	}
+
+	var out, diag bytes.Buffer
+	if code := Run(t.Context(), []string{"mcp", "snapshot", "--source-id", "x", "--output", input, input}, &out, &diag); code != 2 {
+		t.Fatal("snapshot overwrote capture", code)
+	}
+
+	data, err := os.ReadFile(input)
+	if err != nil || string(data) != mcpCaptureFixture {
+		t.Fatal("input capture changed", err)
+	}
+}
+
+func TestMCPSnapshotPreservesEmptyServerMetadata(t *testing.T) {
+	for _, field := range []struct{ name, value string }{{"name", "PRIVATE_SERVER"}, {"version", "1"}} {
+		t.Run(field.name, func(t *testing.T) {
+			capture := strings.Replace(mcpCaptureFixture, `"`+field.name+`":"`+field.value+`"`, `"`+field.name+`":""`, 1)
+			data, err := mcpsnapshot.Create(t.Context(), "server-identity", []byte(capture))
+			if err != nil {
+				t.Fatal("valid empty display metadata rejected", err)
+			}
+
+			root, err := jsonconfig.Parse(t.Context(), string(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			snapshot, err := mcpsnapshot.Inspect(root)
+			if err != nil || snapshot.Initialize.Get("serverInfo").Get(field.name).String != "" {
+				t.Fatal("empty display metadata was not retained", err)
+			}
+		})
+	}
+}
+
+func TestMCPSnapshotRejectsIncompleteAmbiguousAndOversizedCaptures(t *testing.T) {
+	for _, tc := range []struct{ name, data, source string }{
+		{name: "missing-source", data: mcpCaptureFixture},
+		{name: "invalid-source-unicode", data: mcpCaptureFixture, source: "\xff"},
+		{name: "malformed", data: `{"PRIVATE_SENTINEL":`, source: "x"},
+		{name: "duplicate-key", data: strings.Replace(mcpCaptureFixture, `"capabilities":`, `"capabilities":{},"capabilities":`, 1), source: "x"},
+		{name: "duplicate-tool", data: strings.Replace(mcpCaptureFixture, `"tools":[`, `"tools":[{"name":"PRIVATE_TOOL","inputSchema":{}},`, 1), source: "x"},
+		{name: "pagination", data: strings.Replace(mcpCaptureFixture, `"tools":{"tools":`, `"tools":{"nextCursor":"PRIVATE_CURSOR","tools":`, 1), source: "x"},
+		{name: "pending-list", data: strings.Replace(mcpCaptureFixture, `"tools":{"tools":`, `"tools":{"resultType":"pending","tools":`, 1), source: "x"},
+		{name: "missing-initialize", data: `{"tools":{"tools":[]}}`, source: "x"},
+		{name: "missing-server-name", data: strings.Replace(mcpCaptureFixture, `"name":"PRIVATE_SERVER",`, ``, 1), source: "x"},
+		{name: "null-server-name", data: strings.Replace(mcpCaptureFixture, `"name":"PRIVATE_SERVER"`, `"name":null`, 1), source: "x"},
+		{name: "missing-server-version", data: strings.Replace(mcpCaptureFixture, `,"version":"1"`, ``, 1), source: "x"},
+		{name: "null-server-version", data: strings.Replace(mcpCaptureFixture, `"version":"1"`, `"version":null`, 1), source: "x"},
+		{name: "missing-tools", data: strings.Replace(mcpCaptureFixture, `"tools":[`, `"unknown":[`, 1), source: "x"},
+		{name: "null-schema", data: strings.Replace(mcpCaptureFixture, `{"type":"object"}`, `null`, 1), source: "x"},
+		{name: "unknown-envelope", data: strings.Replace(mcpCaptureFixture, `{"initialize":`, `{"PRIVATE_EXTRA":true,"initialize":`, 1), source: "x"},
+		{name: "trailing-data", data: mcpCaptureFixture + `{}`, source: "x"},
+		{name: "byte-limit", data: strings.Repeat(" ", jsonconfig.MaxBytes) + mcpCaptureFixture, source: "x"},
+		{name: "envelope-byte-limit", data: strings.Replace(mcpCaptureFixture, "PRIVATE_INSTRUCTION", strings.Repeat("x", jsonconfig.MaxBytes-len(mcpCaptureFixture)+len("PRIVATE_INSTRUCTION")), 1), source: "x"},
+		{name: "tool-limit", data: `{"initialize":{"protocolVersion":"x","serverInfo":{"name":"x","version":"1"},"capabilities":{}},"tools":{"tools":[` + mcpTooManyTools() + `]}}`, source: "x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := filepath.Join(t.TempDir(), "capture.json")
+			if err := os.WriteFile(input, []byte(tc.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			var out, diag bytes.Buffer
+			if code := Run(t.Context(), []string{"mcp", "snapshot", "--source-id", tc.source, input}, &out, &diag); code != 2 || out.Len() != 0 {
+				t.Fatal("invalid capture published", code)
+			}
+
+			if strings.Contains(diag.String(), "PRIVATE_") {
+				t.Fatal("capture data leaked through diagnostics")
+			}
+		})
+	}
+
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := mcpsnapshot.Create(cancelled, "x", []byte(mcpCaptureFixture)); err == nil {
+		t.Fatal("cancelled import succeeded")
+	}
+}
+
+func mcpTooManyTools() string {
+	tools := make([]string, mcpsnapshot.MaxTools+1)
+	for i := range tools {
+		tools[i] = `{"name":"` + strings.Repeat("x", i+1) + `","inputSchema":{}}`
+	}
+	return strings.Join(tools, ",")
 }

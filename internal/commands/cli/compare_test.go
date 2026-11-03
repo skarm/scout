@@ -3,6 +3,8 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -80,6 +82,187 @@ func TestCompareCLIFormatsAndPublication(t *testing.T) {
 			t.Fatal("input mutated")
 		}
 	}
+}
+
+const compareMCPSnapshot = `{"schema":"scout.mcp-snapshot/v1","source":"PRIVATE_SOURCE","initialize":{"protocolVersion":"2026-07-28","serverInfo":{"name":"PRIVATE_SERVER","version":"1"},"capabilities":{"tools":{}},"instructions":"PRIVATE_INSTRUCTIONS"},"tools":{"tools":[{"name":"PRIVATE_TOOL","title":"PRIVATE_TITLE","description":"PRIVATE_DESCRIPTION","inputSchema":{"type":"object","properties":{"PRIVATE_ARG":{"type":"number","default":1}}},"outputSchema":{"type":"object"},"annotations":{"readOnlyHint":true}}]}}`
+
+func TestCompareMCPSnapshotFieldsAndSourceEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name, from, to, field, change string
+		incomplete                    bool
+	}{
+		{name: "identical"},
+		{name: "instructions", from: "PRIVATE_INSTRUCTIONS", to: "PRIVATE_NEW_INSTRUCTIONS", field: "initialize.instructions", change: "modified"},
+		{name: "server", from: `"version":"1"`, to: `"version":"2"`, field: "initialize.serverInfo", change: "modified"},
+		{name: "empty-server-name", from: `"name":"PRIVATE_SERVER"`, to: `"name":""`, field: "initialize.serverInfo", change: "modified"},
+		{name: "empty-server-version", from: `"version":"1"`, to: `"version":""`, field: "initialize.serverInfo", change: "modified"},
+		{name: "protocol", from: "2026-07-28", to: "2025-11-25", field: "initialize.protocolVersion", change: "modified"},
+		{name: "capabilities", from: `"tools":{}`, to: `"tools":{"listChanged":true}`, field: "initialize.capabilities", change: "modified"},
+		{name: "description", from: "PRIVATE_DESCRIPTION", to: "PRIVATE_NEW_DESCRIPTION", field: "description", change: "modified"},
+		{name: "title", from: "PRIVATE_TITLE", to: "PRIVATE_NEW_TITLE", field: "title", change: "modified"},
+		{name: "input-schema", from: `"default":1`, to: `"default":2`, field: "inputSchema", change: "modified"},
+		{name: "output-schema", from: `"outputSchema":{"type":"object"}`, to: `"outputSchema":{"type":"object","additionalProperties":false}`, field: "outputSchema", change: "modified"},
+		{name: "annotations", from: `"readOnlyHint":true`, to: `"readOnlyHint":false`, field: "annotations", change: "modified"},
+		{name: "removed-description", from: `"description":"PRIVATE_DESCRIPTION",`, field: "description", change: "removed"},
+		{name: "added-tool", from: `"tools":[`, to: `"tools":[{"name":"PRIVATE_NEW_TOOL","inputSchema":{}},`, field: "tool", change: "added"},
+		{name: "removed-tool", from: `"tools":[{"name":"PRIVATE_TOOL","title":"PRIVATE_TITLE","description":"PRIVATE_DESCRIPTION","inputSchema":{"type":"object","properties":{"PRIVATE_ARG":{"type":"number","default":1}}},"outputSchema":{"type":"object"},"annotations":{"readOnlyHint":true}}]`, to: `"tools":[]`, field: "tool", change: "removed"},
+		{name: "tool-extension", from: `"title":"PRIVATE_TITLE"`, to: `"PRIVATE_EXTENSION":{"value":"PRIVATE_VALUE"},"title":"PRIVATE_TITLE"`, field: "extensions", change: "added"},
+		{name: "server-extension", from: `"initialize":{`, to: `"initialize":{"PRIVATE_EXTRA":true,`, field: "initialize.extensions", change: "added"},
+		{name: "list-extension", from: `"tools":{"tools":[`, to: `"tools":{"_meta":{"PRIVATE_META":1},"tools":[`, field: "tools.extensions", change: "added"},
+		{name: "number-spelling", from: `"default":1`, to: `"default":1.0`},
+		{name: "schema-order", from: `"type":"number","default":1`, to: `"default":1,"type":"number"`},
+		{name: "source-mismatch", from: "PRIVATE_SOURCE", to: "PRIVATE_OTHER_SOURCE", field: "source", change: "unverified", incomplete: true},
+		{name: "paginated", from: `"tools":{"tools":[`, to: `"tools":{"nextCursor":"PRIVATE_CURSOR","tools":[`, field: "snapshot", change: "unverified", incomplete: true},
+		{name: "invalid-schema", from: `"inputSchema":{"type":"object","properties":{"PRIVATE_ARG":{"type":"number","default":1}}}`, to: `"inputSchema":null`, field: "snapshot", change: "unverified", incomplete: true},
+		{name: "unknown-version", from: "scout.mcp-snapshot/v1", to: "scout.mcp-snapshot/v999", field: "snapshot", change: "unverified", incomplete: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := compareMCPSnapshot
+			if tc.from != "" {
+				candidate = strings.Replace(candidate, tc.from, tc.to, 1)
+				if candidate == compareMCPSnapshot {
+					t.Fatal("fixture replacement did not change input")
+				}
+			}
+
+			d := compareMCPDocuments(t, compareMCPSnapshot, candidate)
+			changes := d.Run.Comparison.MCPChanges
+			if (d.Run.Comparison.Completeness != report.Complete) != tc.incomplete {
+				t.Fatal("incorrect declaration comparison completeness", d.Run.Comparison.Issues)
+			}
+			if tc.field == "" {
+				if len(changes) != 0 {
+					t.Fatal("equivalent declarations changed", changes)
+				}
+			} else if len(changes) != 1 || changes[0].Field != tc.field || changes[0].Change != tc.change || d.Run.Comparison.Counts.MCPChanges != 1 {
+				t.Fatal("incorrect MCP field delta", changes)
+			}
+
+			for _, change := range changes {
+				for index, ref := range []*report.SourceRef{change.Before, change.After} {
+					if ref == nil {
+						continue
+					}
+					text := []string{compareMCPSnapshot, candidate}[index]
+					if ref.ByteStart < 0 || ref.ByteEnd > len(text) || ref.ByteEnd <= ref.ByteStart {
+						t.Fatal("invalid source span", ref)
+					}
+					fileHash := sha256.Sum256([]byte(text))
+					spanHash := sha256.Sum256([]byte(text[ref.ByteStart:ref.ByteEnd]))
+					if ref.SHA256 != hex.EncodeToString(fileHash[:]) || ref.SpanSHA256 != hex.EncodeToString(spanHash[:]) {
+						t.Fatal("MCP change lost original evidence", ref)
+					}
+				}
+			}
+
+			encoded, err := json.Marshal(d)
+			if err != nil || strings.Contains(string(encoded), "PRIVATE_") {
+				t.Fatal("MCP declaration value leaked into report")
+			}
+		})
+	}
+}
+
+func TestCompareMCPSnapshotOrderingInvalidityAndRetention(t *testing.T) {
+	extra := `{"name":"SECOND_TOOL","inputSchema":{"type":"object"}}`
+	before := strings.Replace(compareMCPSnapshot, `"tools":[`, `"tools":[`+extra+`,`, 1)
+	after := strings.TrimSuffix(compareMCPSnapshot, `]}}`) + `,` + extra + `]}}`
+	if d := compareMCPDocuments(t, before, after); len(d.Run.Comparison.MCPChanges) != 0 || d.Run.Comparison.Completeness != report.Complete {
+		t.Fatal("tool-list order became a declaration change")
+	}
+
+	d := compareMCPDocuments(t, compareMCPSnapshot, strings.Replace(compareMCPSnapshot, "PRIVATE_TOOL", "private_tool", 1))
+	if len(d.Run.Comparison.MCPChanges) != 2 {
+		t.Fatal("case-sensitive tool rename was not removal plus addition")
+	}
+
+	for _, invalid := range []string{
+		`{`,
+		`{}`,
+		strings.Replace(compareMCPSnapshot, `"schema":`, `"approved":true,"schema":`, 1),
+		strings.Replace(compareMCPSnapshot, `"tools":[`, `"tools":[{"name":"PRIVATE_TOOL","inputSchema":{}},`, 1),
+	} {
+		d = compareMCPDocuments(t, compareMCPSnapshot, invalid)
+		if d.Run.Comparison.Completeness != report.Partial || len(d.Run.Comparison.MCPChanges) != 1 || d.Run.Comparison.MCPChanges[0].Change != "unverified" {
+			t.Fatal("invalid snapshot became a verified declaration delta")
+		}
+	}
+
+	d = compareMCPDocuments(t, compareMCPSnapshot, strings.Replace(compareMCPSnapshot, "PRIVATE_DESCRIPTION", "PRIVATE_CHANGED", 1), "--max-changes", "1")
+	if d.Run.Comparison.Completeness != report.Partial || d.Run.Comparison.OmittedChanges == 0 {
+		t.Fatal("MCP change retention silently complete")
+	}
+}
+
+func TestCompareMCPSnapshotKeepsFindingsAndAllOutputFormats(t *testing.T) {
+	d := compareMCPDocuments(t, compareMCPSnapshot, strings.Replace(compareMCPSnapshot, "PRIVATE_DESCRIPTION", "-----BEGIN PRIVATE KEY-----", 1))
+	if d.Evaluation.Decision != report.Block || !slices.ContainsFunc(d.Run.Targets[1].Analysis.Findings, func(f report.Finding) bool { return f.RuleID == "SE001" }) {
+		t.Fatal("MCP declaration comparison suppressed candidate findings")
+	}
+
+	for _, format := range []report.Format{report.Text, report.Markdown, report.JSON, report.SARIF} {
+		var out bytes.Buffer
+		if err := report.Write(&out, format, d); err != nil {
+			t.Fatal(err)
+		}
+
+		if strings.Contains(out.String(), "PRIVATE_") || strings.Contains(out.String(), "BEGIN PRIVATE KEY") {
+			t.Fatal("output copied MCP declaration text", format)
+		}
+
+		if (format == report.Text || format == report.Markdown) && (!strings.Contains(out.String(), "MCP") || !strings.Contains(out.String(), "description")) {
+			t.Fatal("human output lost MCP declaration change", format)
+		}
+	}
+}
+
+func TestCompareMCPSnapshotFilePresence(t *testing.T) {
+	for _, change := range []string{"added", "removed"} {
+		t.Run(change, func(t *testing.T) {
+			before, after := updateInputs(t)
+			root := before
+			if change == "added" {
+				root = after
+			}
+			if err := os.WriteFile(filepath.Join(root, "server.mcp-snapshot.json"), []byte(compareMCPSnapshot), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			var out, diag bytes.Buffer
+			if code := cli.Run(t.Context(), compareCLIArgs("--format", "json", before, after), &out, &diag); code != 2 {
+				t.Fatalf("code=%d diagnostics=%s", code, &diag)
+			}
+
+			d := readCompareDocument(t, out.Bytes())
+			changes := d.Run.Comparison.MCPChanges
+			if d.Run.Comparison.Completeness != report.Complete || len(changes) != 1 || changes[0].Field != "snapshot" || changes[0].Change != change {
+				t.Fatal("snapshot file presence was not source-bound", d.Run.Comparison.Issues, changes)
+			}
+			if (changes[0].Before == nil) != (change == "added") || (changes[0].After == nil) != (change == "removed") {
+				t.Fatal("snapshot presence evidence assigned to wrong side")
+			}
+		})
+	}
+}
+
+func compareMCPDocuments(t *testing.T, before, after string, flags ...string) report.Document {
+	t.Helper()
+	a, z := filepath.Join(t.TempDir(), "server.mcp-snapshot.json"), filepath.Join(t.TempDir(), "server.mcp-snapshot.json")
+	for path, value := range map[string]string{a: before, z: after} {
+		if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	args := append([]string{"--format", "json"}, flags...)
+	args = append(args, a, z)
+	var out, diag bytes.Buffer
+	// JSON extraction retains the scanner's existing scope limitation even when
+	// the selected MCP declaration comparison is complete.
+	if code := cli.Run(t.Context(), compareCLIArgs(args...), &out, &diag); code != 2 {
+		t.Fatalf("code=%d want=2 diagnostics=%s", code, &diag)
+	}
+	return readCompareDocument(t, out.Bytes())
 }
 
 func TestCompareCLIValidation(t *testing.T) {

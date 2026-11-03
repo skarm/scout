@@ -300,6 +300,15 @@ func writeComparison(out *bytes.Buffer, delta UpdateDelta, md bool) {
 		_, _ = fmt.Fprintf(out, "Manifest signal %s (%s): %s; %s.\n\n", quote(signal.RuleID), quote(string(signal.Severity)), quote(signal.Field), quote(signal.Change))
 	}
 
+	for _, change := range delta.MCPChanges {
+		subject := change.ToolSHA256
+		if subject == "" {
+			subject = "server"
+		}
+
+		_, _ = fmt.Fprintf(out, "MCP %s: %s %s.\n\n", quote(subject), quote(change.Field), quote(change.Change))
+	}
+
 	for _, change := range delta.Findings {
 		_, _ = fmt.Fprintf(out, "Finding %s: %s.\n\n", quote(change.RuleID), quote(change.Change))
 	}

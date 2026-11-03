@@ -122,7 +122,7 @@ func fullHelp(stdout io.Writer) int {
 	_, comparison := requestFlagSet("compare", io.Discard, nil)
 	appendFlagHelp(&text, comparison.Lookup("max-changes"))
 	text.WriteString("  Both inputs must be local; --max-changes accepts 1..20000.\n")
-	text.WriteString("\nmcp:\n  Uses scan configuration, policy, checks, service and budget flags.\n  Inputs use --target or tool uploads; reports are returned through MCP.\n")
+	text.WriteString("\nmcp:\n  Uses scan configuration, policy, checks, service and budget flags.\n  Inputs use --target or tool uploads; reports are returned through MCP.\n  mcp snapshot --source-id ID [--output FILE] capture.json imports local MCP results.\n  Compare explicitly selected reference and candidate snapshots with scout compare.\n")
 
 	invocation := mcpInvocation{options: mcp.DefaultOptions(), transport: "stdio", listen: "127.0.0.1:8837"}
 	transport := flag.NewFlagSet("mcp", flag.ContinueOnError)

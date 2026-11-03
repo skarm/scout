@@ -2,7 +2,9 @@ package update_test
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/update"
@@ -50,6 +52,40 @@ func TestManifestSignalsReflectSourceBoundDeclarationChanges(t *testing.T) {
 	delta, err := update.Build(context.Background(), before, after, report.DefaultUpdateOptions())
 	if err != nil || !slices.Contains(delta.Issues, "manifest_declaration_unverified") || len(delta.ManifestSignals) != 0 {
 		t.Fatal(err, delta)
+	}
+}
+
+func TestMCPComparisonDoesNotAliasInputSnapshots(t *testing.T) {
+	text := `{"schema":"scout.mcp-snapshot/v1","source":"first","initialize":{"protocolVersion":"2026-07-28","serverInfo":{"name":"x","version":"1"},"capabilities":{}},"tools":{"tools":[]}}`
+	before := scanText(t, "server.mcp-snapshot.json", text)
+	after := scanText(t, "server.mcp-snapshot.json", strings.Replace(text, `"first"`, `"second"`, 1))
+	delta, err := update.Build(t.Context(), before, after, report.DefaultUpdateOptions())
+	if err != nil || len(delta.MCPChanges) != 1 {
+		t.Fatal("source mismatch did not produce a delta", err)
+	}
+
+	initial, err := json.Marshal(delta)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	before.Metadata.Files[0].MCP.Identity.Source.ByteStart++
+	after.Metadata.Files[0].MCP.Identity.Source.ByteStart++
+	changed, err := json.Marshal(delta)
+	if err != nil || string(initial) != string(changed) {
+		t.Fatal("caller mutations rewrote comparison evidence", err)
+	}
+}
+
+func TestMCPComparisonRequiresCompleteMetadataInventory(t *testing.T) {
+	r := scanText(t, "server.mcp-snapshot.json", `{"schema":"scout.mcp-snapshot/v1","source":"x","initialize":{"protocolVersion":"2026-07-28","serverInfo":{"name":"x","version":"1"},"capabilities":{}},"tools":{"tools":[]}}`)
+	// Metadata retention/cancellation may leave a captured snapshot outside the
+	// retained declaration inventory. Absence of retained MCP records is not equality.
+	r.Metadata.Files = nil
+	r.Metadata.Completeness = report.Partial
+	delta, err := update.Build(t.Context(), r, r, report.DefaultUpdateOptions())
+	if err != nil || delta.Completeness != report.Partial {
+		t.Fatal("incomplete metadata inventory became a complete comparison", err)
 	}
 }
 

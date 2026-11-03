@@ -157,6 +157,10 @@ func (g *Gate) evaluateComparison(run report.Run, result *gateEvaluation) {
 		return
 	}
 
+	if len(run.Comparison.MCPChanges) > 0 {
+		result.review("mcp_declarations_require_review")
+	}
+
 	for _, signal := range run.Comparison.ManifestSignals {
 		switch {
 		case signal.Severity.Rank() < 0:

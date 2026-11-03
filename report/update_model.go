@@ -127,6 +127,8 @@ type FindingChange struct {
 // UpdateCounts summarizes comparison observations, including changes omitted
 // by retention limits.
 type UpdateCounts struct {
+	// MCPChanges counts retained field and tool changes in passive MCP snapshots.
+	MCPChanges int `json:"mcp_changes"`
 	// ManifestSignals counts retained security-relevant declaration changes.
 	ManifestSignals int `json:"manifest_signals"`
 	// FileChanges counts observed file changes, including those omitted by
@@ -154,6 +156,8 @@ type UpdateCounts struct {
 // UpdateDelta compares two fresh scans while retaining each side's full
 // findings separately.
 type UpdateDelta struct {
+	// MCPChanges records source-bound MCP server and tool declaration changes.
+	MCPChanges []MCPChange `json:"mcp_changes,omitempty"`
 	// ManifestSignals records selected security-relevant declaration changes
 	// between the two scans.
 	ManifestSignals []ManifestSignal `json:"manifest_signals"`
@@ -180,6 +184,23 @@ type UpdateDelta struct {
 	OmittedChanges int `json:"omitted_changes"`
 	// Issues lists gaps that prevent a complete comparison.
 	Issues []string `json:"issues"`
+}
+
+// MCPChange compares passive declarations without copying descriptions, schema
+// values, source identities or tool names into reports.
+type MCPChange struct {
+	// ObjectID identifies the corresponding captured snapshot object.
+	ObjectID string `json:"object_id"`
+	// ToolSHA256 identifies a tool; empty denotes snapshot or server metadata.
+	ToolSHA256 string `json:"tool_sha256,omitempty"`
+	// Field names a fixed protocol field, tool, snapshot, or extension group.
+	Field string `json:"field"`
+	// Change is added, removed, modified or unverified.
+	Change string `json:"change"`
+	// Before locates the original declaration, when available.
+	Before *SourceRef `json:"before,omitempty"`
+	// After locates the candidate declaration, when available.
+	After *SourceRef `json:"after,omitempty"`
 }
 
 // ManifestSignal records a source-bound change to a security-relevant manifest

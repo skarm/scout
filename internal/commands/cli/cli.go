@@ -25,6 +25,7 @@ const usage = `Usage:
   scout config validate [flags]
   scout baseline create|approve [flags]
   scout mcp [flags]
+  scout mcp snapshot --source-id ID [--output FILE] <capture.json>
   scout knowledge [--mode MODE]
   scout integrations list|export [flags]
   scout registry fetch|compare [flags]
@@ -65,6 +66,10 @@ func inspectionCommand(ctx context.Context, args []string, stdout, stderr io.Wri
 	case "doctor", "selftest":
 		return selftest(ctx, args[1:], stdout, stderr)
 	case "mcp":
+		if len(args) > 1 && args[1] == "snapshot" {
+			return mcpSnapshotCommand(ctx, args[2:], stdout, stderr)
+		}
+
 		return serveMCP(ctx, args[1:], os.Stdin, stdout, stderr)
 	default:
 		return operatorCommand(ctx, args, stdout, stderr)

@@ -28,6 +28,8 @@ type MetadataItem struct {
 
 // MetadataFile records parsed metadata and issues for one captured file.
 type MetadataFile struct {
+	// MCP records the selected passive MCP snapshot declarations, when present.
+	MCP *MCPSnapshotMetadata `json:"mcp,omitempty"`
 	// Path is the inventory path of the metadata source file.
 	Path string `json:"path"`
 	// Format identifies the parsed configuration format or frontmatter.
@@ -42,6 +44,29 @@ type MetadataFile struct {
 	Fields []MetadataField `json:"fields"`
 	// Issues lists gaps in metadata parsing or declaration inventory.
 	Issues []string `json:"issues"`
+}
+
+// MCPSnapshotMetadata pins source identity and server/tool declarations through
+// hashes and original source spans. It is an observation, not an approval.
+type MCPSnapshotMetadata struct {
+	// Source identifies the complete captured snapshot envelope.
+	Source SourceRef `json:"source"`
+	// Identity hashes the operator-supplied source label, independently of serverInfo.name.
+	Identity MetadataField `json:"identity"`
+	// Fields records server declarations and tools-list extension metadata.
+	Fields []MetadataField `json:"fields"`
+	// Tools records declarations keyed by the hash of the case-sensitive tool name.
+	Tools []MCPToolMetadata `json:"tools"`
+}
+
+// MCPToolMetadata retains one complete tool declaration without its raw values.
+type MCPToolMetadata struct {
+	// NameSHA256 identifies the case-sensitive tool name within one snapshot.
+	NameSHA256 string `json:"name_sha256"`
+	// Source locates the complete tool declaration.
+	Source SourceRef `json:"source"`
+	// Fields contains selected fields and a hash of remaining extension fields.
+	Fields []MetadataField `json:"fields"`
 }
 
 // MetadataReport records selected metadata declarations and their coverage

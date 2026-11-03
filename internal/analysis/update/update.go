@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	algorithmVersion = "2"
+	algorithmVersion = "4"
 	maxOperations    = 2_000_000
 )
 
@@ -83,6 +83,7 @@ func Build(ctx context.Context, before, after report.Analysis, options report.Up
 	b.dependencies()
 	b.findings()
 	b.manifests()
+	b.mcpSnapshots()
 
 	return b.delta, ctx.Err()
 }
