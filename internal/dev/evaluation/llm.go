@@ -10,9 +10,10 @@ import (
 )
 
 type Options struct {
-	Split    string
-	Reviewer *scout.Scanner
-	Price    *TokenPrice
+	Split       string
+	Reviewer    *scout.Scanner
+	Price       *TokenPrice
+	LabelReview *LabelReview
 }
 
 // TokenPrice is an operator assumption, not a fetched provider tariff.

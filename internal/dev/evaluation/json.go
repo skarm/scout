@@ -12,6 +12,10 @@ import (
 // The typed decoder rejects fields in the wrong location. This first pass also
 // rejects duplicate keys and Go's case-insensitive field aliases.
 func validateJSON(data []byte) error {
+	return validateJSONFields(data, []string{"schema_version", "kind", "cases", "sources", "id", "category", "label", "path", "content", "expected_rules", "files", "source_id", "split", "executable", "origin", "revision", "license", "label_review"}, true)
+}
+
+func validateJSONFields(data []byte, fields []string, requireContent bool) error {
 	if !utf8.Valid(data) {
 		return errors.New("invalid corpus UTF-8")
 	}
@@ -19,7 +23,7 @@ func validateJSON(data []byte) error {
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.UseNumber()
 
-	if err := jsonValue(d, 0, ""); err != nil {
+	if err := jsonValue(d, 0, "", fields, requireContent); err != nil {
 		return err
 	}
 
@@ -30,7 +34,7 @@ func validateJSON(data []byte) error {
 	return nil
 }
 
-func jsonValue(d *json.Decoder, depth int, field string) error {
+func jsonValue(d *json.Decoder, depth int, field string, fields []string, requireContent bool) error {
 	if depth > 8 {
 		return errors.New("corpus nesting exceeds limit")
 	}
@@ -60,7 +64,7 @@ func jsonValue(d *json.Decoder, depth int, field string) error {
 			}
 
 			name, ok := key.(string)
-			if !ok || seen[name] || !slices.Contains([]string{"schema_version", "kind", "cases", "sources", "id", "category", "label", "path", "content", "expected_rules", "files", "source_id", "split", "executable", "origin", "revision", "license", "label_review"}, name) {
+			if !ok || seen[name] || !slices.Contains(fields, name) {
 				return errors.New("unknown or duplicate corpus field")
 			}
 
@@ -68,12 +72,12 @@ func jsonValue(d *json.Decoder, depth int, field string) error {
 			field = name
 		}
 
-		if err := jsonValue(d, depth+1, field); err != nil {
+		if err := jsonValue(d, depth+1, field, fields, requireContent); err != nil {
 			return err
 		}
 	}
 
-	if packageFile && (!seen["path"] || !seen["content"]) {
+	if packageFile && (!seen["path"] || requireContent && !seen["content"]) {
 		return errors.New("package files require explicit path and content")
 	}
 

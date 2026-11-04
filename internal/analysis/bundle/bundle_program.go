@@ -92,7 +92,7 @@ type bundleProgram struct {
 
 func (b *bundleAnalysis) buildPrograms(d document.File) {
 	for _, u := range d.Units() {
-		if u.Origin != "file" && u.Origin != "fenced-code" {
+		if u.Origin != "file" && u.Origin != "fenced-code" && u.Origin != "indented-code" {
 			continue
 		}
 

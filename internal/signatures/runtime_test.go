@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	goruntime "runtime"
 	"strconv"
 	"strings"
@@ -12,6 +13,105 @@ import (
 	"testing"
 	"time"
 )
+
+func TestParallelBatchPreservesSequentialAdmissionAndEvidence(t *testing.T) {
+	o := runtimeOptions()
+	o.MaxFiles = 2
+	serial := openNativeRuntime(t, o, 1)
+	parallel := openNativeRuntime(t, o, 4)
+	invalid := runtimeInput(9)
+	invalid.SHA256 = "invalid"
+	inputs := []Input{invalid, runtimeInput(0), runtimeInput(1), runtimeInput(2)}
+	want, err := serial.Check(context.Background(), inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := parallel.Check(context.Background(), inputs)
+	if err != nil || !reflect.DeepEqual(want, got) {
+		t.Fatalf("parallel evidence or quota changed:\n%+v\n%+v\n%v", want, got, err)
+	}
+}
+
+func TestBatchUsesIndependentSessions(t *testing.T) {
+	if !Backend().Available {
+		t.Skip("native capability required")
+	}
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	defer close(release)
+	r := &Runtime{options: runtimeOptions(), parent: &batchEngine{}, available: make(chan compiledEngine, 2), closedDone: make(chan struct{})}
+	for range 2 {
+		e := &batchEngine{started: started, release: release}
+		r.sessions = append(r.sessions, e)
+		r.available <- e
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.Check(context.Background(), []Input{runtimeInput(0), runtimeInput(1)})
+		done <- err
+	}()
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("batch failed to use two independent sessions")
+		}
+	}
+	// Unblock through context-independent release without racing deferred close.
+	release <- struct{}{}
+	release <- struct{}{}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type batchEngine struct {
+	started chan<- struct{}
+	release <-chan struct{}
+}
+
+func (e *batchEngine) scan(ctx context.Context, _ []byte) (reply, error) {
+	e.started <- struct{}{}
+	select {
+	case <-e.release:
+		return reply{Status: "completed"}, nil
+	case <-ctx.Done():
+		return reply{}, ctx.Err()
+	}
+}
+func (*batchEngine) fork() (compiledEngine, error) { return nil, errors.New("unused") }
+func (*batchEngine) close()                        {}
+
+func BenchmarkRuntimeBatch(b *testing.B) {
+	if !Backend().Available {
+		b.Skip("native capability required")
+	}
+	text := strings.Repeat("ordinary source text\n", 3000)
+	inputs := make([]Input, 64)
+	for i := range inputs {
+		inputs[i] = Input{Path: fmt.Sprintf("file-%d.txt", i), Data: text, SHA256: hash([]byte(text))}
+	}
+	for _, count := range []int{1, 4} {
+		b.Run(fmt.Sprintf("workers-%d", count), func(b *testing.B) {
+			r, err := Open(context.Background(), runtimeOptions(), count)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { _ = r.Close() })
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				result, err := r.Check(context.Background(), inputs)
+				if err != nil || result.Completeness != "complete" {
+					b.Fatal(result.Completeness, err)
+				}
+			}
+		})
+	}
+}
 
 func TestRuntimeRejectsInvalidConfiguration(t *testing.T) {
 	for _, tc := range []struct {

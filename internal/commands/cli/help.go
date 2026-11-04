@@ -25,6 +25,9 @@ discover:
   --format text|json         Inventory format (default: text).
   --output FILE              Inventory destination (default: stdout).
   --scan                     Scan discovered roots; ordinary scan flags follow --.
+  --kind KIND                Select skill, plugin, mcp-server or command roots; repeatable.
+  --include-path PATH        Narrow discovered roots; repeatable; cannot expand discovery.
+  --exclude-path PATH        Omit overlapping roots; repeatable; use --kind for precision.
   Explicit --home ignores process CODEX_HOME/CLAUDE_CONFIG_DIR overrides.
   --scan requires complete discovery and 1..32 roots; stdout is a scan report.
 
@@ -37,12 +40,15 @@ config validate:
   --config FILE              Explicit operator configuration; omitted uses defaults.
   Prints the prepared inspection plan as JSON. No targets or report outputs.
 
-baseline create / baseline approve:
+baseline create / baseline approve / baseline renew:
   --from FILE                Required report JSON for create; baseline JSON for approve.
-  --output FILE              Required destination outside the source file.
-  --reason TEXT              Required operator justification for nonempty baselines.
-  --expires RFC3339          Required future expiry time.
-  create writes pending entries; approve approves every entry in the selected file.
+  --output FILE              Destination outside the source; optional with --dry-run.
+  --reason TEXT              Required for create/approve; renew preserves it when omitted.
+  --expires RFC3339          Future expiry; renew must extend the previous expiry.
+  --fingerprint SHA256       Select exact entries for approve/renew; repeatable.
+  --dry-run                  Print a JSON change preview without writing a baseline.
+  create writes pending entries; approve selects all entries if no fingerprint is given.
+  renew extends already approved entries and never approves pending entries.
 
 rules list (also: rules):
   --all                      Include adapted, Python and YARA rules (default: false).

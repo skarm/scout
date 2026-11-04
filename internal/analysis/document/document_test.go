@@ -56,9 +56,7 @@ func TestCoverageGaps(t *testing.T) {
 			code: "frontmatter_semantics_unavailable",
 		},
 		{name: "unclosed-frontmatter", text: "---\nname: example", code: "unterminated_frontmatter"},
-		{name: "quoted", text: "> ```go\n> package p\n> ```", code: "markdown_container_unsupported"},
-		{name: "list", text: "- ```go\n  package p\n  ```", code: "markdown_container_unsupported"},
-		{name: "indent", text: "    exec something\n", code: "markdown_container_unsupported"},
+		{name: "indent-unknown-language", text: "    exec something\n", code: "embedded_language_unsupported"},
 		{name: "html", text: "<!-- hidden command -->", code: "markdown_container_unsupported"},
 		{name: "syntax", text: "```go\npackage ?SECRET_SENTINEL\n```", code: "go_syntax_error"},
 	} {
@@ -97,6 +95,38 @@ func TestFenceBoundaries(t *testing.T) {
 	}
 	if f := prepare("  ```go\npackage p\n  ```\n"); has(f, "go_syntax_error") {
 		t.Fatal("short indentation incorrectly stripped")
+	}
+}
+
+func TestNestedAndIndentedCodeReachLanguageParsers(t *testing.T) {
+	for _, text := range []string{
+		"> - ```go\n>   package p\n>   import \"os/exec\"\n>   func f() { exec.Command(\"sh\") }\n>   ```\n",
+		"Example:\n\n    package p\n    import \"os/exec\"\n    func f() { exec.Command(\"sh\") }\n",
+	} {
+		doc := prepare(text)
+		if !doc.HasGo() || has(doc, "markdown_container_unsupported") || has(doc, "go_syntax_error") || has(doc, "embedded_language_unsupported") {
+			t.Fatalf("valid embedded code remained opaque: %+v", doc.Diagnostics())
+		}
+		units := doc.GoUnits()
+		at := strings.Index(units[0].View.Text(), "exec.Command")
+		span, err := units[0].View.Original(source.Span{Start: at, End: at + len("exec.Command")})
+		if err != nil || text[span.Start:span.End] != "exec.Command" {
+			t.Fatal("nested code lost physical evidence")
+		}
+	}
+}
+
+func TestHiddenFencesRetainStructuralAnalysis(t *testing.T) {
+	text := "<!--\n> - ```go\n>   package p\n>   import \"os/exec\"\n>   func f() { exec.Command(\"sh\") }\n>   ```\n-->\n"
+	doc := prepare(text)
+	if !doc.HasGo() || !has(doc, "markdown_container_unsupported") || has(doc, "go_syntax_error") {
+		t.Fatalf("HTML visibility hid a code unit: %+v", doc.Diagnostics())
+	}
+	unit := doc.GoUnits()[0]
+	at := strings.Index(unit.View.Text(), "exec.Command")
+	span, err := unit.View.Original(source.Span{Start: at, End: at + len("exec.Command")})
+	if err != nil || text[span.Start:span.End] != "exec.Command" {
+		t.Fatal("hidden code lost physical evidence")
 	}
 }
 

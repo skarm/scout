@@ -66,3 +66,9 @@ their contract owner. Only execution preparation needs the registry's binding
 functions. File display hints belong to `syntax/filetype`; constructing evidence
 does not require the analyzer registry. Hook event validation stays in `hookpolicy`,
 which exposes membership through `KnownEvent` without sharing its mutable lookup table.
+
+`environment` owns the passive `Surface`/`SurfaceFact` inputs used to relate
+explicitly grouped targets. `bundle` collects these facts from prepared syntax;
+the environment evaluator does not import the collector or its parser/native
+dependencies. Scanner passes the facts through without depending on `bundle`'s
+implementation types. Architecture tests enforce this dependency direction.

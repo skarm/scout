@@ -535,7 +535,7 @@ func TestScannerPythonCallableAndClassSemantics(t *testing.T) {
 			name:     "factory-call",
 			text:     "def get_runner():\n    return exec\nget_runner()(input())\n",
 			flow:     1,
-			complete: false,
+			complete: true,
 		},
 		{
 			name:     "reflective-call",
@@ -550,24 +550,24 @@ func TestScannerPythonCallableAndClassSemantics(t *testing.T) {
 			complete: true,
 		},
 		{name: "dictionary-order", text: "d = {(f := exec): f(input())}\n", flow: 1, complete: false},
-		{name: "class-source", text: "class C:\n    value = input()\nexec(C.value)\n", flow: 1, complete: false},
+		{name: "class-source", text: "class C:\n    value = input()\nexec(C.value)\n", flow: 1, complete: true},
 		{
 			name:     "uncalled-class-write",
 			text:     "class C:\n    value = input()\ndef never():\n    C.value = 'safe'\nexec(C.value)\n",
 			flow:     1,
-			complete: false,
+			complete: true,
 		},
 		{
 			name:     "called-class-write",
 			text:     "class C:\n    value = input()\ndef clear():\n    C.value = 'safe'\nclear()\nexec(C.value)\n",
 			flow:     0,
-			complete: false,
+			complete: true,
 		},
 		{
 			name:     "inherited-class-write",
 			text:     "class Base:\n    value = input()\nclass C(Base):\n    pass\ndef never():\n    Base.value = 'safe'\nexec(C.value)\n",
 			flow:     1,
-			complete: false,
+			complete: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

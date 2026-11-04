@@ -216,6 +216,47 @@ func TestMissingInputStillAllowsAnOutsideDiagnosticReport(t *testing.T) {
 	assertNoTemps(t, dir)
 }
 
+func TestMissingInputNamesFollowFilesystemSemantics(t *testing.T) {
+	for _, names := range [][2]string{{"missing.json", "MISSING.json"}, {"caf\u00e9.json", "cafe\u0301.json"}} {
+		t.Run(names[0], func(t *testing.T) {
+			dir := t.TempDir()
+			probe := filepath.Join(dir, "probe")
+			if err := os.Mkdir(probe, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(probe, names[0]), "probe")
+			_, aliasErr := os.Stat(filepath.Join(probe, names[1]))
+			if aliasErr != nil && !os.IsNotExist(aliasErr) {
+				t.Fatal(aliasErr)
+			}
+			aliases := aliasErr == nil
+			input, destination := filepath.Join(dir, names[0]), filepath.Join(dir, names[1])
+			if _, err := output.Validate(destination, []string{input}); (err != nil) != aliases {
+				t.Fatalf("filesystem alias=%t validation error=%v", aliases, err)
+			}
+			called := false
+			err := output.Write(t.Context(), destination, []string{input}, func(w io.Writer) error {
+				called = true
+				return render("incomplete")(w)
+			})
+			if (err != nil) != aliases || called == aliases {
+				t.Fatalf("filesystem alias=%t renderer=%t write error=%v", aliases, called, err)
+			}
+			if _, err := os.Stat(input); !os.IsNotExist(err) {
+				t.Fatal("diagnostic report created the missing scan input")
+			}
+			if !aliases {
+				assertContents(t, destination, "incomplete")
+			}
+			assertNoTemps(t, dir)
+			matches, err := filepath.Glob(filepath.Join(dir, ".scout-destinations-*"))
+			if err != nil || len(matches) != 0 {
+				t.Fatalf("destination name probes leaked: %v %v", matches, err)
+			}
+		})
+	}
+}
+
 func TestBadArgumentsAndMissingParentDoNotCreateAnything(t *testing.T) {
 	dir := t.TempDir()
 	for _, destination := range []string{"", filepath.Join(dir, "missing", "report")} {

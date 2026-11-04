@@ -5,13 +5,15 @@ import (
 	"errors"
 	"slices"
 	"sync"
+
+	scanreport "github.com/skarm/scout/report"
 )
 
 // ErrClosed means a native runtime no longer accepts new checks.
 var errClosed = errors.New("YARA-X runtime is closed")
 
 // Runtime owns compiled rules and a bounded set of independent native scanners.
-// A Check has exclusive use of one scanner; runs never share mutable native
+// Each file has exclusive use of one scanner; runs never share mutable native
 // scan state. Close waits for admitted checks, including checks awaiting a slot.
 type Runtime struct {
 	options    Options
@@ -53,8 +55,8 @@ func Open(ctx context.Context, options Options, workers int) (*Runtime, error) {
 	return runtime, nil
 }
 
-// Check borrows one scanner for the entire bounded input plan. Cancellation
-// while waiting preserves cancelled outcomes for every selected input.
+// Check reserves aggregate budgets in input order, then scans admitted files
+// using exclusive sessions. Outcomes retain input order even across workers.
 func (r *Runtime) Check(ctx context.Context, inputs []Input) (Report, error) {
 	if ctx == nil {
 		return Report{}, errors.New("nil YARA-X check context")
@@ -65,6 +67,10 @@ func (r *Runtime) Check(ctx context.Context, inputs []Input) (Report, error) {
 	}
 	defer r.active.Done()
 
+	if len(inputs) > 1 && len(r.sessions) > 1 {
+		return r.checkParallel(ctx, inputs)
+	}
+
 	select {
 	case <-ctx.Done():
 		return checkCompiled(ctx, inputs, r.options, nil)
@@ -72,6 +78,64 @@ func (r *Runtime) Check(ctx context.Context, inputs []Input) (Report, error) {
 		defer func() { r.available <- session }()
 		return checkCompiled(ctx, inputs, r.options, session)
 	}
+}
+
+func (r *Runtime) checkParallel(ctx context.Context, inputs []Input) (Report, error) {
+	result, err := checkCompiled(ctx, nil, r.options, nil)
+	if err != nil {
+		// Even an already cancelled call retains an outcome for each input.
+		return checkCompiled(ctx, inputs, r.options, nil)
+	}
+
+	result.Outcomes = make([]Outcome, len(inputs))
+	jobs := make(chan int, min(len(inputs), r.options.MaxFiles))
+	plan := signatureScan{options: r.options, backend: result.Engine}
+
+	for i, input := range inputs {
+		out := Outcome{Path: input.Path, SHA256: input.SHA256, Status: scanreport.OutcomeCancelled, Matches: []Match{}}
+		if status := plan.admission(ctx, input); status != "" {
+			out.Status = status
+		} else {
+			plan.used += len(input.Data)
+			plan.count++
+
+			jobs <- i
+		}
+
+		result.Outcomes[i] = out
+	}
+
+	close(jobs)
+
+	var workers sync.WaitGroup
+	for range min(len(r.sessions), len(jobs)) {
+		workers.Go(func() {
+			for i := range jobs {
+				select {
+				case <-ctx.Done():
+					continue
+				case session := <-r.available:
+					scanInput(ctx, session, inputs[i], r.options.Timeout, &result.Outcomes[i], result.Engine)
+
+					r.available <- session
+				}
+			}
+		})
+	}
+
+	workers.Wait()
+
+	for _, out := range result.Outcomes {
+		if out.Status != scanreport.OutcomeCompleted || out.Truncated {
+			result.Completeness = string(scanreport.Partial)
+		}
+	}
+
+	if ctx.Err() != nil {
+		result.Completeness = string(scanreport.Partial)
+	}
+
+	return result, ctx.Err()
 }
 
 // Close prevents new checks, drains admitted checks and destroys all scanners

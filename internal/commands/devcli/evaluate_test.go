@@ -32,6 +32,27 @@ func TestEvaluateCLIReportsPackageSplit(t *testing.T) {
 	}
 }
 
+func TestEvaluateCLIQualityGateRetainsFailedMetrics(t *testing.T) {
+	corpus := filepath.Join(t.TempDir(), "threshold-fixture.json")
+	data := []byte(`{"schema_version":1,"kind":"authored_regression_not_holdout","cases":[{"id":"miss","category":"fixture","label":"known_static_gap","path":"fixture.txt","content":"alpha omega"},{"id":"benign","category":"fixture","label":"benign","path":"fixture.txt","content":"Keep the supplied paragraph order."}]}`)
+	if err := os.WriteFile(corpus, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	code := devcli.Run(t.Context(), []string{"evaluate", "--profile", "custom", "--min-recall", "1", corpus}, &out, &diag)
+	var report evaluation.Report
+	if code != 1 || json.Unmarshal(out.Bytes(), &report) != nil || report.Gate == nil || report.Gate.Passed || !report.Completed || len(report.Results) == 0 {
+		t.Fatalf("failed threshold lost its report: code=%d diagnostics=%s report=%+v", code, &diag, report)
+	}
+	for _, value := range []string{"NaN", "+Inf", "-0.1", "1.1"} {
+		out.Reset()
+		code := devcli.Run(t.Context(), []string{"evaluate", "--profile", "custom", "--max-fpr", value, corpus}, &out, &diag)
+		if code != 2 || out.Len() != 0 {
+			t.Fatal("invalid threshold did not fail before evaluation", value, code)
+		}
+	}
+}
+
 func TestEvaluateCLIReviewRequiresGrantAndKeepsUsage(t *testing.T) {
 	var calls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

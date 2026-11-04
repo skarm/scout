@@ -96,6 +96,8 @@ type Report struct {
 	P95NS         int64                 `json:"p95_scan_ns"`
 	Results       []Result              `json:"results"`
 	Limitations   []string              `json:"limitations"`
+	Gate          *GateResult           `json:"gate,omitempty"`
+	LabelReview   *LabelReviewSummary   `json:"label_review,omitempty"`
 }
 
 func Parse(data []byte) (Corpus, error) {
@@ -145,6 +147,11 @@ func MeasureWithOptions(ctx context.Context, scanner *scout.Scanner, data []byte
 		return Report{}, err
 	}
 
+	c, labelReview, err := options.LabelReview.apply(c, data)
+	if err != nil {
+		return Report{}, err
+	}
+
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
@@ -169,6 +176,7 @@ func MeasureWithOptions(ctx context.Context, scanner *scout.Scanner, data []byte
 		SchemaVersion: 2,
 		EngineVersion: scout.Version(),
 		CorpusKind:    c.Kind,
+		LabelReview:   labelReview,
 		CorpusSHA256:  hex.EncodeToString(h[:]),
 		Inspection:    plan,
 		Categories:    map[string]Metrics{},
@@ -186,6 +194,10 @@ func MeasureWithOptions(ctx context.Context, scanner *scout.Scanner, data []byte
 	if options.Reviewer != nil {
 		r.LLM = newLLMReport(options)
 		r.Limitations = append(r.Limitations, "LLM metrics count validated model proposals, not static findings or proof of malicious intent. Usage is provider-reported; cost uses operator-supplied rates and is not a billing record.")
+	}
+
+	if labelReview != nil {
+		r.Limitations = append(r.Limitations, "Label review binds exact corpus bytes and explicit reviewer trust. Reviewer identity, independence and label correctness remain operator declarations, not authenticated facts.")
 	}
 
 	durations := make([]int64, 0)

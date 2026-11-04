@@ -174,6 +174,17 @@ func TestCaptureDoesNotDependOnAnalysisOrCommands(t *testing.T) {
 	}
 }
 
+// Relating passive environment facts must not load the collector's source
+// interpreters, parser backends or native engines, including inactive variants.
+func TestEnvironmentConsumesOnlyPassiveContracts(t *testing.T) {
+	allowed := []string{"internal/analysis/environment", "internal/capture/artifact", "report"}
+	for imported := range localDependencies(t, "internal/analysis/environment", map[string]bool{}) {
+		if !slices.Contains(allowed, imported) {
+			t.Errorf("environment must consume passive contracts, not collector implementation %s", imported)
+		}
+	}
+}
+
 // The generic registry may delegate to language packages, but cannot walk or
 // select concrete source-language parsers itself, even in inactive build files.
 func TestGeneralAnalyzerDelegatesLanguageSyntax(t *testing.T) {

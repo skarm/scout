@@ -25,6 +25,8 @@ func cliFormat(value string) (report.Format, error) {
 
 func (r *request) protectedInputs() []string {
 	inputs := r.localInputs()
+
+	inputs = append(inputs, r.publicationInputs...)
 	for _, name := range []string{r.configPath, r.settings.BaselinePath, r.settings.ExtraRulesPath, r.settings.OSVCachePath, r.settings.RulepackPath} {
 		if name != "" {
 			inputs = append(inputs, name)
@@ -92,24 +94,18 @@ func (r *request) publishOutputs(ctx context.Context, outputs []destination, std
 }
 
 func resolveOutputs(outputs []destination, inputs []string) ([]destination, error) {
-	seen := map[string]bool{}
+	paths := make([]string, len(outputs))
+	for i, out := range outputs {
+		paths[i] = out.path
+	}
+
+	resolved, err := output.ValidateAll(paths, inputs)
+	if err != nil {
+		return nil, err
+	}
 
 	for i := range outputs {
-		if outputs[i].path == "" {
-			continue
-		}
-
-		path, err := output.Validate(outputs[i].path, inputs)
-		if err != nil {
-			return nil, err
-		}
-
-		if seen[path] {
-			return nil, errors.New("report destinations must be distinct")
-		}
-
-		seen[path] = true
-		outputs[i].path = path
+		outputs[i].path = resolved[i]
 	}
 
 	return outputs, nil

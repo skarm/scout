@@ -125,7 +125,7 @@ func TestEmbeddedCodeCoverage(t *testing.T) {
 		}
 
 		wantCoverage := "partial"
-		if strings.Contains(text, "```go") {
+		if strings.Contains(text, "```go") || strings.Contains(text, "```sh") {
 			wantCoverage = "complete"
 		}
 		if string(r.Coverage.Completeness) != wantCoverage || r.Evaluation.Decision == "allow" {

@@ -598,10 +598,15 @@ func runDigest(run Run) (string, error) {
 		}
 	}
 
-	data, err := canonicalValue(nil, reflect.ValueOf(struct {
+	buffer := borrowCanonicalBuffer()
+	defer releaseCanonicalBuffer(buffer)
+
+	data, err := canonicalValue((*buffer)[:0], reflect.ValueOf(struct {
 		Operation Operation `json:"operation"`
 		Run       Run       `json:"run"`
 	}{Operation: run.Operation, Run: run}), "")
+	*buffer = data
+
 	if err != nil {
 		return "", err
 	}

@@ -277,7 +277,11 @@ func canonicalSet(out []byte, value reflect.Value) ([]byte, error) {
 		return append(out, ']'), nil
 	}
 
-	encoded = bytes.Clone(encoded)
+	buffer := borrowCanonicalBuffer()
+	defer releaseCanonicalBuffer(buffer)
+
+	*buffer = append((*buffer)[:0], encoded...)
+	encoded = *buffer
 
 	slices.SortFunc(items, compare)
 

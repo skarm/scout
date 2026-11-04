@@ -5,16 +5,15 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/analysis/environment"
 	"github.com/skarm/scout/report"
 )
 
 func TestEnvironmentBudgetsRetainEvidenceAndExposeOmissions(t *testing.T) {
 	targets := []report.TargetResult{{ID: "a", State: report.RunComplete}, {ID: "b", State: report.RunComplete}, {ID: "c", State: report.RunComplete}}
-	surfaces := make([]bundle.Surface, len(targets))
+	surfaces := make([]environment.Surface, len(targets))
 	for i := range surfaces {
-		surfaces[i] = bundle.Surface{Complete: true, Facts: []bundle.SurfaceFact{{Kind: "tool_identifier", Value: "same", Scope: "tools.json", Source: report.SourceRef{Path: "tools.json", ByteEnd: 4}}}}
+		surfaces[i] = environment.Surface{Complete: true, Facts: []environment.SurfaceFact{{Kind: "tool_identifier", Value: "same", Scope: "tools.json", Source: report.SourceRef{Path: "tools.json", ByteEnd: 4}}}}
 	}
 	result := environment.Build(context.Background(), surfaces, targets, 1, 100)
 	if result.Completeness != report.Partial || len(result.Observations) != 1 || !slices.Contains(result.Issues, "observation_limit") {
@@ -36,12 +35,12 @@ func TestEnvironmentBudgetsRetainEvidenceAndExposeOmissions(t *testing.T) {
 }
 
 func TestDifferentIdentifierKindsAndLocalDuplicatesAreNotCrossComponentCollisions(t *testing.T) {
-	surface := bundle.Surface{Complete: true, Facts: []bundle.SurfaceFact{
+	surface := environment.Surface{Complete: true, Facts: []environment.SurfaceFact{
 		{Kind: "tool_identifier", Value: "same", Source: report.SourceRef{Path: "a.json", ByteEnd: 1}},
 		{Kind: "tool_identifier", Value: "same", Source: report.SourceRef{Path: "a.json", ByteStart: 2, ByteEnd: 3}},
 		{Kind: "mcp_identifier", Value: "same", Source: report.SourceRef{Path: "b.json", ByteEnd: 1}},
 	}}
-	result := environment.Build(context.Background(), []bundle.Surface{surface}, []report.TargetResult{{ID: "a", State: report.RunComplete}}, 100, 100)
+	result := environment.Build(context.Background(), []environment.Surface{surface}, []report.TargetResult{{ID: "a", State: report.RunComplete}}, 100, 100)
 	if result.Completeness != report.Complete || len(result.Observations) != 0 {
 		t.Fatalf("unrelated identifiers collided: %+v", result)
 	}
@@ -66,29 +65,29 @@ func TestCapabilityPairsRespectScopesAndBudgets(t *testing.T) {
 				if same {
 					scope = "input/SKILL.md"
 				}
-				surface := bundle.Surface{Complete: true, Facts: []bundle.SurfaceFact{
+				surface := environment.Surface{Complete: true, Facts: []environment.SurfaceFact{
 					{Kind: tc.input, Scope: "input/SKILL.md", Source: report.SourceRef{Path: "input/run.sh", ByteEnd: 1}},
 					{Kind: tc.effect, Scope: scope, Source: report.SourceRef{Path: "effect/run.sh", ByteEnd: 1}},
 				}}
 				targets := []report.TargetResult{{ID: "root", State: report.RunComplete}}
-				out := environment.Build(t.Context(), []bundle.Surface{surface}, targets, 10, 100)
+				out := environment.Build(t.Context(), []environment.Surface{surface}, targets, 10, 100)
 				if (len(out.Observations) == 1) != (tc.want && !same) || out.Completeness != report.Complete {
 					t.Fatalf("scope=%t incorrect relationship: %+v", same, out)
 				}
 			}
 		})
 	}
-	surface := bundle.Surface{Complete: true, Facts: []bundle.SurfaceFact{
+	surface := environment.Surface{Complete: true, Facts: []environment.SurfaceFact{
 		{Kind: "untrusted_input", Scope: "a", Source: report.SourceRef{Path: "a.sh", ByteEnd: 1}},
 		{Kind: "command_execution", Scope: "b", Source: report.SourceRef{Path: "b.sh", ByteEnd: 1}},
 		{Kind: "file_write", Scope: "c", Source: report.SourceRef{Path: "c.sh", ByteEnd: 1}},
 	}}
 	targets := []report.TargetResult{{ID: "root", State: report.RunComplete}}
-	out := environment.Build(t.Context(), []bundle.Surface{surface}, targets, 1, 100)
+	out := environment.Build(t.Context(), []environment.Surface{surface}, targets, 1, 100)
 	if out.Completeness != report.Partial || len(out.Observations) != 1 || !slices.Contains(out.Issues, "observation_limit") {
 		t.Fatalf("capability observation cap hid omissions: %+v", out)
 	}
-	out = environment.Build(t.Context(), []bundle.Surface{surface}, targets, 10, 3)
+	out = environment.Build(t.Context(), []environment.Surface{surface}, targets, 10, 3)
 	if out.Completeness != report.Partial || !slices.Contains(out.Issues, "operation_limit") {
 		t.Fatalf("capability relation work exceeded its quota: %+v", out)
 	}

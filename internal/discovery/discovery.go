@@ -37,6 +37,7 @@ type Snapshot struct {
 	Enablement  []Enablement `json:"enablement"`
 	Issues      []Issue      `json:"issues"`
 	Limitations []string     `json:"limitations"`
+	Selection   *Selection   `json:"selection,omitempty"`
 
 	protectedInputs []string
 }
@@ -198,26 +199,18 @@ func (b *builder) finish() (Snapshot, error) {
 
 func (b *builder) compactTargets() error {
 	targets := make([]string, 0, len(b.out.Targets))
+
+	roots := make(map[string]bool, len(b.out.Targets))
 	for _, name := range b.out.Targets {
 		if err := b.ctx.Err(); err != nil {
 			return err
 		}
 
-		covered := false
-
-		for _, parent := range targets {
-			if err := b.ctx.Err(); err != nil {
-				return err
-			}
-
-			if within(parent, name) {
-				covered = true
-				break
-			}
-		}
-
-		if !covered {
+		// Sorted paths put each parent before its descendants. Looking up
+		// ancestors avoids comparing every pair of independent scan roots.
+		if !coveredBy(roots, name) {
 			targets = append(targets, name)
+			roots[name] = true
 		}
 	}
 

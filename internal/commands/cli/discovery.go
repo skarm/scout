@@ -19,6 +19,9 @@ type discoveryArguments struct {
 	options         discovery.Options
 	format, output  string
 	projects        repeated
+	kinds           repeated
+	includePaths    repeated
+	excludePaths    repeated
 	scan, noProject bool
 	timeout         time.Duration
 	scanArgs        []string
@@ -38,6 +41,15 @@ func discoverCommand(ctx context.Context, args []string, stdout, stderr io.Write
 	snapshot, err := discovery.Discover(call, a.options)
 	if snapshot.Schema == "" {
 		return usageError(stderr, "cannot discover selected environment")
+	}
+
+	if err == nil {
+		var selectionErr error
+
+		snapshot, selectionErr = discovery.Select(call, snapshot, discovery.Filters{Kinds: a.kinds, IncludePaths: a.includePaths, ExcludePaths: a.excludePaths})
+		if selectionErr != nil {
+			return usageError(stderr, selectionErr.Error())
+		}
 	}
 
 	if a.scan {
@@ -101,6 +113,9 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 	fs.StringVar(&a.format, "format", a.format, "inventory format: text or json")
 	fs.StringVar(&a.output, "output", "", "inventory destination outside selected configuration locations; default stdout")
 	fs.BoolVar(&a.scan, "scan", false, "scan discovered roots; pass ordinary scan flags after --")
+	fs.Var(&a.kinds, "kind", "select skill, plugin, mcp-server or command scan roots; repeatable")
+	fs.Var(&a.includePaths, "include-path", "narrow discovered scan roots to this path; repeatable; cannot expand discovery")
+	fs.Var(&a.excludePaths, "exclude-path", "omit scan roots overlapping this path; repeatable; use --kind for component-level roots")
 
 	if err := fs.Parse(args); err != nil {
 		return a, err
@@ -172,10 +187,11 @@ func scanDiscovered(ctx context.Context, a discoveryArguments, snapshot discover
 	}
 
 	r.targets = snapshot.Targets
+	r.publicationInputs = snapshot.ProtectedInputs()
 
 	targets, err := r.scanTargets(nil)
 	if err != nil {
-		return usageError(stderr, "discovery must yield 1..32 scan roots; use discover to select smaller groups")
+		return usageError(stderr, "discovery must yield 1..32 selected scan roots; narrow with --kind, --include-path or --exclude-path")
 	}
 
 	return executeRequest(ctx, r, targets, report.ScanOperation, stdout, stderr)
@@ -188,6 +204,18 @@ func writeInventory(w io.Writer, snapshot discovery.Snapshot, format string) err
 
 	if _, err := fmt.Fprintf(w, "Environment: complete=%t, components=%d, scan roots=%d\n", snapshot.Complete, len(snapshot.Components), len(snapshot.Targets)); err != nil {
 		return err
+	}
+
+	if snapshot.Selection != nil {
+		if _, err := fmt.Fprintf(w, "Explicit selection: %d original scan roots; inventory and issues remain unfiltered.\n", snapshot.Selection.OriginalTargets); err != nil {
+			return err
+		}
+
+		for _, target := range snapshot.Targets {
+			if _, err := fmt.Fprintf(w, "Selected scan root: %q\n", target); err != nil {
+				return err
+			}
+		}
 	}
 
 	for _, c := range snapshot.Components {

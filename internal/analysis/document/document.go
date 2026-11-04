@@ -1,6 +1,6 @@
-// Package document prepares bounded, source-mapped analysis units. Markdown
-// support is deliberately a block-envelope subset, NOT a CommonMark/YAML parser.
-// Unhandled executable containers and frontmatter prevent automatic admission.
+// Package document prepares bounded, source-mapped analysis units. CommonMark
+// containers retain physical source coordinates; unsupported code languages,
+// HTML semantics and frontmatter remain explicit coverage gaps.
 package document
 
 import (
@@ -95,6 +95,7 @@ type filePreparation File
 type parseBudget struct {
 	consumed      map[string]int
 	securityBytes int
+	markdownBytes int
 }
 
 type line struct{ start, end, next int }
@@ -102,14 +103,6 @@ type line struct{ start, end, next int }
 type frontmatterEnvelope struct {
 	span, body source.Span
 	closed     bool
-}
-
-// A fenced mapping has one monotone budget: once a line exceeds it, no later
-// line can re-enter the view. Content presence still tracks the physical body.
-type fenceMapping struct {
-	spans            []source.Span
-	bytes            int
-	content, limited bool
 }
 
 // PrepareAll enforces an additional aggregate per-backend parser budget per scan, not
@@ -450,84 +443,6 @@ func (f *filePreparation) markdownFrontmatter(ctx context.Context, text string, 
 	return envelope.span.End, true
 }
 
-func (f *filePreparation) markdownBody(ctx context.Context, text string, at int) {
-	for at < len(text) {
-		if ctx.Err() != nil {
-			f.issue("preparation_cancelled", "Document preparation was cancelled.")
-			return
-		}
-
-		l := nextLine(text, at)
-		s := text[l.start:l.end]
-
-		indent, ch, width, info, ok := openingFence(s)
-		if ok {
-			var proceed bool
-
-			at, proceed = f.markdownFence(ctx, text, l, indent, ch, width, info)
-			if !proceed {
-				return
-			}
-
-			continue
-		}
-
-		if !f.markdownOpaqueLine(text, l) {
-			return
-		}
-
-		at = l.next
-	}
-}
-
-func (f *filePreparation) markdownFence(ctx context.Context, text string, l line, indent int, ch byte, width int, info string) (int, bool) {
-	start := l.start
-	lang := fenceLanguage(info)
-	at := l.next
-	mapping := fenceMapping{}
-	closed := false
-
-	for at < len(text) {
-		if ctx.Err() != nil {
-			f.issue("preparation_cancelled", "Document preparation was cancelled.")
-			return at, false
-		}
-
-		body := nextLine(text, at)
-
-		at = body.next
-		if closingFence(text[body.start:body.end], ch, width) {
-			closed = true
-			break
-		}
-
-		mapping.add(f, text, body, indent, lang)
-	}
-
-	if !f.region(region{Kind: "fenced-code", Language: lang, Span: source.Span{Start: start, End: at}}) {
-		return at, false
-	}
-
-	if !closed {
-		f.issue("unclosed_fence", "A fence extends to end of file; its content is not treated as safe text.")
-	}
-
-	if !mapping.content || mapping.limited {
-		return at, true
-	}
-	{
-		view, err := source.NewView(text, mapping.spans)
-		if err != nil {
-			f.issue("source_map_error", "Embedded source mapping failed.")
-			return at, true
-		}
-
-		f.addUnit(ctx, lang, "fenced-code", source.Span{Start: start, End: at}, view)
-	}
-
-	return at, true
-}
-
 func prepare(ctx context.Context, file artifact.File, budget *parseBudget, registry parse.Registry) (out File) {
 	out = File{
 		file: file, budget: budget, registry: registry,
@@ -559,7 +474,7 @@ func prepare(ctx context.Context, file artifact.File, budget *parseBudget, regis
 	projection.prepareFileUnits(ctx)
 
 	// Any text file may contain an embedded document, including LICENSE, JSON
-	// or source code. This conservative envelope pass never grants trust.
+	// or source code. Parsing its containers never grants trust.
 	projection.markdown(ctx)
 
 	return out
@@ -579,33 +494,6 @@ func nextLine(text string, start int) line {
 	}
 
 	return line{start: start, end: end, next: next}
-}
-
-func openingFence(s string) (indent int, ch byte, width int, info string, ok bool) {
-	trimmed := strings.TrimLeft(s, " ")
-
-	n := len(s) - len(trimmed)
-	if n > 3 {
-		return
-	}
-
-	marker, count := textmatch.FencePrefix(trimmed)
-	if count == 0 {
-		return
-	}
-
-	indent, ch, width, info = n, marker, count, strings.TrimSpace(trimmed[count:])
-	ok = ch != '`' || !strings.ContainsRune(info, '`')
-
-	return
-}
-
-func closingFence(s string, ch byte, width int) bool {
-	trimmed := strings.TrimLeft(s, " ")
-	indent := len(s) - len(trimmed)
-	rest := strings.TrimLeft(trimmed, string(ch))
-
-	return indent <= 3 && len(trimmed)-len(rest) >= width && strings.TrimSpace(rest) == ""
 }
 
 func fenceLanguage(info string) string {
@@ -630,35 +518,6 @@ func (f *filePreparation) prepareSecurityViews(ctx context.Context) {
 			f.issue("security_reconstruction_limit", "Security-text reconstruction exceeded its source, mapping or runtime budget; raw checks remain available.")
 		}
 	}
-}
-
-func (f *filePreparation) markdownOpaqueLine(text string, l line) bool {
-	s := text[l.start:l.end]
-	// Conservatively account for constructs requiring full CommonMark parsing.
-	trim := strings.TrimLeft(s, " \t")
-	if strings.HasPrefix(s, "    ") || strings.HasPrefix(s, "\t") {
-		if strings.TrimSpace(s) != "" {
-			if !f.region(region{
-				Kind:     "indented-content",
-				Language: language.Unknown,
-				Span: source.Span{
-					Start: l.start,
-					End:   l.next,
-				},
-			}) {
-				return false
-			}
-
-			f.issue("markdown_container_unsupported", "Indented content requires a full Markdown/container parser; literal checks still run.")
-		}
-	}
-
-	if strings.HasPrefix(trim, ">") || strings.HasPrefix(trim, "<") ||
-		(strings.Contains(trim, "```") || strings.Contains(trim, "~~~")) {
-		f.issue("markdown_container_unsupported", "Nested, inline-fenced or HTML content is outside the block-envelope parser; literal checks still run.")
-	}
-
-	return true
 }
 
 // Every whole-file language candidate shares one immutable mapping. A renamed
@@ -691,25 +550,5 @@ func (f *filePreparation) prepareFileUnits(ctx context.Context) {
 
 	for _, lang := range languages {
 		f.addUnit(ctx, lang, "file", span, view)
-	}
-}
-
-func (m *fenceMapping) add(f *filePreparation, text string, body line, indent int, lang string) {
-	m.content = m.content || strings.TrimSpace(text[body.start:body.end]) != ""
-	prefix := min(indent, len(text[body.start:body.end])-len(strings.TrimLeft(text[body.start:body.end], " ")))
-
-	m.bytes += body.next - body.start - prefix
-	if m.bytes > MaxUnitBytes {
-		m.limited = true
-
-		f.issue(lang+"_source_limit", "Embedded analysis unit exceeds the source byte budget.")
-	} else if len(m.spans) >= MaxSourceSegments {
-		m.limited = true
-
-		f.issue("document_segment_limit", "Embedded source mapping exceeds its segment budget.")
-	}
-
-	if !m.limited {
-		m.spans = append(m.spans, source.Span{Start: body.start + prefix, End: body.next})
 	}
 }

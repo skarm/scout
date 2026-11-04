@@ -8,24 +8,11 @@ import (
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/environment"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/report"
 )
-
-// Surface retains source-bound observations for an explicitly selected environment.
-// It contains no source bodies and is never shared between independent scans.
-type Surface struct {
-	Complete bool
-	Limited  bool
-	Facts    []SurfaceFact
-}
-
-// SurfaceFact is a syntactic observation, not an assertion of activation or flow.
-type SurfaceFact struct {
-	Kind, Value, Scope string
-	Source             report.SourceRef
-}
 
 const maxSurfaceFacts = 4096
 
@@ -33,8 +20,8 @@ var skillLink = regexp.MustCompile(`\[[^\]\r\n]*\]\(([^\s)]+)\)`)
 
 // CollectSurface reuses the bundle observers on already prepared documents under
 // a separate, explicitly reserved operation quota. It never reads the filesystem.
-func CollectSurface(ctx context.Context, docs []document.File, extraction report.ExtractionReport, operations uint64) Surface {
-	surface := Surface{Facts: []SurfaceFact{}}
+func CollectSurface(ctx context.Context, docs []document.File, extraction report.ExtractionReport, operations uint64) environment.Surface {
+	surface := environment.Surface{Facts: []environment.SurfaceFact{}}
 	if operations == 0 || ctx.Err() != nil {
 		return surface
 	}
@@ -82,7 +69,7 @@ func (b *bundleAnalysis) surfaceFact(kind, value, file string, ref report.Source
 		scope = skill.file
 	}
 
-	fact := SurfaceFact{Kind: kind, Value: value, Scope: scope, Source: ref}
+	fact := environment.SurfaceFact{Kind: kind, Value: value, Scope: scope, Source: ref}
 	if b.surfaceSeen[fact] {
 		return
 	}
@@ -93,7 +80,7 @@ func (b *bundleAnalysis) surfaceFact(kind, value, file string, ref report.Source
 	}
 
 	if b.surfaceSeen == nil {
-		b.surfaceSeen = map[SurfaceFact]bool{}
+		b.surfaceSeen = map[environment.SurfaceFact]bool{}
 	}
 
 	b.surfaceSeen[fact] = true

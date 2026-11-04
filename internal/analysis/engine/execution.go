@@ -90,11 +90,6 @@ func (run *execution) prepare() error {
 	results := make([]outcome, len(run.engine.analyzers))
 	for i, rule := range run.engine.rules {
 		results[i].check = report.Check{AnalyzerID: rule.ID, Version: rule.Version, Status: report.OutcomeCancelled}
-
-		results[i].fileChecks = make([]report.FileCheck, len(documents))
-		for j := range documents {
-			results[i].fileChecks[j] = report.FileCheck{AnalyzerID: rule.ID, Status: report.OutcomeCancelled}
-		}
 	}
 
 	collector := newFindingCollector(run.options.Limits.MaxFindings)
@@ -148,6 +143,18 @@ func (run *execution) executeChecks() {
 
 		result.outcome.findings = nil
 		run.results[result.index] = result.outcome
+	}
+
+	// Only checks that never acquired a slot need synthetic cancelled coverage.
+	// Executed checks already own their complete per-file result storage.
+	for i := range run.results {
+		out := &run.results[i]
+		if out.fileChecks == nil && out.check.Status == report.OutcomeCancelled {
+			out.fileChecks = make([]report.FileCheck, len(run.documents))
+			for j := range out.fileChecks {
+				out.fileChecks[j] = report.FileCheck{AnalyzerID: out.check.AnalyzerID, Status: report.OutcomeCancelled}
+			}
+		}
 	}
 }
 

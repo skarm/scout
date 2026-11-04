@@ -14,6 +14,7 @@
 - `go-toml/v2`: 2.4.3; `go.yaml.in/yaml/v3`: 3.0.5.
 - `go-tree-sitter`, грамматики Python и JavaScript: 0.25.0; TypeScript: 0.23.2.
 - `mvdan.cc/sh/v3`: 3.14.1, BSD-3-Clause; синтаксический анализатор без интерпретатора.
+- `goldmark`: 1.8.7, MIT; разбор блоков CommonMark без рендеринга и расширений.
 - `x/mod`: 0.42.0; `x/sys`: 0.49.0.
 - Косвенные зависимости: `go-pointer`: 0.0.1; protobuf: 1.36.12.
 

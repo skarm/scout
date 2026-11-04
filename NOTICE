@@ -39,9 +39,6 @@ Dependencies are obtained through authenticated module caches, not copied into
 this repository. Binary distributions must include applicable third-party notices.
 No external Python workers are included.
 
-Shell declaration syntax uses mvdan.cc/sh/v3 v3.14.1 (Daniel Martí),
-under the BSD 3-Clause license: licenses/mvdan-sh-BSD-3-Clause.txt.
-
 Scout's original code is distributed under the MIT license in LICENSE.
 Third-party material retains its applicable licenses. This notice does not
 authorize relicensing third-party code or replace any third-party license.

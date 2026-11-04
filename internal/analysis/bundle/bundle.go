@@ -11,6 +11,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/environment"
 	"github.com/skarm/scout/internal/analysis/rendertext"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/report"
@@ -47,8 +48,8 @@ type bundleAnalysis struct {
 	active            map[*bundleFunction]bool
 	endpoints         map[string][]bundleEndpoint
 	secrets           map[string][]report.SourceRef
-	surface           *Surface
-	surfaceSeen       map[SurfaceFact]bool
+	surface           *environment.Surface
+	surfaceSeen       map[environment.SurfaceFact]bool
 }
 type bundleEndpoint struct {
 	value string
@@ -146,7 +147,7 @@ func Bind(ctx context.Context, checks []analyzer, docs []document.File, extracti
 	return bind(ctx, checks, docs, extraction, limit, nil)
 }
 
-func bind(ctx context.Context, checks []analyzer, docs []document.File, extraction report.ExtractionReport, limit int, surface *Surface) []analyzer {
+func bind(ctx context.Context, checks []analyzer, docs []document.File, extraction report.ExtractionReport, limit int, surface *environment.Surface) []analyzer {
 	if Consumers(checks) == 0 && surface == nil {
 		return checks
 	}

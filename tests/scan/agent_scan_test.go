@@ -389,8 +389,8 @@ func TestAgentThreatDemonstration(t *testing.T) {
 	if !reflect.DeepEqual(ids, []string{"DE001", "MP001", "PI003", "PL001"}) {
 		t.Fatalf("fixture rule drift: %v", ids)
 	}
-	if r.Evaluation.Decision != "review" || r.Coverage.Completeness != "partial" || scantest.ExitCode(r) != 2 {
-		t.Fatal("fixture outcome drift")
+	if r.Evaluation.Decision != "review" || r.Coverage.Completeness != "complete" || scantest.ExitCode(r) != 1 {
+		t.Fatalf("fixture outcome drift: decision=%s coverage=%s code=%d", r.Evaluation.Decision, r.Coverage.Completeness, scantest.ExitCode(r))
 	}
 	gap := false
 	for _, d := range r.Diagnostics {
@@ -398,8 +398,8 @@ func TestAgentThreatDemonstration(t *testing.T) {
 			gap = true
 		}
 	}
-	if !gap {
-		t.Fatal("HTML-like role marker must retain the parser limitation")
+	if gap {
+		t.Fatal("a literal role marker is not a CommonMark HTML container")
 	}
 }
 

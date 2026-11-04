@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/skarm/scout/fetch"
-	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/analysis/engine"
 	"github.com/skarm/scout/internal/analysis/environment"
 	"github.com/skarm/scout/internal/analysis/semantic"
@@ -66,9 +65,9 @@ func (s *Scanner) executeWithin(ctx context.Context, targets []Target, operation
 	call, cancel := context.WithTimeout(ctx, s.options.Limits.Timeout)
 	defer cancel()
 
-	var surfaces []bundle.Surface
+	var surfaces []environment.Surface
 	if joint {
-		surfaces = make([]bundle.Surface, len(targets))
+		surfaces = make([]environment.Surface, len(targets))
 	}
 
 	run, targetErrors := s.inspectTargets(call, targets, operation, surfaces)
@@ -122,7 +121,7 @@ func (s *Scanner) validateTargets(ctx context.Context, targets []Target) error {
 
 // Workers own disjoint result positions; completion order cannot reorder them.
 // One slot pool bounds analyzer execution across every target in this run.
-func (s *Scanner) inspectTargets(ctx context.Context, targets []Target, operation report.Operation, surfaces []bundle.Surface) (report.Run, []error) {
+func (s *Scanner) inspectTargets(ctx context.Context, targets []Target, operation report.Operation, surfaces []environment.Surface) (report.Run, []error) {
 	run := report.Run{
 		Operation: operation,
 		State:     report.RunComplete,
@@ -147,7 +146,7 @@ func (s *Scanner) inspectTargets(ctx context.Context, targets []Target, operatio
 			for i := range jobs {
 				options := s.targetOptions(i, len(targets), operation)
 
-				var surface *bundle.Surface
+				var surface *environment.Surface
 				if surfaces != nil {
 					surface = &surfaces[i]
 					options.Limits.Analysis.MaxOperations -= (options.Limits.Analysis.MaxOperations + 7) / 8
@@ -193,7 +192,7 @@ func (s *Scanner) targetOptions(index, count int, operation report.Operation) ta
 	return settings
 }
 
-func (s *Scanner) scanTarget(ctx context.Context, target Target, index int, options targetSettings, slots chan struct{}, surface *bundle.Surface) (report.TargetResult, error) {
+func (s *Scanner) scanTarget(ctx context.Context, target Target, index int, options targetSettings, slots chan struct{}, surface *environment.Surface) (report.TargetResult, error) {
 	result := report.TargetResult{
 		ID:    fmt.Sprintf("target-%d", index),
 		Index: index,

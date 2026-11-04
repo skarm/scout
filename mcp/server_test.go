@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/mcp"
@@ -349,6 +350,65 @@ func TestStdioClosesOwnedInputOnEveryExit(t *testing.T) {
 	if err := newServer(t, mcp.DefaultOptions()).Serve(ctx, input, io.Discard); !errors.Is(err, context.Canceled) || input.closes.Load() != 1 {
 		t.Fatalf("cancelled Serve: err=%v close calls=%d", err, input.closes.Load())
 	}
+}
+
+func TestStdioWriteFailureStopsAnOpenInput(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		messages  string
+		remaining int
+		failure   error
+		want      error
+	}{
+		{name: "initialization", messages: initMessage + "\n", failure: io.ErrClosedPipe, want: io.ErrClosedPipe},
+		{name: "short-write", messages: initMessage + "\n", want: io.ErrShortWrite},
+		{
+			name: "tool-response", remaining: 1, failure: io.ErrClosedPipe, want: io.ErrClosedPipe,
+			messages: initMessage + "\n" + readyMessage + "\n" + `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"scan_skill","arguments":{"name":"note.txt","data_base64":"aGVsbG8="}}}` + "\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			input, writer := io.Pipe()
+			defer writer.Close()
+			owned := &countedStdioInput{ReadCloser: input}
+			done := make(chan error, 1)
+			server := newServer(t, mcp.DefaultOptions())
+			go func() {
+				done <- server.Serve(ctx, owned, &failingStdioOutput{remaining: tc.remaining, failure: tc.failure})
+			}()
+			if _, err := io.WriteString(writer, tc.messages); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-done:
+				if !errors.Is(err, tc.want) || owned.closes.Load() != 1 {
+					t.Fatalf("transport failure lost or input not closed: err=%v closes=%d", err, owned.closes.Load())
+				}
+			case <-time.After(2 * time.Second):
+				cancel()
+				<-done
+				t.Fatal("write failure left Serve blocked on an open input")
+			}
+		})
+	}
+}
+
+type failingStdioOutput struct {
+	remaining int
+	failure   error
+}
+
+func (w *failingStdioOutput) Write(data []byte) (int, error) {
+	if w.remaining > 0 {
+		w.remaining--
+		return len(data), nil
+	}
+	if w.failure == nil {
+		return len(data) - 1, nil
+	}
+	return 0, w.failure
 }
 
 type countedStdioInput struct {

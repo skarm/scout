@@ -23,6 +23,7 @@ type request struct {
 	input, name                     string
 	revision, sha256                string
 	targets                         []string
+	publicationInputs               []string
 	compare                         scout.CompareOptions
 	configPath                      string
 	grants                          configfile.Grants

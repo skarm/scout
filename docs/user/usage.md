@@ -99,7 +99,9 @@ JSON and SARIF retain the full machine-readable evidence and stable identifiers.
 
 Scout prepares each report in a private temporary file, then replaces its destination
 by rename. Preparation failure preserves the previous file. Symlinks, directories
-and destinations inside inspected inputs are rejected. Several files are published independently.
+and destinations inside inspected inputs are rejected. A report also cannot occupy
+an absent input's name, including case and Unicode aliases on its filesystem.
+Several files are published independently.
 
 Exit codes:
 
@@ -125,7 +127,20 @@ scout scan --baseline /ci-results/reviewed-baseline.json ./my-plugin
 ```
 
 Choose a suitable future RFC3339 expiry. `create` writes pending entries; `approve`
-approves every entry in the chosen file. Identity changes require new review.
+approves every entry unless repeated `--fingerprint SHA256` selectors narrow it.
+Preview the exact changes without writing a file:
+
+```sh
+scout baseline approve --from /ci-results/pending-baseline.json \
+  --fingerprint "$finding_fingerprint" --reason 'Reviewed this occurrence' \
+  --expires '2099-01-01T00:00:00Z' --dry-run
+scout baseline renew --from /ci-results/reviewed-baseline.json \
+  --output /ci-results/renewed-baseline.json \
+  --fingerprint "$finding_fingerprint" --expires '2099-06-01T00:00:00Z'
+```
+
+`renew` extends already approved entries and preserves their reasons by default;
+it cannot approve pending entries or shorten their expiry. Identity changes require new review.
 Glob exceptions require `--allow-baseline-globs`. Findings stay in reports;
 inspection gaps and semantic proposals cannot be suppressed.
 

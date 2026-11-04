@@ -1,0 +1,62 @@
+{
+  "schema": "scout.corpus-sources/v1",
+  "kind": "external_unreviewed_corpus",
+  "sources": [
+    {
+      "id": "superpowers",
+      "origin": "https://github.com/obra/superpowers",
+      "revision": "22f0b463e7a5e579904dd6211a520321035526f7",
+      "license": "MIT",
+      "label_review": "Pending independent human review. Acquisition verifies byte pins only; no benign or malicious classification has been assigned."
+    },
+    {
+      "id": "trailofbits",
+      "origin": "https://github.com/trailofbits/skills",
+      "revision": "711af095215ad4ecde5b90cd1d0124b3f1c4ca9e",
+      "license": "CC-BY-SA-4.0",
+      "label_review": "Pending independent human review. Acquisition verifies byte pins only; no benign or malicious classification has been assigned."
+    }
+  ],
+  "cases": [
+    {
+      "id": "superpowers-instructions",
+      "category": "external-skill",
+      "label": "ambiguous",
+      "source_id": "superpowers",
+      "split": "holdout",
+      "expected_rules": [],
+      "files": [
+        {
+          "path": "SKILL.md",
+          "url": "https://raw.githubusercontent.com/obra/superpowers/22f0b463e7a5e579904dd6211a520321035526f7/skills/systematic-debugging/SKILL.md",
+          "sha256": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202"
+        },
+        {
+          "path": "LICENSE",
+          "url": "https://raw.githubusercontent.com/obra/superpowers/22f0b463e7a5e579904dd6211a520321035526f7/LICENSE",
+          "sha256": "a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400"
+        }
+      ]
+    },
+    {
+      "id": "trailofbits-instructions",
+      "category": "external-skill",
+      "label": "ambiguous",
+      "source_id": "trailofbits",
+      "split": "holdout",
+      "expected_rules": [],
+      "files": [
+        {
+          "path": "SKILL.md",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/differential-review/skills/differential-review/SKILL.md",
+          "sha256": "f9af6a8193fc1a9f8ca3c54bb8d19095a5f20c9472ca6d014488bbde50b67da0"
+        },
+        {
+          "path": "LICENSE",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/LICENSE",
+          "sha256": "7abe19ec9bb73b36141b999b861d24ad855e808bafe0f81e84cce28556f6c297"
+        }
+      ]
+    }
+  ]
+}

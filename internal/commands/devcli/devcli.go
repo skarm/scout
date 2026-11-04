@@ -16,7 +16,7 @@ import (
 
 func Run(ctx context.Context, args []string, out, diag io.Writer) int {
 	if len(args) == 0 {
-		return failure(diag, errors.New("usage: scout-dev evaluate|releasecheck|<maintenance-command> [flags]"))
+		return failure(diag, errors.New("usage: scout-dev evaluate|corpus collect|corpus review-template|releasecheck|<maintenance-command> [flags]"))
 	}
 
 	switch args[0] {
@@ -26,6 +26,8 @@ func Run(ctx context.Context, args []string, out, diag io.Writer) int {
 		return replayCommand(ctx, args[1:], out, diag)
 	case "evaluate":
 		return evaluate(ctx, args[1:], out, diag)
+	case "corpus":
+		return corpusCommand(ctx, args[1:], out, diag)
 	case "releasecheck":
 		return release(ctx, args[1:], out, diag)
 	}

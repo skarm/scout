@@ -150,6 +150,46 @@ func TestTrustedConfigurationCannotComeFromAnySelectedInput(t *testing.T) {
 	}
 }
 
+func TestTrustedConfigurationRejectsFilesystemAliases(t *testing.T) {
+	for _, names := range [][2]string{{"input", "INPUT"}, {"caf\u00e9", "cafe\u0301"}} {
+		t.Run(names[0], func(t *testing.T) {
+			root := t.TempDir()
+			input, alias := filepath.Join(root, names[0]), filepath.Join(root, names[1])
+			if err := os.Mkdir(input, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			other, err := os.Stat(alias)
+			if os.IsNotExist(err) {
+				t.Skip("filesystem distinguishes these directory names")
+			}
+			if err != nil || !os.SameFile(info, other) {
+				t.Fatalf("cannot establish input alias: %v", err)
+			}
+			config := filepath.Join(input, "config.json")
+			if err := os.WriteFile(config, []byte("target-owned configuration"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := readTrusted(config, []string{alias}, 100); err == nil {
+				t.Fatal("input directory alias supplied trusted configuration")
+			}
+		})
+	}
+	input, config := filepath.Join(t.TempDir(), "input.json"), filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(input, []byte("target-owned configuration"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(input, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readTrusted(config, []string{input}, 100); err == nil {
+		t.Fatal("input hardlink supplied trusted configuration")
+	}
+}
+
 func TestMCPBoundaryFailuresDoNotProduceSuccessfulProtocolOutput(t *testing.T) {
 	for _, flags := range [][]string{{"--unknown"}, {"--fail-on", "unknown"}, {"--workers", "0"}, {"--max-concurrent", "0"}} {
 		var stdout, stderr bytes.Buffer

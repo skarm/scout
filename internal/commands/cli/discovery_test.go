@@ -92,6 +92,77 @@ func TestDiscoverExplicitHomeIgnoresProcessOverridesAndProtectsInputs(t *testing
 	}
 }
 
+func TestDiscoveredScanProtectsConfigurationOutsideScanTargets(t *testing.T) {
+	for _, flag := range []string{"--output", "--report"} {
+		t.Run(flag, func(t *testing.T) {
+			home := t.TempDir()
+			discoverySkill(t, home, "selected", "Format plain text.")
+			configDir := filepath.Join(home, ".codex")
+			if err := os.MkdirAll(configDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			config := filepath.Join(configDir, "auth.json")
+			original := []byte(`{"test_credential":"fixture-only"}`)
+			if err := os.WriteFile(config, original, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			value := config
+			if flag == "--report" {
+				value = "json=" + config
+			}
+			args := []string{"discover", "--home", home, "--agent", "codex", "--system=false", "--no-project", "--scan", "--", "--profile", "custom", "--checks", "none", "--scope", "selected", "--format", "json", flag, value}
+			var out, diagnostics bytes.Buffer
+			if code := cli.Run(context.Background(), args, &out, &diagnostics); code != 2 || out.Len() != 0 {
+				t.Fatalf("protected config accepted: code=%d diagnostics=%s", code, &diagnostics)
+			}
+			data, err := os.ReadFile(config)
+			if err != nil || !bytes.Equal(data, original) {
+				t.Fatal("discovered scan replaced protected configuration")
+			}
+		})
+	}
+}
+
+func TestDiscoveryFiltersKeepExcludedInputsProtected(t *testing.T) {
+	home := t.TempDir()
+	selected := discoverySkill(t, home, "selected", "Format plain text.")
+	excluded := discoverySkill(t, home, "excluded", "Keep this source unchanged.")
+	selectedRoot, err := filepath.EvalSymlinks(filepath.Dir(selected))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := make([]string, 0, 13)
+	// The spelling may differ from the captured inventory on filesystems that
+	// preserve case but compare names without it.
+	excludedRoot := filepath.Dir(excluded)
+	alias := filepath.Join(filepath.Dir(excludedRoot), strings.ToUpper(filepath.Base(excludedRoot)))
+	if originalInfo, err := os.Stat(excludedRoot); err == nil {
+		if aliasInfo, err := os.Stat(alias); err == nil && os.SameFile(originalInfo, aliasInfo) {
+			excludedRoot = alias
+		}
+	}
+	base = append(base, "discover", "--home", home, "--agent", "codex", "--system=false", "--no-project", "--kind", "skill", "--exclude-path", excludedRoot)
+	var out, diagnostics bytes.Buffer
+	if code := cli.Run(context.Background(), append(base, "--format", "json"), &out, &diagnostics); code != 0 {
+		t.Fatalf("filtered inventory: %d %s", code, &diagnostics)
+	}
+	var snapshot discovery.Snapshot
+	if json.Unmarshal(out.Bytes(), &snapshot) != nil || len(snapshot.Components) != 2 || len(snapshot.Targets) != 1 || snapshot.Targets[0] != selectedRoot || snapshot.Selection == nil {
+		t.Fatalf("filter hid inventory or retained wrong roots: %s", &out)
+	}
+	args := make([]string, 0, len(base)+12)
+	args = append(args, base...)
+	args = append(args, "--scan", "--", "--profile", "custom", "--checks", "none", "--scope", "selected", "--format", "json", "--output", excluded)
+	out.Reset()
+	if code := cli.Run(context.Background(), args, &out, &diagnostics); code != 2 || out.Len() != 0 {
+		t.Fatalf("excluded source accepted as output: %d %s", code, &diagnostics)
+	}
+	data, err := os.ReadFile(excluded)
+	if err != nil || string(data) != "Keep this source unchanged." {
+		t.Fatal("selection weakened publication boundaries")
+	}
+}
+
 func TestDiscoverArgumentAndOutputFailures(t *testing.T) {
 	home := t.TempDir()
 	base := []string{"discover", "--home", home, "--system=false", "--no-project"}

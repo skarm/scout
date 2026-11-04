@@ -58,7 +58,7 @@ scout discover [flags] [--scan -- <scan flags>]
 scout config validate [flags]
 scout mcp [flags]
 scout doctor [flags]
-scout baseline create|approve [flags]
+scout baseline create|approve|renew [flags]
 scout rules list [--all]
 scout rules pack create|inspect [flags]
 scout profiles
@@ -98,6 +98,12 @@ roots to the existing Scanner. See [locations, format and limits](../user/discov
 - `--output FILE`: inventory outside scan inputs; default stdout.
 - `--scan`: scan discovered roots; default `false`. Ordinary scan flags follow `--`.
   Inventory `--format`/`--output` flags are rejected in this mode.
+- `--kind skill|plugin|mcp-server|command`: repeatable component-type selection;
+  unset selects the original grouped scan roots.
+- `--include-path PATH`: repeatable intersection with discovered scan roots;
+  cannot add paths outside the inventory.
+- `--exclude-path PATH`: repeatable exclusion of entire overlapping scan roots.
+  Use `--kind` to select individual components before excluding paths.
 
 Inventory uses `scout.environment/v1`; exit 0 means complete within the documented
 surface, and 2 means error or incomplete discovery. It is not a policy decision.
@@ -367,17 +373,23 @@ See [MCP setup](../user/integrations.md#mcp-server).
 
 ## Baseline
 
-Both `baseline create` and `baseline approve` accept:
+`baseline create`, `baseline approve` and `baseline renew` accept:
 
 - `--from FILE`: required source. `create` reads a validated single-target JSON
-  report; `approve` reads a baseline JSON document.
-- `--output FILE`: required destination; must not replace the source.
-- `--reason TEXT`: operator justification; unset by default, required for nonempty
-  baselines.
+  report; `approve` and `renew` read a baseline JSON document.
+- `--output FILE`: destination outside the source; required unless `--dry-run` is set.
+- `--reason TEXT`: operator justification; required for nonempty create/approve
+  operations. Renew preserves each existing reason when omitted.
 - `--expires RFC3339`: required future expiry, for example `2099-01-01T00:00:00Z`.
+- `--fingerprint SHA256`: repeatable exact-entry selector for approve/renew;
+  omitted selects all. Unknown, duplicate or malformed selectors fail without writing.
+- `--dry-run`: print `scout.baseline-preview/v1` JSON changes to stdout without
+  writing a baseline. `--output` is optional; a supplied destination is validated.
 
-`create` writes pending entries. `approve` approves every entry in the selected
-document. See [baseline workflow](../user/usage.md#baseline).
+`create` writes pending entries. `approve` approves selected entries. `renew` only
+extends approved entries; selecting a pending entry or a non-increasing expiry
+fails. Without selectors it leaves pending entries untouched. Other entries retain
+their reasons and expiry times. See [baseline workflow](../user/usage.md#baseline).
 
 ## Rules, profiles and capabilities
 

@@ -16,6 +16,38 @@ import (
 	"github.com/skarm/scout/review"
 )
 
+func TestCancelledChecksRetainFileCoverage(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e, err := engine.New([]check.Analyzer{fake{id: "WAIT", find: func(context.Context, document.File, int) (check.Result, error) {
+		t.Error("check executed without an available slot")
+		return check.Result{}, nil
+	}}}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := options(report.DefaultCaptureLimits())
+	o.Slots = make(chan struct{}, 1)
+	o.Slots <- struct{}{}
+	// Checks that cannot acquire a slot still need per-file terminal outcomes.
+	cancel()
+	r, err := e.Run(ctx, fixture(), o)
+	if !errors.Is(err, context.Canceled) || r.Coverage.Completeness == report.Complete || len(r.Coverage.Files) != 1 {
+		t.Fatalf("cancelled coverage lost: %+v %v", r.Coverage, err)
+	}
+	for _, file := range r.Coverage.Files {
+		found := false
+		for _, check := range file.Checks {
+			if check.AnalyzerID == "WAIT" {
+				found = check.Status == report.OutcomeCancelled
+			}
+		}
+		if !found {
+			t.Fatalf("missing cancelled file check: %+v", file)
+		}
+	}
+}
+
 func TestFailuresNeverAllow(t *testing.T) {
 	for _, tc := range []struct {
 		name string

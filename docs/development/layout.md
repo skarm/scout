@@ -63,6 +63,10 @@ Shared checks belong to `analyzer`, facts to `check`, and quotas to `analysisbud
 Consumers use check contracts directly from `check`. Filename-based display
 surfaces live in `syntax/filetype`; they never grant trust or suppress checks.
 
+`environment/surface.go` owns the passive fact inputs for joint environment
+analysis. `bundle/surface.go` implements their collection from prepared documents.
+The environment evaluator remains independent of collectors and syntax backends.
+
 `internal/promptguard` owns the narrow raw-byte prohibition shared by literal and
 native signature checks. It depends only on the standard library; signature
 backends do not depend on `internal/analysis`.

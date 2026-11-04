@@ -117,7 +117,44 @@ func validateBoundary(destination string, existing os.FileInfo, input string) er
 		return errors.New("report must not replace a scan input or its hardlink")
 	}
 
+	if existing == nil && info == nil {
+		if err := validateMissingBoundary(destination, resolved); err != nil {
+			return err
+		}
+	}
+
 	return validateDirectoryBoundary(destination, info)
+}
+
+// Missing inputs have no file identity yet. If both parents identify the same
+// directory, probe its name comparison without creating either actual path.
+func validateMissingBoundary(destination, input string) error {
+	inputParent, err := os.Stat(filepath.Dir(input))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("inspect missing input parent: %w", err)
+	}
+
+	directory := filepath.Dir(destination)
+
+	outputParent, err := os.Stat(directory)
+	if err != nil {
+		return fmt.Errorf("inspect report directory: %w", err)
+	}
+
+	if !os.SameFile(inputParent, outputParent) {
+		return nil
+	}
+
+	err = distinctNames(destinationGroup{parent: directory, names: []string{filepath.Base(destination), filepath.Base(input)}})
+	if errors.Is(err, errDestinationAlias) {
+		return errors.New("report must not replace a scan input or its filesystem alias")
+	}
+
+	return err
 }
 
 func validateDirectoryBoundary(destination string, info os.FileInfo) error {

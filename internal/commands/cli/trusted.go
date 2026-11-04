@@ -3,12 +3,11 @@ package cli
 import (
 	"errors"
 	"io"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/skarm/scout/fetch"
 	"github.com/skarm/scout/internal/capture/rootfs"
+	"github.com/skarm/scout/internal/commands/output"
 )
 
 // Operator-controlled baseline/cache files are never discovered in an artifact.
@@ -41,30 +40,9 @@ func trustedInputBoundary(absolute, input string) error {
 		return nil
 	}
 
-	p, e := filepath.Abs(input)
-	if e != nil {
-		return e
-	}
-
-	if r, e := filepath.EvalSymlinks(p); e == nil {
-		p = r
-	}
-
-	info, e := os.Stat(p)
-	if e != nil && !os.IsNotExist(e) {
-		return e
-	}
-
-	return trustedPathBoundary(absolute, p, info)
-}
-
-func trustedPathBoundary(absolute, p string, info os.FileInfo) error {
-	rel, e := filepath.Rel(p, absolute)
-	if e != nil {
-		return e
-	}
-
-	if absolute == p || info != nil && info.IsDir() && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+	// Reading trusted settings and publishing reports need the same separation
+	// from input files, hardlinks and directory aliases on the host filesystem.
+	if _, err := output.Validate(absolute, []string{input}); err != nil {
 		return errors.New("trusted configuration must be outside all inputs")
 	}
 

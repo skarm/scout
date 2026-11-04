@@ -231,7 +231,7 @@ func pythonRegistrySource(source *jsonconfig.Node, name string) bool {
 			address, _ = source.Get("url").Text()
 		}
 
-		if address != "" && !publicPythonRegistry(address) {
+		if !publicPythonRegistry(address) {
 			registry = false
 		}
 	}

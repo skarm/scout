@@ -8,13 +8,12 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/report"
 )
 
 type fact struct {
-	bundle.SurfaceFact
+	SurfaceFact
 	target string
 }
 
@@ -35,7 +34,7 @@ type factIndex struct {
 
 // Build combines source-bound facts without merging the underlying analyses.
 // Both work and observation limits are independent of hostile identifier counts.
-func Build(ctx context.Context, surfaces []bundle.Surface, targets []report.TargetResult, limit int, operations uint64) report.EnvironmentReport {
+func Build(ctx context.Context, surfaces []Surface, targets []report.TargetResult, limit int, operations uint64) report.EnvironmentReport {
 	b := builder{ctx: ctx, seen: map[string]bool{}, out: report.EnvironmentReport{
 		Schema: "scout.environment-analysis/v1", Completeness: report.Complete,
 		MaxObservations: min(limit, 4096), MaxOperations: min(operations, 100000),
@@ -76,7 +75,7 @@ func Build(ctx context.Context, surfaces []bundle.Surface, targets []report.Targ
 	return b.result()
 }
 
-func (b *builder) collect(facts []bundle.SurfaceFact, target string, index *factIndex) bool {
+func (b *builder) collect(facts []SurfaceFact, target string, index *factIndex) bool {
 	for _, f := range facts {
 		if !b.step() {
 			return false

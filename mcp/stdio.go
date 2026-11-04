@@ -15,6 +15,7 @@ type stdioStream struct {
 	server   *Server
 	session  *session
 	output   io.Writer
+	stop     context.CancelFunc
 	writers  sync.Mutex
 	calls    sync.WaitGroup
 	writeErr error
@@ -27,6 +28,9 @@ func (s *Server) Serve(ctx context.Context, input io.ReadCloser, output io.Write
 	if ctx == nil || input == nil || output == nil {
 		return errors.New("invalid stdio streams")
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	closeInput := sync.OnceFunc(func() { _ = input.Close() })
 	defer closeInput()
@@ -42,7 +46,7 @@ func (s *Server) Serve(ctx context.Context, input io.ReadCloser, output io.Write
 		}
 	}()
 
-	stream := stdioStream{server: s, session: newSession(), output: output}
+	stream := stdioStream{server: s, session: newSession(), output: output, stop: cancel}
 	scanner := bufio.NewScanner(input)
 	// Reserve delimiter space so framing does not reduce the payload limit.
 	scanner.Buffer(make([]byte, 4096), MaxMessageBytes+2)
@@ -85,7 +89,17 @@ func (s *stdioStream) send(r *response) {
 	defer s.writers.Unlock()
 
 	if s.writeErr == nil {
-		_, s.writeErr = s.output.Write(encodeResponse(r))
+		data := encodeResponse(r)
+
+		n, err := s.output.Write(data)
+		if err == nil && n != len(data) {
+			err = io.ErrShortWrite
+		}
+
+		s.writeErr = err
+		if err != nil {
+			s.stop()
+		}
 	}
 }
 

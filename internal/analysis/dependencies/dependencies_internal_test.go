@@ -55,6 +55,7 @@ func TestPythonTOMLDeclarationsRetainIncompleteStates(t *testing.T) {
 		name, text string
 		count      int
 		complete   bool
+		unresolved bool
 	}{
 		{
 			name:     "pyproject.toml",
@@ -95,6 +96,7 @@ func TestPythonTOMLDeclarationsRetainIncompleteStates(t *testing.T) {
 			count:    1,
 			complete: false,
 		},
+		{name: "uv.lock", text: "[[package]]\nname='requests'\nversion='2.32.3'\nsource={registry=''}\n", count: 1, complete: false, unresolved: true},
 		{name: "uv.lock", text: "[[package]]\nversion='2.32.3'\n", count: 0, complete: false},
 		{
 			name:     "poetry.lock",
@@ -108,6 +110,8 @@ func TestPythonTOMLDeclarationsRetainIncompleteStates(t *testing.T) {
 			count:    1,
 			complete: false,
 		},
+		{name: "poetry.lock", text: "[[package]]\nname='requests'\nversion='2.32.3'\nsource={type='legacy'}\n", count: 1, complete: false, unresolved: true},
+		{name: "poetry.lock", text: "[[package]]\nname='requests'\nversion='2.32.3'\nsource={type='index',url=''}\n", count: 1, complete: false, unresolved: true},
 		{name: "poetry.lock", text: "package=false\n", count: 0, complete: false},
 	} {
 		t.Run(tc.name+tc.text, func(t *testing.T) {
@@ -115,6 +119,9 @@ func TestPythonTOMLDeclarationsRetainIncompleteStates(t *testing.T) {
 			r := Collect(context.Background(), docs)
 			if len(r.Declarations) != tc.count || len(r.Manifests) != 1 || r.Manifests[0].InventoryComplete() != tc.complete {
 				t.Fatal(r)
+			}
+			if tc.unresolved && r.Declarations[0].VersionSemantics != report.VersionUnresolved {
+				t.Fatal("incomplete registry source became a public advisory coordinate", r.Declarations[0])
 			}
 		})
 	}

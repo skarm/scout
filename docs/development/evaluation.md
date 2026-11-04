@@ -159,3 +159,53 @@ Cases without any planned review request remain unresolved in LLM metrics.
 The bundled 26 authored cases are a regression corpus, not an independent holdout.
 For independent evaluation, supply separately reviewed sources, labels, licenses
 and hashes with kind `independent_labelled_corpus`. Preserve each run's report.
+
+## External acquisition and quality gates
+
+`scout-dev corpus collect --manifest FILE [--allow-download] [--output FILE]`
+builds schema-2 corpora from a `scout.corpus-sources/v1` manifest. Sources retain
+origin, revision, license and label-review metadata. Each file requires a SHA-256
+pin and exactly one `url` or `local` source; local paths are relative to the manifest.
+The command never labels cases using scanner findings. Unreviewed sources use kind
+`external_unreviewed_corpus` with only `ambiguous` labels. Collection and evaluation
+default to a `2m` whole-operation timeout; `--timeout` accepts at most `10m`.
+See [pinned external candidates and the review workflow](../../testdata/external-corpus/README.md).
+
+`evaluate` optionally accepts `--min-recall N`, `--max-fpr N` (finite values in
+0..1), `--max-incomplete N` (nonnegative count), and `--require-independent`.
+The last option requires a separately validated independent label review and an
+explicit `--split holdout`; a corpus name alone is insufficient. Thresholds
+apply to static metrics, independently of optional LLM results. A `gate` object
+records the requirements, pass/fail and reason codes. Missing denominators,
+unreviewed external data or unfinished measurements never pass. Without threshold
+flags, evaluation keeps its existing exit behavior. With them, a failed gate
+returns 1 after writing the report; operational failures still return 2.
+
+## Manual label reviews
+
+`corpus review-template --corpus FILE [--output FILE]` creates a pending
+`scout.corpus-review/v1` document from a schema-2 corpus. Its `corpus_sha256` binds
+the exact input bytes; the command never assigns labels or claims independence.
+Templates require manual completion and cannot pass validation unchanged.
+
+Pass the completed file using `evaluate --label-review FILE` and repeat
+`--trusted-label-reviewer ID` for the operator-selected reviewer allowlist (1..32
+unique bounded ASCII IDs). Each corpus case, including unselected splits, requires
+exactly one review with a completed label, trusted reviewer ID, nonfuture RFC3339
+time, bounded rationale and 1..8 credential-free HTTPS evidence URLs without query
+parameters. Duplicate/unknown cases, changed corpus bytes, unfinished decisions and
+untrusted reviewers fail before scans, credentials or optional provider setup.
+Evidence URLs are not fetched. Review files are limited to 2 MiB.
+
+With `independent: true`, validated reviews produce the effective kind
+`independent_labelled_corpus`; an authored regression corpus cannot be promoted this
+way. Otherwise externally reviewed data uses `external_labelled_corpus`. The raw
+corpus remains unchanged. `--require-independent` needs this review, the holdout
+split and at least one nonambiguous selected label. A missing review fails the gate;
+an invalid supplied review is an operational error. Reviewer identity, independence
+and label correctness remain operator-trusted declarations, not authenticated facts.
+
+The optional report `label_review` records both SHA-256 hashes, the original corpus
+kind, used trusted reviewers, case count and independence declaration. Rationales,
+evidence URLs and original case contents remain outside the report. Retain the
+review document with the exact corpus to reproduce the measurement.

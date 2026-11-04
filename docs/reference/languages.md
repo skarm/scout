@@ -43,6 +43,19 @@ operations, authority and row-level security (RLS) changes, server filesystem/pr
 Comments, strings and identifiers are distinguished. Dollar-quoted procedural bodies
 remain unsupported. Go and JS/TS SQL interpolation is checked on their own ASTs.
 
+## Markdown
+
+Goldmark parses CommonMark block containers, including nested lists, blockquotes,
+fenced code and indented code. Code views preserve LF/CRLF and physical byte
+coordinates after container prefixes are removed. Unlabelled indented code uses
+only existing narrow language hints; an unknown language remains a coverage gap.
+Fences inside HTML blocks are inspected in a separate bounded raw-content pass;
+HTML/runtime semantics remain unsupported. No rendering or reference fetching occurs.
+Limits: 1 MiB per Markdown input, 2 MiB aggregate parsing bytes including HTML
+projections, 64 container levels, 8192 block nodes, 512 regions, 8192 source segments
+and 256 KiB per code view. Cancellation or a limit preserves available blocks and
+raw checks and makes coverage incomplete.
+
 ## Configuration formats
 
 JSON checks duplicate decoded keys. YAML and TOML require full-build backends.

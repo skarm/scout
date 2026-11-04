@@ -24,7 +24,7 @@ const usage = `Usage:
   scout capabilities
   scout doctor [--format json|text]
   scout config validate [flags]
-  scout baseline create|approve [flags]
+  scout baseline create|approve|renew [flags]
   scout mcp [flags]
   scout mcp snapshot --source-id ID [--output FILE] <capture.json>
   scout knowledge [--mode MODE]
@@ -84,7 +84,7 @@ func operatorCommand(ctx context.Context, args []string, stdout, stderr io.Write
 	case "config":
 		return configCommand(ctx, args[1:], stdout, stderr)
 	case "baseline":
-		return baselineCommand(ctx, args[1:], stderr)
+		return baselineCommand(ctx, args[1:], stdout, stderr)
 	case "knowledge":
 		return knowledgeCommand(args[1:], stdout, stderr)
 	case "integrations":

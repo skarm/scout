@@ -17,7 +17,7 @@ const (
 )
 
 func (c Corpus) validate() error {
-	if !slices.Contains([]int{1, 2}, c.SchemaVersion) || !slices.Contains([]string{"authored_regression_not_holdout", "independent_labelled_corpus"}, c.Kind) || len(c.Cases) == 0 || len(c.Cases) > 4096 {
+	if !slices.Contains([]int{1, 2}, c.SchemaVersion) || !slices.Contains([]string{"authored_regression_not_holdout", "independent_labelled_corpus", "external_unreviewed_corpus", "external_labelled_corpus"}, c.Kind) || len(c.Cases) == 0 || len(c.Cases) > 4096 {
 		return errors.New("invalid corpus identity or case count")
 	}
 
@@ -34,6 +34,10 @@ func (c Corpus) validate() error {
 	contents := map[[32]byte]string{}
 
 	for _, value := range c.Cases {
+		if c.Kind == "external_unreviewed_corpus" && (c.SchemaVersion != 2 || value.Label != "ambiguous") {
+			return errors.New("unreviewed external cases require schema 2 and ambiguous labels")
+		}
+
 		if ids[value.ID] {
 			return errors.New("invalid or duplicate case")
 		}

@@ -100,8 +100,28 @@ configuration locations in up to 64 ancestors of each selected path and its
 canonical alias, even above a repository boundary. An existing report elsewhere
 in the home or project can still be replaced with a partial inventory.
 
-`--scan` requires complete discovery and 1..32 grouped roots. Larger environments
-can be split by agent/project or inspected with explicit `scout scan` inputs.
+`--scan` requires complete discovery and 1..32 selected roots. Filter large inventories
+before scanning, or split them by agent/project:
+
+```sh
+scout discover --agent codex --kind skill \
+  --include-path /home/operator/.agents/skills \
+  --exclude-path /home/operator/.agents/skills/archived \
+  --scan -- --format markdown
+```
+
+`--kind` accepts `skill`, `plugin`, `mcp-server` and `command`; it and the path
+filters are repeatable, with at most 32 values each. Includes intersect known roots
+and cannot add outside inputs. Excludes omit whole overlapping roots; use a kind
+filter to select individual components instead of a broad skills/cache directory.
+Existing path aliases follow the filesystem's case and Unicode comparison rules.
+Missing suffixes retain resolved symlink ancestors; other path-resolution errors
+reject the selection, including dangling or cyclic links.
+Inventory components, source hashes and issues remain unfiltered. Optional
+`selection` metadata describes the requested scope; incomplete discovery still
+refuses automatic scanning. Report publication protects all known configuration
+locations, including ones excluded from the scan.
+
 This mode emits the existing `scout.report/v1` scan report, with ordinary policy
 and exit codes. It scans disabled declarations as well as enabled ones. Roots may
 contain supporting files beyond the inventoried components; normal capture and

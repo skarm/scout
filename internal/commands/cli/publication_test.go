@@ -61,6 +61,74 @@ func TestPartialJSONAndExitCode(t *testing.T) {
 	}
 }
 
+func TestCLIReportDestinationsRespectFilesystemAliases(t *testing.T) {
+	dir := t.TempDir()
+	input, first, second := filepath.Join(dir, "input.txt"), filepath.Join(dir, "report.json"), filepath.Join(dir, "REPORT.json")
+	if err := os.WriteFile(input, []byte("ordinary documentation"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(first, []byte("previous report"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, aliasErr := os.Stat(second)
+	var out, diag bytes.Buffer
+	code := cli.Run(context.Background(), []string{"scan", "--profile", "basic", "--format", "json", "--output", first, "--report", "sarif=" + second, input}, &out, &diag)
+	if aliasErr == nil {
+		data, err := os.ReadFile(first)
+		if code != 2 || err != nil || string(data) != "previous report" || out.Len() != 0 {
+			t.Fatalf("aliased output overwritten: code=%d contents=%s diagnostics=%s", code, data, &diag)
+		}
+	} else {
+		if code != 0 {
+			t.Fatalf("distinct case-sensitive destinations refused: %d %s", code, &diag)
+		}
+		data, err := os.ReadFile(first)
+		if err != nil || !bytes.Contains(data, []byte(`"schema": "scout.report/v1"`)) {
+			t.Fatalf("first report lost: %v %s", err, data)
+		}
+	}
+}
+
+func TestCLIMissingInputCannotBecomeItsOwnDiagnosticReport(t *testing.T) {
+	for _, flag := range []string{"--output", "--report"} {
+		t.Run(flag, func(t *testing.T) {
+			dir := t.TempDir()
+			probe := filepath.Join(dir, "case-probe")
+			if err := os.WriteFile(probe, []byte("probe"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, aliasErr := os.Stat(filepath.Join(dir, "CASE-PROBE"))
+			if aliasErr != nil && !os.IsNotExist(aliasErr) {
+				t.Fatal(aliasErr)
+			}
+			input, destination := filepath.Join(dir, "missing.json"), filepath.Join(dir, "MISSING.json")
+			value := destination
+			if flag == "--report" {
+				value = "json=" + destination
+			}
+			var out, diag bytes.Buffer
+			code := cli.Run(t.Context(), []string{"scan", "--profile", "basic", "--format", "json", flag, value, input}, &out, &diag)
+			if code != 2 {
+				t.Fatalf("missing input was not rejected: code=%d diagnostics=%s", code, &diag)
+			}
+			if _, err := os.Stat(input); !os.IsNotExist(err) {
+				t.Fatal("diagnostic publication created the missing input")
+			}
+			if aliasErr == nil {
+				if out.Len() != 0 || !strings.Contains(diag.String(), "report must not replace a scan input") {
+					t.Fatalf("alias was not rejected before scanning: output=%s diagnostics=%s", &out, &diag)
+				}
+			} else {
+				data, err := os.ReadFile(destination)
+				var document report.Document
+				if err != nil || json.Unmarshal(data, &document) != nil || document.Validate() != nil || document.Run.State == report.RunComplete {
+					t.Fatalf("distinct diagnostic report lost: %v %s", err, data)
+				}
+			}
+		})
+	}
+}
+
 func TestInitializationFailureUsesEverySelectedDestination(t *testing.T) {
 	if !frontend.BackendFor("python").Available || !signatures.Backend().Available {
 		t.Skip("YARA compilation failure requires native backends")

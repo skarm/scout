@@ -18,10 +18,13 @@ import (
 
 type evaluationInvocation struct {
 	path, split, llmConfig string
+	labelReviewPath        string
+	trustedLabelReviewers  []string
 	profile                scout.Profile
 	timeout                time.Duration
 	allowUpload            bool
 	price                  *evaluation.TokenPrice
+	requirements           evaluation.Requirements
 }
 
 func evaluate(ctx context.Context, args []string, out, diag io.Writer) int {
@@ -46,12 +49,17 @@ func evaluate(ctx context.Context, args []string, out, diag io.Writer) int {
 		return failure(diag, err)
 	}
 
+	labelReview, err := command.labelReview(call, data)
+	if err != nil {
+		return failure(diag, err)
+	}
+
 	opts, err := command.scannerOptions(call)
 	if err != nil {
 		return failure(diag, err)
 	}
 
-	measure := evaluation.Options{Split: command.split, Price: command.price}
+	measure := evaluation.Options{Split: command.split, Price: command.price, LabelReview: labelReview}
 	if opts.Review != nil {
 		measure.Reviewer, err = scout.New(call, opts)
 		if err != nil {
@@ -73,6 +81,10 @@ func evaluate(ctx context.Context, args []string, out, diag io.Writer) int {
 	defer func() { _ = scanner.Close() }()
 
 	r, measureErr := evaluation.MeasureWithOptions(call, scanner, data, measure)
+	if command.requirements.Enabled() {
+		gate := evaluation.Assess(r, command.requirements)
+		r.Gate = &gate
+	}
 	// Preserve completed cases on cancellation; never publish an empty report as
 	// a successful measurement.
 	if len(r.Results) > 0 {
@@ -85,7 +97,24 @@ func evaluate(ctx context.Context, args []string, out, diag io.Writer) int {
 		return failure(diag, measureErr)
 	}
 
+	if r.Gate != nil && !r.Gate.Passed {
+		return 1
+	}
+
 	return 0
+}
+
+func (c evaluationInvocation) labelReview(ctx context.Context, corpus []byte) (*evaluation.LabelReview, error) {
+	if c.labelReviewPath == "" {
+		return nil, nil
+	}
+
+	raw, err := readEvaluationFile(ctx, c.labelReviewPath, evaluation.MaxLabelReviewBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return evaluation.ValidateLabelReview(corpus, raw, c.trustedLabelReviewers, time.Now())
 }
 
 func (c evaluationInvocation) scannerOptions(ctx context.Context) (scout.Options, error) {
@@ -133,7 +162,21 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 	fs.DurationVar(&c.timeout, "timeout", 2*time.Minute, "whole corpus deadline")
 	fs.StringVar(&c.split, "split", "", "measure only train, tune or holdout after validating all splits")
 	fs.StringVar(&c.llmConfig, "llm-config", "", "explicit scout.config/v1 with review provider and scanner settings")
+	fs.StringVar(&c.labelReviewPath, "label-review", "", "separate scout.corpus-review/v1 decisions bound to the exact corpus SHA-256")
+	fs.Func("trusted-label-reviewer", "explicitly trusted reviewer ID for --label-review; repeatable, at most 32", func(id string) error {
+		if id == "" || len(c.trustedLabelReviewers) >= 32 {
+			return errors.New("trusted label reviewers require nonempty IDs and at most 32 values")
+		}
+
+		c.trustedLabelReviewers = append(c.trustedLabelReviewers, id)
+
+		return nil
+	})
 	fs.BoolVar(&c.allowUpload, "allow-source-upload", false, "allow bounded corpus source excerpts to the configured reviewer")
+	minRecall := fs.Float64("min-recall", 0, "minimum static signal recall in 0..1; an undefined recall fails")
+	maxFPR := fs.Float64("max-fpr", 1, "maximum static false-positive rate in 0..1; an undefined rate fails")
+	maxIncomplete := fs.Int("max-incomplete", 0, "maximum number of incomplete static cases")
+	fs.BoolVar(&c.requirements.RequireIndependent, "require-independent", false, "require validated independent label review from trusted reviewers and an explicitly selected holdout split")
 	input := fs.Float64("input-usd-per-million", 0, "operator-supplied input token price assumption")
 
 	output := fs.Float64("output-usd-per-million", 0, "operator-supplied output token price assumption")
@@ -144,6 +187,26 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 	present := map[string]bool{}
 
 	fs.Visit(func(f *flag.Flag) { present[f.Name] = true })
+
+	if present["min-recall"] {
+		c.requirements.MinRecall = minRecall
+	}
+
+	if present["max-fpr"] {
+		c.requirements.MaxFalsePositive = maxFPR
+	}
+
+	if present["max-incomplete"] {
+		c.requirements.MaxIncomplete = maxIncomplete
+	}
+
+	if err := c.requirements.Validate(); err != nil {
+		return c, err
+	}
+
+	if (c.labelReviewPath == "") != (len(c.trustedLabelReviewers) == 0) || present["label-review"] && c.labelReviewPath == "" {
+		return c, errors.New("--label-review and at least one --trusted-label-reviewer must be supplied together")
+	}
 
 	if fs.NArg() != 1 || c.timeout <= 0 || c.timeout > 10*time.Minute {
 		return c, errors.New("evaluate requires one corpus and bounded timeout")
