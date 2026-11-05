@@ -58,17 +58,54 @@ func TestCanonicalValuesRejectUnsupportedDomain(t *testing.T) {
 	}
 }
 
+func TestCanonicalStringNormalizesInvalidUTF8LikeWireRoundTrip(t *testing.T) {
+	for _, text := range []string{
+		"\xff\xfe",
+		"\xe2\x82",
+		"\xed\xa0\x80",
+		"\xed\xa0\x80\xed\xb0\x80",
+		"\xf4\x90\x80\x80",
+		"\ufffd\xffx\xfe\ufffd",
+		"<\xff>\x00&\xfe\u2028",
+	} {
+		got, err := canonicalScalar([]byte("prefix:"), reflect.ValueOf(text))
+		want := canonicalStringWireEncoding(t, text)
+		if err != nil || !bytes.Equal(got, append([]byte("prefix:"), want...)) {
+			t.Fatalf("canonical scalar differs from wire round trip for %q: %q != %q, %v", text, got, want, err)
+		}
+	}
+}
+
 func FuzzCanonicalStringMatchesJSON(f *testing.F) {
-	for _, text := range []string{"", "ordinary ASCII", "<>&\u2028\u2029\x00", "Привет🙂", "\xff\xfe", "\"\\\n\t\x01"} {
+	for _, text := range []string{"", "ordinary ASCII", "<>&\u2028\u2029\x00", "Привет🙂", "\xff\xfe", "\"\\\n\t\x01", "\xe2\x82", "\xed\xa0\x80\xed\xb0\x80", "\xf4\x90\x80\x80", "\ufffd\xffx\xfe\ufffd"} {
 		f.Add(text)
 	}
 	f.Fuzz(func(t *testing.T, text string) {
 		got, err := canonicalScalar([]byte("prefix:"), reflect.ValueOf(text))
-		want, marshalErr := json.Marshal(text)
-		if err != nil || marshalErr != nil || !bytes.Equal(got, append([]byte("prefix:"), want...)) {
+		want := canonicalStringWireEncoding(t, text)
+		if err != nil || !bytes.Equal(got, append([]byte("prefix:"), want...)) {
 			t.Fatalf("canonical scalar differs from JSON for %q: %q != %q", text, got, want)
 		}
 	})
+}
+
+// The digest's original JSON domain is Marshal -> Decode -> Marshal. Decoding
+// replaces each invalid UTF-8 byte before the final scalar encoding.
+func canonicalStringWireEncoding(t testing.TB, text string) []byte {
+	t.Helper()
+	wire, err := json.Marshal(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded string
+	if err := json.Unmarshal(wire, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
 }
 
 type customCanonicalInteger int64

@@ -311,6 +311,75 @@ func TestPrebindInstallsAllLocalTargetShapesBeforeEvaluation(t *testing.T) {
 	}
 }
 
+func TestAnnotationOnlyStatementsPreserveExistingValues(t *testing.T) {
+	for _, kind := range []string{"name", "attribute", "subscript"} {
+		t.Run(kind, func(t *testing.T) {
+			w, state := semanticWalker(t), newPyState()
+			value := namedValue("exec")
+			var target *frontend.Node
+			switch kind {
+			case "name":
+				state.set("run", value)
+				target = semanticName(t, "run")
+			case "attribute":
+				state.set("holder", instanceValue(&pyInstance{fields: map[string]pyValue{"run": value}}))
+				target = semanticNode(t, frontend.Attribute,
+					frontend.ChildField(frontend.FieldValue, semanticName(t, "holder")), frontend.TextField(frontend.Attr, "run"))
+			case "subscript":
+				state.set("holder", pyValue{meaning: &pyMapping{entries: map[string]pyValue{"run": value}}})
+				target = semanticNode(t, frontend.Subscript,
+					frontend.ChildField(frontend.FieldValue, semanticName(t, "holder")),
+					frontend.ChildField(frontend.Slice, semanticNode(t, frontend.Constant, frontend.LiteralField(frontend.StringValue("run")))))
+			}
+			statement := semanticNode(t, frontend.AnnAssign,
+				frontend.ChildField(frontend.Target, target), frontend.ChildField(frontend.Annotation, semanticName(t, "object")))
+			w.block([]*frontend.Node{statement}, state, 0)
+			if got := w.expr(target, state, 0).symbol(); got != "exec" {
+				t.Fatalf("annotation erased the existing callable: %q", got)
+			}
+		})
+	}
+}
+
+func TestAnnotationsRetainObservationsWithoutMutatingOuterState(t *testing.T) {
+	for _, field := range []frontend.FieldKind{frontend.Posonlyargs, frontend.Args, frontend.KWOnlyargs, frontend.Vararg, frontend.Kwarg, frontend.Returns, frontend.Annotation} {
+		t.Run(field.String(), func(t *testing.T) {
+			walker, state := semanticWalker(t), newPyState()
+			state.set("chosen", literalValue("public", true, 2))
+			state.set("run", namedValue("exec"))
+			annotation := semanticAssign(t, "chosen", semanticNode(t, frontend.Call,
+				frontend.ChildField(frontend.Func, semanticName(t, "eval"))))
+			switch field {
+			case frontend.Returns:
+				walker.definitionAnnotations(nil, annotation, state, 0)
+			case frontend.Annotation:
+				walker.assignmentStatement(semanticNode(t, frontend.AnnAssign,
+					frontend.ChildField(frontend.Target, semanticName(t, "run")),
+					frontend.ChildField(frontend.Annotation, annotation)), state, 0)
+			default:
+				parameter := semanticNode(t, frontend.Arg,
+					frontend.TextField(frontend.FieldArg, "value"),
+					frontend.ChildField(frontend.Annotation, annotation))
+				argumentField := frontend.NodesField(field, []*frontend.Node{parameter})
+				if field == frontend.Vararg || field == frontend.Kwarg {
+					argumentField = frontend.ChildField(field, parameter)
+				}
+				walker.definitionAnnotations(semanticNode(t, frontend.Arguments, argumentField), nil, state, 0)
+			}
+			result, err := walker.facts.result(ruleAST2, 16)
+			if err != nil || result.Truncated || len(result.Matches) != 1 {
+				t.Fatalf("annotation observation lost: %+v %v", result, err)
+			}
+			value, _ := state.lookup("chosen")
+			text, known := value.literal()
+			run, _ := state.lookup("run")
+			if !known || text != "public" || run.symbol() != "exec" || walker.err != nil || walker.truncated {
+				t.Fatal("isolated annotation changed outer bindings or did not complete")
+			}
+		})
+	}
+}
+
 func TestDictionaryProjectionTracksKnownSpreadsAndRejectsUnknownKeys(t *testing.T) {
 	w, s := semanticWalker(t), newPyState()
 	s.set("spread", pyValue{meaning: &pyMapping{entries: map[string]pyValue{"secret": {origins: []pyOrigin{{

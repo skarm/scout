@@ -64,7 +64,7 @@ func (a pythonCheck) Rule() report.Rule {
 
 	return report.Rule{
 		ID:          rulePrefixPython + a.id,
-		Version:     "8",
+		Version:     "9",
 		Title:       title,
 		Description: title,
 		Severity:    sev,

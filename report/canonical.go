@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 //nolint:gochecknoglobals // The mutex protects cached immutable field metadata; reports are never retained.
@@ -149,7 +150,7 @@ func canonicalScalar(out []byte, value reflect.Value) ([]byte, error) {
 	case reflect.String:
 		text := value.String()
 		// Printable ASCII needs no JSON escaping. Keep encoding/json as the
-		// oracle for controls, HTML escaping, Unicode and invalid UTF-8.
+		// oracle for controls, HTML escaping and valid Unicode.
 		plain := true
 
 		for i := range len(text) {
@@ -165,6 +166,13 @@ func canonicalScalar(out []byte, value reflect.Value) ([]byte, error) {
 			out = append(out, text...)
 
 			return append(out, '"'), nil
+		}
+
+		// Match the original Marshal -> Decode -> Marshal digest domain.
+		// Invalid bytes become individual replacement runes before encoding;
+		// normalization keeps their spelling independent of the Go toolchain.
+		if !utf8.ValidString(text) {
+			text = string([]rune(text))
 		}
 
 		encoded, err := json.Marshal(text)

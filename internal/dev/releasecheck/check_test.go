@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -197,4 +198,38 @@ func goodBuild() *debug.BuildInfo {
 		})
 	}
 	return b
+}
+
+func TestExplicitReleaseSymlinkPreservesInspection(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
+		t.Skip("release format unsupported")
+	}
+	path, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "release-link")
+	if err := os.Symlink(path, alias); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("creating a symlink requires Windows permission")
+		}
+		t.Fatal(err)
+	}
+	direct, err := releasecheck.Inspect(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This test binary lacks required scanner modules. Verify must stop at its
+	// metadata issues; neither it nor any synthetic fixture may be executed.
+	if len(direct.Issues) == 0 || direct.Passed || direct.Selftest != nil {
+		t.Fatal("test executable unexpectedly qualified as a scanner release")
+	}
+	linked, err := releasecheck.Inspect(alias)
+	if err != nil || !reflect.DeepEqual(linked, direct) {
+		t.Fatalf("explicit symlink changed inspection: %+v %v", linked, err)
+	}
+	verified, err := releasecheck.Verify(t.Context(), alias)
+	if err != nil || !reflect.DeepEqual(verified, direct) {
+		t.Fatalf("explicit symlink changed verification: %+v %v", verified, err)
+	}
 }

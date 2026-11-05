@@ -32,7 +32,9 @@ Maintenance commands accept `--root PROJECT_ROOT` when invoked elsewhere.
   validation. `--llm-config FILE --allow-source-upload` adds a separate LLM run;
   `--input-usd-per-million N --output-usd-per-million N` records price assumptions.
 - `releasecheck --binary SCOUT`: inspect linkage and metadata, then execute fixed
-  native self-tests. Add `--inspect-only` to avoid execution.
+  native self-tests. Add `--inspect-only` to avoid execution. The selected binary
+  must be a bounded regular file; an explicit symlink to it is supported, while
+  FIFOs and devices are rejected before reading.
 
 See [evaluation](evaluation.md) and [validation](validation.md).
 
@@ -49,7 +51,9 @@ scout-dev replay --input captures.jsonl.gz --output replay-results.jsonl \
 ```
 
 Replay scans captured code as data and retains stable result order. Incomplete
-results and runtime faults are counted separately. Use fresh output directories.
+results and runtime faults are counted separately. The input must be a regular
+JSONL or gzip file; FIFOs and devices are refused before reading. Use fresh output
+directories.
 
 ## Source-bound provenance
 
@@ -58,6 +62,9 @@ Ordinary verification checks its saved artifacts without comparing today's sourc
 files. Code edits do not require a new receipt. Use `provenance verify --current-sources`
 only to audit whether that measurement describes the current checkout; the output's
 `current_sources_checked` field distinguishes this audit from recorded-evidence verification.
+
+Evidence inputs must be bounded regular files. Symlinks within the selected root
+remain supported; links escaping it, FIFOs and devices are rejected before reading.
 
 When intentionally recording a new measurement, stage new runs in `.work/`; replace `testdata/provenance/current/` when accepted.
 Set `SCOUT_EVIDENCE_DIR` to the replay and release-check directory:

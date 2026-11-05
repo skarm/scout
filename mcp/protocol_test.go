@@ -44,7 +44,7 @@ func TestAcceptHeaderRequiresEnabledExactJSONMedia(t *testing.T) {
 			t.Fatal(header)
 		}
 	}
-	for _, header := range []string{"", "*/*", "application/json-bogus", "application/json;broken", "application/json;q=0", "application/json;q=0.0", "application/json;q=0.00", "application/json;q=0.000", strings.Repeat("x", 4097)} {
+	for _, header := range []string{"", "*/*", "application/json-bogus", "application/json;broken", "application/json;q=0", "application/json;q=0.", "application/json;q=0.0", "application/json;q=0.00", "application/json;q=0.000", strings.Repeat("x", 4097)} {
 		if acceptsJSON(header) {
 			t.Fatal(header)
 		}

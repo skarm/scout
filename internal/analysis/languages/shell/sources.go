@@ -377,7 +377,12 @@ func (w *shellSourceWalker) prepareGeneratedSources(command *shellsyntax.Command
 		return true
 	}
 
-	inputs := generatedShellInputs(command, w.unit.View.Text(), w.variables)
+	inputs, limited := generatedShellInputs(command, w.unit.View.Text(), w.variables)
+	if limited {
+		w.truncated = true
+		return false
+	}
+
 	for i := range inputs {
 		mapped, err := w.unit.View.Original(inputs[i].Span)
 		if err != nil {
@@ -578,30 +583,39 @@ func sourceConfigOutputName(output *shellsyntax.Redirect) string {
 	return generatedConfigName(name.String())
 }
 
-func generatedShellInputs(command *shellsyntax.Command, text string, variables map[string]string) []document.DerivedInput {
+func generatedShellInputs(command *shellsyntax.Command, text string, variables map[string]string) ([]document.DerivedInput, bool) {
 	executable, admitted := sourceConfigProducer(command)
 	if !admitted {
-		return nil
+		return nil, false
 	}
 
 	names := generatedConfigNames(command, executable, variables)
 
 	input, output := generatedRedirects(command)
 	if input == nil || input.Body == nil {
-		return nil
+		return nil, false
 	}
 
 	if name := sourceConfigOutputName(output); name != "" {
 		names = append(names, name)
 	}
 
+	if len(names) == 0 {
+		return nil, false
+	}
+
 	if input.Body.Span.Start < 0 || input.Body.Span.End > len(text) {
-		return nil
+		return nil, false
 	}
 
 	body := text[input.Body.Span.Start:input.Body.Span.End]
 	if !input.QuotedDelimiter {
-		body = expandShellConfig(body, variables)
+		var complete bool
+
+		body, complete = expandShellConfig(body, variables)
+		if !complete {
+			return nil, true
+		}
 	}
 
 	var inputs []document.DerivedInput
@@ -609,7 +623,7 @@ func generatedShellInputs(command *shellsyntax.Command, text string, variables m
 		inputs = append(inputs, document.DerivedInput{Name: name, Text: body, Span: input.Body.Span})
 	}
 
-	return inputs
+	return inputs, false
 }
 
 func sourceCatReadsStdin(words []*shellsyntax.Word) bool {
@@ -685,12 +699,25 @@ func generatedRedirects(command *shellsyntax.Command) (*shellsyntax.Redirect, *s
 	return input, output
 }
 
-func expandShellConfig(original string, vars map[string]string) string {
+func expandShellConfig(original string, vars map[string]string) (string, bool) {
 	var expanded strings.Builder
+
+	appendPart := func(part string) bool {
+		if len(part) > document.MaxUnitBytes-expanded.Len() {
+			return false
+		}
+
+		expanded.WriteString(part)
+
+		return true
+	}
 
 	previous := 0
 	for _, at := range shellConfigVariable.FindAllStringIndex(original, -1) {
-		expanded.WriteString(original[previous:at[0]])
+		if !appendPart(original[previous:at[0]]) {
+			return "", false
+		}
+
 		token := original[at[0]:at[1]]
 
 		backslashes := 0
@@ -700,17 +727,21 @@ func expandShellConfig(original string, vars map[string]string) string {
 
 		key := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(token, "$"), "{"), "}")
 		if v, ok := vars[key]; ok && backslashes%2 == 0 {
-			expanded.WriteString(v)
-		} else {
-			expanded.WriteString(token)
+			token = v
+		}
+
+		if !appendPart(token) {
+			return "", false
 		}
 
 		previous = at[1]
 	}
 
-	expanded.WriteString(original[previous:])
+	if !appendPart(original[previous:]) {
+		return "", false
+	}
 
-	return expanded.String()
+	return expanded.String(), true
 }
 
 func sourceWord(word *shellsyntax.Word, variables map[string]string) (string, bool) {

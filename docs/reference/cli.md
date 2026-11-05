@@ -147,6 +147,8 @@ Copy a [ready-to-use config](../../examples/configs/README.md) for a common work
   inputs and trusted operator files. The primary report is still produced.
 
 Diagnostics go to stderr. Create destination directories before running Scout.
+File reports require resolvable input boundaries; a dangling input symlink is
+rejected. Use stdout to inspect diagnostics for such an input.
 See [report publication](../user/usage.md#save-reports).
 
 ### Policy

@@ -187,7 +187,7 @@ func (shellBackend) Descriptor() Descriptor {
 	return Descriptor{
 		ID:        "shell-native-subset",
 		Language:  language.Shell,
-		Version:   "4",
+		Version:   "5",
 		UnitBytes: shellsyntax.MaxBytes,
 		ScanBytes: MaxScanBytes,
 	}

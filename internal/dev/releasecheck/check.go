@@ -73,13 +73,33 @@ func RequiredModules() []string {
 }
 
 func Inspect(path string) (Report, error) {
-	f, e := os.Open(path) //nolint:gosec // G304: path is the release binary explicitly selected by the caller.
+	f, e := openBinary(path)
 	if e != nil {
-		return newReport(), errors.New("cannot open release binary")
+		return newReport(), e
 	}
 	defer func() { _ = f.Close() }()
 
 	return inspect(f)
+}
+
+func openBinary(path string) (*os.File, error) {
+	info, err := os.Stat(path) //nolint:gosec // G703: path is the release binary explicitly selected by the caller.
+	if err != nil {
+		return nil, errors.New("cannot open release binary")
+	}
+
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxBinarySize {
+		return nil, errors.New("release binary is not a bounded regular file")
+	}
+
+	// Follow an explicitly selected symlink as before. A nonblocking Unix open
+	// lets inspect reject a swapped-in FIFO through its opened-descriptor Stat.
+	file, err := os.OpenFile(path, os.O_RDONLY|binaryReadFlags, 0) //nolint:gosec // G304: path is the release binary explicitly selected by the caller.
+	if err != nil {
+		return nil, errors.New("cannot open release binary")
+	}
+
+	return file, nil
 }
 
 func AllowedSystemLibrary(goos, lib string) bool {
@@ -153,9 +173,9 @@ func Verify(ctx context.Context, path string) (Report, error) {
 		return newReport(), err
 	}
 
-	f, e := os.Open(path) //nolint:gosec // G304: path is the release binary explicitly selected by the caller.
+	f, e := openBinary(path)
 	if e != nil {
-		return newReport(), errors.New("cannot open release binary")
+		return newReport(), e
 	}
 	defer func() { _ = f.Close() }()
 

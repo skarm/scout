@@ -142,26 +142,30 @@ func checkIndex(r report.Analysis, x inventory) map[string]report.FileCoverage {
 	return out
 }
 
-func findingLanguage(method string) string {
-	lang := ""
-
+func findingLanguages(method string) []string {
 	switch {
 	case strings.HasPrefix(method, "go-ast"):
-		lang = language.Go
+		return []string{language.Go}
 	case strings.HasPrefix(method, "shell-"):
-		lang = language.Shell
+		return []string{language.Shell}
 	case method == "json-configuration":
-		lang = language.JSON
+		return []string{language.JSON}
+	case method == "javascript-typescript-tree-sitter-flow":
+		return []string{language.JavaScript, language.TypeScript}
+	case method == "python-ast-go-analysis":
+		return []string{language.Python}
+	case method == "sql-token-statements":
+		return []string{language.SQL}
 	}
 
-	return lang
+	return nil
 }
 
-func parserCoverageComplete(units []report.UnitCoverage, language string) bool {
+func parserCoverageComplete(units []report.UnitCoverage, languages []string) bool {
 	found := false
 
 	for _, unit := range units {
-		if unit.Language == language {
+		if slices.Contains(languages, unit.Language) {
 			found = true
 
 			if unit.Status != report.UnitParsedLimited {
@@ -208,9 +212,9 @@ func absenceCheckComplete(f report.Finding, objectID string, x inventory, checks
 		return false
 	}
 
-	lang := findingLanguage(f.Method)
-	if lang != "" {
-		return parserCoverageComplete(coverage.Units, lang)
+	languages := findingLanguages(f.Method)
+	if len(languages) > 0 {
+		return parserCoverageComplete(coverage.Units, languages)
 	}
 
 	return true

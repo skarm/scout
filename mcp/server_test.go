@@ -581,6 +581,15 @@ func TestHTTPAdmissionAndFailedInitialization(t *testing.T) {
 			status:  400,
 		},
 		{
+			name:   "json-excluded-by-zero-quality",
+			method: "POST",
+			path:   "/mcp",
+			media:  "application/json",
+			accept: "application/json;q=0.",
+			body:   strings.NewReader(initMessage),
+			status: http.StatusUnsupportedMediaType,
+		},
+		{
 			name:    "body",
 			method:  "POST",
 			path:    "/mcp",

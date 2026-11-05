@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -28,7 +27,7 @@ func replayCommand(ctx context.Context, args []string, out, diag io.Writer) int 
 		return failure(diag, err)
 	}
 
-	file, err := os.Open(command.input)
+	file, err := openInputFile(command.input)
 	if err != nil {
 		return failure(diag, err)
 	}

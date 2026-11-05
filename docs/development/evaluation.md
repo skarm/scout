@@ -116,8 +116,8 @@ bin/scout-dev evaluate --llm-config operator-review.json --allow-source-upload \
 The prices above are illustrative operator assumptions in USD per million tokens,
 not current provider prices. Supply both prices or omit both. Credentials come
 only from variables explicitly named in the config. No default provider, implicit
-source upload, vulnerability lookup, download, baseline, extra rule file, advisory
-cache or remote pin is accepted. Evaluation always uses its own high-severity
+source upload, vulnerability lookup, download, baseline, extra rule file or
+rulepack, advisory cache or remote pin is accepted. Evaluation always uses its own high-severity
 policy; config policy thresholds do not change signal counting.
 
 Each case first runs through a separate offline Scanner with the same static

@@ -249,7 +249,7 @@ func acceptsJSON(h string) bool {
 			continue
 		}
 
-		if q, ok := params["q"]; ok && (q == "0" || q == "0.0" || q == "0.00" || q == "0.000") {
+		if q, ok := params["q"]; ok && (q == "0" || q == "0." || q == "0.0" || q == "0.00" || q == "0.000") {
 			continue
 		}
 

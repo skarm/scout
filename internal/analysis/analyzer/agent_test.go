@@ -280,6 +280,62 @@ func TestAgentSignals(t *testing.T) {
 	}
 }
 
+func TestSensitiveToolParametersAcrossCaptureShapes(t *testing.T) {
+	if agentRule(t, "MC003").Rule().Version != "5" {
+		t.Fatal("capture shape semantics require a new rule revision")
+	}
+
+	const tools = `[{"name":"search","inputSchema":{"properties":{"pass\u0077ord":{"type":"string"},"query":{"type":"string"}}}}]`
+	for _, tc := range []struct {
+		name, text string
+	}{
+		{name: "direct", text: `{"tools":` + tools + `}`},
+		{name: "json-rpc", text: `{"result":{"tools":` + tools + `}}`},
+		{name: "snapshot", text: `{"schema":"scout.mcp-snapshot/v1","source":"fixture","initialize":{"serverInfo":{"name":"fixture","version":"1"},"protocolVersion":"2025-06-18","capabilities":{}},"tools":{"tools":` + tools + `}}`},
+		{name: "wrapped-result", text: `{"result":{"tools":{"tools":` + tools + `}}}`},
+		{name: "null-root", text: `{"tools":null,"result":{"tools":` + tools + `}}`},
+		{name: "empty-root", text: `{"tools":[],"result":{"tools":` + tools + `}}`},
+		{name: "unrelated-root", text: `{"tools":{"description":"ordinary metadata"},"result":{"tools":` + tools + `}}`},
+		{name: "string-root", text: `{"tools":"unrelated","result":{"tools":` + tools + `}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := prepared(context.Background(), artifact.NewFile("tools.json", []byte(tc.text), false))
+			out, err := agentRule(t, "MC003").Find(context.Background(), doc, 4)
+			if err != nil || out.Truncated || len(out.Matches) != 1 {
+				t.Fatalf("sensitive declaration was lost: %+v %v", out, err)
+			}
+			match := out.Matches[0]
+			if got := tc.text[match.Start:match.End]; got != `"pass\u0077ord"` {
+				t.Fatalf("expected original sensitive property key, got %q", got)
+			}
+		})
+	}
+}
+
+func TestSensitiveToolParametersInspectBothPositionsWithinBudget(t *testing.T) {
+	const text = `{"tools":[{"inputSchema":{"properties":{"password":{}}}}],"result":{"tools":[{"inputSchema":{"properties":{"api_key":{},"query":{}}}}]}}`
+	doc := prepared(context.Background(), artifact.NewFile("tools.json", []byte(text), false))
+	for _, tc := range []struct {
+		budget    int
+		keys      []string
+		truncated bool
+	}{
+		{budget: 4, keys: []string{`"password"`, `"api_key"`}},
+		{budget: 1, keys: []string{`"password"`}, truncated: true},
+		{budget: 0, truncated: true},
+	} {
+		out, err := agentRule(t, "MC003").Find(context.Background(), doc, tc.budget)
+		if err != nil || len(out.Matches) != len(tc.keys) || out.Truncated != tc.truncated {
+			t.Fatalf("budget=%d: %+v %v", tc.budget, out, err)
+		}
+		for i, match := range out.Matches {
+			if got := text[match.Start:match.End]; got != tc.keys[i] {
+				t.Fatalf("budget=%d: expected %s, got %s", tc.budget, tc.keys[i], got)
+			}
+		}
+	}
+}
+
 func TestAgentBudgetMapping(t *testing.T) {
 	a := agentRule(t, "AC002")
 	s := "  ```json\r\n  {\"permissions\": {\"allow\": [\"Bash\", \"*\"]}}\r\n  ```\r\n"

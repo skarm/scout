@@ -217,6 +217,8 @@ func (d Document) validated() (Document, error) {
 		return Document{}, err
 	}
 
+	d.Run = run
+
 	return d.scopeSuppressions()
 }
 

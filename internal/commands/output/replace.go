@@ -191,6 +191,12 @@ func resolveInput(name string) (string, error) {
 			return "", fmt.Errorf("resolve scan input boundary: %w", err)
 		}
 
+		// Only nonexistent suffixes may be reconstructed. An existing dangling
+		// symlink has an unresolved target and cannot safely define a boundary.
+		if _, statErr := os.Lstat(name); !errors.Is(statErr, os.ErrNotExist) {
+			return "", fmt.Errorf("resolve existing scan input boundary: %w", err)
+		}
+
 		parent := filepath.Dir(name)
 		if parent == name {
 			return "", fmt.Errorf("resolve scan input ancestor: %w", err)

@@ -216,6 +216,62 @@ func TestMissingInputStillAllowsAnOutsideDiagnosticReport(t *testing.T) {
 	assertNoTemps(t, dir)
 }
 
+func TestDanglingInputAliasesCannotBeChangedByReport(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		descendant bool
+		unrelated  bool
+	}{
+		{name: "missing target"},
+		{name: "unrelated destination", unrelated: true},
+		{name: "missing descendant", descendant: true, unrelated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, outside := t.TempDir(), t.TempDir()
+			target := filepath.Join(outside, "missing")
+			input := filepath.Join(dir, "input-link")
+			makeSymlink(t, target, input)
+			if tc.descendant {
+				input = filepath.Join(input, "child.json")
+			}
+			destination := target
+			if tc.unrelated {
+				destination = filepath.Join(outside, "report.json")
+			}
+			called := false
+			err := output.Write(t.Context(), destination, []string{input}, func(w io.Writer) error {
+				called = true
+				return render("diagnostic report")(w)
+			})
+			if err == nil || called {
+				t.Fatalf("unresolved input boundary accepted: renderer=%t err=%v", called, err)
+			}
+			for _, name := range []string{target, destination} {
+				if _, err := os.Lstat(name); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("refusal created %s: %v", name, err)
+				}
+			}
+			assertNoTemps(t, outside)
+		})
+	}
+}
+
+func TestMissingInputBelowValidAliasAllowsOutsideReport(t *testing.T) {
+	inputs, aliases, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	alias := filepath.Join(aliases, "inputs")
+	makeSymlink(t, inputs, alias)
+	destination := filepath.Join(outside, "report.json")
+	input := filepath.Join(alias, "missing", "child.json")
+	if err := output.Write(t.Context(), destination, []string{input}, render("incomplete")); err != nil {
+		t.Fatal(err)
+	}
+	assertContents(t, destination, "incomplete")
+	if _, err := os.Stat(filepath.Join(inputs, "missing")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("publication changed missing input: %v", err)
+	}
+	assertNoTemps(t, outside)
+}
+
 func TestMissingInputNamesFollowFilesystemSemantics(t *testing.T) {
 	for _, names := range [][2]string{{"missing.json", "MISSING.json"}, {"caf\u00e9.json", "cafe\u0301.json"}} {
 		t.Run(names[0], func(t *testing.T) {

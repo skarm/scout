@@ -119,3 +119,23 @@ func TestEvaluateCLIReviewRequiresGrantAndKeepsUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestEvaluateRejectsUnloadedRulepackBeforeProviderSetup(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "review.json")
+	data := []byte(`{"schema":"scout.config/v1","profile":"custom","checks":{"patterns":false,"python":false,"yaml":false,"toml":false,"yara":false},"signatures":{"rulepack_file":"must-not-be-ignored.json"},"review":{"provider":"chat-completions","endpoint":"https://example.invalid/v1/chat/completions","model":"fixture","key_env":"SCOUT_EVALUATION_UNUSED_KEY"}}`)
+	if err := os.WriteFile(config, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SCOUT_EVALUATION_UNUSED_KEY", "")
+	corpus := filepath.Join(root, "corpus.json")
+	data = []byte(`{"schema_version":1,"kind":"authored_regression_not_holdout","cases":[{"id":"doc","category":"docs","label":"benign","path":"README.txt","content":"ordinary documentation"}]}`)
+	if err := os.WriteFile(corpus, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	code := devcli.Run(t.Context(), []string{"evaluate", "--llm-config", config, "--allow-source-upload", corpus}, &out, &diag)
+	if code != 2 || out.Len() != 0 || !strings.Contains(diag.String(), "cannot load") {
+		t.Fatalf("unsupported rulepack reached provider setup: code=%d output=%s diagnostics=%s", code, &out, &diag)
+	}
+}

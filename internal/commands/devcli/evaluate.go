@@ -7,11 +7,9 @@ import (
 	"flag"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/skarm/scout"
-	"github.com/skarm/scout/internal/capture/rootfs"
 	configfile "github.com/skarm/scout/internal/commands/config"
 	"github.com/skarm/scout/internal/dev/evaluation"
 )
@@ -139,7 +137,7 @@ func (c evaluationInvocation) scannerOptions(ctx context.Context) (scout.Options
 		return scout.Options{}, err
 	}
 
-	if settings.Reviewer == nil || settings.Scanner.Vulnerabilities != nil || settings.BaselinePath != "" || settings.OSVCachePath != "" || settings.ExtraRulesPath != "" || len(settings.RemotePins) != 0 {
+	if settings.Reviewer == nil || settings.Scanner.Vulnerabilities != nil || settings.BaselinePath != "" || settings.OSVCachePath != "" || settings.ExtraRulesPath != "" || settings.RulepackPath != "" || len(settings.RemotePins) != 0 {
 		return scout.Options{}, errors.New("evaluation config requires review and cannot load baselines, extra rules, advisory caches or remote pins")
 	}
 
@@ -233,26 +231,8 @@ func readEvaluationFile(ctx context.Context, name string, limit int64) ([]byte, 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	// Resolve an explicitly selected symlink, then use the same no-follow,
-	// nonblocking file access as capture. Streams and devices are not corpora.
-	absolute, err := filepath.Abs(name)
-	if err != nil {
-		return nil, errors.New("invalid evaluation input path")
-	}
 
-	absolute, err = filepath.EvalSymlinks(absolute)
-	if err != nil {
-		return nil, errors.New("cannot resolve evaluation input")
-	}
-
-	root, err := rootfs.Open(filepath.Dir(absolute))
-	if err != nil {
-		return nil, errors.New("cannot open evaluation input directory")
-	}
-
-	defer func() { _ = root.Close() }()
-
-	f, err := root.Open(filepath.Base(absolute))
+	f, err := openInputFile(name)
 	if err != nil {
 		return nil, errors.New("cannot open evaluation input")
 	}

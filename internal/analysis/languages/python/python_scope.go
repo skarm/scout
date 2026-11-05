@@ -198,16 +198,22 @@ func (w *pyWalker) definitionAnnotations(args, returns *frontend.Node, s *pyStat
 	if args != nil {
 		for _, key := range []frontend.FieldKind{frontend.Posonlyargs, frontend.Args, frontend.KWOnlyargs} {
 			for _, a := range args.List(key) {
-				w.expr(a.Child(frontend.Annotation), s.fork(), depth+1)
+				w.annotation(a.Child(frontend.Annotation), s, depth+1)
 			}
 		}
 
 		for _, key := range []frontend.FieldKind{frontend.Vararg, frontend.Kwarg} {
-			w.expr(args.Child(key).Child(frontend.Annotation), s.fork(), depth+1)
+			w.annotation(args.Child(key).Child(frontend.Annotation), s, depth+1)
 		}
 	}
 
-	w.expr(returns, s.fork(), depth+1)
+	w.annotation(returns, s, depth+1)
+}
+
+func (w *pyWalker) annotation(n *frontend.Node, s *pyState, depth int) {
+	if n != nil {
+		w.expr(n, s.fork(), depth)
+	}
 }
 
 func (w *pyWalker) bindArgs(args *frontend.Node, s *pyState) {

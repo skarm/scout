@@ -86,3 +86,14 @@ func TestRegistryBoundsAndMalformedPages(t *testing.T) {
 		t.Fatalf("formatting became a record change: %+v %v", diff, err)
 	}
 }
+
+func TestComparisonRejectsEmptyServerIdentity(t *testing.T) {
+	snapshot := registry.Snapshot{
+		Schema:   registry.Schema,
+		Complete: true,
+		Servers:  []json.RawMessage{json.RawMessage(`{"server":{"name":"","version":"1"}}`)},
+	}
+	if _, err := registry.Compare(t.Context(), snapshot, snapshot); err == nil {
+		t.Fatal("an invalid server identity was certified as an unchanged registry")
+	}
+}

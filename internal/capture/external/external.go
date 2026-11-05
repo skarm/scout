@@ -14,6 +14,7 @@ import (
 	"github.com/skarm/scout/fetch"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/netpolicy"
+	"github.com/skarm/scout/internal/syntax/filetype"
 	"github.com/skarm/scout/report"
 )
 
@@ -226,6 +227,11 @@ func (t *traversal) follow(raw string, u *url.URL, depth int, ref *report.Extern
 	}
 
 	t.downloaded -= options.MaxBytes - int64(len(payload.Data))
+	if int64(len(payload.Data)) > t.limits.MaxArchiveBytes && filetype.Inspect(payload.Name, string(payload.Data), false).Category == "archive" {
+		ref.Status = "archive_size_limit"
+		return
+	}
+
 	t.publish(raw, payload, ref)
 }
 

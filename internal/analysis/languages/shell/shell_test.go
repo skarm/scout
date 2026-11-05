@@ -11,6 +11,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
 	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/internal/syntax/source"
 )
 
 func TestShellRules(t *testing.T) {
@@ -404,4 +405,33 @@ func shellResult(t testing.TB, rule, text string, limit int) check.Result {
 	}
 	t.Fatal("missing shell analyzer")
 	return check.Result{}
+}
+
+func TestGeneratedConfigurationExpansionIsBounded(t *testing.T) {
+	for _, overflow := range []bool{false, true} {
+		name := "exact-limit"
+		body := strings.Repeat("$VALUE\n", 32)
+		if overflow {
+			name, body = "over-limit", body+"\n"
+		}
+		t.Run(name, func(t *testing.T) {
+			text := "NPM_CONFIG_REGISTRY=https://mirror.invalid\nVALUE='" + strings.Repeat("x", 8191) + "'\ncat > .npmrc <<EOF\n" + body + "EOF\n"
+			doc := document.Prepare(t.Context(), artifact.NewFile("config.sh", []byte(text), false))
+			declarations := 0
+			var inputs []document.DerivedInput
+			limited := shell.SourceDeclarations(t.Context(), doc, func(source.Span) { declarations++ }, func(found []document.DerivedInput) {
+				inputs = append(inputs, found...)
+			})
+			if limited != overflow || declarations != 1 {
+				t.Fatalf("limited=%v declarations=%d, want limited=%v and retained declaration", limited, declarations, overflow)
+			}
+			if overflow {
+				if len(inputs) != 0 {
+					t.Fatalf("oversized expansion was published: %d bytes", len(inputs[0].Text))
+				}
+			} else if len(inputs) != 1 || len(inputs[0].Text) != document.MaxUnitBytes {
+				t.Fatalf("exact expansion limit was not retained: %d inputs", len(inputs))
+			}
+		})
+	}
 }

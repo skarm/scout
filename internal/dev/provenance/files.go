@@ -70,12 +70,25 @@ func openFile(root, path string) (*os.File, error) {
 	}
 	defer func() { _ = directory.Close() }() // The root handle owns no pending writes.
 
-	file, err := directory.Open(filepath.FromSlash(relative))
+	name := filepath.FromSlash(relative)
+
+	info, err := directory.Stat(name)
 	if err != nil {
 		return nil, err
 	}
 
-	info, err := file.Stat()
+	if !info.Mode().IsRegular() || info.Size() > maxArtifactBytes {
+		return nil, errors.New("evidence must be a bounded regular file")
+	}
+
+	// Keep os.Root's confined symlink support. Nonblocking Unix opens also
+	// prevent a swapped-in FIFO from waiting for a writer before the fd check.
+	file, err := directory.OpenFile(name, os.O_RDONLY|evidenceReadFlags, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err = file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxArtifactBytes {
 		_ = file.Close() // Discard the rejected read-only input.
 		return nil, errors.New("evidence must be a bounded regular file")

@@ -637,6 +637,18 @@ func (q *delimiterQuotes) remove(raw string, at int) (int, string, bool) {
 			return at, "", false
 		}
 
+		next := raw[at+1]
+		if next == '\n' {
+			return at + 1, "", true
+		}
+
+		// Double quotes preserve a backslash before an ordinary character.
+		// A line continuation removes both bytes and does not itself quote the
+		// delimiter, so it must be handled before marking a quoted character.
+		if q.quote == '"' && !strings.ContainsRune("$`\\\"", rune(next)) {
+			return at, raw[at : at+1], true
+		}
+
 		q.quoted = true
 
 		return at + 1, raw[at+1 : at+2], true

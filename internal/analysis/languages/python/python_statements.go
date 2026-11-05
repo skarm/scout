@@ -65,9 +65,13 @@ func (w *pyWalker) assignmentStatement(n *frontend.Node, s *pyState, depth int) 
 			w.assign(t, v, s, n)
 		}
 	case frontend.AnnAssign:
-		w.expr(n.Child(frontend.Annotation), s.fork(), depth+1)
-		v := w.expr(n.Child(frontend.FieldValue), s, depth+1)
-		w.assign(n.Child(frontend.Target), v, s, n)
+		w.annotation(n.Child(frontend.Annotation), s, depth+1)
+
+		if value := n.Child(frontend.FieldValue); value != nil {
+			w.assign(n.Child(frontend.Target), w.expr(value, s, depth+1), s, n)
+		} else {
+			w.annotationTarget(n.Child(frontend.Target), s, depth)
+		}
 	case frontend.AugAssign:
 		v := joinPy(w.expr(n.Child(frontend.Target), s, depth+1), w.expr(n.Child(frontend.FieldValue), s, depth+1))
 		w.assign(n.Child(frontend.Target), v, s, n)
@@ -80,6 +84,22 @@ func (w *pyWalker) assignmentStatement(n *frontend.Node, s *pyState, depth int) 
 	}
 
 	return true
+}
+
+// An annotation without a value never writes its target. Attribute/subscript
+// receivers and indices still evaluate, without a final setattr/setitem call.
+func (w *pyWalker) annotationTarget(target *frontend.Node, s *pyState, depth int) {
+	if target == nil {
+		return
+	}
+
+	switch target.Kind() {
+	case frontend.Attribute:
+		w.expr(target.Child(frontend.FieldValue), s, depth+1)
+	case frontend.Subscript:
+		w.expr(target.Child(frontend.FieldValue), s, depth+1)
+		w.expr(target.Child(frontend.Slice), s, depth+1)
+	}
 }
 
 func (w *pyWalker) importFrom(n *frontend.Node, s *pyState) {

@@ -145,7 +145,7 @@ func TestShellCoverageAndPartialPrefix(t *testing.T) {
 				t.Fatal("complete prefix findings lost")
 			}
 			fc := r.Coverage.Files[0]
-			if len(fc.Units) != 1 || fc.Units[0].Status != tc.status || fc.Units[0].ParserVersion != "4" {
+			if len(fc.Units) != 1 || fc.Units[0].Status != tc.status || fc.Units[0].ParserVersion != "5" {
 				t.Fatalf("%+v", fc.Units)
 			}
 			has := false

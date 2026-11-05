@@ -296,7 +296,13 @@ func localhostTLSCertificate(t *testing.T) (tls.Certificate, *x509.Certificate) 
 
 func tlsFixtureHandler(t *testing.T) http.HandlerFunc {
 	t.Helper()
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Keep-alives are disabled, so replying before reading the body can close
+		// the in-memory connection while the client is still writing its request.
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			t.Error(err)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if _, err := io.WriteString(w, apiEnvelope("{}")); err != nil {
 			t.Error(err)

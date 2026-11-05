@@ -301,7 +301,7 @@ func recordIndex(ctx context.Context, s Snapshot) (map[string]string, error) {
 		server := serverNode(root)
 
 		name, ok := server.Get("name").Text()
-		if !ok {
+		if !ok || name == "" {
 			return nil, errors.New("registry record lacks identity")
 		}
 

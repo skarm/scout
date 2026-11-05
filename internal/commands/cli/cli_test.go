@@ -3,8 +3,13 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -509,5 +514,111 @@ func TestClassifiedDependencyCacheCLI(t *testing.T) {
 				t.Fatalf("cache classification not preserved in CLI output: %s", &out)
 			}
 		})
+	}
+}
+
+func TestRegistryCompareCLIReadsSnapshotsAndProtectsInputs(t *testing.T) {
+	dir := t.TempDir()
+	before, after, destination := filepath.Join(dir, "before.json"), filepath.Join(dir, "after.json"), filepath.Join(dir, "comparison.json")
+	old := `{"schema":"scout.registry-snapshot/v1","complete":true,"servers":[{"server":{"name":"PRIVATE_SERVER","version":"1","description":"PRIVATE_OLD"}}]}`
+	next := strings.Replace(old, "PRIVATE_OLD", "PRIVATE_NEW", 1)
+	writeOperatorFixture(t, before, []byte(old))
+	writeOperatorFixture(t, after, []byte(next))
+	args := []string{"registry", "compare", "--output", destination, before, after}
+	var out, diagnostics bytes.Buffer
+	if code := cli.Run(t.Context(), args, &out, &diagnostics); code != 0 || out.Len() != 0 || diagnostics.Len() != 0 {
+		t.Fatalf("registry comparison failed: code=%d diagnostics=%s", code, &diagnostics)
+	}
+	data, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var comparison struct {
+		Schema  string `json:"schema"`
+		Changes []struct {
+			Identity string `json:"identity_sha256"`
+			Before   string `json:"before_sha256"`
+			After    string `json:"after_sha256"`
+		} `json:"changes"`
+	}
+	if json.Unmarshal(data, &comparison) != nil || comparison.Schema != "scout.registry-comparison/v1" || len(comparison.Changes) != 1 || bytes.Contains(data, []byte("PRIVATE_")) {
+		t.Fatalf("comparison lost its delta or exposed registry values: %s", data)
+	}
+	change := comparison.Changes[0]
+	if len(change.Identity) != 64 || len(change.Before) != 64 || len(change.After) != 64 || change.Before == change.After {
+		t.Fatalf("comparison did not bind both record versions: %+v", change)
+	}
+	for _, invalid := range []string{next + `{}`, strings.Replace(next, `"complete":true`, `"complete":false`, 1)} {
+		writeOperatorFixture(t, after, []byte(invalid))
+		out.Reset()
+		if code := cli.Run(t.Context(), args, &out, &diagnostics); code != 2 || out.Len() != 0 {
+			t.Fatal("invalid snapshot published a comparison")
+		}
+		unchanged, err := os.ReadFile(destination)
+		if err != nil || !bytes.Equal(unchanged, data) {
+			t.Fatal("failed comparison replaced the existing report", err)
+		}
+	}
+	writeOperatorFixture(t, after, []byte(next))
+	if code := cli.Run(t.Context(), []string{"registry", "compare", "--output", before, before, after}, &out, &diagnostics); code != 2 {
+		t.Fatal("comparison overwrote an input")
+	}
+	unchanged, err := os.ReadFile(before)
+	if err != nil || string(unchanged) != old {
+		t.Fatal("registry comparison changed its source", err)
+	}
+}
+
+func TestAttestationCLIUsesExplicitKeyAndExactArtifactBytes(t *testing.T) {
+	dir := t.TempDir()
+	keyPath, envelopePath, artifactPath := filepath.Join(dir, "key.pem"), filepath.Join(dir, "envelope.json"), filepath.Join(dir, "artifact.bin")
+	artifact := []byte("inert CLI attestation fixture")
+	digest := sha256.Sum256(artifact)
+	payload := []byte(`{"_type":"https://in-toto.io/Statement/v1","subject":[{"name":"bundle.bin","digest":{"sha256":"` + hex.EncodeToString(digest[:]) + `"}}],"predicateType":"https://example.invalid/cli-test"}`)
+	const kind = "application/vnd.in-toto+json"
+	// Construct DSSE PAE independently from the verifier and sign with a test key.
+	pae := append([]byte(fmt.Sprintf("DSSEv1 %d %s %d ", len(kind), kind, len(payload))), payload...)
+	key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{42}, ed25519.SeedSize))
+	envelope, err := json.Marshal(map[string]any{
+		"payloadType": kind,
+		"payload":     base64.StdEncoding.EncodeToString(payload),
+		"signatures":  []map[string]string{{"sig": base64.StdEncoding.EncodeToString(ed25519.Sign(key, pae))}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(key.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOperatorFixture(t, keyPath, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}))
+	writeOperatorFixture(t, envelopePath, envelope)
+	writeOperatorFixture(t, artifactPath, artifact)
+	args := []string{"attestation", "verify", "--public-key", keyPath, "--envelope", envelopePath, "--artifact", artifactPath, "--subject", "bundle.bin"}
+	var out, diagnostics bytes.Buffer
+	if code := cli.Run(t.Context(), args, &out, &diagnostics); code != 0 || diagnostics.Len() != 0 {
+		t.Fatalf("valid attestation failed: code=%d diagnostics=%s", code, &diagnostics)
+	}
+	var result struct {
+		Verified bool   `json:"verified"`
+		Code     string `json:"code"`
+	}
+	if json.Unmarshal(out.Bytes(), &result) != nil || !result.Verified || bytes.Contains(out.Bytes(), artifact) {
+		t.Fatalf("CLI lost verification or exposed artifact bytes: %s", &out)
+	}
+	if code := cli.Run(t.Context(), args, failWriter{}, &diagnostics); code != 2 {
+		t.Fatal("attestation output failure reported success")
+	}
+	writeOperatorFixture(t, artifactPath, append(artifact, '!'))
+	out.Reset()
+	if code := cli.Run(t.Context(), args, &out, &diagnostics); code != 1 || json.Unmarshal(out.Bytes(), &result) != nil || result.Verified || result.Code != "subject_mismatch" {
+		t.Fatalf("modified artifact was approved: code=%d output=%s", code, &out)
+	}
+}
+
+func writeOperatorFixture(t *testing.T, path string, data []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

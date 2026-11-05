@@ -364,3 +364,35 @@ func verificationArtifactFixture(t *testing.T) *verificationArtifacts {
 	}
 	return f
 }
+
+func TestEvidenceFilesRetainConfinedSymlinkSupport(t *testing.T) {
+	root := t.TempDir()
+	data := []byte(`{"schema":"fixture"}`)
+	if err := os.WriteFile(filepath.Join(root, "receipt.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "nested"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "receipt.json"), filepath.Join(root, "nested", "alias.json")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	for _, name := range []string{"receipt.json", "nested/alias.json"} {
+		loaded, err := Read(root, name)
+		if err != nil || loaded.Schema != "fixture" {
+			t.Fatalf("read %s: schema=%q err=%v", name, loaded.Schema, err)
+		}
+	}
+	outside := filepath.Join(t.TempDir(), "outside.json")
+	if err := os.WriteFile(outside, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "escape.json")); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"escape.json", "nested", "missing.json"} {
+		if _, err := Read(root, name); err == nil {
+			t.Fatalf("invalid evidence path accepted: %s", name)
+		}
+	}
+}

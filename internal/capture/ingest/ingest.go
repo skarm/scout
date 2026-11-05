@@ -196,6 +196,11 @@ func (b *builder) captureOpenFile(ctx context.Context, f *os.File, name string) 
 		return
 	}
 
+	if int64(len(data)) > b.limits.MaxArchiveBytes && filetype.Inspect(name, string(data), before.Mode()&0o111 != 0).Category == "archive" {
+		b.skip(name, "file", "archive_size_limit", "Source archive exceeds the archive byte budget; no prefix was scanned.", before.Size())
+		return
+	}
+
 	b.files = append(b.files, artifact.NewFile(name, data, before.Mode()&0o111 != 0))
 }
 

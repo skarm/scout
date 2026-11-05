@@ -12,6 +12,7 @@ import (
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/scantest"
 	"github.com/skarm/scout/internal/syntax/frontend"
+	"github.com/skarm/scout/internal/syntax/scriptsyntax"
 	"github.com/skarm/scout/report"
 )
 
@@ -122,6 +123,58 @@ func TestUpdateIncompleteParserCannotProveFindingAbsent(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("fixture missing Go finding")
+	}
+}
+
+func TestUpdateLanguageParserFailuresCannotProveFindingAbsence(t *testing.T) {
+	for _, tc := range []struct {
+		name, valid, broken, clean, rule string
+		available, python                bool
+	}{
+		{name: "query.sql", valid: "DROP TABLE important;", broken: "SELECT '", clean: "SELECT 1;", rule: "SQL001", available: true},
+		{name: "handler.js", valid: "eval(input);", broken: "const broken = (", clean: "const ordinary = 1;", rule: "JS002", available: scriptsyntax.Available()},
+		{name: "handler.ts", valid: "eval(input);", broken: "const broken = (", clean: "const ordinary: number = 1;", rule: "JS002", available: scriptsyntax.Available()},
+		{name: "handler.py", valid: "eval(value)\n", broken: "def broken(\n", clean: "ordinary = 1\n", rule: "PY-AST2", available: frontend.BackendFor("python").Available, python: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if !tc.available {
+				t.Skip("parser unavailable in this build")
+			}
+			config := scantest.DefaultConfig()
+			config.Scanner.Checks.Python = tc.python
+			scanner, err := scantest.New(config, t)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scan := func(text string) report.Analysis {
+				t.Helper()
+				r, err := scanner.ScanBytes(t.Context(), tc.name, []byte(text))
+				if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+					t.Fatal(err)
+				}
+				return r.Analysis
+			}
+			observed := scan(tc.valid)
+			for _, candidate := range []struct{ text, change string }{{tc.broken, "unverified"}, {tc.clean, "not_observed"}} {
+				after := scan(candidate.text)
+				delta, err := update.Build(t.Context(), observed, after, report.DefaultUpdateOptions())
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, finding := range delta.Findings {
+					if finding.RuleID == tc.rule {
+						found = true
+						if finding.Change != candidate.change {
+							t.Fatalf("parser state did not constrain absence: got %+v, want %s", finding, candidate.change)
+						}
+					}
+				}
+				if !found {
+					t.Fatalf("fixture missing %s finding: %+v", tc.rule, observed.Findings)
+				}
+			}
+		})
 	}
 }
 

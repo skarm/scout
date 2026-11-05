@@ -237,3 +237,47 @@ func validateTree(t testing.TB, f *shellsyntax.File, text string) {
 		}
 	}
 }
+
+func TestHeredocDoubleQuotedBackslashes(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw, delimiter string
+		quoted, declarations bool
+	}{
+		{name: "ordinary", raw: `"E\OF"`, delimiter: `E\OF`, quoted: true, declarations: true},
+		{name: "dollar", raw: `"E\$OF"`, delimiter: "E$OF", quoted: true},
+		{name: "backslash", raw: `"E\\OF"`, delimiter: `E\OF`, quoted: true},
+		{name: "quote", raw: `"E\"OF"`, delimiter: `E"OF`, quoted: true},
+		{name: "single-quoted", raw: `'E\OF'`, delimiter: `E\OF`, quoted: true, declarations: true},
+		{name: "quoted-continuation", raw: "\"E\\\nOF\"", delimiter: "EOF", quoted: true, declarations: true},
+		{name: "unquoted-continuation", raw: "E\\\nOF", delimiter: "EOF", quoted: false, declarations: true},
+	} {
+		for _, frontend := range []struct {
+			name  string
+			parse func(context.Context, string) (*shellsyntax.File, error)
+		}{{name: "flow", parse: shellsyntax.Parse}, {name: "declarations", parse: shellsyntax.ParseDeclarations}} {
+			// The declaration frontend explicitly rejects some delimiter forms
+			// unsupported by its underlying syntax parser.
+			if frontend.name == "declarations" && !tc.declarations {
+				continue
+			}
+
+			t.Run(tc.name+"/"+frontend.name, func(t *testing.T) {
+				text := "cat <<" + tc.raw + "\nbody\n" + tc.delimiter + "\necho next\n"
+				tree, err := frontend.parse(t.Context(), text)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(tree.Statements) != 2 {
+					t.Fatalf("heredoc swallowed the next command: %d statements", len(tree.Statements))
+				}
+				red := tree.Statements[0].Commands[0].Redirects[0]
+				if value, known := red.Target.Literal(); !known || value != tc.delimiter || red.QuotedDelimiter != tc.quoted {
+					t.Fatalf("delimiter=%q/%v quoted=%v", value, known, red.QuotedDelimiter)
+				}
+				if red.Body == nil || text[red.Body.Span.Start:red.Body.Span.End] != "body\n" {
+					t.Fatalf("incorrect physical body: %+v", red.Body)
+				}
+			})
+		}
+	}
+}

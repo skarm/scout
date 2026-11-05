@@ -56,6 +56,7 @@ var agentRuleMetadataByID = map[string]agentRuleMetadata{
 	ruleMC003: {
 		title:      "MCP tool schema requests highly sensitive input",
 		category:   "sensitive-data-request",
+		version:    "5",
 		limitation: " Selected inputSchema property names; legitimate auth tools can also match. readOnlyHint is not treated as a safety guarantee.",
 	},
 	ruleMC004: {
@@ -443,28 +444,30 @@ func inspectCommandHooks(ctx context.Context, hooks *jsonconfig.Node, emit func(
 }
 
 func inspectSensitiveToolParameters(ctx context.Context, root *jsonconfig.Node, emit func(source.Span)) {
-	tools := root.Get("tools")
-	if tools == nil {
-		tools = root.Get("result").Get("tools")
-	}
-
-	if tools == nil {
-		return
-	}
-
-	for _, tool := range tools.Elements {
-		if ctx.Err() != nil {
-			return
+	for _, tools := range []*jsonconfig.Node{root.Get("tools"), root.Get("result").Get("tools")} {
+		// Captured snapshots retain the ListToolsResult wrapper around tools.
+		if tools != nil && tools.Kind == jsonconfig.KindObject {
+			tools = tools.Get("tools")
 		}
 
-		props := tool.Get("inputSchema").Get("properties")
-		if props == nil {
+		if tools == nil || tools.Kind != jsonconfig.KindArray {
 			continue
 		}
 
-		for _, m := range props.Members {
-			if highlySensitiveParameter(m.Key) {
-				emit(m.KeySpan)
+		for _, tool := range tools.Elements {
+			if ctx.Err() != nil {
+				return
+			}
+
+			props := tool.Get("inputSchema").Get("properties")
+			if props == nil {
+				continue
+			}
+
+			for _, m := range props.Members {
+				if highlySensitiveParameter(m.Key) {
+					emit(m.KeySpan)
+				}
 			}
 		}
 	}

@@ -314,3 +314,39 @@ func makeZIP(t testing.TB, members ...member) []byte {
 func openZIP(ctx context.Context, data []byte, limits report.CaptureLimits) (*zip.Reader, error) {
 	return archiveutil.OpenZIP(ctx, data, limits.MaxEntries, limits.MaxPathBytes, limits.MaxDepth)
 }
+
+func TestDirectoryArchivesHonorArchiveByteBudget(t *testing.T) {
+	data := makeZIP(t, member{name: "README.txt", content: "plain text"})
+	plain := strings.Repeat("x", 64)
+	for _, name := range []string{"bundle.zip", "bundle.tar", "bundle.gz", "bundle.whl", "disguised.txt"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "ordinary.txt"), []byte(plain), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			limits := report.DefaultCaptureLimits()
+			limits.MaxArchiveBytes = 16
+			limits.MaxFileBytes = 1024
+			snapshot, err := ingest.Read(t.Context(), dir, limits)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files := snapshot.Files()
+			if snapshot.Complete() || len(files) != 1 || files[0].Metadata().Path != "ordinary.txt" || files[0].Content() != plain {
+				t.Fatalf("archive budget bypass or ordinary file lost: %+v", snapshot.Metadata())
+			}
+			found := false
+			for _, file := range snapshot.Metadata().Files {
+				if file.Path == name && file.Status == "skipped" && file.Reason == "archive_size_limit" && file.Size == int64(len(data)) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("missing skipped archive inventory: %+v", snapshot.Metadata().Files)
+			}
+		})
+	}
+}

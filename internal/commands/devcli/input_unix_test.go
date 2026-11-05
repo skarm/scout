@@ -4,6 +4,7 @@ package devcli_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -53,5 +54,41 @@ func TestEvaluationRejectsFIFOInputsWithoutWaitingForWriter(t *testing.T) {
 			}
 			t.Fatal("evaluation waited for a FIFO writer outside its deadline")
 		}
+	}
+}
+
+func TestReplayRejectsFIFOInputsWithoutWaitingForWriter(t *testing.T) {
+	root := t.TempDir()
+	fifo := filepath.Join(root, "input.fifo")
+	if err := unix.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan int, 1)
+	go func() {
+		var out, diag bytes.Buffer
+		done <- devcli.Run(ctx, []string{"replay", "--input", fifo, "--output", filepath.Join(root, "result.jsonl")}, &out, &diag)
+	}()
+	select {
+	case code := <-done:
+		if code != 2 {
+			t.Fatalf("nonregular replay input accepted: exit %d", code)
+		}
+	case <-time.After(time.Second):
+		cancel()
+		writer, err := os.OpenFile(fifo, os.O_RDWR|unix.O_NONBLOCK, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("replay reader did not stop after FIFO release")
+		}
+		t.Fatal("replay waited for a FIFO writer and ignored cancellation")
 	}
 }
