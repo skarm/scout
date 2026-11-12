@@ -35,7 +35,7 @@ func TestGeneratedShellUsesOriginalParserBudget(t *testing.T) {
 				t.Fatal(err)
 			}
 			original := document.PrepareAllWithRegistry(t.Context(), []artifact.File{artifact.NewFile("setup.sh", []byte(text), false)}, registry)[0]
-			prepared := original.WithGeneratedShell(t.Context(), []source.View{view}, false)
+			prepared := original.WithGeneratedShell(t.Context(), []source.View{view}, 0)
 			units := prepared.Units()
 			if calls != tc.wantCalls || len(units) != 2 || len(original.Units()) != 1 {
 				t.Fatalf("parser calls=%d, units=%d, original units=%d", calls, len(units), len(original.Units()))
@@ -68,7 +68,7 @@ func TestGeneratedShellRejectsInvalidAndFrozenPreparation(t *testing.T) {
 		{"frozen registry cannot parse", document.Freeze([]document.File{original})[0], []source.View{view}, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := tc.doc.WithGeneratedShell(t.Context(), tc.view, false)
+			got := tc.doc.WithGeneratedShell(t.Context(), tc.view, 0)
 			if len(got.Units()) != tc.want || has(tc.doc, "generated_shell_incomplete") {
 				t.Fatalf("unexpected units or mutation of original: units=%d, original diagnostics=%+v", len(got.Units()), tc.doc.Diagnostics())
 			}

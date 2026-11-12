@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -168,8 +169,6 @@ func TestHeredocShellSkipsUnresolvedWrites(t *testing.T) {
 		{"data file", "cat > message.txt <<'END'", "eval 'printf ok'", false},
 		{"absolute", "cat > /tmp/helper.sh <<'END'", "eval 'printf ok'", false},
 		{"parent traversal", "cat > sub/../helper.sh <<'END'", "eval 'printf ok'", false},
-		{"unknown path", `cat > "$destination.sh" <<'END'`, "eval 'printf ok'", false},
-		{"append", "cat >> helper.sh <<'END'", "eval 'printf ok'", false},
 		{"cat file operand", "cat another.txt > helper.sh <<'END'", "eval 'printf ok'", false},
 		{"redirect replaces input", "cat > helper.sh <<'END' < another.txt", "eval 'printf ok'", false},
 		{"expansion", "cat > helper.sh <<END", `eval "$value"`, true},
@@ -205,6 +204,58 @@ func TestHeredocShellSkipsUnresolvedWrites(t *testing.T) {
 				t.Fatalf("generated script gap = %t, want %t", gap, tc.gap)
 			}
 		})
+	}
+}
+
+func TestHeredocWriteGapsAreReportedOnTheOriginalFile(t *testing.T) {
+	const appendWrite = "cat >> helper.sh <<'END'\nprintf example\nEND\n"
+	const dynamicWrite = "tee -a \"${name}.sh\" <<'END'\nprintf other\nEND\n"
+	const recoveredWrite = "cat > helper.sh <<'END'\nprintf first\nEND\n"
+	const path = "setup.sh"
+	want := []string{"generated_shell_append", "generated_shell_dynamic_path"}
+
+	root := t.TempDir()
+	scenario.WriteFile(t, root, path, recoveredWrite+appendWrite+dynamicWrite+"bash helper.sh\n")
+	r, err := scenario.Scan(t, root)
+	if !errors.Is(err, scantest.ErrIncomplete) {
+		t.Fatalf("got %v, want incomplete scan", err)
+	}
+
+	var codes []string
+	for _, d := range r.Diagnostics {
+		if strings.HasPrefix(d.Code, "generated_shell_") {
+			if d.Path != path || !d.AffectsScope {
+				t.Fatalf("gap is not scoped to the original file: %+v", d)
+			}
+			codes = append(codes, d.Code)
+		}
+	}
+	slices.Sort(codes)
+	if !slices.Equal(codes, want) {
+		t.Fatalf("got diagnostics %v, want %v", codes, want)
+	}
+
+	fc := r.Coverage.Files[0]
+	if fc.Path != path || fc.Completeness != report.Partial || !slices.Equal(fc.Gaps, want) {
+		t.Fatalf("unexpected file coverage: %+v", fc)
+	}
+
+	var recovered int
+	for _, unit := range fc.Units {
+		if unit.Origin == "heredoc" {
+			recovered++
+			if unit.ByteStart != strings.Index(recoveredWrite, "printf first") {
+				t.Fatalf("recovered unsupported heredoc or lost original span: %+v", unit)
+			}
+		}
+	}
+	if recovered != 1 {
+		t.Fatalf("got %d recovered heredocs, want 1", recovered)
+	}
+	for _, finding := range r.Findings {
+		if finding.RuleID == "SH005" {
+			t.Fatalf("linked a stale shell write after append: %+v", finding.Trace)
+		}
 	}
 }
 

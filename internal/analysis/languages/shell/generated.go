@@ -4,8 +4,8 @@ import (
 	"context"
 	"io/fs"
 	"iter"
+	"maps"
 	"path"
-	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
@@ -24,12 +24,19 @@ func GeneratedScripts(ctx context.Context, doc document.File) (views []source.Vi
 // GeneratedScriptsIn inspects a single generation of prepared units. Every
 // recovered view maps through its parent to the captured bytes.
 func GeneratedScriptsIn(ctx context.Context, units []document.Unit, remaining, bytes int) ([]source.View, bool) {
-	views, _, limited, _ := RecoverGeneratedShellIn(ctx, units, remaining, bytes)
-	return views, limited
+	recovery := RecoverGeneratedShellIn(ctx, units, remaining, bytes)
+	return recovery.Views, recovery.Gaps != 0
+}
+
+type GeneratedShellRecovery struct {
+	Views            []source.View
+	Executions       []document.GeneratedShellExecution
+	Gaps             document.GeneratedShellGaps
+	ExecutionLimited bool
 }
 
 // RecoverGeneratedShellIn retains recovered bodies and their bounded local uses.
-func RecoverGeneratedShellIn(ctx context.Context, units []document.Unit, remaining, bytes int) ([]source.View, []document.GeneratedShellExecution, bool, bool) {
+func RecoverGeneratedShellIn(ctx context.Context, units []document.Unit, remaining, bytes int) GeneratedShellRecovery {
 	scan := generatedShellScan{ctx: ctx, remaining: remaining, bytes: bytes}
 
 	for _, unit := range units {
@@ -52,7 +59,9 @@ func RecoverGeneratedShellIn(ctx context.Context, units []document.Unit, remaini
 		}
 	}
 
-	return scan.views, scan.executions, scan.limited, scan.executionLimit
+	return GeneratedShellRecovery{
+		Views: scan.views, Executions: scan.executions, Gaps: scan.gaps, ExecutionLimited: scan.executionLimit,
+	}
 }
 
 type generatedShellScan struct {
@@ -63,7 +72,7 @@ type generatedShellScan struct {
 	executions     []document.GeneratedShellExecution
 	remaining      int
 	bytes          int
-	limited        bool
+	gaps           document.GeneratedShellGaps
 	executionLimit bool
 }
 
@@ -126,20 +135,16 @@ func (s *generatedShellScan) walk(tree *shellsyntax.File, scope *scriptScope, re
 
 	for _, stmt := range tree.Statements {
 		if s.ctx.Err() != nil {
-			s.limited = true
+			s.gaps |= document.GeneratedShellUnrecovered
 			return false
 		}
 
-		isolated := len(stmt.Commands) > 1 || shellBranchLinks[stmt.Next] || conditional
-		mergesStderr := slices.Contains(stmt.Pipes, "|&")
+		pipeline := len(stmt.Commands) > 1
+		isolated := pipeline || shellBranchLinks[stmt.Next] || conditional
 
 		track := recoverWrites && len(stmt.Commands) == 1 && stmt.Next != "&" && stmt.Next != "||" && !stmt.Negated && !scope.trapUnsafe
 		if !track {
 			flow.reset()
-		}
-
-		if isolated {
-			clear(scope.variables)
 		}
 
 		var fileFlow *generatedShellFlow
@@ -147,7 +152,15 @@ func (s *generatedShellScan) walk(tree *shellsyntax.File, scope *scriptScope, re
 			fileFlow = flow
 		}
 
+		incoming := scope.variables
 		for i, c := range stmt.Commands {
+			// Each stage starts with the shell's incoming bindings. Stage-local
+			// assignments cannot supply bindings to sibling or later commands.
+			if pipeline && len(incoming) != 0 && !scope.bindingsUnsafe {
+				scope.variables = maps.Clone(incoming)
+			}
+
+			mergesStderr := i < len(stmt.Pipes) && stmt.Pipes[i] == "|&"
 			if !s.visitGeneratedCommand(c, scope, fileFlow, recoverWrites, mergesStderr, i+1 < len(stmt.Commands)) {
 				return false
 			}
@@ -174,8 +187,8 @@ func (s *generatedShellScan) visitGeneratedCommand(c *shellsyntax.Command, scope
 		flow.invalidateBefore(c, scope.variables)
 	}
 
-	if recoverWrites && !mergesStderr {
-		written, more := s.recover(c, scope, stdoutPiped, flow)
+	if recoverWrites {
+		written, more := s.recover(c, scope, mergesStderr, stdoutPiped, flow)
 		if !more {
 			return false
 		}
@@ -206,16 +219,17 @@ func (s *generatedShellScan) walkFunctions(scope *scriptScope) bool {
 	return true
 }
 
-func (s *generatedShellScan) recover(c *shellsyntax.Command, scope *scriptScope, stdoutPiped bool, flow *generatedShellFlow) (written, more bool) {
+func (s *generatedShellScan) recover(c *shellsyntax.Command, scope *scriptScope, mergesStderr, stdoutPiped bool, flow *generatedShellFlow) (written, more bool) {
 	hdoc, writer, bypass := scriptHeredoc(c, scope.variables, stdoutPiped)
-	if hdoc == nil {
+	if hdoc == nil || mergesStderr {
+		s.gaps |= generatedShellWriteGaps(c, scope.variables)
 		return false, true
 	}
 
 	wrapperShadowed := bypass && literalWordEquals(c.Words[0], "command") && scope.shadow.shadows(c.Words[0], false)
 	if hdoc.Body == nil || !hdoc.BodyVerified || wrapperShadowed || scope.shadow.shadows(writer, bypass) ||
 		scope.lookupUncertain(c.Words, writer) {
-		s.limited = true
+		s.gaps |= document.GeneratedShellUnrecovered
 		return false, true
 	}
 
@@ -224,13 +238,13 @@ func (s *generatedShellScan) recover(c *shellsyntax.Command, scope *scriptScope,
 	}
 
 	if len(s.views) >= s.remaining || s.bytes == 0 || !analysisbudget.Consume(s.ctx, 1) {
-		s.limited = true
+		s.gaps |= document.GeneratedShellUnrecovered
 		return false, false
 	}
 
 	view, ok := scriptHeredocView(s.view, hdoc, scope.variables)
 	if !ok || len(view.Text()) > s.bytes {
-		s.limited = true
+		s.gaps |= document.GeneratedShellUnrecovered
 		return false, true
 	}
 
@@ -566,11 +580,8 @@ func scriptHeredoc(c *shellsyntax.Command, vars map[string]string, stdoutPiped b
 		return nil, nil, false
 	}
 
-	name, _ := words[0].Literal()
-	switch name {
-	case "/bin/cat", "/bin/tee", "/usr/bin/cat", "/usr/bin/tee":
-		name, bypass = path.Base(name), true
-	}
+	name, absolute := generatedWriterName(words[0])
+	bypass = bypass || absolute
 
 	args := words[1:]
 	if len(args) > 0 {
@@ -598,6 +609,16 @@ func scriptHeredoc(c *shellsyntax.Command, vars map[string]string, stdoutPiped b
 	}
 
 	return nil, nil, false
+}
+
+func generatedWriterName(word *shellsyntax.Word) (name string, absolute bool) {
+	name, _ = word.Literal()
+	switch name {
+	case "/bin/cat", "/bin/tee", "/usr/bin/cat", "/usr/bin/tee":
+		return path.Base(name), true
+	}
+
+	return name, false
 }
 
 func generatedWriterRedirects(redirects []*shellsyntax.Redirect) (input, output *shellsyntax.Redirect) {

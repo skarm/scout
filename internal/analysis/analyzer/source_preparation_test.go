@@ -39,6 +39,33 @@ func TestPrepareGeneratedShellUsesOneQuotaAcrossDocuments(t *testing.T) {
 	t.Fatalf("second script exceeded quota without a scoped diagnostic: %+v", prepared[1].Diagnostics())
 }
 
+func TestPrepareGeneratedShellReportsNestedWriteGapOnCapturedFile(t *testing.T) {
+	const path = "setup.sh"
+	const inner = "cat >>\"${name}.sh\" <<'INNER'\nprintf example\nINNER\n"
+	const input = "cat > outer.sh <<'OUTER'\n" + inner + "OUTER\n"
+	doc := document.Prepare(t.Context(), artifact.NewFile(path, []byte(input), false))
+	prepared := analyzer.PrepareGeneratedShellWithin(t.Context(), shell.Rules()[:1], []document.File{doc}, 100)[0]
+	units := prepared.Units()
+	if len(units) != 2 || units[1].Origin != document.OriginGeneratedShell || units[1].View.Text() != inner {
+		t.Fatalf("unexpected generated units: %+v", units)
+	}
+
+	want := map[string]bool{"generated_shell_append": true, "generated_shell_dynamic_path": true}
+	for _, diagnostic := range prepared.Diagnostics() {
+		if !strings.HasPrefix(diagnostic.Code, "generated_shell_") {
+			continue
+		}
+
+		if !want[diagnostic.Code] || diagnostic.Path != path || !diagnostic.AffectsScope {
+			t.Fatalf("unexpected generated diagnostic: %+v", diagnostic)
+		}
+		delete(want, diagnostic.Code)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing nested diagnostics: %v", want)
+	}
+}
+
 func TestSourceWalkerOperationLimitIsExplicit(t *testing.T) {
 	text := strings.Repeat(":\n", 8192) + "NPM_CONFIG_REGISTRY=https://private.invalid\n"
 	doc := document.Prepare(context.Background(), artifact.NewFile("input.sh", []byte(text), false))

@@ -39,6 +39,12 @@ command hash entries can make a writer's identity or its input uncertain.
 Unresolved expansions, uncertain writers and exhausted generation limits leave
 coverage gaps.
 
+Recognizable `.sh` writes with unresolved destinations, such as `"${name}.sh"`,
+report `generated_shell_dynamic_path`. Writes that append to a shell script via
+`>>` or `tee -a`/`--append` report `generated_shell_append`. Both diagnostics
+refer to the enclosing captured file. A wholly unknown destination with no
+evidence of a `.sh` target remains outside this detection.
+
 The informational SH005 finding links a recovered write, its body and a later
 `source`, `.`, shell invocation or explicit executable path in the same modeled
 command sequence. The trace follows literal `cd` and uses the latest recovered

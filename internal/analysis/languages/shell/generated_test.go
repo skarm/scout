@@ -21,17 +21,14 @@ func TestGeneratedShellWriterAdmission(t *testing.T) {
 		{"cat writes stdin", "cat -- - 0<<'END' 1>|./lib/helper.sh", true},
 		{"tee writes quoted path", "tee -- 'local scripts/helper.sh' <<'END'", true},
 		{"tee discards stdout", "tee helper.sh <<'END' >'/dev/null'", true},
-		{"path glob", "cat > *.sh <<'END'", false},
 		{"absolute path", "tee /tmp/helper.sh <<'END'", false},
 		{"drive path", "tee 'C:\\temp\\helper.sh' <<'END'", false},
 		{"dot dot", "cat > sub/../helper.sh <<'END'", false},
-		{"tee appends", "tee -a helper.sh <<'END'", false},
 		{"tee has multiple destinations", "tee helper.sh other.sh <<'END'", true},
 		{"stderr", "cat <<'END' 2>helper.sh", false},
 		{"second stdout redirect", "cat <<'END' >helper.sh >/dev/null", false},
 		{"second stdin redirect", "cat <<'END' >helper.sh <data", false},
 		{"pipeline with explicit stdin", "printf x | cat >helper.sh <<'END'", true},
-		{"pipeline that merges stderr", "cat >helper.sh <<'END' |& cat", false},
 		{"nonwriter", "printf '%s' >helper.sh <<'END'", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

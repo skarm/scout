@@ -7,7 +7,6 @@ import (
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
-	"github.com/skarm/scout/internal/syntax/source"
 )
 
 func TestGeneratedShellExecutionTracksPathAndLatestWrite(t *testing.T) {
@@ -39,11 +38,11 @@ func TestGeneratedShellExecutionTracksPathAndLatestWrite(t *testing.T) {
 		{"explicit cd bypasses CDPATH", "CDPATH=/elsewhere\n" + subWrite + "cd ./sub\nbash ./helper.sh\n", "cat > sub/helper.sh <<'END'", body, "bash ./helper.sh"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, links, _, limited := recoverShellExecutions(t, tc.text)
-			if len(links) != 1 || limited {
-				t.Fatalf("got %d links and limited=%t", len(links), limited)
+			got := recoverGeneratedShell(t, tc.text)
+			if len(got.Executions) != 1 || got.ExecutionLimited {
+				t.Fatalf("got %d links and limited=%t", len(got.Executions), got.ExecutionLimited)
 			}
-			link := links[0]
+			link := got.Executions[0]
 			if got := tc.text[link.Write.Start:link.Write.End]; !strings.HasPrefix(got, tc.header) {
 				t.Fatalf("write evidence %q, want header %q", got, tc.header)
 			}
@@ -62,7 +61,9 @@ func TestGeneratedShellExecutionDiscardsUnprovedLinks(t *testing.T) {
 	for _, tc := range []struct{ name, text string }{
 		{"ordinary overwrite", write + "echo replacement > helper.sh\nbash helper.sh\n"},
 		{"append", write + "echo extra >> helper.sh\nbash helper.sh\n"},
+		{"heredoc append", write + "cat >> helper.sh <<'END'\necho second\nEND\nbash helper.sh\n"},
 		{"tee append", write + "tee -a helper.sh <<'END'\necho second\nEND\nbash helper.sh\n"},
+		{"dynamic heredoc overwrite", write + "cat > \"$name.sh\" <<'END'\necho second\nEND\nbash helper.sh\n"},
 		{"truncated before source", write + "source ./helper.sh >helper.sh\n"},
 		{"dynamic overwrite", write + "echo changed > \"$output\"\nbash helper.sh\n"},
 		{"substitution overwrite", write + "x=$(echo changed >helper.sh)\nbash helper.sh\n"},
@@ -84,12 +85,12 @@ func TestGeneratedShellExecutionDiscardsUnprovedLinks(t *testing.T) {
 		{"failure branch", "cat > helper.sh <<'END' || bash helper.sh\necho first\nEND\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			views, links, _, _ := recoverShellExecutions(t, tc.text)
-			if len(views) == 0 {
+			got := recoverGeneratedShell(t, tc.text)
+			if len(got.Views) == 0 {
 				t.Fatal("fixture lost the statically recovered body")
 			}
-			if len(links) != 0 {
-				t.Fatalf("unproved execution was linked: %+v", links)
+			if len(got.Executions) != 0 {
+				t.Fatalf("unproved execution was linked: %+v", got.Executions)
 			}
 		})
 	}
@@ -98,13 +99,13 @@ func TestGeneratedShellExecutionDiscardsUnprovedLinks(t *testing.T) {
 func TestGeneratedShellExecutionRetainsWritesWhenLinkQuotaEnds(t *testing.T) {
 	const text = "cat > helper.sh <<'END'\necho first\nEND\nbash helper.sh\n"
 	ctx := analysisbudget.WithLimit(t.Context(), 1)
-	views, links, limited, executionLimit := shell.RecoverGeneratedShellIn(ctx, generatedShellDocument(t, text).Units(), document.MaxRegions, document.MaxScanBytes)
-	if len(views) != 1 || len(links) != 0 || limited || !executionLimit {
-		t.Fatalf("recovery and link quotas conflated: views=%d links=%d limited=%t executionLimit=%t", len(views), len(links), limited, executionLimit)
+	got := shell.RecoverGeneratedShellIn(ctx, generatedShellDocument(t, text).Units(), document.MaxRegions, document.MaxScanBytes)
+	if len(got.Views) != 1 || len(got.Executions) != 0 || got.Gaps != 0 || !got.ExecutionLimited {
+		t.Fatalf("recovery and link quotas conflated: %+v", got)
 	}
 }
 
-func recoverShellExecutions(t *testing.T, text string) ([]source.View, []document.GeneratedShellExecution, bool, bool) {
+func recoverGeneratedShell(t *testing.T, text string) shell.GeneratedShellRecovery {
 	t.Helper()
 	doc := generatedShellDocument(t, text)
 	return shell.RecoverGeneratedShellIn(t.Context(), doc.Units(), document.MaxRegions, document.MaxScanBytes)
