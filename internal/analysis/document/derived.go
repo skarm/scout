@@ -5,10 +5,77 @@ import (
 	"strings"
 
 	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/report"
 )
+
+// OriginGeneratedShell is the coverage origin for shell reconstructed from captured code.
+const OriginGeneratedShell = "heredoc"
+
+// GeneratedShellGaps records distinct reasons for incomplete heredoc recovery.
+type GeneratedShellGaps uint8
+
+const (
+	GeneratedShellUnrecovered GeneratedShellGaps = 1 << iota
+	GeneratedShellDynamicPath
+	GeneratedShellAppend
+)
+
+// GeneratedShellExecution binds a recovered write and body to a later command
+// in the same captured object. All three spans use physical coordinates.
+type GeneratedShellExecution struct {
+	Write, Body, Use source.Span
+}
+
+func (f File) GeneratedShellExecutions() ([]GeneratedShellExecution, bool) {
+	return append([]GeneratedShellExecution(nil), f.shellExecutions...), f.shellExecutionLimit
+}
+
+func (f File) WithGeneratedShellExecutions(executions []GeneratedShellExecution, limited bool) File {
+	remaining := MaxRegions - len(f.shellExecutions)
+
+	f.shellExecutionLimit = f.shellExecutionLimit || limited || len(executions) > remaining
+	if len(executions) > 0 && remaining > 0 {
+		f.shellExecutions = append(append([]GeneratedShellExecution(nil), f.shellExecutions...), executions[:min(remaining, len(executions))]...)
+	}
+
+	return f
+}
+
+// WithGeneratedShell adds source-mapped units before preparation is frozen.
+func (f File) WithGeneratedShell(ctx context.Context, views []source.View, gaps GeneratedShellGaps) File {
+	if len(views) > 0 {
+		f.units = append([]Unit(nil), f.units...)
+	}
+
+	projection := (*filePreparation)(&f)
+
+	for _, view := range views {
+		span, err := view.Original(source.Span{End: len(view.Text())})
+		if err != nil || f.budget == nil {
+			gaps |= GeneratedShellUnrecovered
+			continue
+		}
+
+		projection.addUnit(ctx, language.Shell, OriginGeneratedShell, span, view)
+	}
+
+	if gaps&GeneratedShellUnrecovered != 0 {
+		projection.issue("generated_shell_incomplete", "A generated shell script could not be recovered within the supported syntax and preparation limits.")
+	}
+
+	if gaps&GeneratedShellDynamicPath != 0 {
+		projection.issue("generated_shell_dynamic_path", "A heredoc write targeting a shell script has an unresolved output path.")
+	}
+
+	if gaps&GeneratedShellAppend != 0 {
+		projection.issue("generated_shell_append", "A heredoc appends to a shell script whose complete contents could not be recovered.")
+	}
+
+	return f
+}
 
 // DerivedInput is a bounded, non-executed configuration written by source syntax.
 // Its evidence remains the enclosing source span, including after expansion.

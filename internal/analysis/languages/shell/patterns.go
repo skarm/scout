@@ -117,7 +117,7 @@ func (p *shellPatternWalker) preparedUnit(unit document.Unit) {
 		return
 	}
 
-	tree, view := parsed.Tree, unit.View
+	tree, view := executionShellTree(unit, parsed), unit.View
 	if p.options.Mode == PatternDownload && parsed.Declarations != nil {
 		tree = parsed.Declarations
 		if parsed.DeclarationView != nil {

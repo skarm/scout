@@ -435,3 +435,25 @@ func TestGeneratedConfigurationExpansionIsBounded(t *testing.T) {
 		})
 	}
 }
+
+func TestGeneratedShellPreservesLiteralBytes(t *testing.T) {
+	for _, tc := range []struct{ name, delimiter, raw, want string }{
+		{"unquoted", "END", "\tprintf '%s' \\$value \\\\\\q\\\n\tjoined\n", "\tprintf '%s' $value \\\\q\tjoined\n"},
+		{"tab stripping", "-END", "\tprintf '%s' \\$value\\\n\tjoined\n\t\tprintf done\n", "printf '%s' $value\tjoined\nprintf done\n"},
+		{"quoted", "'END'", "printf '%s' \\$value\\\n\tliteral\n", "printf '%s' \\$value\\\n\tliteral\n"},
+		{"literal dollar", "END", "printf '%s' '$ 5'\n", "printf '%s' '$ 5'\n"},
+		{"inner quoting syntax is literal", "END", "printf '%s' $'one' $\"two\"\n", "printf '%s' $'one' $\"two\"\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := "cat > helper.sh <<" + tc.delimiter + "\n" + tc.raw + "END\n"
+			doc := document.Prepare(t.Context(), artifact.NewFile("setup.sh", []byte(text), false))
+			views, limited := shell.GeneratedScripts(t.Context(), doc)
+			if limited || len(views) != 1 {
+				t.Fatalf("got %d generated scripts, incomplete=%v", len(views), limited)
+			}
+			if got := views[0].Text(); got != tc.want {
+				t.Fatalf("generated script = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -103,6 +104,309 @@ func TestShellAcrossArtifactSurfaces(t *testing.T) {
 	}
 }
 
+func TestHeredocShellFindingsUseOriginalCoordinates(t *testing.T) {
+	const statement = `eval 'printf ok'`
+	for _, tc := range []struct {
+		name, input, command, evidence string
+		line, column                   int
+	}{
+		{"cat", "setup.sh", "cat > ./lib/helper.sh <<'END'\n# metadata\n" + statement + "\nEND\n", statement, 3, 1},
+		{"unquoted literal", "setup.sh", "cat <<END > helper.sh\n" + statement + "\nEND\n", statement, 2, 1},
+		{"tee", "setup.sh", "tee helper.sh >/dev/null <<'END'\n" + statement + "\nEND\n", statement, 2, 1},
+		{"Markdown and tabs", "README.md", "- ```sh\n  cat 0<<-'END' 1>helper.sh\n  \t# π\n  \t" + statement + "\n  \tEND\n  ```\n", statement, 4, 4},
+		{"escaped expansion", "setup.sh", "cat <<END > helper.sh\neval \"\\$value\"\nEND\n", `eval "\$value"`, 2, 1},
+		{"joined command and delimiter", "setup.sh", "cat <<END > helper.sh\nev\\\nal 'printf ok'\nE\\\nND\n", "ev\\\nal 'printf ok'", 2, 1},
+		{"quoted writer bypasses alias", "setup.sh", "alias cat='head -n 1'\n'cat' > helper.sh <<'END'\n" + statement + "\nEND\n", statement, 3, 1},
+		{"subshell", "setup.sh", "(\ncat > helper.sh <<'END'\n" + statement + "\nEND\n)\n", statement, 3, 1},
+		{"compound function", "setup.sh", "prepare() {\n  if :; then\n    cat > helper.sh <<-'END'\n\t" + statement + "\n\tEND\n  fi\n}\nprepare\n", statement, 4, 2},
+		{"command bypasses shadowed writer", "setup.sh", "cat() { printf data; }\ncommand cat > helper.sh <<'END'\n" + statement + "\nEND\n", statement, 3, 1},
+		{"constant path and body", "setup.sh", "dir=lib\nscript=\"$dir/helper.sh\"\nverb=eval\ncat > \"$script\" <<END\n${verb} 'printf ok'\nEND\n", "${verb} 'printf ok'", 5, 1},
+		{"nested scripts", "setup.sh", "cat > outer.sh <<'OUTER'\ncat > inner.sh <<'INNER'\n" + statement + "\nINNER\nOUTER\n", statement, 3, 1},
+		{"generated compound shell", "setup.sh", "cat > helper.sh <<'END'\nif :; then\n  " + statement + "\nfi\nEND\n", statement, 3, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			scenario.WriteFile(t, root, tc.input, tc.command)
+			r, err := scenario.Scan(t, root)
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+
+			start := strings.Index(tc.command, tc.evidence)
+			matches := 0
+			for _, finding := range r.Findings {
+				if finding.RuleID != "SH003" {
+					continue
+				}
+
+				matches++
+				loc := finding.Location
+				if loc.Path != tc.input || loc.ByteStart != start || loc.ByteEnd != start+len(tc.evidence) ||
+					loc.StartLine != tc.line || loc.StartColumn != tc.column || loc.Derived || loc.Structure != "heredoc" {
+					t.Fatalf("wrong physical source location: %+v", loc)
+				}
+			}
+			if matches != 1 || len(r.Coverage.Files) != 1 {
+				t.Fatalf("got %d findings and %d files", matches, len(r.Coverage.Files))
+			}
+			for _, unit := range r.Coverage.Files[0].Units {
+				if unit.Origin == "heredoc" && unit.Language == "shell" &&
+					(unit.Status == report.UnitParsedLimited || unit.Status == "unsupported_syntax") &&
+					unit.ByteStart <= start && unit.ByteEnd >= start+len(tc.evidence) {
+					return
+				}
+			}
+			t.Fatalf("missing mapped heredoc coverage: %+v", r.Coverage.Files[0].Units)
+		})
+	}
+}
+
+func TestHeredocShellSkipsUnresolvedWrites(t *testing.T) {
+	for _, tc := range []struct {
+		name, header, body string
+		gap                bool
+	}{
+		{"data file", "cat > message.txt <<'END'", "eval 'printf ok'", false},
+		{"absolute", "cat > /tmp/helper.sh <<'END'", "eval 'printf ok'", false},
+		{"parent traversal", "cat > sub/../helper.sh <<'END'", "eval 'printf ok'", false},
+		{"cat file operand", "cat another.txt > helper.sh <<'END'", "eval 'printf ok'", false},
+		{"redirect replaces input", "cat > helper.sh <<'END' < another.txt", "eval 'printf ok'", false},
+		{"expansion", "cat > helper.sh <<END", `eval "$value"`, true},
+		{"expansion across continuation", "cat > helper.sh <<END", "eval \"$\\\nvalue\"", true},
+		{"script-like data after continued line", "cat >/dev/null <<END", "prefix\\\nEND\ncat > helper.sh <<'INNER'\neval 'printf ok'\nINNER", false},
+		{"writer shadowed by alias", "shopt -s expand_aliases\nalias cat='head -n 1'\ncat > helper.sh <<'END'", "printf ok\neval 'printf ok'", true},
+		{"function shadows writer", "cat() { printf data; }\n'cat' > helper.sh <<'END'", "eval 'printf ok'", true},
+		{"function shadows command wrapper", "command() { printf data; }\ncommand cat > helper.sh <<'END'", "eval 'printf ok'", true},
+		{"runtime reassignment", "verb=eval\nread verb\ncat > helper.sh <<END", "$verb 'printf ok'", true},
+		{"conditional assignment", "verb=eval\nif :; then verb=echo; fi\ncat > helper.sh <<END", "$verb 'printf ok'", true},
+		{"shell declaration changes assignment semantics", "if :; then declare -u verb; fi\nverb=eval\ncat > helper.sh <<END", "$verb 'printf ok'", true},
+		{"source may replace writer", ". ./runtime.sh\ncat > helper.sh <<'END'", "eval 'printf ok'", true},
+		{"special shell variable", "RANDOM=1\ncat > helper.sh <<END", "eval \"${RANDOM}\"", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			scenario.WriteFile(t, root, "setup.sh", tc.header+"\n"+tc.body+"\nEND\n")
+			r, err := scenario.Scan(t, root)
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+
+			for _, finding := range r.Findings {
+				if finding.RuleID == "SH003" && finding.Location.ByteStart > len(tc.header) {
+					t.Fatalf("analyzed data as a script: %+v", finding.Location)
+				}
+			}
+			gap := false
+			for _, diagnostic := range r.Diagnostics {
+				gap = gap || diagnostic.Code == "generated_shell_incomplete" && diagnostic.AffectsScope
+			}
+			if gap != tc.gap {
+				t.Fatalf("generated script gap = %t, want %t", gap, tc.gap)
+			}
+		})
+	}
+}
+
+func TestHeredocWriteGapsAreReportedOnTheOriginalFile(t *testing.T) {
+	const appendWrite = "cat >> helper.sh <<'END'\nprintf example\nEND\n"
+	const dynamicWrite = "tee -a \"${name}.sh\" <<'END'\nprintf other\nEND\n"
+	const recoveredWrite = "cat > helper.sh <<'END'\nprintf first\nEND\n"
+	const path = "setup.sh"
+	want := []string{"generated_shell_append", "generated_shell_dynamic_path"}
+
+	root := t.TempDir()
+	scenario.WriteFile(t, root, path, recoveredWrite+appendWrite+dynamicWrite+"bash helper.sh\n")
+	r, err := scenario.Scan(t, root)
+	if !errors.Is(err, scantest.ErrIncomplete) {
+		t.Fatalf("got %v, want incomplete scan", err)
+	}
+
+	var codes []string
+	for _, d := range r.Diagnostics {
+		if strings.HasPrefix(d.Code, "generated_shell_") {
+			if d.Path != path || !d.AffectsScope {
+				t.Fatalf("gap is not scoped to the original file: %+v", d)
+			}
+			codes = append(codes, d.Code)
+		}
+	}
+	slices.Sort(codes)
+	if !slices.Equal(codes, want) {
+		t.Fatalf("got diagnostics %v, want %v", codes, want)
+	}
+
+	fc := r.Coverage.Files[0]
+	if fc.Path != path || fc.Completeness != report.Partial || !slices.Equal(fc.Gaps, want) {
+		t.Fatalf("unexpected file coverage: %+v", fc)
+	}
+
+	var recovered int
+	for _, unit := range fc.Units {
+		if unit.Origin == "heredoc" {
+			recovered++
+			if unit.ByteStart != strings.Index(recoveredWrite, "printf first") {
+				t.Fatalf("recovered unsupported heredoc or lost original span: %+v", unit)
+			}
+		}
+	}
+	if recovered != 1 {
+		t.Fatalf("got %d recovered heredocs, want 1", recovered)
+	}
+	for _, finding := range r.Findings {
+		if finding.RuleID == "SH005" {
+			t.Fatalf("linked a stale shell write after append: %+v", finding.Trace)
+		}
+	}
+}
+
+func TestHeredocShellInArchiveKeepsVirtualSource(t *testing.T) {
+	const command = "eval 'printf ok'"
+	const source = "cat > helper.sh <<'END'\n" + command + "\nEND\n"
+	var data bytes.Buffer
+	archive := zip.NewWriter(&data)
+	member, err := archive.Create("scripts/setup.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := member.Write([]byte(source)); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	scenario.WriteFile(t, root, "bundle.zip", data.String())
+	result, err := scenario.Scan(t, root)
+	if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+		t.Fatal(err)
+	}
+	for _, finding := range result.Findings {
+		if finding.RuleID != "SH003" {
+			continue
+		}
+		loc := finding.Location
+		start := strings.Index(source, command)
+		if !loc.Derived || !strings.HasPrefix(loc.Path, "scout-object://") || loc.StartLine != 2 ||
+			loc.ByteStart != start || loc.ByteEnd != start+len(command) {
+			t.Fatalf("lost archive member coordinates: %+v", loc)
+		}
+		for _, object := range result.Extraction.Objects {
+			if object.File.Path == loc.Path {
+				return
+			}
+		}
+		t.Fatalf("finding refers to an untracked archive object: %+v", loc)
+	}
+	t.Fatal("missing generated shell finding in archive")
+}
+
+func TestHeredocShellGenerationDepthIsVisible(t *testing.T) {
+	const statement = "eval 'printf deepest'"
+	text := statement + "\n"
+	for i := 5; i > 0; i-- {
+		delimiter := "END" + string(rune('0'+i))
+		text = "cat > helper.sh <<'" + delimiter + "'\n" + text + delimiter + "\n"
+	}
+	root := t.TempDir()
+	scenario.WriteFile(t, root, "setup.sh", text)
+	result, err := scenario.Scan(t, root)
+	if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+		t.Fatal(err)
+	}
+	units := 0
+	for _, u := range result.Coverage.Files[0].Units {
+		if u.Origin == "heredoc" {
+			units++
+		}
+	}
+	if units != 4 {
+		t.Fatalf("admitted %d generations, want 4", units)
+	}
+	for _, finding := range result.Findings {
+		if finding.RuleID == "SH003" {
+			t.Fatal("finding was produced past the generation limit")
+		}
+	}
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.Code == "generated_shell_incomplete" && diagnostic.AffectsScope {
+			return
+		}
+	}
+	t.Fatal("generation limit did not produce a coverage gap")
+}
+
+func TestHeredocExecutionReportsPhysicalTrace(t *testing.T) {
+	const shellText = "cat > tools/helper.sh <<'END'\necho provenance_marker\nEND\ncd tools\nsource ./helper.sh\n"
+	markdown := "- ```sh\n  " + strings.ReplaceAll(strings.TrimSuffix(shellText, "\n"), "\n", "\n  ") + "\n  ```\n"
+	for _, tc := range []struct {
+		name string
+		text string
+		zip  bool
+	}{
+		{"README.md", markdown, false},
+		{"bundle.zip", shellText, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			input := tc.text
+			if tc.zip {
+				var buf bytes.Buffer
+				zw := zip.NewWriter(&buf)
+				member, err := zw.Create("setup.sh")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := member.Write([]byte(tc.text)); err != nil {
+					t.Fatal(err)
+				}
+				if err := zw.Close(); err != nil {
+					t.Fatal(err)
+				}
+				input = buf.String()
+			}
+			scenario.WriteFile(t, root, tc.name, input)
+			result, err := scenario.Scan(t, root)
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			var links []report.Finding
+			for _, finding := range result.Findings {
+				if finding.RuleID == "SH005" {
+					links = append(links, finding)
+				}
+			}
+			if len(links) != 1 || links[0].Severity != report.Info || len(links[0].Trace) != 3 {
+				t.Fatalf("missing informational execution trace: %+v", links)
+			}
+			link := links[0]
+			for i, expected := range []struct{ role, evidence string }{
+				{"source", "cat > tools/helper.sh <<'END'"},
+				{"transform", "echo provenance_marker\n"},
+				{"sink", "source ./helper.sh"},
+			} {
+				step := link.Trace[i]
+				loc := step.Location
+				at := strings.Index(tc.text, expected.evidence)
+				if step.Role != expected.role || loc.Path != link.Location.Path || loc.Derived != tc.zip ||
+					loc.ByteStart != at || loc.ByteEnd != at+len(expected.evidence) {
+					t.Fatalf("trace step %d lost physical evidence: %+v", i, step)
+				}
+			}
+			if link.Trace[2].Location != link.Location {
+				t.Fatalf("finding location does not cite the use: %+v", link.Location)
+			}
+			var sarif bytes.Buffer
+			if err := report.Write(&sarif, report.SARIF, result.Document); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(sarif.String(), "codeFlows") || strings.Contains(sarif.String(), "provenance_marker") {
+				t.Fatal("SARIF lost the evidence flow or leaked the body")
+			}
+		})
+	}
+}
+
 func TestShellCoverageAndPartialPrefix(t *testing.T) {
 	for _, tc := range []struct {
 		text, status, gap string
@@ -145,7 +449,7 @@ func TestShellCoverageAndPartialPrefix(t *testing.T) {
 				t.Fatal("complete prefix findings lost")
 			}
 			fc := r.Coverage.Files[0]
-			if len(fc.Units) != 1 || fc.Units[0].Status != tc.status || fc.Units[0].ParserVersion != "5" {
+			if len(fc.Units) != 1 || fc.Units[0].Status != tc.status || fc.Units[0].ParserVersion != "6" {
 				t.Fatalf("%+v", fc.Units)
 			}
 			has := false

@@ -1671,6 +1671,24 @@
       }
     ]
   },
+  "SH005": {
+    "explanation": "A recovered shell script write and a later invocation refer to the same modeled path.",
+    "remediation": "Review the generated body and its inputs before trusting the launcher.",
+    "review_checks": [
+      "Follow the trace from the original write and heredoc body to the command that uses the modeled path.",
+      "Check working-directory changes, file identity and whether the commands can succeed in the intended environment."
+    ],
+    "benign_considerations": [
+      "Local setup scripts can generate and invoke helpers as part of ordinary installation."
+    ],
+    "sources": [
+      {
+        "url": "https://github.com/skarm/scout/blob/master/docs/reference/languages.md#shell",
+        "symbol": "Shell",
+        "relationship": "Scout analysis and evidence scope"
+      }
+    ]
+  },
   "PI002": {
     "explanation": "Instructions remove warnings or hide important risk information.",
     "remediation": "Preserve meaningful user-facing safety disclosure without unnecessary boilerplate.",

@@ -14,10 +14,10 @@ func TestCatalogPreservesLanguageRegistrationAndOptionalSelection(t *testing.T) 
 		selection analyzer.Selection
 		count     int
 	}{
-		{name: "base", count: 70},
-		{name: "python", selection: analyzer.Selection{Python: true}, count: 86},
-		{name: "patterns", selection: analyzer.Selection{Patterns: true}, count: 146},
-		{name: "all", selection: analyzer.Selection{Patterns: true, Python: true}, count: 162},
+		{name: "base", count: 71},
+		{name: "python", selection: analyzer.Selection{Python: true}, count: 87},
+		{name: "patterns", selection: analyzer.Selection{Patterns: true}, count: 147},
+		{name: "all", selection: analyzer.Selection{Patterns: true, Python: true}, count: 163},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			catalog := analyzer.NewCatalog(tc.selection)
@@ -64,7 +64,7 @@ func TestCatalogPreservesLanguageRegistrationAndOptionalSelection(t *testing.T) 
 func TestCatalogRetainsIndependentOrderingAndDetachedLists(t *testing.T) {
 	catalog := analyzer.NewCatalog(analyzer.Selection{Patterns: true, Python: true})
 	checks, descriptors := catalog.Analyzers(), catalog.Rules()
-	if checks[70].Rule().ID != "PY-AST1" || checks[86].Rule().ID != "NV-P1" || descriptors[70].ID != "NV-P1" || descriptors[146].ID != "PY-AST1" {
+	if checks[71].Rule().ID != "PY-AST1" || checks[87].Rule().ID != "NV-P1" || descriptors[71].ID != "NV-P1" || descriptors[147].ID != "PY-AST1" {
 		t.Fatal("execution or public catalog ordering changed")
 	}
 	checks[0] = nil

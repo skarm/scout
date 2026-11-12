@@ -8,8 +8,63 @@ import (
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/analyzer"
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/languages/shell"
 	"github.com/skarm/scout/internal/capture/artifact"
 )
+
+func TestPrepareGeneratedShellUsesOneQuotaAcrossDocuments(t *testing.T) {
+	const input = "cat > helper.sh <<'END'\necho ok\nEND\n"
+	files := []artifact.File{
+		artifact.NewFile("first.sh", []byte(input), false),
+		artifact.NewFile("second.sh", []byte(input), false),
+	}
+	docs := document.PrepareAll(t.Context(), files)
+	skipped := analyzer.PrepareGeneratedShellWithin(t.Context(), nil, docs, 0)
+	if len(skipped[0].Units()) != 1 || len(skipped[1].Units()) != 1 {
+		t.Fatal("script prepared with no shell consumers selected")
+	}
+
+	checks := shell.Rules()[:1]
+	operations := uint64(analyzer.OperationTasks(checks))
+	prepared := analyzer.PrepareGeneratedShellWithin(t.Context(), checks, docs, operations)
+	first, second := prepared[0].Units(), prepared[1].Units()
+	if len(first) != 2 || first[1].Origin != "heredoc" || first[1].View.Text() != "echo ok\n" || len(second) != 1 || len(docs[0].Units()) != 1 {
+		t.Fatalf("shared quota or original document lost: first=%+v second=%+v", first, second)
+	}
+	for _, diagnostic := range prepared[1].Diagnostics() {
+		if diagnostic.Code == "generated_shell_incomplete" && diagnostic.AffectsScope && diagnostic.Path == "second.sh" {
+			return
+		}
+	}
+	t.Fatalf("second script exceeded quota without a scoped diagnostic: %+v", prepared[1].Diagnostics())
+}
+
+func TestPrepareGeneratedShellReportsNestedWriteGapOnCapturedFile(t *testing.T) {
+	const path = "setup.sh"
+	const inner = "cat >>\"${name}.sh\" <<'INNER'\nprintf example\nINNER\n"
+	const input = "cat > outer.sh <<'OUTER'\n" + inner + "OUTER\n"
+	doc := document.Prepare(t.Context(), artifact.NewFile(path, []byte(input), false))
+	prepared := analyzer.PrepareGeneratedShellWithin(t.Context(), shell.Rules()[:1], []document.File{doc}, 100)[0]
+	units := prepared.Units()
+	if len(units) != 2 || units[1].Origin != document.OriginGeneratedShell || units[1].View.Text() != inner {
+		t.Fatalf("unexpected generated units: %+v", units)
+	}
+
+	want := map[string]bool{"generated_shell_append": true, "generated_shell_dynamic_path": true}
+	for _, diagnostic := range prepared.Diagnostics() {
+		if !strings.HasPrefix(diagnostic.Code, "generated_shell_") {
+			continue
+		}
+
+		if !want[diagnostic.Code] || diagnostic.Path != path || !diagnostic.AffectsScope {
+			t.Fatalf("unexpected generated diagnostic: %+v", diagnostic)
+		}
+		delete(want, diagnostic.Code)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing nested diagnostics: %v", want)
+	}
+}
 
 func TestSourceWalkerOperationLimitIsExplicit(t *testing.T) {
 	text := strings.Repeat(":\n", 8192) + "NPM_CONFIG_REGISTRY=https://private.invalid\n"

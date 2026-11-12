@@ -199,3 +199,31 @@ func TestProjectionExpansionAndComposition(t *testing.T) {
 		t.Fatal("split UTF-8 rune accepted")
 	}
 }
+
+func TestViewSelectComposesAcrossDisjointAndReplacedSource(t *testing.T) {
+	const original = "> αX\n> βY\n"
+	parent, err := source.NewView(original, []source.Span{{Start: 2, End: 6}, {Start: 8, End: 12}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err = parent.Replace([]source.Replacement{{Span: source.Span{Start: 2, End: 3}, Text: "foo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := parent.Select([]source.Span{{Start: 3, End: 5}, {Start: 6, End: 8}})
+	if err != nil || projected.Text() != "ooβ" {
+		t.Fatalf("selected view = %q (%v)", projected.Text(), err)
+	}
+	for _, tc := range []struct{ selected, original source.Span }{
+		{source.Span{End: 2}, source.Span{Start: 4, End: 5}},
+		{source.Span{Start: 2, End: 4}, source.Span{Start: 8, End: 10}},
+		{source.Span{End: 4}, source.Span{Start: 4, End: 10}},
+	} {
+		if got, err := projected.Original(tc.selected); err != nil || got != tc.original {
+			t.Fatalf("mapping %+v = %+v (%v), want %+v", tc.selected, got, err, tc.original)
+		}
+	}
+	if _, err := parent.Select([]source.Span{{Start: 7, End: 8}}); err == nil {
+		t.Fatal("selection split a UTF-8 rune")
+	}
+}

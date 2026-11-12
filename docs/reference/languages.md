@@ -28,6 +28,30 @@ SH001–SH004 check download-to-execution, credentials in requests, eval/source/
 capabilities and sensitive reads. Selected curl/wget options and saved-file provenance
 are tracked. Dynamic arguments and unsupported control flow limit completeness.
 
+Scout reconstructs `cat` and `tee` heredoc writes to relative `.sh` paths,
+including supported blocks, functions, pipelines with explicit stdin, and
+shell files captured from archives. It resolves simple parameters from
+preceding, unambiguous assignments and analyzes up to four nested generations
+under shared limits. Findings retain byte and line coordinates in the
+enclosing captured file or archive member. Substituted text cites the parameter
+reference that produced it. Observed effects from functions, traps, PATH and
+command hash entries can make a writer's identity or its input uncertain.
+Unresolved expansions, uncertain writers and exhausted generation limits leave
+coverage gaps.
+
+Recognizable `.sh` writes with unresolved destinations, such as `"${name}.sh"`,
+report `generated_shell_dynamic_path`. Writes that append to a shell script via
+`>>` or `tee -a`/`--append` report `generated_shell_append`. Both diagnostics
+refer to the enclosing captured file. A wholly unknown destination with no
+evidence of a `.sh` target remains outside this detection.
+
+The informational SH005 finding links a recovered write, its body and a later
+`source`, `.`, shell invocation or explicit executable path in the same modeled
+command sequence. The trace follows literal `cd` and uses the latest recovered
+write to a path. Unresolved changes to the working directory, intervening
+overwrites and commands with unknown effects invalidate earlier links. Use an
+explicit path with `source` or `.` to avoid search-path ambiguity.
+
 ## JavaScript and TypeScript
 
 The full CGO build uses official Tree-sitter grammars. JS001–JS006 check shell APIs,

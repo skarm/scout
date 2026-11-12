@@ -12,6 +12,7 @@ type wordMode byte
 const (
 	ordinaryWord     wordMode = 0
 	doubleQuotedWord wordMode = '"'
+	heredocBodyWord  wordMode = 'h'
 )
 
 func (p *parser) lex() (token, error) {
@@ -103,7 +104,7 @@ func (p *parser) part(w *Word, mode wordMode) error {
 	case '`':
 		return p.fail("unsupported_backtick_substitution")
 	case '$':
-		return p.expansion(w, mode == doubleQuotedWord)
+		return p.expansion(w, mode)
 	}
 
 	return p.literalPart(w, mode, start)
@@ -190,12 +191,13 @@ func (p *parser) literal(w *Word, start, end int, text string, quoted bool) erro
 	return nil
 }
 
-func (p *parser) expansion(w *Word, quoted bool) error {
+func (p *parser) expansion(w *Word, mode wordMode) error {
 	if err := p.tick(); err != nil {
 		return err
 	}
 
 	start := p.at
+	quoted := mode == doubleQuotedWord
 
 	p.at++
 	if p.at == p.end {
@@ -204,6 +206,10 @@ func (p *parser) expansion(w *Word, quoted bool) error {
 
 	c := p.text[p.at]
 	if c == '\'' || c == '"' {
+		if mode == heredocBodyWord {
+			return p.literal(w, start, p.at, "$", false)
+		}
+
 		return p.fail("unsupported_dollar_quoting")
 	}
 
@@ -284,7 +290,7 @@ func (p *parser) hereBodies() error {
 		delim, _ := r.Target.Literal()
 		start := p.at
 
-		end, found, err := p.heredocEnd(r.Op, delim)
+		end, found, err := p.heredocEnd(r.Op, delim, r.QuotedDelimiter)
 		if err != nil {
 			return err
 		}
@@ -303,7 +309,7 @@ func (p *parser) hereBodies() error {
 				return err
 			}
 
-			if err = q.parts(body, 'h'); err != nil {
+			if err = q.parts(body, heredocBodyWord); err != nil {
 				return err
 			}
 		}
@@ -313,6 +319,7 @@ func (p *parser) hereBodies() error {
 		} // tab-removal is not represented as a constant value
 
 		r.Body = body
+		r.BodyVerified = !strings.Contains(p.text[r.Target.Span.Start:r.Target.Span.End], "$\"")
 	}
 
 	return nil
@@ -386,29 +393,59 @@ func (p *parser) bracedParameter(w *Word, quoted bool, start int) error {
 	return nil
 }
 
-func (p *parser) heredocEnd(op, delim string) (int, bool, error) {
-	end := p.at
+func (p *parser) heredocEnd(op, delim string, quoted bool) (int, bool, error) {
 	for p.at < p.end {
-		if err := p.budget.ctx.Err(); err != nil {
-			return end, false, err
-		}
-
 		line := p.at
-		end, next := shellLine(p.text, line, p.end)
 
-		content := p.text[line:end]
-		if op == "<<-" {
-			content = strings.TrimLeft(content, "\t")
+		content, err := p.heredocLine(quoted)
+		if err != nil {
+			return line, false, err
 		}
 
-		p.at = next
-
-		if content == delim {
+		if content == delim || op == "<<-" && strings.TrimLeft(content, "\t") == delim {
 			return line, true, nil
 		}
 	}
 
-	return end, false, nil
+	return p.at, false, nil
+}
+
+// An unquoted heredoc joins escaped newlines before checking the delimiter.
+// Retain the physical start of the logical line as the end of the body.
+func (p *parser) heredocLine(quoted bool) (string, error) {
+	var joined strings.Builder
+
+	for {
+		if err := p.budget.ctx.Err(); err != nil {
+			return "", err
+		}
+
+		end, next := shellLine(p.text, p.at, p.end)
+		content := p.text[p.at:end]
+
+		p.at = next
+		if !quoted && next > end && heredocContinues(content) {
+			joined.WriteString(content[:len(content)-1])
+			continue
+		}
+
+		if joined.Len() == 0 {
+			return content, nil
+		}
+
+		joined.WriteString(content)
+
+		return joined.String(), nil
+	}
+}
+
+func heredocContinues(line string) bool {
+	at := len(line)
+	for at > 0 && line[at-1] == '\\' {
+		at--
+	}
+
+	return (len(line)-at)%2 != 0
 }
 
 func shellLine(text string, start, end int) (int, int) {

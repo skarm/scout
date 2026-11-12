@@ -139,6 +139,16 @@ func NewView(original string, spans []Span) (View, error) {
 	return View{text: b.String(), segments: segments}, nil
 }
 
+// Select concatenates spans from this view and preserves their original mapping.
+func (v View) Select(spans []Span) (View, error) {
+	selected, err := NewView(v.text, spans)
+	if err == nil {
+		selected.parent = &v
+	}
+
+	return selected, err
+}
+
 // Replace returns a derived view with validated, nonoverlapping substitutions.
 // Replacement bytes map to their enclosing original span rather than invented
 // character offsets.

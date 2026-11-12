@@ -184,7 +184,7 @@ func (a shellCheck) Rule() report.Rule {
 
 func (shellCheck) AppliesTo(f document.File) bool {
 	for _, u := range f.Units() {
-		if t, ok := u.Tree.(parse.ShellTree); ok && t.Tree != nil {
+		if t, ok := u.Tree.(parse.ShellTree); ok && executionShellTree(u, t) != nil {
 			return true
 		}
 	}
@@ -268,12 +268,12 @@ func (v *shellValue) appendPart(x shellValue) {
 func (a *shellWalk) units(units []document.Unit) {
 	for _, u := range units {
 		t, ok := u.Tree.(parse.ShellTree)
-		if !ok || t.Tree == nil {
+		if !ok {
 			continue
 		}
 
 		a.view = u.View
-		a.list(t.Tree, newShellState())
+		a.list(executionShellTree(u, t), newShellState())
 
 		if a.err != nil || a.result.Truncated {
 			break
