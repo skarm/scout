@@ -7,4 +7,5 @@ const (
 	ruleSH002 = "SH002"
 	ruleSH003 = "SH003"
 	ruleSH004 = "SH004"
+	ruleSH005 = "SH005"
 )

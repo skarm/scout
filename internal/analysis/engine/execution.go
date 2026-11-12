@@ -63,6 +63,7 @@ func (run *execution) prepare() error {
 		candidates = run.options.MatchLimit
 	}
 
+	documents = analyzer.PrepareGeneratedShellWithin(run.ctx, run.engine.analyzers, documents, run.options.MaxOperations)
 	documents, preparedChecks := analyzer.PrepareDerivedWithin(run.ctx, run.engine.analyzers, documents, candidates, run.options.MaxOperations)
 	preparedChecks = analyzer.BindLanguage(run.ctx, preparedChecks, documents, candidates, run.options.MaxOperations)
 	documents, preparedChecks = analyzer.PrepareShellPatternsWithin(run.ctx, preparedChecks, documents, candidates, run.options.MaxOperations)

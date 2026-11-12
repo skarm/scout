@@ -69,24 +69,26 @@ type ConfigScope struct {
 }
 
 type File struct {
-	foldedASCII    string
-	isASCII        bool
-	securityViews  []source.View
-	configScopes   []ConfigScope
-	file           artifact.File
-	index          source.Index
-	regions        []region
-	units          []Unit
-	classification filetype.Description
-	registry       parse.Registry
-	diagnostics    []report.Diagnostic
-	budget         *parseBudget
-	derived        []derivedConfig
-	derivedReady   bool
-	derivedGap     bool
-	shellReady     bool
-	shellGap       bool
-	shellUnits     []Unit
+	foldedASCII         string
+	isASCII             bool
+	securityViews       []source.View
+	configScopes        []ConfigScope
+	file                artifact.File
+	index               source.Index
+	regions             []region
+	units               []Unit
+	classification      filetype.Description
+	registry            parse.Registry
+	diagnostics         []report.Diagnostic
+	budget              *parseBudget
+	derived             []derivedConfig
+	derivedReady        bool
+	derivedGap          bool
+	shellReady          bool
+	shellGap            bool
+	shellUnits          []Unit
+	shellExecutions     []GeneratedShellExecution
+	shellExecutionLimit bool
 }
 
 // filePreparation confines mutation to the preparation phase; File values remain snapshots.
@@ -194,6 +196,13 @@ func (f File) Diagnostics() []report.Diagnostic {
 }
 
 func (f File) Context(s source.Span) (kind, language string) {
+	for i := len(f.units) - 1; i >= 0 && f.units[i].Origin == OriginGeneratedShell; i-- {
+		u := f.units[i]
+		if s.Start >= u.Span.Start && s.End <= u.Span.End {
+			return u.Origin, u.Language
+		}
+	}
+
 	for _, r := range f.regions {
 		if s.Start >= r.Span.Start && s.End <= r.Span.End {
 			return r.Kind, r.Language

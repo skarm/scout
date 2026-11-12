@@ -403,9 +403,7 @@ func (p *parser) redirect(fd string) (*Redirect, error) {
 // A heredoc delimiter is quote removal, not parameter/command expansion. Read
 // it in that context so END$OF and locale quotes cannot become host lookups.
 func (p *parser) heredocWord() (token, error) {
-	for p.at < p.end && (p.text[p.at] == ' ' || p.text[p.at] == '\t') {
-		p.at++
-	}
+	p.skipTrivia()
 
 	start := p.at
 	if err := p.scanDelimiter(); err != nil {

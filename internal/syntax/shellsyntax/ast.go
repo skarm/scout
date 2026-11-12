@@ -20,6 +20,7 @@ type Statement struct {
 	Commands []*Command // a pipeline; commands are in source order
 	Pipes    []string   // | or |&
 	Next     string     // ;, newline, &&, ||, &, or empty at EOF
+	Negated  bool       // ! reverses the success edge
 }
 
 type Command struct {
@@ -33,6 +34,7 @@ type Command struct {
 	Alternatives []*File
 	FunctionName string
 	FunctionBody *File
+	Declaration  string // declaration builtin, when projected by the broader grammar
 	Invalidates  []string
 }
 
@@ -48,6 +50,7 @@ type Redirect struct {
 	Target          *Word
 	Body            *Word // heredoc contents, never treated as shell statements
 	QuotedDelimiter bool
+	BodyVerified    bool // The raw heredoc boundary was checked against its delimiter.
 }
 type Word struct {
 	Span    source.Span

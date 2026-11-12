@@ -129,8 +129,15 @@ func (run *execution) complete() (report.Analysis, error) {
 
 func (run *execution) finalize() (report.Analysis, error) {
 	r := &run.analysis
-	for _, o := range run.results {
+	for index, o := range run.results {
+		compact, _ := run.checks[index].(interface{ OmitNotApplicableFileCoverage() bool })
+
+		omitNotApplicable := compact != nil && compact.OmitNotApplicableFileCoverage()
 		for i, check := range o.fileChecks {
+			if omitNotApplicable && check.Status == report.OutcomeNotApplicable {
+				continue
+			}
+
 			fc := &r.Coverage.Files[run.fileIndex[run.documents[i].Artifact().Metadata().Path]]
 
 			fc.Checks = append(fc.Checks, check)

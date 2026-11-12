@@ -117,7 +117,7 @@ func (p *declarationProjection) statement(s *syntax.Stmt, depth int) []*Statemen
 		next = "&"
 	}
 
-	return []*Statement{{Span: c.Span, Commands: []*Command{c}, Next: next}}
+	return []*Statement{{Span: c.Span, Commands: []*Command{c}, Next: next, Negated: s.Negated}}
 }
 
 func (p *declarationProjection) projectCommand(c *Command, cmd syntax.Command, depth int) {
@@ -129,6 +129,7 @@ func (p *declarationProjection) projectCommand(c *Command, cmd syntax.Command, d
 			c.Words = append(c.Words, p.word(w, depth+1))
 		}
 	case *syntax.DeclClause:
+		c.Declaration = n.Variant.Value
 		p.declarationAssignments(c, n, depth)
 	default:
 		p.projectCompound(c, cmd, depth)
@@ -243,7 +244,8 @@ func (p *declarationProjection) projectRedirect(r *syntax.Redirect, depth int) *
 		red.QuotedDelimiter = raw.Quoted
 		// mvdan's final heredoc literal position can include its closing
 		// delimiter. The analyzer needs the physical body only.
-		if delim, quoted, ok := literalDelimiter(p.text[int(r.Word.Pos().Offset()):int(r.Word.End().Offset())]); ok {
+		word := p.text[int(r.Word.Pos().Offset()):int(r.Word.End().Offset())]
+		if delim, quoted, ok := literalDelimiter(word); ok {
 			red.QuotedDelimiter = quoted
 
 			red.Target = &Word{
@@ -256,28 +258,32 @@ func (p *declarationProjection) projectRedirect(r *syntax.Redirect, depth int) *
 					Quoted: quoted,
 				}},
 			}
-			for start := red.Body.Span.Start; start < len(p.text); {
-				end := len(p.text)
-				if n := strings.IndexByte(p.text[start:], '\n'); n >= 0 {
-					end = start + n
-				}
-
-				line := strings.TrimSuffix(p.text[start:end], "\r")
-				if r.Op.String() == "<<-" {
-					line = strings.TrimLeft(line, "\t")
-				}
-
-				if line == delim {
-					red.Body.Span.End = start
-					break
-				}
-
-				start = end + 1
-			}
+			p.verifyHeredocBody(red, delim, word)
 		}
 	}
 
 	return red
+}
+
+func (p *declarationProjection) verifyHeredocBody(red *Redirect, delimiter, word string) {
+	start, end := red.Body.Span.Start, red.Body.Span.End
+	if start > end || end > len(p.text) || strings.Contains(word, "$\"") {
+		return
+	}
+	// The broader grammar may omit leading tabs from the first literal.
+	line := strings.LastIndexByte(p.text[:start], '\n') + 1
+	if strings.Trim(p.text[line:start], "\t") != "" {
+		return
+	}
+	// The raw search is confined to the declaration parser's own body and
+	// closing line, so many rejected redirects cannot rescan the file.
+	_, bound := shellLine(p.text, end, len(p.text))
+
+	scan := parser{text: p.text, at: line, end: bound, budget: &budget{ctx: p.ctx}}
+	if end, ok, _ := scan.heredocEnd(red.Op, delimiter, red.QuotedDelimiter); ok {
+		red.Body.Span = source.Span{Start: line, End: end}
+		red.BodyVerified = true
+	}
 }
 
 func (p *declarationProjection) word(w *syntax.Word, depth int) *Word {
@@ -469,6 +475,7 @@ func (p *declarationProjection) binaryStatement(s *syntax.Stmt, b *syntax.Binary
 			x[0].Commands = append(x[0].Commands, y[0].Commands...)
 			x[0].Pipes = append(append(x[0].Pipes, b.Op.String()), y[0].Pipes...)
 			x[0].Span = declarationSpan(s)
+			x[0].Negated = x[0].Negated || s.Negated
 
 			return x
 		}

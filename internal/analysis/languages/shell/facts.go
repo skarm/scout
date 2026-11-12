@@ -39,9 +39,16 @@ func observeDownload(ctx context.Context, tree *shellsyntax.File, view source.Vi
 	return w.result, w.operations, errors.Join(w.err, w.gap)
 }
 
-func executionShellTree(tree parse.ShellTree) *shellsyntax.File { return tree.Tree }
+func executionShellTree(unit document.Unit, tree parse.ShellTree) *shellsyntax.File {
+	if unit.Origin == document.OriginGeneratedShell && tree.ExecutionError != nil &&
+		tree.DeclarationError == nil && tree.Declarations != nil {
+		return tree.Declarations
+	}
 
-func declarationShellTree(tree parse.ShellTree) *shellsyntax.File {
+	return tree.Tree
+}
+
+func declarationShellTree(_ document.Unit, tree parse.ShellTree) *shellsyntax.File {
 	if tree.Declarations != nil {
 		return tree.Declarations
 	}
@@ -49,7 +56,7 @@ func declarationShellTree(tree parse.ShellTree) *shellsyntax.File {
 	return tree.Tree
 }
 
-func walkShellFacts(ctx context.Context, doc document.File, outputs map[string]*check.Facts, selectTree func(parse.ShellTree) *shellsyntax.File) {
+func walkShellFacts(ctx context.Context, doc document.File, outputs map[string]*check.Facts, selectTree func(document.Unit, parse.ShellTree) *shellsyntax.File) {
 	walk := shellWalk{ctx: ctx, outputs: outputs}
 
 	for _, unit := range doc.Units() {
@@ -58,7 +65,7 @@ func walkShellFacts(ctx context.Context, doc document.File, outputs map[string]*
 			continue
 		}
 
-		root := selectTree(tree)
+		root := selectTree(unit, tree)
 		if root == nil {
 			continue
 		}
