@@ -315,7 +315,7 @@ func (f *generatedShellFlow) changeDirectory(args []*shellsyntax.Word, scope *sc
 		return
 	}
 
-	if scope.cdpathUnsafe && !path.IsAbs(dir) && dir != "." && dir != ".." &&
+	if (scope.cdpathUnsafe || scope.temporaryCDPath) && !path.IsAbs(dir) && dir != "." && dir != ".." &&
 		!strings.HasPrefix(dir, "./") && !strings.HasPrefix(dir, "../") {
 		f.reset()
 		return
@@ -366,16 +366,26 @@ func isShellInterpreter(name string) bool {
 }
 
 func (s *generatedShellScan) recordGeneratedUse(c *shellsyntax.Command, write generatedShellWrite) {
-	if len(s.executions) >= document.MaxRegions || !analysisbudget.Consume(s.ctx, 1) {
-		s.executionLimit = true
-		return
-	}
-
 	use, err := s.view.Original(c.Span)
 	if err != nil {
 		s.executionLimit = true
 		return
 	}
 
-	s.executions = append(s.executions, document.GeneratedShellExecution{Write: write.header, Body: write.body, Use: use})
+	link := document.GeneratedShellExecution{Write: write.header, Body: write.body, Use: use}
+	if s.seenExecutions[link] {
+		return
+	}
+
+	if len(s.executions) >= document.MaxRegions || !analysisbudget.Consume(s.ctx, 1) {
+		s.executionLimit = true
+		return
+	}
+
+	if s.seenExecutions == nil {
+		s.seenExecutions = make(map[document.GeneratedShellExecution]bool)
+	}
+
+	s.seenExecutions[link] = true
+	s.executions = append(s.executions, link)
 }

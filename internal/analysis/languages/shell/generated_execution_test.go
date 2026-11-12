@@ -80,6 +80,8 @@ func TestGeneratedShellExecutionDiscardsUnprovedLinks(t *testing.T) {
 		{"exec does not invoke source builtin", write + "exec source ./helper.sh\n"},
 		{"shadowed consumer", "bash() { echo other; }\n" + write + "bash helper.sh\n"},
 		{"hashed interpreter", "hash -p /usr/bin/true bash\n" + write + "bash helper.sh\n"},
+		{"interpreter hashed by combined options", "hash -rp /usr/bin/true bash\n" + write + "bash helper.sh\n"},
+		{"CDPATH assigned through computed name", "key=CDPATH\nprintf -v \"$key\" /elsewhere\ncat > sub/helper.sh <<'END'\necho first\nEND\ncd sub\nbash helper.sh\n"},
 		{"background write", "cat > helper.sh <<'END' &\necho first\nEND\nbash helper.sh\n"},
 		{"negated success", "! cat > helper.sh <<'END' && bash helper.sh\necho first\nEND\n"},
 		{"failure branch", "cat > helper.sh <<'END' || bash helper.sh\necho first\nEND\n"},

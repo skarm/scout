@@ -24,18 +24,21 @@ type Statement struct {
 }
 
 type Command struct {
-	Span         source.Span
-	Words        []*Word
-	Assignments  []Assignment
-	Redirects    []*Redirect
-	Subshell     *File
-	Group        *File
-	Prelude      *File
-	Alternatives []*File
-	FunctionName string
-	FunctionBody *File
-	Declaration  string // declaration builtin, when projected by the broader grammar
-	Invalidates  []string
+	Span              source.Span
+	Words             []*Word
+	Assignments       []Assignment
+	Redirects         []*Redirect
+	Subshell          *File
+	Group             *File
+	Prelude           *File
+	Alternatives      []*File
+	Loop              bool // the prelude or alternatives may be evaluated repeatedly
+	ExclusiveBranches bool // at most one alternative runs after the prelude
+	FunctionName      string
+	FunctionBody      *File
+	Declaration       string  // declaration builtin, when projected by the broader grammar
+	DeclarationArgs   []*Word // options and unresolved arguments in a declaration
+	Invalidates       []string
 }
 
 type Assignment struct {

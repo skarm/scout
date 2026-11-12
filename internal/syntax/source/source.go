@@ -4,6 +4,7 @@ package source
 
 import (
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -187,6 +188,21 @@ func (v View) Replace(replacements []Replacement) (View, error) {
 
 // Text returns the immutable analysis representation.
 func (v View) Text() string { return v.text }
+
+// SameProjection reports whether two views have identical text and mapping.
+func (v View) SameProjection(other View) bool {
+	for {
+		if v.text != other.text || !slices.Equal(v.segments, other.segments) {
+			return false
+		}
+
+		if v.parent == nil || other.parent == nil {
+			return v.parent == other.parent
+		}
+
+		v, other = *v.parent, *other.parent
+	}
+}
 
 // Original maps a nonempty analysis span through all parent views to an
 // enclosing original byte span.

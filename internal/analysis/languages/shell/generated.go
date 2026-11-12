@@ -4,7 +4,6 @@ import (
 	"context"
 	"io/fs"
 	"iter"
-	"maps"
 	"path"
 	"strings"
 
@@ -51,10 +50,10 @@ func RecoverGeneratedShellIn(ctx context.Context, units []document.Unit, remaini
 		}
 
 		scan.view = unit.View
-		state := scriptScope{variables: map[string]string{}, functions: map[string]scriptFunction{}}
-		state.collectFunctions(root)
+		state := scriptScope{variables: map[string]string{}}
+		scan.functions = newGeneratedFunctionScan(root)
 
-		if !scan.walk(root, &state, true, nil) || !scan.walkFunctions(&state) {
+		if !scan.walk(root, &state, nil) || !scan.walkFunctions(&state) {
 			break
 		}
 	}
@@ -68,22 +67,27 @@ type generatedShellScan struct {
 	view           source.View
 	ctx            context.Context
 	views          []source.View
-	pending        []pendingScriptFunction
+	functions      generatedFunctionScan
 	executions     []document.GeneratedShellExecution
+	seenExecutions map[document.GeneratedShellExecution]bool
 	remaining      int
 	bytes          int
 	gaps           document.GeneratedShellGaps
 	executionLimit bool
 }
 
-type pendingScriptFunction struct {
-	body    *shellsyntax.File
-	effects scriptEffects
-}
-
 type scriptScope struct {
-	variables map[string]string
-	functions map[string]scriptFunction
+	variables       map[string]string
+	functions       map[string]*shellsyntax.File
+	aliases         map[string]bool
+	conditionalDefs bool
+	functionBody    bool
+	repeated        bool
+	returned        bool
+	returnEffects   *functionReturnState
+	stdoutPiped     bool
+	temporaryPath   bool
+	temporaryCDPath bool
 	scriptEffects
 }
 
@@ -95,11 +99,7 @@ type scriptEffects struct {
 	consumerHashes uint32
 	cdpathUnsafe   bool
 	trapUnsafe     bool
-}
-
-type scriptFunction struct {
-	effects scriptEffects
-	seen    bool
+	aliasUnsafe    bool
 }
 
 func (e *scriptEffects) merge(other scriptEffects) {
@@ -110,6 +110,7 @@ func (e *scriptEffects) merge(other scriptEffects) {
 	e.consumerHashes |= other.consumerHashes
 	e.cdpathUnsafe = e.cdpathUnsafe || other.cdpathUnsafe
 	e.trapUnsafe = e.trapUnsafe || other.trapUnsafe
+	e.aliasUnsafe = e.aliasUnsafe || other.aliasUnsafe
 }
 
 func (e *scriptEffects) unknown() {
@@ -117,10 +118,11 @@ func (e *scriptEffects) unknown() {
 	e.shadow.consumerAliases, e.shadow.consumerFunctions = ^uint32(0), ^uint32(0)
 	e.bindingsUnsafe, e.pathUnsafe, e.hashUnsafe = true, true, true
 	e.cdpathUnsafe, e.trapUnsafe = true, true
+	e.aliasUnsafe = true
 	e.consumerHashes = ^uint32(0)
 }
 
-func (s *generatedShellScan) walk(tree *shellsyntax.File, scope *scriptScope, recoverWrites bool, flow *generatedShellFlow) bool {
+func (s *generatedShellScan) walk(tree *shellsyntax.File, scope *scriptScope, flow *generatedShellFlow) bool {
 	if tree == nil {
 		return true
 	}
@@ -134,38 +136,17 @@ func (s *generatedShellScan) walk(tree *shellsyntax.File, scope *scriptScope, re
 	successChain := false
 
 	for _, stmt := range tree.Statements {
+		if scope.returned {
+			return true
+		}
+
 		if s.ctx.Err() != nil {
 			s.gaps |= document.GeneratedShellUnrecovered
 			return false
 		}
 
-		pipeline := len(stmt.Commands) > 1
-		isolated := pipeline || shellBranchLinks[stmt.Next] || conditional
-
-		track := recoverWrites && len(stmt.Commands) == 1 && stmt.Next != "&" && stmt.Next != "||" && !stmt.Negated && !scope.trapUnsafe
-		if !track {
-			flow.reset()
-		}
-
-		var fileFlow *generatedShellFlow
-		if track {
-			fileFlow = flow
-		}
-
-		incoming := scope.variables
-		for i, c := range stmt.Commands {
-			// Each stage starts with the shell's incoming bindings. Stage-local
-			// assignments cannot supply bindings to sibling or later commands.
-			if pipeline && len(incoming) != 0 && !scope.bindingsUnsafe {
-				scope.variables = maps.Clone(incoming)
-			}
-
-			mergesStderr := i < len(stmt.Pipes) && stmt.Pipes[i] == "|&"
-			if !s.visitGeneratedCommand(c, scope, fileFlow, recoverWrites, mergesStderr, i+1 < len(stmt.Commands)) {
-				return false
-			}
-
-			scope.bind(c, !isolated)
+		if !s.walkStatement(stmt, scope, flow, conditional) {
+			return false
 		}
 
 		if successChain && stmt.Next != "&&" {
@@ -180,41 +161,98 @@ func (s *generatedShellScan) walk(tree *shellsyntax.File, scope *scriptScope, re
 	return true
 }
 
-func (s *generatedShellScan) visitGeneratedCommand(c *shellsyntax.Command, scope *scriptScope, flow *generatedShellFlow, recoverWrites, mergesStderr, stdoutPiped bool) bool {
-	scope.shadow.observe(c)
+func (s *generatedShellScan) walkStatement(stmt *shellsyntax.Statement, scope *scriptScope, flow *generatedShellFlow, conditional bool) bool {
+	pipeline := len(stmt.Commands) > 1
+	background := stmt.Next == "&"
+	forked := pipeline || background
+	isolated := forked || shellBranchLinks[stmt.Next] || conditional
+	fileFlow := flow
+
+	if forked || stmt.Next == "||" || stmt.Negated || scope.trapUnsafe {
+		flow.reset()
+
+		fileFlow = nil
+	}
+
+	for i, c := range stmt.Commands {
+		if scope.functionBody && !s.functions.step(s.ctx) {
+			s.gaps |= document.GeneratedShellUnrecovered
+			return false
+		}
+
+		current := scope
+		if forked {
+			stage := scope.nested()
+			current = &stage
+		}
+
+		if scope.functionBody && !forked && !conditional && !stmt.Negated && current.plainFunctionReturn(c) {
+			scope.returned = true
+			return true
+		}
+
+		mergesStderr := i < len(stmt.Pipes) && stmt.Pipes[i] == "|&"
+		if !s.visitGeneratedCommand(c, current, fileFlow, mergesStderr, i+1 < len(stmt.Commands), !isolated) {
+			return false
+		}
+
+		current.bind(c, !isolated)
+
+		if pipeline && !background && i+1 == len(stmt.Commands) {
+			// Bash lastpipe may run the last stage in the current shell.
+			scope.mergePossibleFunctionState(current)
+		}
+	}
+
+	if forked {
+		clear(scope.variables)
+	}
+
+	return true
+}
+
+func (s *generatedShellScan) visitGeneratedCommand(c *shellsyntax.Command, scope *scriptScope, flow *generatedShellFlow, mergesStderr, stdoutPiped, stable bool) bool {
+	scope.observeAliases(c)
+	s.functions.define(c, scope, stable)
+
+	if body := scope.localFunctionCall(c); body != nil {
+		if flow != nil {
+			flow.reset()
+		}
+
+		return s.callFunction(c, body, scope, stdoutPiped, stable)
+	}
 
 	if flow != nil {
 		flow.invalidateBefore(c, scope.variables)
 	}
 
-	if recoverWrites {
-		written, more := s.recover(c, scope, mergesStderr, stdoutPiped, flow)
-		if !more {
-			return false
-		}
-
-		if flow != nil && !written && !plainGeneratedShellGroup(c) {
-			s.observeGeneratedUse(c, scope, flow)
-		}
+	written, more := s.recover(c, scope, mergesStderr, stdoutPiped || scope.stdoutPiped, flow)
+	if !more {
+		return false
 	}
 
-	return s.children(c, scope, recoverWrites, flow)
-}
-
-// A function's writer lookup is evaluated at call time. Admit its writes only
-// after seeing the enclosing unit's possible effects, including late changes.
-func (s *generatedShellScan) walkFunctions(scope *scriptScope) bool {
-	for i := 0; i < len(s.pending); i++ {
-		function := s.pending[i]
-		function.effects.merge(scope.scriptEffects)
-
-		nested := scriptScope{variables: map[string]string{}, functions: scope.functions, scriptEffects: function.effects}
-		if !s.walk(function.body, &nested, true, nil) {
-			return false
-		}
+	if flow != nil && !written && !plainGeneratedShellGroup(c) {
+		s.observeGeneratedUse(c, scope, flow)
 	}
 
-	s.pending = nil
+	conditionalDefs := scope.conditionalDefs
+	inheritedPipe := scope.stdoutPiped
+	scope.conditionalDefs = conditionalDefs || !stable
+	scope.stdoutPiped = inheritedPipe || stdoutPiped
+	more = s.children(c, scope, flow)
+	scope.conditionalDefs = conditionalDefs
+	scope.stdoutPiped = inheritedPipe
+
+	if !more {
+		return false
+	}
+
+	scope.observeEffects(c)
+
+	if scope.trapUnsafe && !s.functions.fallback {
+		s.functions.opaque = true
+	}
 
 	return true
 }
@@ -237,27 +275,41 @@ func (s *generatedShellScan) recover(c *shellsyntax.Command, scope *scriptScope,
 		return false, true
 	}
 
-	if len(s.views) >= s.remaining || s.bytes == 0 || !analysisbudget.Consume(s.ctx, 1) {
+	capacity := len(s.views) < s.remaining && s.bytes > 0
+	if !capacity && !scope.functionBody || !analysisbudget.Consume(s.ctx, 1) {
 		s.gaps |= document.GeneratedShellUnrecovered
 		return false, false
 	}
 
 	view, ok := scriptHeredocView(s.view, hdoc, scope.variables)
-	if !ok || len(view.Text()) > s.bytes {
+	if !ok {
 		s.gaps |= document.GeneratedShellUnrecovered
 		return false, true
 	}
 
-	if view.Text() != "" {
-		s.bytes -= len(view.Text())
+	if view.Text() == "" {
+		return false, true
+	}
 
+	if !scope.functionBody || !s.functions.hasProjection(hdoc, view) {
+		if !capacity || len(view.Text()) > s.bytes {
+			s.gaps |= document.GeneratedShellUnrecovered
+			return false, capacity
+		}
+
+		s.bytes -= len(view.Text())
 		s.views = append(s.views, view)
-		if flow != nil {
-			s.rememberGeneratedWrite(flow, c, hdoc, writer, view, scope.variables)
+
+		if scope.functionBody {
+			s.functions.projections[hdoc] = append(s.functions.projections[hdoc], view)
 		}
 	}
 
-	return view.Text() != "", true
+	if flow != nil {
+		s.rememberGeneratedWrite(flow, c, hdoc, writer, view, scope.variables)
+	}
+
+	return true, true
 }
 
 func (s *scriptScope) lookupUncertain(words []*shellsyntax.Word, writer *shellsyntax.Word) bool {
@@ -268,55 +320,104 @@ func (s *scriptScope) lookupUncertain(words []*shellsyntax.Word, writer *shellsy
 
 	standardPath := len(words) > 1 && literalWordEquals(words[0], "command") && literalWordEquals(words[1], "-p")
 	// Bash can honor an explicit hash entry even with command -p.
-	return s.hashUnsafe || s.consumerHashes&shellConsumerBit(name) != 0 || s.pathUnsafe && !standardPath
+	return s.hashUnsafe || s.consumerHashes&shellConsumerBit(name) != 0 || (s.pathUnsafe || s.temporaryPath) && !standardPath
 }
 
-func (s *generatedShellScan) children(c *shellsyntax.Command, scope *scriptScope, recoverWrites bool, flow *generatedShellFlow) bool {
-	if c.Group != nil || c.Prelude != nil || len(c.Alternatives) > 0 {
+func (s *generatedShellScan) children(c *shellsyntax.Command, scope *scriptScope, flow *generatedShellFlow) bool {
+	if plainGeneratedShellGroup(c) {
+		if !s.walk(c.Group, scope, flow) {
+			return false
+		}
+	} else if c.ExclusiveBranches {
+		if !s.walkConditional(c, scope) {
+			return false
+		}
+	} else if c.Group != nil || c.Prelude != nil || len(c.Alternatives) > 0 {
 		clear(scope.variables)
+
+		conditional, repeated := scope.conditionalDefs, scope.repeated
+		scope.conditionalDefs = true
+		scope.repeated = repeated || c.Loop
 
 		for _, child := range append([]*shellsyntax.File{c.Group, c.Prelude}, c.Alternatives...) {
 			clear(scope.variables)
 
-			var childFlow *generatedShellFlow
-			if child == c.Group && plainGeneratedShellGroup(c) {
-				childFlow = flow
-			}
-
-			if !s.walk(child, scope, recoverWrites, childFlow) {
+			if !s.walk(child, scope, nil) {
 				return false
 			}
 		}
+
+		scope.conditionalDefs = conditional
+		scope.repeated = repeated
 	}
 
 	for child := range scriptIsolatedTrees(c) {
-		if child != nil {
-			nested := scriptScope{variables: map[string]string{}, functions: scope.functions, scriptEffects: scope.scriptEffects}
+		if child == nil || child == c.FunctionBody {
+			continue
+		}
 
-			function := child == c.FunctionBody && c.FunctionName != ""
-			if function && recoverWrites {
-				s.pending = append(s.pending, pendingScriptFunction{body: child, effects: scope.scriptEffects})
-			}
+		nested := scope.nested()
+		if child != c.Subshell {
+			clear(nested.variables)
+		}
 
-			if !s.walk(child, &nested, recoverWrites && !function, nil) {
-				return false
-			}
-
-			if function {
-				summary := scope.functions[c.FunctionName]
-				summary.effects.merge(nested.scriptEffects)
-				summary.seen = true
-				scope.functions[c.FunctionName] = summary
-			}
+		if !s.walk(child, &nested, nil) {
+			return false
 		}
 	}
 
 	return true
 }
 
-func (s *scriptScope) bind(c *shellsyntax.Command, stable bool) {
-	s.observeEffects(c)
+func (s *generatedShellScan) walkConditional(c *shellsyntax.Command, scope *scriptScope) bool {
+	clear(scope.variables)
 
+	if !s.walk(c.Prelude, scope, nil) {
+		return false
+	}
+
+	if scope.returned {
+		return true
+	}
+
+	incoming := scope.nested()
+
+	var exits functionReturnState
+
+	continues := scope.conditionalDefs || len(c.Alternatives) == 0
+	for _, branch := range c.Alternatives {
+		nested := incoming.nested()
+
+		nested.returnEffects = scope.returnEffects
+		if !s.walk(branch, &nested, nil) {
+			return false
+		}
+
+		if nested.returned && scope.returnEffects != nil {
+			exits.add(&nested)
+		} else {
+			scope.mergePossibleFunctionState(&nested)
+		}
+
+		continues = continues || !nested.returned
+	}
+
+	if exits.scope != nil {
+		if continues {
+			scope.returnEffects.add(exits.scope)
+		} else {
+			scope.scriptEffects = exits.scope.scriptEffects
+			scope.functions = exits.scope.functions
+			scope.aliases = exits.scope.aliases
+		}
+	}
+
+	scope.returned = !continues
+
+	return true
+}
+
+func (s *scriptScope) bind(c *shellsyntax.Command, stable bool) {
 	if s.bindingsUnsafe || !stable || c.Declaration != "" || len(c.Words) != 0 || len(c.Redirects) != 0 || c.Group != nil ||
 		c.Prelude != nil || len(c.Alternatives) != 0 || len(c.Invalidates) != 0 {
 		clear(s.variables)
@@ -335,6 +436,7 @@ func (s *scriptScope) bind(c *shellsyntax.Command, stable bool) {
 
 func (s *scriptScope) observeEffects(c *shellsyntax.Command) {
 	name := c.Declaration
+	args := c.DeclarationArgs
 
 	words := scriptBuiltinWords(c.Words)
 	if len(c.Words) > 0 {
@@ -344,12 +446,9 @@ func (s *scriptScope) observeEffects(c *shellsyntax.Command) {
 			return
 		}
 
-		if fn, local := s.functions[direct]; local {
-			if fn.seen {
-				s.merge(fn.effects)
-			} else {
-				s.unknown()
-			}
+		if _, local := s.functions[direct]; local || s.mayAlias(c.Words[0], direct) {
+			s.unknown()
+			return
 		}
 
 		if len(words) > 0 {
@@ -360,6 +459,8 @@ func (s *scriptScope) observeEffects(c *shellsyntax.Command) {
 				s.unknown()
 				return
 			}
+
+			args = words[1:]
 		}
 	}
 
@@ -369,48 +470,35 @@ func (s *scriptScope) observeEffects(c *shellsyntax.Command) {
 		}
 	}
 
-	s.observeBuiltinEffects(name, words)
+	s.observeBuiltinEffects(name, args)
 }
 
-func (s *scriptScope) observeBuiltinEffects(name string, words []*shellsyntax.Word) {
+func (s *scriptScope) observeBuiltinEffects(name string, args []*shellsyntax.Word) {
 	switch name {
 	case "declare", "typeset", "local", "readonly", "nameref":
 		s.bindingsUnsafe = true
+		s.observeReferenceOptions(name, args)
 	case "eval", ".", "source":
 		s.unknown()
 	case "trap":
-		if len(words) > 1 && !literalWordEquals(words[1], "-p") && !literalWordEquals(words[1], "-l") {
+		if len(args) > 0 && !literalWordEquals(args[0], "-p") && !literalWordEquals(args[0], "-l") {
 			s.unknown()
 		}
 	case "hash":
-		if len(words) > 3 && literalWordEquals(words[1], "-p") {
-			for _, operand := range words[3:] {
-				value, known := operand.Literal()
-				s.hashUnsafe = s.hashUnsafe || !known || value == "cat" || value == "tee"
-				s.consumerHashes |= shellConsumerBit(value)
-			}
-		}
+		s.observeHash(args)
 	case "printf":
-		if len(words) > 2 && literalWordEquals(words[1], "-v") {
-			key, _ := words[2].Literal()
-			s.observeSearchPath(key)
-		}
-	}
-
-	if len(words) < 2 {
-		return
+		s.observePrintfAssignment(args)
+	case "unset":
+		s.unsetFunctions(args)
 	}
 
 	switch name {
-	case "export", "declare", "typeset", "local", "readonly", "nameref", "read", "unset", "mapfile", "readarray", "getopts":
-		for _, arg := range words[1:] {
-			if len(arg.Parts) == 0 || arg.Parts[0].Kind != "literal" {
-				continue
-			}
-
-			key, _, _ := strings.Cut(arg.Parts[0].Text, "=")
-			s.observeSearchPath(key)
-		}
+	case "export", "declare", "typeset", "local", "readonly", "nameref", "unset":
+		s.observeSearchPathOperands(args, true)
+	case "read":
+		s.observeReadTargets(args)
+	case "mapfile", "readarray", "getopts":
+		s.observeSearchPathOperands(args, false)
 	}
 }
 
@@ -461,33 +549,11 @@ type scriptWriterAliases struct {
 	consumerAliases, consumerFunctions        uint32
 }
 
-func (s *scriptScope) collectFunctions(tree *shellsyntax.File) {
-	if tree == nil {
-		return
-	}
-
-	for _, stmt := range tree.Statements {
-		for _, c := range stmt.Commands {
-			if c.FunctionName != "" {
-				s.functions[c.FunctionName] = scriptFunction{}
-				s.shadow.catFunction = s.shadow.catFunction || c.FunctionName == "cat"
-				s.shadow.teeFunction = s.shadow.teeFunction || c.FunctionName == "tee"
-				s.shadow.commandFunction = s.shadow.commandFunction || c.FunctionName == "command"
-				s.shadow.consumerFunctions |= shellConsumerBit(c.FunctionName)
-			}
-
-			s.collectFunctions(c.Group)
-			s.collectFunctions(c.Prelude)
-
-			for _, branch := range c.Alternatives {
-				s.collectFunctions(branch)
-			}
-
-			for child := range scriptIsolatedTrees(c) {
-				s.collectFunctions(child)
-			}
-		}
-	}
+func (a *scriptWriterAliases) define(name string) {
+	a.catFunction = a.catFunction || name == "cat"
+	a.teeFunction = a.teeFunction || name == "tee"
+	a.commandFunction = a.commandFunction || name == "command"
+	a.consumerFunctions |= shellConsumerBit(name)
 }
 
 func (a *scriptWriterAliases) merge(other scriptWriterAliases) {
@@ -501,7 +567,7 @@ func (a *scriptWriterAliases) merge(other scriptWriterAliases) {
 
 // An explicit alias can change the bytes written by a bare command. Once a
 // possible definition is seen, keep that uncertainty for the rest of the unit.
-func (a *scriptWriterAliases) observe(c *shellsyntax.Command) {
+func (s *scriptScope) observeAliases(c *shellsyntax.Command) {
 	if len(c.Words) < 2 {
 		return
 	}
@@ -515,9 +581,12 @@ func (a *scriptWriterAliases) observe(c *shellsyntax.Command) {
 		return
 	}
 
+	a := &s.shadow
+
 	for _, arg := range words[1:] {
 		value, literal := arg.Literal()
 		if !literal {
+			s.aliasUnsafe = true
 			a.cat, a.tee, a.command = true, true, true
 			a.consumerAliases = ^uint32(0)
 
@@ -525,6 +594,7 @@ func (a *scriptWriterAliases) observe(c *shellsyntax.Command) {
 		}
 
 		if key, _, ok := strings.Cut(value, "="); ok {
+			s.rememberAlias(key)
 			a.cat = a.cat || key == "cat"
 			a.tee = a.tee || key == "tee"
 			a.command = a.command || key == "command"
