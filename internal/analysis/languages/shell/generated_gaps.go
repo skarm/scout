@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/document"
@@ -311,9 +312,7 @@ func dynamicScriptPath(word *shellsyntax.Word, vars map[string]string) bool {
 
 	var tail string
 
-	for i := len(word.Parts) - 1; i >= 0; i-- {
-		part := word.Parts[i]
-
+	for _, part := range slices.Backward(word.Parts) {
 		var value string
 
 		switch part.Kind {

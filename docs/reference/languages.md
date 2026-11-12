@@ -36,8 +36,11 @@ under shared limits. Findings retain byte and line coordinates in the
 enclosing captured file or archive member. Substituted text cites the parameter
 reference that produced it. Observed effects from functions, traps, PATH and
 command hash entries can make a writer's identity or its input uncertain.
-Unresolved expansions, uncertain writers and exhausted generation limits leave
-coverage gaps.
+Scout evaluates statically resolved local function calls with the bindings and
+lookup state at each call site, including simple temporary assignments. Later
+changes to `PATH` or `hash` do not affect an earlier resolved call. Uncalled
+functions and unresolved calls use conservative file-wide effects. Recursion,
+unresolved expansions, uncertain writers and exhausted limits leave coverage gaps.
 
 Recognizable `.sh` writes with unresolved destinations, such as `"${name}.sh"`,
 report `generated_shell_dynamic_path`. Writes that append to a shell script via

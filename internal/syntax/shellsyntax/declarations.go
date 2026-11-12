@@ -8,9 +8,9 @@ import (
 	"io"
 	"strings"
 
-	"mvdan.cc/sh/v3/syntax"
-
 	"github.com/skarm/scout/internal/syntax/source"
+
+	"mvdan.cc/sh/v3/syntax"
 )
 
 type contextReader struct {
@@ -139,8 +139,12 @@ func (p *declarationProjection) projectCommand(c *Command, cmd syntax.Command, d
 func (p *declarationProjection) declarationAssignments(c *Command, n *syntax.DeclClause, depth int) {
 	for _, a := range n.Args {
 		if a.Name == nil && a.Value != nil {
-			if assignment, ok := p.declarationValue(a, depth); ok {
-				c.Assignments = append(c.Assignments, assignment)
+			word := p.word(a.Value, depth+1)
+
+			if value, ok := declarationValue(a, word); ok {
+				c.Assignments = append(c.Assignments, value)
+			} else {
+				c.DeclarationArgs = append(c.DeclarationArgs, word)
 			}
 
 			continue
@@ -158,8 +162,7 @@ func (p *declarationProjection) declarationAssignments(c *Command, n *syntax.Dec
 	}
 }
 
-func (p *declarationProjection) declarationValue(a *syntax.Assign, depth int) (Assignment, bool) {
-	value := p.word(a.Value, depth+1)
+func declarationValue(a *syntax.Assign, value *Word) (Assignment, bool) {
 	if len(value.Parts) == 0 || value.Parts[0].Kind != "literal" {
 		return Assignment{}, false
 	}
@@ -212,9 +215,11 @@ func (p *declarationProjection) projectControl(c *Command, cmd syntax.Command, d
 		p.projectConditional(c, n, depth)
 
 	case *syntax.WhileClause:
+		c.Loop = true
 		c.Prelude = p.list(n.Cond, depth+1)
 		c.Alternatives = []*File{p.list(n.Do, depth+1), {}}
 	case *syntax.ForClause:
+		c.Loop = true
 		if loop, ok := n.Loop.(*syntax.WordIter); ok && loop.Name != nil {
 			c.Invalidates = []string{loop.Name.Value}
 		}
@@ -502,10 +507,16 @@ func (p *declarationProjection) projectAssignments(c *Command, assignments []*sy
 }
 
 func (p *declarationProjection) projectConditional(c *Command, n *syntax.IfClause, depth int) {
+	c.ExclusiveBranches = true
 	c.Prelude = p.list(n.Cond, depth+1)
 
 	other := &File{}
-	if n.Else != nil {
+
+	switch {
+	case n.Else == nil:
+	case !n.Else.ThenPos.IsValid():
+		other = p.list(n.Else.Then, depth+1)
+	default:
 		other = &File{Statements: p.statement(&syntax.Stmt{Position: n.Else.Pos(), Cmd: n.Else}, depth+1)}
 	}
 
