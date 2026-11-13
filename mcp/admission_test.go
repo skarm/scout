@@ -4,7 +4,11 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestRemovedSessionRejectsLateAdmission(t *testing.T) {
@@ -39,5 +43,40 @@ func TestRemovedSessionRejectsLateAdmission(t *testing.T) {
 	handleNotification(sess, request{Method: "notifications/initialized"})
 	if sessionReady(sess) {
 		t.Fatal("late notification revived a removed session")
+	}
+}
+
+func TestHTTPDeleteReturnsNotFoundForExpiredSession(t *testing.T) {
+	const id = "test-session"
+	for _, tc := range []struct {
+		name   string
+		age    time.Duration
+		status int
+	}{
+		{"active", time.Minute, http.StatusNoContent},
+		{"expired", 16 * time.Minute, http.StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sess := newSession()
+			sess.created = time.Now().Add(-tc.age)
+			opts := DefaultOptions()
+			opts.HTTPToken = strings.Repeat("T", 40)
+			server := &Server{options: opts, sessions: map[string]*session{id: sess}}
+			handler, err := server.HTTPHandler()
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/mcp", nil)
+			req.Header.Set("Authorization", "Bearer "+opts.HTTPToken)
+			req.Header.Set("Mcp-Session-Id", id)
+			res := httptest.NewRecorder()
+			handler.ServeHTTP(res, req)
+			if res.Code != tc.status {
+				t.Fatalf("DELETE returned status %d, want %d", res.Code, tc.status)
+			}
+			if _, present := server.sessions[id]; present || !sess.closed {
+				t.Fatal("DELETE did not remove and close the session")
+			}
+		})
 	}
 }

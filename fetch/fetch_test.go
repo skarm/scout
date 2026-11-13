@@ -202,6 +202,13 @@ func TestHTTPFailures(t *testing.T) {
 				t.Error(err)
 			}
 		}},
+		{name: "encoding on separate field line", want: "content_encoding_refused", serve: func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add("Content-Encoding", "identity")
+			w.Header().Add("Content-Encoding", "gzip")
+			if _, err := io.WriteString(w, "fixture"); err != nil {
+				t.Error(err)
+			}
+		}},
 		{
 			name: "status",
 			want: "http_status",

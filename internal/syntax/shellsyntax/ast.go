@@ -16,11 +16,12 @@ type File struct {
 }
 
 type Statement struct {
-	Span     source.Span
-	Commands []*Command // a pipeline; commands are in source order
-	Pipes    []string   // | or |&
-	Next     string     // ;, newline, &&, ||, &, or empty at EOF
-	Negated  bool       // ! reverses the success edge
+	Span       source.Span
+	Commands   []*Command // a pipeline; commands are in source order
+	Pipes      []string   // | or |&
+	Next       string     // ;, newline, &&, ||, &, or empty at EOF
+	Negated    bool       // ! reverses the success edge
+	Background bool       // the whole list runs in a subshell
 }
 
 type Command struct {
@@ -60,6 +61,7 @@ type Word struct {
 	Parts   []Part
 	Quoted  bool
 	Expands bool // unquoted glob/tilde/brace expansion: value is not a static word
+	Writes  bool // expansion may change a variable in the current shell
 }
 
 type Part struct {

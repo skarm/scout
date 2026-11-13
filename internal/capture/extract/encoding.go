@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"io"
+	"net/url"
 	"path"
 	"strings"
 	"unicode/utf16"
@@ -203,11 +204,12 @@ func extractDataURIs(o *operation, data string) error {
 			name = "content.bin"
 		}
 
-		if end == start {
+		payload, err := url.PathUnescape(data[start:end])
+		if err != nil || !validDataBase64(payload) {
 			return errFormat
 		}
 
-		if err := decodeBase64(o, name, data[start:end], &report.ByteRange{Start: start, End: end}); err != nil {
+		if err := decodeBase64(o, name, payload, &report.ByteRange{Start: start, End: end}); err != nil {
 			return err
 		}
 	}
@@ -233,11 +235,25 @@ func dataURIRange(data string, i int) (header string, start, end int, valid bool
 	start = j + 8
 
 	end = start
-	for end < len(data) && base64Byte(data[end]) {
+	for end < len(data) && (base64Byte(data[end]) || data[end] == '%') {
 		end++
 	}
 
 	return header, start, end, true
+}
+
+func validDataBase64(payload string) bool {
+	if payload == "" {
+		return false
+	}
+
+	for i := range len(payload) {
+		if !base64Byte(payload[i]) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func validDataHeader(header string) bool {

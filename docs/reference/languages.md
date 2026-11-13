@@ -33,7 +33,11 @@ For simple hook launches, Scout follows local `source` and `.` references within
 the captured package. Relative paths require a known working directory, such as
 after `cd "$PLUGIN_ROOT" &&`. Findings in sourced files retain their own source
 coordinates and a separate path with the hook event and include locations.
-Dynamic paths, missing files, and cycles produce coverage diagnostics.
+Simple assignments and known working directories carry across a sourced file.
+After `if`/`elif`/`else`, the analyzer keeps values shared by all continuing
+branches. Findings inside a resolved local function also cite the call site.
+Dynamic paths, unknown directories, ambiguous functions, missing files, and
+cycles produce coverage diagnostics at the corresponding command.
 
 Bounded command trees cover pipelines, assignments, redirects and substitutions.
 `mvdan.cc/sh/v3/syntax` separately supplies command/source declarations.

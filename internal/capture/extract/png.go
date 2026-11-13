@@ -176,7 +176,7 @@ func pngText(o *operation, typ, data string, span *report.ByteRange) error {
 }
 
 func pngInternationalText(o *operation, rest string, span *report.ByteRange) error {
-	if len(rest) < 2 || rest[0] > 1 || rest[1] != 0 {
+	if len(rest) < 2 || rest[0] > 1 || rest[0] == 1 && rest[1] != 0 {
 		return errFormat
 	}
 

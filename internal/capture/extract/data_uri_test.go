@@ -10,6 +10,31 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+func TestDataURIBase64PayloadPreservesEscapedSourceRange(t *testing.T) {
+	const payload = "U2NvdXQ%3D"
+	const prefix = "example data:text/plain;base64,"
+	const input = prefix + payload + " end"
+
+	result, err := Expand(t.Context(), []artifact.File{artifact.NewFile("input.txt", []byte(input), false)}, report.DefaultExtractionLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, object := range result.Report.Objects {
+		if object.ParentPath != "input.txt" || object.ExtractorID != "base64" {
+			continue
+		}
+		if object.ParentRange == nil || object.ParentRange.Start != len(prefix) || object.ParentRange.End != len(prefix)+len(payload) {
+			t.Fatalf("incorrect original data URL range: %+v", object)
+		}
+		for _, file := range result.Files {
+			if file.Metadata().Path == object.File.Path && file.Content() == "Scout" {
+				return
+			}
+		}
+	}
+	t.Fatalf("escaped data URL payload lost: %+v", result.Diagnostics)
+}
+
 func TestDataURIParsingRetainsIndependentCandidatesAndRejectsEmptyBodies(t *testing.T) {
 	for _, tc := range []struct {
 		text    string
@@ -19,6 +44,7 @@ func TestDataURIParsingRetainsIndependentCandidatesAndRejectsEmptyBodies(t *test
 		{text: "x data:bad header;base64,SGk= y data:text/plain;base64,T0s=", objects: 1, invalid: false},
 		{text: "x data:missing-marker y data:text/plain;base64,T0s=", objects: 1, invalid: false},
 		{text: "x data:text/plain;base64,", objects: 0, invalid: true},
+		{text: "x data:text/plain;base64,T0s=%Q9", objects: 0, invalid: true},
 		{text: "x data:text/plain;base64,T0s= y data:application/json;base64,e30=", objects: 2, invalid: false},
 	} {
 		result, err := Expand(context.Background(), []artifact.File{artifact.NewFile("input.txt", []byte(tc.text), false)}, report.DefaultExtractionLimits())

@@ -33,16 +33,16 @@ func TestDownloadAndReviewerUseTheSameAddressPolicy(t *testing.T) {
 
 func TestProviderFamiliesTreatContentCodingNamesWithoutCase(t *testing.T) {
 	for _, family := range []string{"chat", "messages"} {
-		for _, coding := range []string{"", "identity", "Identity", "IDENTITY", "gzip", "GZip", "br", "identity, gzip"} {
-			t.Run(family+"/"+coding, func(t *testing.T) {
+		for _, codings := range [][]string{nil, {"identity"}, {"Identity"}, {"IDENTITY"}, {"gzip"}, {"GZip"}, {"br"}, {"identity, gzip"}, {"identity", "gzip"}} {
+			t.Run(family+"/"+strings.Join(codings, "|"), func(t *testing.T) {
 				body := apiEnvelope("{}")
 				if family == "messages" {
 					body = `{"type":"message","role":"assistant","model":"fixture","stop_reason":"end_turn","content":[{"type":"text","text":"{}"}]}`
 				}
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					if coding != "" {
-						w.Header().Set("Content-Encoding", coding)
+					for _, coding := range codings {
+						w.Header().Add("Content-Encoding", coding)
 					}
 					if _, err := io.WriteString(w, body); err != nil {
 						t.Error(err)
@@ -61,7 +61,7 @@ func TestProviderFamiliesTreatContentCodingNamesWithoutCase(t *testing.T) {
 					t.Fatal(err)
 				}
 				completion, err := provider.Complete(context.Background(), payload())
-				if coding == "" || strings.EqualFold(coding, "identity") {
+				if len(codings) == 0 || len(codings) == 1 && strings.EqualFold(codings[0], "identity") {
 					if err != nil || string(completion.Output) != "{}" {
 						t.Fatalf("uncompressed JSON rejected: output=%q err=%v", completion.Output, err)
 					}

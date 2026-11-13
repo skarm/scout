@@ -56,6 +56,7 @@ type Unit struct {
 	Span                                              source.Span
 	View                                              source.View
 	Tree                                              any
+	HookSource                                        bool
 	failureCategory                                   string
 	preparationDiagnostic                             report.Diagnostic
 }

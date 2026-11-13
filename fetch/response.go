@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/skarm/scout/internal/netpolicy"
 )
@@ -71,7 +70,7 @@ func validateResponseHeaders(resp *http.Response, maxBytes int64) error {
 		return fail("http_status")
 	}
 
-	if encoding := resp.Header.Get("Content-Encoding"); encoding != "" && !strings.EqualFold(encoding, "identity") {
+	if !netpolicy.IdentityContentEncoding(resp.Header) {
 		return fail("content_encoding_refused")
 	}
 

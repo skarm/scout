@@ -106,13 +106,7 @@ func (s *Server) httpSession(req request, id string) (*session, string, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
-	for key, sess := range s.sessions {
-		if now.Sub(sess.created) > 15*time.Minute {
-			cancelSession(sess)
-			delete(s.sessions, key)
-		}
-	}
+	s.expireSessions(time.Now())
 
 	sess := s.sessions[id]
 	if req.Method != "initialize" || id != "" || len(req.ID) == 0 {
@@ -156,6 +150,7 @@ func (s *Server) authorizeHTTP(r *http.Request) (int, string) {
 
 func (s *Server) deleteHTTP(w http.ResponseWriter, id string) {
 	s.mu.Lock()
+	s.expireSessions(time.Now())
 	sess := s.sessions[id]
 	delete(s.sessions, id)
 	s.mu.Unlock()
@@ -167,6 +162,16 @@ func (s *Server) deleteHTTP(w http.ResponseWriter, id string) {
 
 	cancelSession(sess)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// expireSessions applies the same deadline to every session lookup. The caller holds s.mu.
+func (s *Server) expireSessions(now time.Time) {
+	for id, sess := range s.sessions {
+		if now.Sub(sess.created) >= 15*time.Minute {
+			delete(s.sessions, id)
+			cancelSession(sess)
+		}
+	}
 }
 
 func cancelSession(sess *session) {
@@ -183,7 +188,7 @@ func cancelSession(sess *session) {
 
 func decodeHTTP(w http.ResponseWriter, r *http.Request) (request, bool) {
 	mediaType, _, mediaErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if mediaErr != nil || mediaType != "application/json" || !acceptsJSON(r.Header.Get("Accept")) {
+	if mediaErr != nil || mediaType != "application/json" || !acceptsJSON(strings.Join(r.Header.Values("Accept"), ",")) {
 		http.Error(w, "JSON content type and Accept required", http.StatusUnsupportedMediaType)
 		return request{}, false
 	}

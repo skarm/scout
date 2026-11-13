@@ -100,6 +100,20 @@ func Transport(timeout time.Duration, allowLoopback bool, roots *x509.CertPool) 
 	}
 }
 
+// IdentityContentEncoding reports whether the response needs no decoding.
+func IdentityContentEncoding(header http.Header) bool {
+	for _, line := range header.Values("Content-Encoding") {
+		for value := range strings.SplitSeq(line, ",") {
+			value = strings.Trim(value, " \t")
+			if value != "" && !strings.EqualFold(value, "identity") {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 func (e *Error) Error() string { return "network policy: " + e.Code }
 func fail(code string) error   { return &Error{Code: code} }
 

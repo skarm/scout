@@ -117,7 +117,13 @@ func (p *declarationProjection) statement(s *syntax.Stmt, depth int) []*Statemen
 		next = "&"
 	}
 
-	return []*Statement{{Span: c.Span, Commands: []*Command{c}, Next: next, Negated: s.Negated}}
+	return []*Statement{{
+		Span:       c.Span,
+		Commands:   []*Command{c},
+		Next:       next,
+		Negated:    s.Negated,
+		Background: s.Background,
+	}}
 }
 
 func (p *declarationProjection) projectCommand(c *Command, cmd syntax.Command, depth int) {
@@ -156,7 +162,7 @@ func (p *declarationProjection) declarationAssignments(c *Command, n *syntax.Dec
 
 		c.Assignments = append(c.Assignments, Assignment{
 			Name:  a.Name.Value,
-			Value: p.word(a.Value, depth+1),
+			Value: p.assignmentWord(a, depth),
 			Span:  declarationSpan(a),
 		})
 	}
@@ -337,6 +343,11 @@ func (p *declarationProjection) wordPart(out *Word, x syntax.WordPart, quoted bo
 		return nil
 	case *syntax.ParamExp:
 		p.parameterPart(out, n, &part)
+		// Compound expansions may contain an assignment in a subscript or
+		// operand, even when their outer operation only reads a variable.
+		out.Writes = out.Writes || n.Index != nil || n.Exp != nil || n.Slice != nil || n.Repl != nil
+	case *syntax.ArithmExp:
+		out.Expands, out.Writes = true, true
 
 	case *syntax.CmdSubst:
 		part.Kind = "substitution"
@@ -480,7 +491,11 @@ func (p *declarationProjection) binaryStatement(s *syntax.Stmt, b *syntax.Binary
 			x[0].Commands = append(x[0].Commands, y[0].Commands...)
 			x[0].Pipes = append(append(x[0].Pipes, b.Op.String()), y[0].Pipes...)
 			x[0].Span = declarationSpan(s)
+
 			x[0].Negated = x[0].Negated || s.Negated
+			if s.Background {
+				x[0].Background, x[0].Next = true, "&"
+			}
 
 			return x
 		}
@@ -488,7 +503,18 @@ func (p *declarationProjection) binaryStatement(s *syntax.Stmt, b *syntax.Binary
 		x[len(x)-1].Next = b.Op.String()
 	}
 
-	return append(x, y...)
+	x = append(x, y...)
+	if s.Background {
+		for _, stmt := range x {
+			stmt.Background = true
+		}
+
+		if len(x) > 0 {
+			x[len(x)-1].Next = "&"
+		}
+	}
+
+	return x
 }
 
 func (p *declarationProjection) projectAssignments(c *Command, assignments []*syntax.Assign, depth int) {
@@ -497,13 +523,17 @@ func (p *declarationProjection) projectAssignments(c *Command, assignments []*sy
 			continue
 		}
 
-		value := p.word(a.Value, depth+1)
-		if a.Append || a.Index != nil || a.Array != nil {
-			value = &Word{Span: declarationSpan(a), Expands: true}
-		}
-
-		c.Assignments = append(c.Assignments, Assignment{Name: a.Name.Value, Value: value, Span: declarationSpan(a)})
+		c.Assignments = append(c.Assignments, Assignment{Name: a.Name.Value, Value: p.assignmentWord(a, depth), Span: declarationSpan(a)})
 	}
+}
+
+func (p *declarationProjection) assignmentWord(a *syntax.Assign, depth int) *Word {
+	value := p.word(a.Value, depth+1)
+	if a.Append || a.Index != nil || a.Array != nil {
+		return &Word{Span: declarationSpan(a), Expands: true, Writes: a.Index != nil || a.Array != nil || value.Writes}
+	}
+
+	return value
 }
 
 func (p *declarationProjection) projectConditional(c *Command, n *syntax.IfClause, depth int) {

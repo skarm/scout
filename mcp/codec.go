@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"iter"
 	"math/big"
 	"mime"
 	"slices"
@@ -243,13 +244,13 @@ func acceptsJSON(h string) bool {
 		return false
 	}
 
-	for entry := range strings.SplitSeq(h, ",") {
+	for entry := range httpFieldList(h) {
 		media, params, err := mime.ParseMediaType(strings.TrimSpace(entry))
 		if err != nil || media != "application/json" {
 			continue
 		}
 
-		if q, ok := params["q"]; ok && (q == "0" || q == "0." || q == "0.0" || q == "0.00" || q == "0.000") {
+		if q, ok := params["q"]; ok && !positiveHTTPQuality(q) {
 			continue
 		}
 
@@ -257,4 +258,48 @@ func acceptsJSON(h string) bool {
 	}
 
 	return false
+}
+
+// HTTP list separators inside quoted strings belong to the parameter value.
+func httpFieldList(field string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		start := 0
+		quoted, escaped := false, false
+
+		for i := range len(field) {
+			switch {
+			case escaped:
+				escaped = false
+			case quoted && field[i] == '\\':
+				escaped = true
+			case field[i] == '"':
+				quoted = !quoted
+			case !quoted && field[i] == ',':
+				if !yield(field[start:i]) {
+					return
+				}
+
+				start = i + 1
+			}
+		}
+
+		yield(field[start:])
+	}
+}
+
+// RFC 9110 section 12.4.2 gives weights at most three decimal digits.
+func positiveHTTPQuality(q string) bool {
+	whole, digits, _ := strings.Cut(q, ".")
+	if len(digits) > 3 {
+		return false
+	}
+
+	switch whole {
+	case "1":
+		return strings.Trim(digits, "0") == ""
+	case "0":
+		return strings.Trim(digits, "0123456789") == "" && strings.Trim(digits, "0") != ""
+	default:
+		return false
+	}
 }

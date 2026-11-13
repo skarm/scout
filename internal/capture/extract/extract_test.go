@@ -14,6 +14,7 @@ import (
 	"hash/crc32"
 	"io"
 	"io/fs"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -118,6 +119,28 @@ func TestRecursiveGraph(t *testing.T) {
 	}
 }
 
+func TestPNGInternationalTextCompressionMethodDependsOnFlag(t *testing.T) {
+	const text = "café"
+	for _, tc := range []struct {
+		name, chunk string
+		wantText    bool
+	}{
+		{"uncompressed", "key\x00\x00\xffen\x00key\x00" + text, true},
+		{"compressed", "key\x00\x01\xffen\x00key\x00" + zlibData(t, text), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := expand(t, "image.png", pngData(pngChunk("iTXt", tc.chunk)), report.DefaultExtractionLimits())
+			if tc.wantText {
+				if len(r.Files) != 1 || !contains(r, text) || issue(r, "extraction_invalid_or_unsupported") {
+					t.Fatalf("uncompressed iTXt was not extracted cleanly: %+v", r.Diagnostics)
+				}
+			} else if len(r.Files) != 0 || !issue(r, "extraction_invalid_or_unsupported") {
+				t.Fatalf("unsupported iTXt compression produced output or went undiagnosed: %+v", r.Diagnostics)
+			}
+		})
+	}
+}
+
 func TestGZIPMultipleMembersAndBadTrailer(t *testing.T) {
 	first := gzipData(t, "first", "metadata")
 	second := gzipData(t, "second", "")
@@ -134,6 +157,23 @@ func TestGZIPMultipleMembersAndBadTrailer(t *testing.T) {
 	r = expand(t, "data.gz", first+string(broken), report.DefaultExtractionLimits())
 	if !contains(r, "first") || contains(r, "second") || !issue(r, "extraction_invalid_or_unsupported") {
 		t.Fatal("CRC failure accepted")
+	}
+}
+
+func TestGZIPRejectsReservedFlagsInLaterMembers(t *testing.T) {
+	first := gzipData(t, "first", "")
+	for _, bit := range []byte{0x20, 0x40, 0x80} {
+		second := []byte(gzipData(t, "second", ""))
+		second[3] |= bit
+		got := expand(t, "members.gz", first+string(second), report.DefaultExtractionLimits())
+		if len(got.Report.Objects) != 1 || len(got.Files) != 1 || got.Files[0].Content() != "first" {
+			t.Fatalf("reserved flag %#x admitted a member: %+v", bit, got.Report.Objects)
+		}
+		if !slices.ContainsFunc(got.Diagnostics, func(d report.Diagnostic) bool {
+			return d.Code == "extraction_invalid_or_unsupported" && d.Path == "members.gz"
+		}) {
+			t.Fatalf("reserved flag %#x produced no diagnostic: %+v", bit, got.Diagnostics)
+		}
 	}
 }
 

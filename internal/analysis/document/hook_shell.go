@@ -65,8 +65,13 @@ func (f File) WithHookSourceShell(ctx context.Context) File {
 		return f
 	}
 
-	for _, unit := range f.units {
+	for i, unit := range f.units {
 		if unit.Origin == "file" && unit.Language == language.Shell {
+			if !unit.HookSource {
+				f.units = slices.Clone(f.units)
+				f.units[i].HookSource = true
+			}
+
 			return f
 		}
 	}
@@ -82,7 +87,9 @@ func (f File) WithHookSourceShell(ctx context.Context) File {
 		return f
 	}
 
-	preparation.addUnit(ctx, language.Shell, "file", span, view)
+	unit := preparation.parseUnit(ctx, language.Shell, "file", span, view)
+	unit.HookSource = true
+	preparation.publishUnit(ctx, unit)
 
 	return f
 }

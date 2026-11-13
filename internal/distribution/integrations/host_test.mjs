@@ -311,11 +311,14 @@ await test('cancellation stops a running trusted scanner after all grants', asyn
     let grants=0;
     const result=runScan({target:'candidate'},config,async()=>{grants++;return true;},cancel.signal);
     const rejection=assert.rejects(result,/Review cancelled/);
-    for(let i=0;i<100;i++){
-      if(await readFile(marker).then(()=>true,()=>false))break;
-      await new Promise(resolve=>setTimeout(resolve,5));
+    const startupDeadline=performance.now()+5000;
+    let started=false;
+    while(performance.now()<startupDeadline){
+      started=await readFile(marker,'utf8').then(value=>value==='started',()=>false);
+      if(started)break;
+      await new Promise(resolve=>setTimeout(resolve,10));
     }
-    assert.equal(await readFile(marker,'utf8'),'started');
+    assert.ok(started,'trusted scanner did not write the startup marker');
     cancel.abort();await rejection;
     assert.equal(grants,3);
   } finally {cancel.abort();await rm(dir,{recursive:true,force:true});}

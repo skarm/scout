@@ -160,6 +160,11 @@ func extractGZIP(o *operation) error {
 
 func extractGZIPMember(o *operation, data string, reader *strings.Reader) error {
 	start := len(data) - reader.Len()
+	// The standard reader accepts reserved flag bits. RFC 1952 section
+	// 2.3.1.2 requires a decoder to reject them in each member.
+	if reader.Len() >= 4 && data[start+3]&0xe0 != 0 {
+		return errFormat
+	}
 
 	gz, err := gzip.NewReader(contextByteReader{ctx: o.b.ctx, r: reader})
 	if err != nil {

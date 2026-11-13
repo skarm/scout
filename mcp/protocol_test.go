@@ -4,6 +4,8 @@ package mcp
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -39,12 +41,12 @@ func TestExactRequestWireContract(t *testing.T) {
 }
 
 func TestAcceptHeaderRequiresEnabledExactJSONMedia(t *testing.T) {
-	for _, header := range []string{"application/json", "text/plain, application/json;q=0.5", "application/json;q=1"} {
+	for _, header := range []string{"application/json", "text/plain, application/json;q=0.5", "application/json;q=1", `text/plain;p="a,b", application/json`} {
 		if !acceptsJSON(header) {
 			t.Fatal(header)
 		}
 	}
-	for _, header := range []string{"", "*/*", "application/json-bogus", "application/json;broken", "application/json;q=0", "application/json;q=0.", "application/json;q=0.0", "application/json;q=0.00", "application/json;q=0.000", strings.Repeat("x", 4097)} {
+	for _, header := range []string{"", "*/*", "application/json-bogus", "application/json;broken", "application/json;q=0", "application/json;q=0.", "application/json;q=0.0", "application/json;q=0.00", "application/json;q=0.000", "application/json;q=1.001", "application/json;q=0.0001", "application/json;q=NaN", "application/json;q=.5", `text/plain;p="a,application/json,b"`, `text/plain;p="a\",application/json,b"`, strings.Repeat("x", 4097)} {
 		if acceptsJSON(header) {
 			t.Fatal(header)
 		}
@@ -75,5 +77,25 @@ func TestNotificationsRespectSessionLifecycleAndCancellation(t *testing.T) {
 	handleNotification(s, request{Method: "notifications/cancelled", Params: []byte(`{"requestId":7}`)})
 	if !errors.Is(ctx.Err(), context.Canceled) {
 		t.Fatal("request cancellation lost")
+	}
+}
+
+func TestHTTPAcceptCanSpanMultipleFieldLines(t *testing.T) {
+	server := Server{options: Options{HTTPToken: strings.Repeat("t", 32)}, sessions: map[string]*session{"ready": newSession()}}
+	handler, err := server.HTTPHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
+	req.Header.Set("Authorization", "Bearer "+server.options.HTTPToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("Accept", "text/event-stream")
+	req.Header.Add("Accept", "application/json")
+	req.Header.Set("Mcp-Session-Id", "ready")
+	req.Header.Set("Mcp-Protocol-Version", ProtocolVersion)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"result":{}`) {
+		t.Fatalf("split Accept rejected: status=%d body=%s", response.Code, response.Body)
 	}
 }
