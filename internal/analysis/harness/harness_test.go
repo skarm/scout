@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -63,6 +64,47 @@ func TestManifestlessAndNoSkill(t *testing.T) {
 	g = inspect(t, files, "auto")
 	if len(g.Plugins) != 0 {
 		t.Fatal("auto invented installed plugin")
+	}
+}
+
+func TestPrepareDeclaredHookShellFollowsCapturedHookReferences(t *testing.T) {
+	const command = `{"Stop":[{"hooks":[{"type":"command","command":"bash -c 'printf ready'"}]}]}`
+	const manifest = `{"name":"sample","hooks":["./config/lifecycle","./config/lifecycle","./missing.json","./../other/config/lifecycle"],"mcpServers":"./config/server.json"}`
+	files := []artifact.File{
+		artifact.NewFile("plugin/.codex-plugin/plugin.json", []byte(manifest), false),
+		artifact.NewFile("plugin/config/lifecycle", []byte(strings.Repeat("\n", 512)+command), false),
+		artifact.NewFile("plugin/config/unreferenced.json", []byte(command), false),
+		artifact.NewFile("plugin/config/server.json", []byte(command), false),
+		artifact.NewFile("other/config/lifecycle", []byte(command), false),
+	}
+	docs := document.PrepareAll(t.Context(), files)
+	inventory := make([]report.File, 0, len(files))
+	for _, file := range files {
+		inventory = append(inventory, file.Metadata())
+	}
+	graph, prepared := harness.DiscoverWithHookShell(t.Context(), inventory, docs, report.ExtractionReport{}, report.HarnessOptions{})
+	if !slices.ContainsFunc(graph.Components, func(node report.Component) bool {
+		return node.Kind == "hook" && node.Path == "plugin/config/lifecycle"
+	}) || hasIssue(graph, "plugin_json_unavailable") {
+		t.Fatalf("discovery did not use the prepared hook config: %+v", graph.Issues)
+	}
+	if !hasReference(graph, "unresolved", "outside_package") || !hasReference(graph, "unresolved", "missing_component") {
+		t.Fatalf("out-of-package or missing references were not rejected: %+v", graph.References)
+	}
+	for _, doc := range prepared {
+		name := doc.Artifact().Metadata().Path
+		var shellUnits int
+		for _, unit := range doc.Units() {
+			if unit.Origin == document.OriginHookShell {
+				shellUnits++
+				if got := doc.HookEvent(unit.Span); got != "Stop" {
+					t.Fatalf("%s: event = %q", name, got)
+				}
+			}
+		}
+		if want := name == "plugin/config/lifecycle"; want && shellUnits != 2 || !want && shellUnits != 0 {
+			t.Fatalf("%s: got %d hook shell units", name, shellUnits)
+		}
 	}
 }
 

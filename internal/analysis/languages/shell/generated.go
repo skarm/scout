@@ -32,8 +32,8 @@ func GeneratedScriptsIn(ctx context.Context, units []document.Unit, remaining, b
 type GeneratedShellRecovery struct {
 	Views            []source.View
 	Executions       []document.GeneratedShellExecution
-	Gaps             document.GeneratedShellGaps
 	Issues           []document.GeneratedShellIssue
+	Gaps             document.GeneratedShellGaps
 	ExecutionLimited bool
 }
 
@@ -555,13 +555,7 @@ func (s *generatedShellScan) walkConditional(c *shellsyntax.Command, scope *scri
 }
 
 func generatedWritePreservesBindings(c *shellsyntax.Command) bool {
-	for _, redirect := range c.Redirects {
-		if generatedRedirectRunsCode(redirect) {
-			return false
-		}
-	}
-
-	return true
+	return !slices.ContainsFunc(c.Redirects, generatedRedirectRunsCode)
 }
 
 func (s *scriptScope) bind(c *shellsyntax.Command, stable, preserve bool) {

@@ -368,6 +368,10 @@ func (p *plugin) declaredConfigFile(raw, kind string, s *report.SourceRef) {
 		return
 	}
 
+	if p.b.prepareHooks && kind == "hook_config" && e.doc != nil {
+		*e.doc = e.doc.WithDeclaredHookShell(p.b.ctx)
+	}
+
 	id := p.configFile(e, kind, p.activation, "manifest", s)
 	if e.doc == nil {
 		p.reference(p.rootNode, "component_path", "unresolved", "component_not_captured", "", s)

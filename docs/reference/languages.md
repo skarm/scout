@@ -22,6 +22,14 @@ Unsupported constructs and unresolved flows remain gaps.
 
 ## Shell
 
+Scout also analyzes command handlers for supported events in `hooks.json`.
+It also accepts captured files with other names when the plugin manifest's
+`hooks` field resolves to them within the same package.
+It maps shell command strings and fixed `bash -c` or `sh -c` arguments, including
+the explicit `command` plus `args` form, back to the JSON bytes. Findings retain
+the hook event and physical file coordinates. An unresolved command string
+argument leaves a coverage diagnostic.
+
 Bounded command trees cover pipelines, assignments, redirects and substitutions.
 `mvdan.cc/sh/v3/syntax` separately supplies command/source declarations.
 SH001–SH004 check download-to-execution, credentials in requests, eval/source/shell

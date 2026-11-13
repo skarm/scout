@@ -18,9 +18,9 @@ type generatedShellCandidate struct {
 	input        *shellsyntax.Redirect
 	variables    map[string]string
 	prior        *generatedShellWrite
-	gap          document.GeneratedShellGaps
 	reason       document.GeneratedShellReason
 	at, depth    int
+	gap          document.GeneratedShellGaps
 	functionBody bool
 }
 

@@ -40,7 +40,7 @@ func observeDownload(ctx context.Context, tree *shellsyntax.File, view source.Vi
 }
 
 func executionShellTree(unit document.Unit, tree parse.ShellTree) *shellsyntax.File {
-	if unit.Origin == document.OriginGeneratedShell && tree.ExecutionError != nil &&
+	if (unit.Origin == document.OriginGeneratedShell || unit.Origin == document.OriginHookShell) && tree.ExecutionError != nil &&
 		tree.DeclarationError == nil && tree.Declarations != nil {
 		return tree.Declarations
 	}

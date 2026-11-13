@@ -2,6 +2,7 @@ package document
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/capture/artifact"
@@ -131,10 +132,8 @@ func (f *filePreparation) generatedShellDiagnostic(code, message string, at int)
 	line, column, _ := f.index.Position(at)
 
 	diagnostic := report.Diagnostic{Code: code, Path: f.file.Metadata().Path, Message: message, AffectsScope: true, Line: line, Column: column}
-	for _, prior := range f.diagnostics {
-		if prior == diagnostic {
-			return
-		}
+	if slices.Contains(f.diagnostics, diagnostic) {
+		return
 	}
 
 	f.diagnostics = append(f.diagnostics, diagnostic)

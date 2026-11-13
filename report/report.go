@@ -337,6 +337,10 @@ func writeTerminalFindings(b *strings.Builder, r Analysis, evaluation Evaluation
 			_, _ = fmt.Fprintf(b, "\n[%s] %s %s:%d:%d (%s)\n  %s\n", f.Severity, f.RuleID, strconv.QuoteToASCII(f.Location.Path), f.Location.StartLine, f.Location.StartColumn, f.Location.Context, f.Message)
 		}
 
+		if f.Location.HookEvent != "" {
+			_, _ = fmt.Fprintf(b, "  Hook event: %s\n", strconv.QuoteToASCII(f.Location.HookEvent))
+		}
+
 		writeRuleGuidance(b, guides[f.RuleID], f.ContextSignals, false)
 
 		if approved[f.ID] {

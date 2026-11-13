@@ -127,6 +127,10 @@ func writeMarkdownFindings(b *strings.Builder, r Analysis, evaluation Evaluation
 			_, _ = fmt.Fprintf(b, ", line %d, column %d", f.Location.StartLine, f.Location.StartColumn)
 		}
 
+		if f.Location.HookEvent != "" {
+			_, _ = fmt.Fprintf(b, ", hook event %s", mdCode(f.Location.HookEvent))
+		}
+
 		b.WriteString(".\n\n")
 		writeRuleGuidance(b, guides[f.RuleID], f.ContextSignals, true)
 

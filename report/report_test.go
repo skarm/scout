@@ -62,6 +62,20 @@ func TestFormats(t *testing.T) {
 	}
 }
 
+func TestHookEventRetainedInReportFormats(t *testing.T) {
+	r := sample()
+	r.Findings[0].Location.HookEvent = "PreToolUse"
+	for _, format := range []string{"terminal", "markdown", "json", "sarif"} {
+		var out bytes.Buffer
+		if err := writeFixture(&out, format, r); err != nil {
+			t.Fatalf("%s: %v", format, err)
+		}
+		if !bytes.Contains(out.Bytes(), []byte("PreToolUse")) {
+			t.Fatalf("%s omitted the hook event", format)
+		}
+	}
+}
+
 func TestTraceFormats(t *testing.T) {
 	r := sample()
 	loc := r.Findings[0].Location

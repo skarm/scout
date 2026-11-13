@@ -57,6 +57,7 @@ func (run *execution) prepare() error {
 
 	files = append(files, expanded.Files...)
 	documents := document.PrepareAllWithRegistry(run.ctx, files, run.engine.registry)
+	graph, documents := harness.DiscoverWithHookShell(run.ctx, run.snapshot.Metadata().Files, documents, expanded.Report, run.options.Harness)
 
 	candidates := run.options.Limits.MaxFindings
 	if run.options.MatchLimit > 0 {
@@ -68,7 +69,6 @@ func (run *execution) prepare() error {
 	preparedChecks = analyzer.BindLanguage(run.ctx, preparedChecks, documents, candidates, run.options.MaxOperations)
 	documents, preparedChecks = analyzer.PrepareShellPatternsWithin(run.ctx, preparedChecks, documents, candidates, run.options.MaxOperations)
 	documents = document.Freeze(documents)
-	graph := harness.Discover(run.ctx, run.snapshot.Metadata().Files, documents, expanded.Report, run.options.Harness)
 
 	documents = harness.ApplyConfigScopes(documents, graph)
 	if run.options.Environment != nil {

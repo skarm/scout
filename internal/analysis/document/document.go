@@ -89,6 +89,8 @@ type File struct {
 	shellUnits          []Unit
 	shellExecutions     []GeneratedShellExecution
 	shellExecutionLimit bool
+	hookShell           []hookShellContext
+	hookShellReady      bool
 }
 
 // filePreparation confines mutation to the preparation phase; File values remain snapshots.
@@ -195,12 +197,16 @@ func (f File) Diagnostics() []report.Diagnostic {
 	return append([]report.Diagnostic(nil), f.diagnostics...)
 }
 
-func (f File) Context(s source.Span) (kind, language string) {
+func (f File) Context(s source.Span) (kind, lang string) {
 	for i := len(f.units) - 1; i >= 0 && f.units[i].Origin == OriginGeneratedShell; i-- {
 		u := f.units[i]
 		if s.Start >= u.Span.Start && s.End <= u.Span.End && u.View.ContainsMappedEndpoints(s) {
 			return u.Origin, u.Language
 		}
+	}
+
+	if f.HookEvent(s) != "" {
+		return OriginHookShell, language.Shell
 	}
 
 	for _, r := range f.regions {
@@ -481,6 +487,7 @@ func prepare(ctx context.Context, file artifact.File, budget *parseBudget, regis
 	projection.prepareSecurityViews(ctx)
 
 	projection.prepareFileUnits(ctx)
+	projection.prepareNamedHookShell(ctx)
 
 	// Any text file may contain an embedded document, including LICENSE, JSON
 	// or source code. Parsing its containers never grants trust.

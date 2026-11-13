@@ -106,6 +106,7 @@ func location(doc document.File, span source.Span) (report.Location, error) {
 		Context:     filetype.Surface(meta.Path),
 		Structure:   kind,
 		Language:    language,
+		HookEvent:   doc.HookEvent(span),
 	}, nil
 }
 

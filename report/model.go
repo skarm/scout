@@ -101,6 +101,8 @@ type Location struct {
 	Structure string `json:"structure,omitempty"`
 	// Language names the selected source language.
 	Language string `json:"language,omitempty"`
+	// HookEvent identifies the declared hook whose command contains the span.
+	HookEvent string `json:"hook_event,omitempty"`
 }
 
 // Evidence identifies a source object and matched span by their SHA-256

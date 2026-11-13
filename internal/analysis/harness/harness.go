@@ -43,6 +43,7 @@ type builder struct {
 	containerRoots map[string]bool
 	operations     int
 	stopped        bool
+	prepareHooks   bool
 	hooks          hookpolicy.Policy
 }
 type candidate struct {
@@ -73,6 +74,19 @@ func Limits() report.HarnessLimits {
 // never mistaken for an installed manifest. Only actual archive members form
 // virtual directory namespaces; decoded strings and metadata cannot impersonate files.
 func Discover(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions) report.ComponentGraph {
+	return discover(ctx, inventory, docs, extraction, opts, false)
+}
+
+// DiscoverWithHookShell prepares captured hook files as their manifest paths
+// resolve. Discovery then reads the same JSON tree used by shell preparation.
+func DiscoverWithHookShell(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions) (report.ComponentGraph, []document.File) {
+	out := slices.Clone(docs)
+	graph := discover(ctx, inventory, out, extraction, opts, true)
+
+	return graph, out
+}
+
+func discover(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions, prepareHooks bool) report.ComponentGraph {
 	host := opts.Host
 	if host == "" {
 		host = report.HostAuto
@@ -80,6 +94,7 @@ func Discover(ctx context.Context, inventory []report.File, docs []document.File
 
 	b := builder{
 		ctx:            ctx,
+		prepareHooks:   prepareHooks,
 		nodes:          map[string]int{},
 		edges:          map[string]bool{},
 		references:     map[string]bool{},

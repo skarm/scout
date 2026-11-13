@@ -15,17 +15,17 @@ import (
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/syntax/hookevent"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
 )
 
-//nolint:gochecknoglobals // Fixed event, setting and permission vocabularies shared read-only by scans.
+//nolint:gochecknoglobals // Fixed setting and permission vocabularies shared read-only by scans.
 var (
-	events = set("ConfigChange CwdChanged DirectoryAdded Elicitation ElicitationResult FileChanged InstructionsLoaded MessageDisplay Notification PermissionDenied PermissionRequest PostCompact PostToolBatch PostToolUse PostToolUseFailure PreCompact PreToolUse SessionEnd SessionStart Setup Stop StopFailure SubagentStart SubagentStop TaskCompleted TaskCreated TeammateIdle UserPromptExpansion UserPromptSubmit WorktreeCreate WorktreeRemove")
-	keys   = set("$schema disableAllHooks env fileSuggestion hooks includeCoAuthoredBy model permissions statusLine")
-	modes  = set("acceptEdits auto bypassPermissions default dontAsk manual plan")
+	keys  = set("$schema disableAllHooks env fileSuggestion hooks includeCoAuthoredBy model permissions statusLine")
+	modes = set("acceptEdits auto bypassPermissions default dontAsk manual plan")
 )
 
 //nolint:gochecknoglobals // Read-only settings and handler grammar shared by policy validators.
@@ -98,7 +98,7 @@ type (
 
 // KnownEvent reports whether name belongs to the closed hook event grammar.
 // The vocabulary stays private so consumers cannot change validation rules.
-func KnownEvent(name string) bool { return events[name] }
+func KnownEvent(name string) bool { return hookevent.Known(name) }
 
 func IsSettings(name string) bool {
 	b := path.Base(name)
