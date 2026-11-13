@@ -113,6 +113,10 @@ func TestHeredocShellFindingsUseOriginalCoordinates(t *testing.T) {
 		{"cat", "setup.sh", "cat > ./lib/helper.sh <<'END'\n# metadata\n" + statement + "\nEND\n", statement, 3, 1},
 		{"unquoted literal", "setup.sh", "cat <<END > helper.sh\n" + statement + "\nEND\n", statement, 2, 1},
 		{"tee", "setup.sh", "tee helper.sh >/dev/null <<'END'\n" + statement + "\nEND\n", statement, 2, 1},
+		{"extensionless shell shebang", "setup.sh", "cat >setup <<'END'\n#!/bin/sh\n" + statement + "\nEND\n", statement, 3, 1},
+		{"extensionless execution in Markdown", "README.md", "- ```sh\n  cat >setup <<'END'\n  " + statement + "\n  END\n  bash ./setup\n  ```\n", statement, 3, 3},
+		{"direct shell stdin in Markdown", "README.md", "- ```sh\n  bash <<'END'\n  " + statement + "\n  END\n  ```\n", statement, 3, 3},
+		{"heredoc pipeline", "setup.sh", "cat <<'END' | sh\n" + statement + "\nEND\n", statement, 2, 1},
 		{"Markdown and tabs", "README.md", "- ```sh\n  cat 0<<-'END' 1>helper.sh\n  \t# π\n  \t" + statement + "\n  \tEND\n  ```\n", statement, 4, 4},
 		{"escaped expansion", "setup.sh", "cat <<END > helper.sh\neval \"\\$value\"\nEND\n", `eval "\$value"`, 2, 1},
 		{"joined command and delimiter", "setup.sh", "cat <<END > helper.sh\nev\\\nal 'printf ok'\nE\\\nND\n", "ev\\\nal 'printf ok'", 2, 1},
@@ -208,7 +212,7 @@ func TestHeredocShellSkipsUnresolvedWrites(t *testing.T) {
 }
 
 func TestHeredocWriteGapsAreReportedOnTheOriginalFile(t *testing.T) {
-	const appendWrite = "cat >> helper.sh <<'END'\nprintf example\nEND\n"
+	const appendWrite = "cat >> helper.sh <<END\nprintf \"$unknown\"\nEND\n"
 	const dynamicWrite = "tee -a \"${name}.sh\" <<'END'\nprintf other\nEND\n"
 	const recoveredWrite = "cat > helper.sh <<'END'\nprintf first\nEND\n"
 	const path = "setup.sh"
@@ -222,16 +226,18 @@ func TestHeredocWriteGapsAreReportedOnTheOriginalFile(t *testing.T) {
 	}
 
 	var codes []string
+	var lines []int
 	for _, d := range r.Diagnostics {
 		if strings.HasPrefix(d.Code, "generated_shell_") {
-			if d.Path != path || !d.AffectsScope {
+			if d.Path != path || !d.AffectsScope || d.Column != 1 {
 				t.Fatalf("gap is not scoped to the original file: %+v", d)
 			}
 			codes = append(codes, d.Code)
+			lines = append(lines, d.Line)
 		}
 	}
 	slices.Sort(codes)
-	if !slices.Equal(codes, want) {
+	if !slices.Equal(slices.Compact(codes), want) || !slices.Equal(lines, []int{4, 7, 7}) {
 		t.Fatalf("got diagnostics %v, want %v", codes, want)
 	}
 
@@ -257,6 +263,42 @@ func TestHeredocWriteGapsAreReportedOnTheOriginalFile(t *testing.T) {
 			t.Fatalf("linked a stale shell write after append: %+v", finding.Trace)
 		}
 	}
+}
+
+func TestHeredocExecutionTraceIncludesAppendsAndMove(t *testing.T) {
+	const initial = "cat >helper.sh <<'END'\nprintf first\nEND\n"
+	const next = "cat >>helper.sh <<'END'\nprintf second\nEND\n"
+	const move = "mv -- helper.sh setup\n"
+	const last = "tee -a setup <<'END'\nprintf last\nEND\n"
+	const input = initial + next + move + last + "bash ./setup\n"
+	want := []string{"cat >helper.sh <<'END'", "printf first\n", "printf second\n", "mv -- helper.sh setup", "printf last\n", "bash ./setup"}
+	root := t.TempDir()
+	scenario.WriteFile(t, root, "setup.sh", input)
+	r, err := scenario.Scan(t, root)
+	if err != nil {
+		t.Fatalf("%v: diagnostics=%+v", err, r.Diagnostics)
+	}
+
+	for _, finding := range r.Findings {
+		if finding.RuleID != "SH005" {
+			continue
+		}
+
+		if len(finding.Trace) != len(want) {
+			t.Fatalf("unexpected execution trace: %+v", finding.Trace)
+		}
+
+		for i, step := range finding.Trace {
+			loc := step.Location
+			if loc.Path != "setup.sh" || input[loc.ByteStart:loc.ByteEnd] != want[i] {
+				t.Fatalf("step %d mapped to %+v, want %q", i, loc, want[i])
+			}
+		}
+
+		return
+	}
+
+	t.Fatal("missing execution trace for an appended and moved script")
 }
 
 func TestHeredocShellInArchiveKeepsVirtualSource(t *testing.T) {

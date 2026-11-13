@@ -370,7 +370,11 @@ func (p *parser) bracedParameter(w *Word, quoted bool, start int) error {
 	p.at++
 
 	begin := p.at
-	if p.at < p.end && ident(p.text[p.at], true) {
+	if p.at < p.end && p.text[p.at] >= '0' && p.text[p.at] <= '9' {
+		for p.at < p.end && p.text[p.at] >= '0' && p.text[p.at] <= '9' {
+			p.at++
+		}
+	} else if p.at < p.end && ident(p.text[p.at], true) {
 		p.at++
 		for p.at < p.end && ident(p.text[p.at], false) {
 			p.at++

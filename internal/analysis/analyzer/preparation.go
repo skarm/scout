@@ -84,9 +84,9 @@ func prepareGeneratedShell(ctx context.Context, doc document.File, remainingByte
 			*remainingBytes -= len(view.Text())
 		}
 
-		doc = doc.WithGeneratedShell(ctx, recovery.Views, recovery.Gaps)
-
+		doc = doc.WithGeneratedShell(ctx, recovery.Views, recovery.Gaps, recovery.Issues...)
 		doc = doc.WithGeneratedShellExecutions(recovery.Executions, recovery.ExecutionLimited)
+
 		if len(recovery.Views) == 0 {
 			return doc
 		}

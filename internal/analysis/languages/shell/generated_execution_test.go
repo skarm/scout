@@ -61,8 +61,8 @@ func TestGeneratedShellExecutionDiscardsUnprovedLinks(t *testing.T) {
 	for _, tc := range []struct{ name, text string }{
 		{"ordinary overwrite", write + "echo replacement > helper.sh\nbash helper.sh\n"},
 		{"append", write + "echo extra >> helper.sh\nbash helper.sh\n"},
-		{"heredoc append", write + "cat >> helper.sh <<'END'\necho second\nEND\nbash helper.sh\n"},
-		{"tee append", write + "tee -a helper.sh <<'END'\necho second\nEND\nbash helper.sh\n"},
+		{"heredoc append with unresolved input", write + "cat >> helper.sh <<END\necho \"$unknown\"\nEND\nbash helper.sh\n"},
+		{"tee append with possible duplicate writes", write + "tee -a helper.sh ./helper.sh <<'END'\necho second\nEND\nbash helper.sh\n"},
 		{"dynamic heredoc overwrite", write + "cat > \"$name.sh\" <<'END'\necho second\nEND\nbash helper.sh\n"},
 		{"truncated before source", write + "source ./helper.sh >helper.sh\n"},
 		{"dynamic overwrite", write + "echo changed > \"$output\"\nbash helper.sh\n"},

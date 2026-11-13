@@ -178,6 +178,9 @@ func writeHumanDiagnostics(b *strings.Builder, diagnostics []Diagnostic, md bool
 			_, _ = fmt.Fprintf(b, "- %s", quote(d.Code))
 			if d.Path != "" {
 				_, _ = fmt.Fprintf(b, " at %s", quote(d.Path))
+				if d.Line > 0 && d.Column > 0 {
+					_, _ = fmt.Fprintf(b, ":%d:%d", d.Line, d.Column)
+				}
 			}
 
 			_, _ = fmt.Fprintf(b, ": %s\n", quote(d.Message))

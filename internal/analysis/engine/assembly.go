@@ -219,8 +219,17 @@ func (run *execution) finish() (report.Analysis, error) {
 			return a.Code < b.Code
 		}
 
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+
+		if a.Column != b.Column {
+			return a.Column < b.Column
+		}
+
 		return a.Message < b.Message
 	})
+
 	reduceCoverage(run.ctx, r)
 
 	return *r, run.ctx.Err()

@@ -5,7 +5,9 @@ import (
 	"io/fs"
 	"iter"
 	"path"
+	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/document"
@@ -31,6 +33,7 @@ type GeneratedShellRecovery struct {
 	Views            []source.View
 	Executions       []document.GeneratedShellExecution
 	Gaps             document.GeneratedShellGaps
+	Issues           []document.GeneratedShellIssue
 	ExecutionLimited bool
 }
 
@@ -59,7 +62,7 @@ func RecoverGeneratedShellIn(ctx context.Context, units []document.Unit, remaini
 	}
 
 	return GeneratedShellRecovery{
-		Views: scan.views, Executions: scan.executions, Gaps: scan.gaps, ExecutionLimited: scan.executionLimit,
+		Views: scan.views, Executions: scan.executions, Gaps: scan.gaps, Issues: scan.issues, ExecutionLimited: scan.executionLimit,
 	}
 }
 
@@ -73,6 +76,8 @@ type generatedShellScan struct {
 	remaining      int
 	bytes          int
 	gaps           document.GeneratedShellGaps
+	issues         []document.GeneratedShellIssue
+	seenIssues     map[document.GeneratedShellIssue]bool
 	executionLimit bool
 }
 
@@ -84,6 +89,7 @@ type scriptScope struct {
 	functionBody    bool
 	repeated        bool
 	returned        bool
+	failedReturn    bool
 	returnEffects   *functionReturnState
 	stdoutPiped     bool
 	temporaryPath   bool
@@ -141,7 +147,7 @@ func (s *generatedShellScan) walk(tree *shellsyntax.File, scope *scriptScope, fl
 		}
 
 		if s.ctx.Err() != nil {
-			s.gaps |= document.GeneratedShellUnrecovered
+			s.noteGap(stmt.Span.Start, document.GeneratedShellUnrecovered, document.GeneratedShellLimit)
 			return false
 		}
 
@@ -174,9 +180,13 @@ func (s *generatedShellScan) walkStatement(stmt *shellsyntax.Statement, scope *s
 		fileFlow = nil
 	}
 
+	if pipeline && !s.recoverPipedStdin(stmt, scope) {
+		return false
+	}
+
 	for i, c := range stmt.Commands {
 		if scope.functionBody && !s.functions.step(s.ctx) {
-			s.gaps |= document.GeneratedShellUnrecovered
+			s.noteGap(c.Span.Start, document.GeneratedShellUnrecovered, document.GeneratedShellLimit)
 			return false
 		}
 
@@ -186,9 +196,11 @@ func (s *generatedShellScan) walkStatement(stmt *shellsyntax.Statement, scope *s
 			current = &stage
 		}
 
-		if scope.functionBody && !forked && !conditional && !stmt.Negated && current.plainFunctionReturn(c) {
-			scope.returned = true
-			return true
+		if scope.functionBody && !forked && !conditional && !stmt.Negated {
+			if status, returns := current.plainFunctionReturn(c); returns {
+				scope.returned, scope.failedReturn = true, status%256 != 0
+				return true
+			}
 		}
 
 		mergesStderr := i < len(stmt.Pipes) && stmt.Pipes[i] == "|&"
@@ -196,16 +208,15 @@ func (s *generatedShellScan) walkStatement(stmt *shellsyntax.Statement, scope *s
 			return false
 		}
 
-		current.bind(c, !isolated)
-
 		if pipeline && !background && i+1 == len(stmt.Commands) {
 			// Bash lastpipe may run the last stage in the current shell.
 			scope.mergePossibleFunctionState(current)
+			scope.retainPositionals(current)
 		}
 	}
 
 	if forked {
-		clear(scope.variables)
+		scope.clearNamedVariables()
 	}
 
 	return true
@@ -216,15 +227,16 @@ func (s *generatedShellScan) visitGeneratedCommand(c *shellsyntax.Command, scope
 	s.functions.define(c, scope, stable)
 
 	if body := scope.localFunctionCall(c); body != nil {
-		if flow != nil {
-			flow.reset()
+		more := s.callFunction(c, body, scope, flow, stdoutPiped, stable)
+		if more {
+			scope.bind(c, stable, false)
 		}
 
-		return s.callFunction(c, body, scope, stdoutPiped, stable)
+		return more
 	}
 
-	if flow != nil {
-		flow.invalidateBefore(c, scope.variables)
+	if !s.recoverDirectStdin(c, scope) {
+		return false
 	}
 
 	written, more := s.recover(c, scope, mergesStderr, stdoutPiped || scope.stdoutPiped, flow)
@@ -232,8 +244,8 @@ func (s *generatedShellScan) visitGeneratedCommand(c *shellsyntax.Command, scope
 		return false
 	}
 
-	if flow != nil && !written && !plainGeneratedShellGroup(c) {
-		s.observeGeneratedUse(c, scope, flow)
+	if flow != nil && !written && !plainGeneratedShellGroup(c) && !plainGeneratedShellConditional(c) {
+		written = s.observeGeneratedUse(c, scope, flow)
 	}
 
 	conditionalDefs := scope.conditionalDefs
@@ -249,6 +261,7 @@ func (s *generatedShellScan) visitGeneratedCommand(c *shellsyntax.Command, scope
 	}
 
 	scope.observeEffects(c)
+	scope.bind(c, stable, written && generatedWritePreservesBindings(c))
 
 	if scope.trapUnsafe && !s.functions.fallback {
 		s.functions.opaque = true
@@ -258,58 +271,144 @@ func (s *generatedShellScan) visitGeneratedCommand(c *shellsyntax.Command, scope
 }
 
 func (s *generatedShellScan) recover(c *shellsyntax.Command, scope *scriptScope, mergesStderr, stdoutPiped bool, flow *generatedShellFlow) (written, more bool) {
-	hdoc, writer, bypass := scriptHeredoc(c, scope.variables, stdoutPiped)
-	if hdoc == nil || mergesStderr {
-		s.gaps |= generatedShellWriteGaps(c, scope.variables)
+	if flow != nil {
+		app := scriptAppendHeredoc(c, scope.variables, mergesStderr, stdoutPiped)
+
+		pending := make([]pendingGeneratedAppend, 0, len(app.paths))
+
+		for _, p := range app.paths {
+			key := flow.key(p)
+			prior, known := flow.files[key]
+			pending = append(pending, pendingGeneratedAppend{key: key, prior: prior, known: known})
+			delete(flow.files, key)
+		}
+
+		flow.invalidateBefore(c, scope.variables)
+
+		if len(pending) != 0 {
+			return s.recoverAppend(c, scope, flow, app, pending)
+		}
+	}
+
+	write := scriptHeredoc(c, scope.variables, stdoutPiped)
+	if write.input == nil || mergesStderr {
+		s.noteGap(c.Span.Start, generatedShellWriteGaps(c, scope.variables, s.view), document.GeneratedShellUnsupported)
 		return false, true
 	}
 
-	wrapperShadowed := bypass && literalWordEquals(c.Words[0], "command") && scope.shadow.shadows(c.Words[0], false)
-	if hdoc.Body == nil || !hdoc.BodyVerified || wrapperShadowed || scope.shadow.shadows(writer, bypass) ||
-		scope.lookupUncertain(c.Words, writer) {
-		s.gaps |= document.GeneratedShellUnrecovered
+	hdoc := write.input
+	preamble := generatedHeredocPreamble(s.view, hdoc, scope.variables)
+	shebang := shellShebang(preamble)
+	confirmed := shebang || slices.ContainsFunc(write.paths, generatedShellName)
+
+	if reason := generatedWriterIssue(c, scope, hdoc, write.writer, write.bypass); reason != "" {
+		if confirmed {
+			s.noteGap(c.Span.Start, document.GeneratedShellUnrecovered, reason)
+		}
+
 		return false, true
+	}
+
+	if !confirmed {
+		if flow != nil {
+			s.rememberGeneratedWrite(flow, c, write, source.View{}, preamble, newGeneratedCandidate(c, hdoc, scope))
+		}
+
+		return true, true
 	}
 
 	if hdoc.Body.Span.Start == hdoc.Body.Span.End {
-		return false, true
+		if flow != nil {
+			s.rememberGeneratedWrite(flow, c, write, source.View{}, preamble, nil)
+		}
+
+		return true, true
 	}
 
 	capacity := len(s.views) < s.remaining && s.bytes > 0
 	if !capacity && !scope.functionBody || !analysisbudget.Consume(s.ctx, 1) {
-		s.gaps |= document.GeneratedShellUnrecovered
+		s.noteGap(c.Span.Start, document.GeneratedShellUnrecovered, document.GeneratedShellLimit)
 		return false, false
 	}
 
-	view, ok := scriptHeredocView(s.view, hdoc, scope.variables)
-	if !ok {
-		s.gaps |= document.GeneratedShellUnrecovered
+	view, reason := scriptHeredocView(s.view, hdoc, scope.variables)
+	if reason != "" {
+		s.noteGap(c.Span.Start, document.GeneratedShellUnrecovered, reason)
 		return false, true
 	}
 
-	if view.Text() == "" {
-		return false, true
-	}
-
-	if !scope.functionBody || !s.functions.hasProjection(hdoc, view) {
-		if !capacity || len(view.Text()) > s.bytes {
-			s.gaps |= document.GeneratedShellUnrecovered
-			return false, capacity
-		}
-
-		s.bytes -= len(view.Text())
-		s.views = append(s.views, view)
-
-		if scope.functionBody {
-			s.functions.projections[hdoc] = append(s.functions.projections[hdoc], view)
-		}
+	if retained, more := s.retainGeneratedView(c.Span.Start, hdoc, view, scope.functionBody); !retained {
+		return false, more
 	}
 
 	if flow != nil {
-		s.rememberGeneratedWrite(flow, c, hdoc, writer, view, scope.variables)
+		s.rememberGeneratedWrite(flow, c, write, view, preamble, nil)
 	}
 
 	return true, true
+}
+
+func generatedWriterIssue(c *shellsyntax.Command, scope *scriptScope, input *shellsyntax.Redirect, writer *shellsyntax.Word, bypass bool) document.GeneratedShellReason {
+	if input.Body == nil || !input.BodyVerified {
+		return document.GeneratedShellInput
+	}
+
+	wrapperShadowed := bypass && literalWordEquals(c.Words[0], "command") && scope.shadow.shadows(c.Words[0], false)
+	if wrapperShadowed || scope.shadow.shadows(writer, bypass) || scope.lookupUncertain(c.Words, writer) {
+		return document.GeneratedShellWriter
+	}
+
+	return ""
+}
+
+func (s *generatedShellScan) retainGeneratedView(at int, input *shellsyntax.Redirect, view source.View, functionBody bool) (retained, more bool) {
+	if view.Text() == "" || functionBody && s.functions.hasProjection(input, view) {
+		return true, true
+	}
+
+	capacity := len(s.views) < s.remaining && s.bytes > 0
+	if !capacity || len(view.Text()) > s.bytes {
+		s.noteGap(at, document.GeneratedShellUnrecovered, document.GeneratedShellLimit)
+		return false, capacity
+	}
+
+	s.bytes -= len(view.Text())
+	s.views = append(s.views, view)
+
+	if functionBody {
+		s.functions.projections[input] = append(s.functions.projections[input], view)
+	}
+
+	return true, true
+}
+
+func (s *generatedShellScan) noteGap(at int, kinds document.GeneratedShellGaps, reason document.GeneratedShellReason) {
+	if kinds == 0 {
+		return
+	}
+
+	s.gaps |= kinds
+	if len(s.issues) >= document.MaxRegions {
+		return
+	}
+
+	issue := document.GeneratedShellIssue{Kinds: kinds, Reason: reason, At: -1}
+
+	if at >= 0 && at < len(s.view.Text()) {
+		_, size := utf8.DecodeRuneInString(s.view.Text()[at:])
+		if span, err := s.view.Original(source.Span{Start: at, End: at + size}); err == nil {
+			issue.At = span.Start
+		}
+	}
+
+	if s.seenIssues == nil {
+		s.seenIssues = make(map[document.GeneratedShellIssue]bool)
+	}
+
+	if !s.seenIssues[issue] {
+		s.seenIssues[issue] = true
+		s.issues = append(s.issues, issue)
+	}
 }
 
 func (s *scriptScope) lookupUncertain(words []*shellsyntax.Word, writer *shellsyntax.Word) bool {
@@ -329,18 +428,26 @@ func (s *generatedShellScan) children(c *shellsyntax.Command, scope *scriptScope
 			return false
 		}
 	} else if c.ExclusiveBranches {
-		if !s.walkConditional(c, scope) {
+		if !plainGeneratedShellConditional(c) {
+			flow = nil
+		}
+
+		if !s.walkConditional(c, scope, flow) {
 			return false
 		}
 	} else if c.Group != nil || c.Prelude != nil || len(c.Alternatives) > 0 {
-		clear(scope.variables)
+		scope.clearNamedVariables()
+
+		if c.Loop {
+			scope.clearPositionals()
+		}
 
 		conditional, repeated := scope.conditionalDefs, scope.repeated
 		scope.conditionalDefs = true
 		scope.repeated = repeated || c.Loop
 
 		for _, child := range append([]*shellsyntax.File{c.Group, c.Prelude}, c.Alternatives...) {
-			clear(scope.variables)
+			scope.clearNamedVariables()
 
 			if !s.walk(child, scope, nil) {
 				return false
@@ -358,7 +465,7 @@ func (s *generatedShellScan) children(c *shellsyntax.Command, scope *scriptScope
 
 		nested := scope.nested()
 		if child != c.Subshell {
-			clear(nested.variables)
+			nested.clearNamedVariables()
 		}
 
 		if !s.walk(child, &nested, nil) {
@@ -369,10 +476,12 @@ func (s *generatedShellScan) children(c *shellsyntax.Command, scope *scriptScope
 	return true
 }
 
-func (s *generatedShellScan) walkConditional(c *shellsyntax.Command, scope *scriptScope) bool {
-	clear(scope.variables)
+func (s *generatedShellScan) walkConditional(c *shellsyntax.Command, scope *scriptScope, flow *generatedShellFlow) bool {
+	scope.clearNamedVariables()
 
-	if !s.walk(c.Prelude, scope, nil) {
+	before := flow.clone()
+
+	if !s.walk(c.Prelude, scope, flow) {
 		return false
 	}
 
@@ -380,23 +489,42 @@ func (s *generatedShellScan) walkConditional(c *shellsyntax.Command, scope *scri
 		return true
 	}
 
+	if flow != nil {
+		// A test command can fail. Only facts unaffected by its evaluation
+		// are safe to share with both its success and its failure branch.
+		flow.intersect(before)
+	}
+
 	incoming := scope.nested()
 
-	var exits functionReturnState
+	var (
+		exits  functionReturnState
+		joined *generatedShellFlow
+	)
 
 	continues := scope.conditionalDefs || len(c.Alternatives) == 0
 	for _, branch := range c.Alternatives {
 		nested := incoming.nested()
+		branchFlow := flow.clone()
 
 		nested.returnEffects = scope.returnEffects
-		if !s.walk(branch, &nested, nil) {
+		if !s.walk(branch, &nested, branchFlow) {
 			return false
 		}
 
 		if nested.returned && scope.returnEffects != nil {
-			exits.add(&nested)
+			exits.add(&nested, branchFlow)
 		} else {
 			scope.mergePossibleFunctionState(&nested)
+			scope.retainPositionals(&nested)
+		}
+
+		if branchFlow != nil && !nested.returned {
+			if joined == nil {
+				joined = branchFlow
+			} else {
+				joined.intersect(branchFlow)
+			}
 		}
 
 		continues = continues || !nested.returned
@@ -404,23 +532,51 @@ func (s *generatedShellScan) walkConditional(c *shellsyntax.Command, scope *scri
 
 	if exits.scope != nil {
 		if continues {
-			scope.returnEffects.add(exits.scope)
+			scope.returnEffects.add(exits.scope, exits.flow)
 		} else {
 			scope.scriptEffects = exits.scope.scriptEffects
 			scope.functions = exits.scope.functions
 			scope.aliases = exits.scope.aliases
+			scope.failedReturn = exits.scope.failedReturn
+			joined = exits.flow
 		}
 	}
 
 	scope.returned = !continues
+	if flow != nil {
+		if joined == nil || scope.trapUnsafe || len(c.Alternatives) < 2 {
+			flow.reset()
+		} else {
+			*flow = *joined
+		}
+	}
 
 	return true
 }
 
-func (s *scriptScope) bind(c *shellsyntax.Command, stable bool) {
+func generatedWritePreservesBindings(c *shellsyntax.Command) bool {
+	for _, redirect := range c.Redirects {
+		if generatedRedirectRunsCode(redirect) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (s *scriptScope) bind(c *shellsyntax.Command, stable, preserve bool) {
+	if s.trapUnsafe {
+		clear(s.variables)
+		return
+	}
+
+	if preserve && !s.bindingsUnsafe {
+		return
+	}
+
 	if s.bindingsUnsafe || !stable || c.Declaration != "" || len(c.Words) != 0 || len(c.Redirects) != 0 || c.Group != nil ||
 		c.Prelude != nil || len(c.Alternatives) != 0 || len(c.Invalidates) != 0 {
-		clear(s.variables)
+		s.clearNamedVariables()
 		return
 	}
 
@@ -488,6 +644,12 @@ func (s *scriptScope) observeBuiltinEffects(name string, args []*shellsyntax.Wor
 		s.observeHash(args)
 	case "printf":
 		s.observePrintfAssignment(args)
+	case "shift":
+		s.clearPositionals()
+	case "set":
+		if len(args) != 0 {
+			s.clearPositionals()
+		}
 	case "unset":
 		s.unsetFunctions(args)
 	}
@@ -635,30 +797,25 @@ func (a scriptWriterAliases) shadows(word *shellsyntax.Word, bypass bool) bool {
 
 // Admit identity writers with unambiguous stdin and fresh local outputs.
 // Other operands, descriptors and append writes can change the bytes.
-func scriptHeredoc(c *shellsyntax.Command, vars map[string]string, stdoutPiped bool) (*shellsyntax.Redirect, *shellsyntax.Word, bool) {
+func scriptHeredoc(c *shellsyntax.Command, vars map[string]string, stdoutPiped bool) generatedHeredocWrite {
 	if len(c.Words) == 0 || len(c.Redirects) == 0 || len(c.Assignments) != 0 {
-		return nil, nil, false
+		return generatedHeredocWrite{}
 	}
 
 	input, output := generatedWriterRedirects(c.Redirects)
-	if input == nil {
-		return nil, nil, false
+	if input == nil || output != nil && output.Op == ">>" {
+		return generatedHeredocWrite{}
 	}
 
 	words, bypass := scriptWriterWords(c.Words)
 	if len(words) == 0 {
-		return nil, nil, false
+		return generatedHeredocWrite{}
 	}
 
 	name, absolute := generatedWriterName(words[0])
-	bypass = bypass || absolute
+	args := skipGeneratedOptionEnd(words[1:])
 
-	args := words[1:]
-	if len(args) > 0 {
-		if value, _ := args[0].Literal(); value == "--" {
-			args = args[1:]
-		}
-	}
+	var targets []*shellsyntax.Word
 
 	switch name {
 	case "cat":
@@ -668,17 +825,20 @@ func scriptHeredoc(c *shellsyntax.Command, vars map[string]string, stdoutPiped b
 			}
 		}
 
-		if len(args) == 0 && output != nil && localScriptPath(output.Target, vars) {
-			return input, words[0], bypass
+		if len(args) == 0 && output != nil {
+			targets = []*shellsyntax.Word{output.Target}
 		}
 	case "tee":
 		// A tee whose stdout is still a pipe can stop writing its files on EPIPE.
-		if (!stdoutPiped || output != nil) && teeWritesScript(args, output, vars) {
-			return input, words[0], bypass
+		if !stdoutPiped || output != nil {
+			targets = args
+			if output != nil {
+				targets = append([]*shellsyntax.Word{output.Target}, args...)
+			}
 		}
 	}
 
-	return nil, nil, false
+	return newGeneratedHeredocWrite(input, words[0], targets, vars, bypass || absolute)
 }
 
 func generatedWriterName(word *shellsyntax.Word) (name string, absolute bool) {
@@ -696,7 +856,7 @@ func generatedWriterRedirects(redirects []*shellsyntax.Redirect) (input, output 
 		switch {
 		case input == nil && (r.FD == "" || r.FD == "0") && (r.Op == "<<" || r.Op == "<<-"):
 			input = r
-		case output == nil && (r.FD == "" || r.FD == "1") && (r.Op == ">" || r.Op == ">|"):
+		case output == nil && (r.FD == "" || r.FD == "1") && (r.Op == ">" || r.Op == ">|" || r.Op == ">>"):
 			output = r
 		case r.FD == "2" && r.Op == ">" && literalWordEquals(r.Target, "/dev/null"):
 		default:
@@ -722,27 +882,6 @@ func scriptWriterWords(words []*shellsyntax.Word) ([]*shellsyntax.Word, bool) {
 	return words, true
 }
 
-func teeWritesScript(args []*shellsyntax.Word, output *shellsyntax.Redirect, vars map[string]string) bool {
-	found := false
-	if output != nil {
-		found = localScriptPath(output.Target, vars)
-		if !found && !literalWordEquals(output.Target, "/dev/null") {
-			return false
-		}
-	}
-
-	for _, arg := range args {
-		value, known := scriptPathWord(arg, vars)
-		if !known || value != "/dev/null" && !localWritePath(value) {
-			return false
-		}
-
-		found = found || strings.HasSuffix(value, ".sh")
-	}
-
-	return found
-}
-
 func literalWordEquals(word *shellsyntax.Word, want string) bool {
 	value, ok := word.Literal()
 	return ok && value == want
@@ -762,9 +901,8 @@ func scriptPathWord(word *shellsyntax.Word, vars map[string]string) (string, boo
 	return sourceWord(word, vars)
 }
 
-func localScriptPath(word *shellsyntax.Word, vars map[string]string) bool {
-	value, known := scriptPathWord(word, vars)
-	return known && strings.HasSuffix(value, ".sh") && localWritePath(value)
+func generatedShellName(value string) bool {
+	return strings.HasSuffix(value, ".sh")
 }
 
 func localWritePath(value string) bool {
@@ -772,29 +910,29 @@ func localWritePath(value string) bool {
 		!strings.ContainsAny(value, "\\:\r\n\x00") && fs.ValidPath(strings.TrimPrefix(value, "./"))
 }
 
-func scriptHeredocView(parent source.View, input *shellsyntax.Redirect, vars map[string]string) (source.View, bool) {
+func scriptHeredocView(parent source.View, input *shellsyntax.Redirect, vars map[string]string) (source.View, document.GeneratedShellReason) {
 	view, err := parent.Select([]source.Span{input.Body.Span})
 	if err != nil {
-		return source.View{}, false
+		return source.View{}, document.GeneratedShellInput
 	}
 
-	var ok bool
+	var reason document.GeneratedShellReason
 	if !input.QuotedDelimiter {
-		view, ok = joinHeredocLines(view)
-		if !ok {
-			return source.View{}, false
+		view, reason = joinHeredocLines(view)
+		if reason != "" {
+			return source.View{}, reason
 		}
 	}
 
 	if input.Op == "<<-" {
-		view, ok = stripHeredocTabs(view)
-		if !ok {
-			return source.View{}, false
+		view, reason = stripHeredocTabs(view)
+		if reason != "" {
+			return source.View{}, reason
 		}
 	}
 
 	if input.QuotedDelimiter {
-		return view, true
+		return view, ""
 	}
 
 	return expandScriptHeredoc(view, vars)
@@ -802,7 +940,7 @@ func scriptHeredocView(parent source.View, input *shellsyntax.Redirect, vars map
 
 // Join lines before interpreting tabs or parameters. A parameter name can
 // straddle an escaped newline, and a tab can become the start of a logical line.
-func joinHeredocLines(view source.View) (source.View, bool) {
+func joinHeredocLines(view source.View) (source.View, document.GeneratedShellReason) {
 	text := view.Text()
 
 	var escapes []source.Replacement
@@ -820,7 +958,7 @@ func joinHeredocLines(view source.View) (source.View, bool) {
 		if text[i+1] == '\n' {
 			escapes = append(escapes, source.Replacement{Span: source.Span{Start: i, End: i + 2}})
 			if len(escapes) > document.MaxSourceSegments {
-				return source.View{}, false
+				return source.View{}, document.GeneratedShellLimit
 			}
 
 			i++
@@ -830,7 +968,7 @@ func joinHeredocLines(view source.View) (source.View, bool) {
 	return replaceHeredoc(view, escapes)
 }
 
-func expandScriptHeredoc(view source.View, vars map[string]string) (source.View, bool) {
+func expandScriptHeredoc(view source.View, vars map[string]string) (source.View, document.GeneratedShellReason) {
 	text := view.Text()
 	size := len(text)
 
@@ -840,7 +978,7 @@ func expandScriptHeredoc(view source.View, vars map[string]string) (source.View,
 		start, end, value := i, i, ""
 		switch text[i] {
 		case '`':
-			return source.View{}, false
+			return source.View{}, document.GeneratedShellExpansion
 		case '\\':
 			if i+1 < len(text) && strings.ContainsRune("$`\\", rune(text[i+1])) {
 				end = i + 1
@@ -849,7 +987,7 @@ func expandScriptHeredoc(view source.View, vars map[string]string) (source.View,
 		case '$':
 			name, next, known := scriptHeredocParameter(text, i)
 			if !known {
-				return source.View{}, false
+				return source.View{}, document.GeneratedShellExpansion
 			}
 
 			if name != "" {
@@ -857,7 +995,7 @@ func expandScriptHeredoc(view source.View, vars map[string]string) (source.View,
 
 				value, bound = vars[name]
 				if !bound {
-					return source.View{}, false
+					return source.View{}, document.GeneratedShellExpansion
 				}
 
 				end, i = next, next-1
@@ -872,15 +1010,14 @@ func expandScriptHeredoc(view source.View, vars map[string]string) (source.View,
 
 		changes = append(changes, source.Replacement{Span: source.Span{Start: start, End: end}, Text: value})
 		if size > shellsyntax.MaxBytes || len(changes) > document.MaxSourceSegments {
-			return source.View{}, false
+			return source.View{}, document.GeneratedShellLimit
 		}
 	}
 
 	return replaceHeredoc(view, changes)
 }
 
-// An empty name represents a dollar that Bash treats literally. Special,
-// positional and compound expansions are outside the proven binding grammar.
+// An empty name represents a dollar that Bash treats literally.
 func scriptHeredocParameter(text string, at int) (string, int, bool) {
 	start := at + 1
 	if start == len(text) {
@@ -893,8 +1030,15 @@ func scriptHeredocParameter(text string, at int) (string, int, bool) {
 	}
 
 	end := start
-	for end < len(text) && shellNameByte(text[end], end != start) {
+	if start < len(text) && text[start] >= '1' && text[start] <= '9' {
 		end++
+		for braced && end < len(text) && text[end] >= '0' && text[end] <= '9' {
+			end++
+		}
+	} else {
+		for end < len(text) && shellNameByte(text[end], end != start) {
+			end++
+		}
 	}
 
 	if end == start {
@@ -916,17 +1060,20 @@ func shellNameByte(c byte, allowDigit bool) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || allowDigit && c >= '0' && c <= '9'
 }
 
-func replaceHeredoc(view source.View, changes []source.Replacement) (source.View, bool) {
+func replaceHeredoc(view source.View, changes []source.Replacement) (source.View, document.GeneratedShellReason) {
 	if len(changes) == 0 {
-		return view, true
+		return view, ""
 	}
 
 	projected, err := view.Replace(changes)
+	if err != nil {
+		return source.View{}, document.GeneratedShellInput
+	}
 
-	return projected, err == nil
+	return projected, ""
 }
 
-func stripHeredocTabs(view source.View) (source.View, bool) {
+func stripHeredocTabs(view source.View) (source.View, document.GeneratedShellReason) {
 	var spans []source.Span
 
 	offset := 0
@@ -945,11 +1092,14 @@ func stripHeredocTabs(view source.View) (source.View, bool) {
 		}
 
 		if len(spans) > document.MaxSourceSegments {
-			return source.View{}, false
+			return source.View{}, document.GeneratedShellLimit
 		}
 	}
 
 	projected, err := view.Select(spans)
+	if err != nil {
+		return source.View{}, document.GeneratedShellInput
+	}
 
-	return projected, err == nil
+	return projected, ""
 }

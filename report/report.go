@@ -106,8 +106,9 @@ type (
 	}
 
 	notification struct {
-		Level   string  `json:"level"`
-		Message message `json:"message"`
+		Level     string     `json:"level"`
+		Message   message    `json:"message"`
+		Locations []location `json:"locations,omitempty"`
 	}
 )
 
@@ -493,9 +494,22 @@ func sarifProposals(semantic SemanticReport) []result {
 func sarifDiagnostics(diagnostics []Diagnostic) []notification {
 	notes := make([]notification, 0, len(diagnostics))
 	for _, d := range diagnostics {
+		at := strconv.QuoteToASCII(d.Path)
+
+		var locations []location
+
+		if d.Path != "" && d.Line > 0 && d.Column > 0 {
+			at += ":" + strconv.Itoa(d.Line) + ":" + strconv.Itoa(d.Column)
+			locations = []location{{PhysicalLocation: physical{
+				ArtifactLocation: artifactLocation{URI: sourceURI(d.Path)},
+				Region:           &region{StartLine: d.Line, StartColumn: d.Column},
+			}}}
+		}
+
 		notes = append(notes, notification{
-			Level:   "warning",
-			Message: message{Text: d.Code + " " + strconv.QuoteToASCII(d.Path) + ": " + d.Message},
+			Level:     "warning",
+			Message:   message{Text: d.Code + " " + at + ": " + d.Message},
+			Locations: locations,
 		})
 	}
 

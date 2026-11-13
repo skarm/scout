@@ -198,7 +198,7 @@ func (f File) Diagnostics() []report.Diagnostic {
 func (f File) Context(s source.Span) (kind, language string) {
 	for i := len(f.units) - 1; i >= 0 && f.units[i].Origin == OriginGeneratedShell; i-- {
 		u := f.units[i]
-		if s.Start >= u.Span.Start && s.End <= u.Span.End {
+		if s.Start >= u.Span.Start && s.End <= u.Span.End && u.View.ContainsMappedEndpoints(s) {
 			return u.Origin, u.Language
 		}
 	}

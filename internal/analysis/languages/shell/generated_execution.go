@@ -20,7 +20,7 @@ func (generatedShellExecutionCheck) Rule() report.Rule {
 	return report.Rule{
 		ID: ruleSH005, Version: "1", Severity: report.Info, Category: "dynamic-execution", Method: "shell-generated-file-flow",
 		Title:       "Generated shell script reaches a local execution command",
-		Description: "A recovered heredoc write and a later source or execution command refer to the same modeled path.",
+		Description: "A recovered heredoc write reaches a later source or execution command through a modeled local path.",
 		Limitation:  "Bounded command sequences within one shell unit or local block, using lexical paths and successful modeled commands. Runtime success, permissions, symlinks and external shell state are unverified.",
 	}
 }
@@ -40,20 +40,36 @@ func (generatedShellExecutionCheck) Find(ctx context.Context, doc document.File,
 			break
 		}
 
-		out.Matches = append(out.Matches, match{
-			Start: link.Use.Start, End: link.Use.End,
-			Trace: []trace{
-				{Role: "source", Start: link.Write.Start, End: link.Write.End},
-				{Role: "transform", Start: link.Body.Start, End: link.Body.End},
-				{Role: "sink", Start: link.Use.Start, End: link.Use.End},
-			},
-		})
+		steps := []trace{
+			{Role: "source", Start: link.Write.Start, End: link.Write.End},
+		}
+
+		if link.Body.End > link.Body.Start {
+			steps = append(steps, trace{Role: "transform", Start: link.Body.Start, End: link.Body.End})
+		}
+
+		for _, span := range link.Transforms {
+			if span.End > span.Start {
+				steps = append(steps, trace{Role: "transform", Start: span.Start, End: span.End})
+			}
+		}
+
+		steps = append(steps, trace{Role: "sink", Start: link.Use.Start, End: link.Use.End})
+		out.Matches = append(out.Matches, match{Start: link.Use.Start, End: link.Use.End, Trace: steps})
 	}
 
 	return out, ctx.Err()
 }
 
-type generatedShellWrite struct{ header, body source.Span }
+type generatedShellWrite struct {
+	header, body   source.Span
+	view           source.View
+	candidate      *generatedShellCandidate
+	transforms     [document.MaxGeneratedShellTransforms]source.Span
+	transformCount int
+	confirmed      bool
+	foreignShebang bool
+}
 
 type generatedShellFlow struct {
 	cwd, previous string
@@ -95,7 +111,7 @@ func (f *generatedShellFlow) invalidateBefore(c *shellsyntax.Command, vars map[s
 			return
 		}
 
-		if generatedWordRunsCode(r.Target) || generatedWordRunsCode(r.Body) {
+		if generatedRedirectRunsCode(r) {
 			clear(f.files)
 			return
 		}
@@ -116,6 +132,11 @@ func (f *generatedShellFlow) invalidateBefore(c *shellsyntax.Command, vars map[s
 	}
 }
 
+func generatedRedirectRunsCode(r *shellsyntax.Redirect) bool {
+	return generatedWordRunsCode(r.Target) || generatedWordRunsCode(r.Body) ||
+		!r.QuotedDelimiter && r.Body != nil && r.Body.Expands
+}
+
 func generatedWordRunsCode(word *shellsyntax.Word) bool {
 	if word != nil {
 		for _, p := range word.Parts {
@@ -128,51 +149,67 @@ func generatedWordRunsCode(word *shellsyntax.Word) bool {
 	return false
 }
 
-func (s *generatedShellScan) rememberGeneratedWrite(flow *generatedShellFlow, c *shellsyntax.Command, hdoc *shellsyntax.Redirect, writer *shellsyntax.Word, body source.View, vars map[string]string) {
+func (s *generatedShellScan) rememberGeneratedWrite(flow *generatedShellFlow, c *shellsyntax.Command, plan generatedHeredocWrite, body source.View, preamble string, candidate *generatedShellCandidate) {
 	header := c.Span
 
-	header.End = min(header.End, hdoc.Body.Span.Start)
+	header.End = min(header.End, plan.input.Body.Span.Start)
 	if header.End > header.Start {
 		header.End = header.Start + len(strings.TrimRight(s.view.Text()[header.Start:header.End], " \t\r\n"))
 	}
 
 	at, headerErr := s.view.Original(header)
 
-	bodyAt, bodyErr := body.Original(source.Span{End: len(body.Text())})
+	var (
+		bodyAt  source.Span
+		bodyErr error
+	)
+	if body.Text() != "" {
+		bodyAt, bodyErr = body.Original(source.Span{End: len(body.Text())})
+	}
+
 	if headerErr != nil || bodyErr != nil {
-		s.executionLimit = true
+		s.executionLimit = s.executionLimit || candidate == nil
 
 		flow.reset()
 
 		return
 	}
 
-	write := generatedShellWrite{header: at, body: bodyAt}
-
-	for _, r := range c.Redirects {
-		if (r.FD == "" || r.FD == "1") && (r.Op == ">" || r.Op == ">|") {
-			s.rememberGeneratedTarget(flow, r.Target, vars, write)
-		}
+	if candidate == nil {
+		preamble = body.Text()
 	}
 
-	if value, _ := writer.Literal(); path.Base(value) == "tee" {
-		words, _ := scriptWriterWords(c.Words)
-		for _, word := range words[1:] {
-			s.rememberGeneratedTarget(flow, word, vars, write)
-		}
+	shebang := shellShebang(preamble)
+
+	write := generatedShellWrite{
+		header: at, body: bodyAt, view: body, candidate: candidate,
+		foreignShebang: strings.HasPrefix(preamble, "#!") && !shebang,
+	}
+	for _, target := range plan.paths {
+		write.confirmed = shebang || generatedShellName(target)
+		s.storeGeneratedWrite(flow, flow.key(target), write)
 	}
 }
 
-func (s *generatedShellScan) rememberGeneratedTarget(flow *generatedShellFlow, word *shellsyntax.Word, vars map[string]string, write generatedShellWrite) {
-	value, ok := scriptPathWord(word, vars)
-	if !ok || !strings.HasSuffix(value, ".sh") || !localWritePath(value) {
-		return
-	}
-
-	key := flow.key(value)
+func (s *generatedShellScan) storeGeneratedWrite(flow *generatedShellFlow, key string, write generatedShellWrite) {
 	if _, exists := flow.files[key]; !exists && len(flow.files) >= MaxShellBindings {
-		s.executionLimit = true
-		return
+		if !write.confirmed {
+			return
+		}
+
+		var speculative string
+		for path, prior := range flow.files {
+			if !prior.confirmed && (speculative == "" || path < speculative) {
+				speculative = path
+			}
+		}
+
+		if speculative == "" {
+			s.executionLimit = true
+			return
+		}
+
+		delete(flow.files, speculative)
 	}
 
 	if flow.files == nil {
@@ -183,7 +220,7 @@ func (s *generatedShellScan) rememberGeneratedTarget(flow *generatedShellFlow, w
 }
 
 func shellConsumerBit(name string) uint32 {
-	for i, candidate := range []string{"cd", "source", ".", "sh", "bash", "dash", "zsh", "ksh", "exec", "chmod", "echo", "printf", ":", "true", "false", "test", "["} {
+	for i, candidate := range []string{"cd", "source", ".", "sh", "bash", "dash", "zsh", "ksh", "exec", "chmod", "echo", "printf", ":", "true", "false", "test", "[", "mv"} {
 		if name == candidate {
 			return 1 << i
 		}
@@ -203,49 +240,73 @@ func (a scriptWriterAliases) shadowsConsumer(word *shellsyntax.Word, bypass bool
 	return a.consumerFunctions&mask != 0 || !word.Quoted && a.consumerAliases&mask != 0
 }
 
-func (s *generatedShellScan) observeGeneratedUse(c *shellsyntax.Command, scope *scriptScope, flow *generatedShellFlow) {
+// Returns whether the command is a verified file operation that preserves bindings.
+func (s *generatedShellScan) observeGeneratedUse(c *shellsyntax.Command, scope *scriptScope, flow *generatedShellFlow) bool {
 	if len(c.Words) == 0 {
 		flow.observeWithoutInvocation(c)
-		return
+		return false
 	}
 
 	words, name, ok := generatedUseWords(c, scope)
 	if !ok {
 		flow.reset()
-		return
+		return false
 	}
 
 	if name == "cd" {
 		flow.changeDirectory(words[1:], scope)
-		return
+		return false
+	}
+
+	if generatedMoveCommand(name) {
+		if s.observeGeneratedMove(c, scope, flow, words) {
+			return true
+		}
+
+		flow.reset()
+
+		return false
 	}
 
 	requiresLookup := name != "." && name != "source" && !strings.Contains(name, "/")
-	if target, ok := generatedShellOperand(name, words[1:], scope.variables); ok &&
+	if target, ok := generatedShellOperand(name, words[1:], scope.variables); ok && generatedFileOperand(target) &&
 		(!requiresLookup || !scope.lookupUncertain(c.Words, words[0])) {
+		direct := strings.Contains(name, "/") && !isShellInterpreter(name)
 		if write, found := flow.files[flow.key(target)]; found {
-			s.recordGeneratedUse(c, write)
-		}
-		// The invoked script can write files or change the directory.
-		flow.reset()
+			s.useGeneratedWrite(c, target, write, direct)
+			flow.reset()
 
-		return
+			return false
+		}
+
+		if !direct || generatedShellName(target) {
+			// The invoked script can write files or change the directory.
+			flow.reset()
+			return false
+		}
 	}
 
 	switch name {
 	case ":", "echo", "true", "false", "test", "[":
-		return
+		return false
 	case "printf":
 		if len(words) < 2 || !literalWordEquals(words[1], "-v") {
-			return
+			return false
 		}
 	case "chmod", "/bin/chmod", "/usr/bin/chmod":
 		if !scope.lookupUncertain(c.Words, words[0]) {
-			return
+			return false
 		}
 	}
 
 	flow.reset()
+
+	return false
+}
+
+func generatedFileOperand(target string) bool {
+	_, base := path.Split(target)
+	return base != "" && base != "." && base != ".."
 }
 
 func (f *generatedShellFlow) observeWithoutInvocation(c *shellsyntax.Command) {
@@ -271,7 +332,7 @@ func generatedUseWords(c *shellsyntax.Command, scope *scriptScope) ([]*shellsynt
 		return nil, "", false
 	}
 
-	name, literal := words[0].Literal()
+	name, literal := generatedUseHead(words[0], scope.variables)
 	if name != "exec" {
 		return words, name, literal
 	}
@@ -285,9 +346,19 @@ func generatedUseWords(c *shellsyntax.Command, scope *scriptScope) ([]*shellsynt
 		return nil, "", false
 	}
 
-	name, literal = words[0].Literal()
+	name, literal = generatedUseHead(words[0], scope.variables)
 	// Exec resolves an external executable, so builtin names cannot act as sinks.
 	return words, name, literal && (isShellInterpreter(name) || strings.Contains(name, "/"))
+}
+
+func generatedUseHead(word *shellsyntax.Word, vars map[string]string) (string, bool) {
+	if name, literal := word.Literal(); literal {
+		return name, true
+	}
+
+	name, known := scriptPathWord(word, vars)
+
+	return name, known && strings.Contains(name, "/")
 }
 
 func (f *generatedShellFlow) changeDirectory(args []*shellsyntax.Word, scope *scriptScope) {
@@ -338,7 +409,7 @@ func generatedShellOperand(name string, words []*shellsyntax.Word, vars map[stri
 		}
 	default:
 		if !isShellInterpreter(name) {
-			return name, strings.Contains(name, "/") && strings.HasSuffix(name, ".sh") && !strings.HasPrefix(name, "-")
+			return name, strings.Contains(name, "/") && !strings.HasPrefix(name, "-")
 		}
 
 		args := make([]shellValue, 0, len(words))
@@ -366,13 +437,18 @@ func isShellInterpreter(name string) bool {
 }
 
 func (s *generatedShellScan) recordGeneratedUse(c *shellsyntax.Command, write generatedShellWrite) {
+	if write.transformCount > len(write.transforms) {
+		s.executionLimit = true
+		return
+	}
+
 	use, err := s.view.Original(c.Span)
 	if err != nil {
 		s.executionLimit = true
 		return
 	}
 
-	link := document.GeneratedShellExecution{Write: write.header, Body: write.body, Use: use}
+	link := document.GeneratedShellExecution{Write: write.header, Body: write.body, Use: use, Transforms: write.transforms}
 	if s.seenExecutions[link] {
 		return
 	}

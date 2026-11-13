@@ -4,6 +4,7 @@ package source
 
 import (
 	"errors"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -50,6 +51,38 @@ type View struct {
 	segments []segment
 	// parent chains transformed views back to original captured bytes.
 	parent *View
+	joined []joinedView
+}
+
+type joinedView struct {
+	start int
+	view  View
+}
+
+// Concat joins views of the same captured object in execution order.
+func Concat(views ...View) View {
+	var (
+		text  strings.Builder
+		parts []joinedView
+	)
+
+	for _, view := range views {
+		if view.text == "" {
+			continue
+		}
+
+		if len(view.joined) == 0 {
+			parts = append(parts, joinedView{start: text.Len(), view: view})
+		} else {
+			for _, part := range view.joined {
+				parts = append(parts, joinedView{start: text.Len() + part.start, view: part.view})
+			}
+		}
+
+		text.WriteString(view.text)
+	}
+
+	return View{text: text.String(), joined: parts}
 }
 
 // Replacement projects trusted scanner text onto an enclosing original span.
@@ -192,8 +225,14 @@ func (v View) Text() string { return v.text }
 // SameProjection reports whether two views have identical text and mapping.
 func (v View) SameProjection(other View) bool {
 	for {
-		if v.text != other.text || !slices.Equal(v.segments, other.segments) {
+		if v.text != other.text || !slices.Equal(v.segments, other.segments) || len(v.joined) != len(other.joined) {
 			return false
+		}
+
+		for i, part := range v.joined {
+			if part.start != other.joined[i].start || !part.view.SameProjection(other.joined[i].view) {
+				return false
+			}
 		}
 
 		if v.parent == nil || other.parent == nil {
@@ -207,7 +246,26 @@ func (v View) SameProjection(other View) bool {
 // Original maps a nonempty analysis span through all parent views to an
 // enclosing original byte span.
 func (v View) Original(s Span) (Span, error) {
-	if s.Start == s.End || len(v.segments) == 0 || !validSpan(v.text, s) {
+	if s.Start == s.End || !validSpan(v.text, s) {
+		return Span{}, errors.New("invalid analysis span")
+	}
+
+	if v.hasJoinedAncestor() {
+		result := Span{Start: math.MaxInt}
+
+		v.visitOriginal(s, func(at Span) bool {
+			result.Start, result.End = min(result.Start, at.Start), max(result.End, at.End)
+			return true
+		})
+
+		if result.Start == math.MaxInt {
+			return Span{}, errors.New("invalid analysis span")
+		}
+
+		return result, nil
+	}
+
+	if len(v.segments) == 0 {
 		return Span{}, errors.New("invalid analysis span")
 	}
 
@@ -222,6 +280,87 @@ func (v View) Original(s Span) (Span, error) {
 	}
 
 	return result, nil
+}
+
+// ContainsMappedEndpoints checks the gaps between fragments of a joined view.
+// Callers also check the enclosing source span for ordinary views.
+func (v View) ContainsMappedEndpoints(span Span) bool {
+	if !v.hasJoinedAncestor() {
+		return true
+	}
+
+	var start, end bool
+
+	v.visitOriginal(Span{End: len(v.text)}, func(at Span) bool {
+		start = start || at.Start <= span.Start && span.Start < at.End
+		end = end || at.Start < span.End && span.End <= at.End
+
+		return !start || !end
+	})
+
+	return start && end
+}
+
+func (v View) hasJoinedAncestor() bool {
+	for {
+		if len(v.joined) != 0 {
+			return true
+		}
+
+		if v.parent == nil {
+			return false
+		}
+
+		v = *v.parent
+	}
+}
+
+// Walk individual source ranges before computing a bounding span. A selection
+// can omit a joined fragment that occurs earlier or later in the original file.
+func (v View) visitOriginal(span Span, yield func(Span) bool) bool {
+	if len(v.joined) != 0 {
+		return v.visitJoined(span, yield)
+	}
+
+	first := sort.Search(len(v.segments), func(i int) bool { return v.segments[i].viewStart > span.Start }) - 1
+	for i := max(0, first); i < len(v.segments); i++ {
+		seg := v.segments[i]
+		if seg.viewStart >= span.End {
+			break
+		}
+
+		end := span.End
+		if i+1 < len(v.segments) {
+			end = min(end, v.segments[i+1].viewStart)
+		}
+
+		at := Span{Start: seg.originalOffset(max(span.Start, seg.viewStart), false), End: seg.originalOffset(end-1, true)}
+		if v.parent != nil {
+			if !v.parent.visitOriginal(at, yield) {
+				return false
+			}
+		} else if !yield(at) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (v View) visitJoined(span Span, yield func(Span) bool) bool {
+	first := sort.Search(len(v.joined), func(i int) bool { return v.joined[i].start > span.Start }) - 1
+	for _, part := range v.joined[max(0, first):] {
+		if part.start >= span.End {
+			break
+		}
+
+		local := Span{Start: max(span.Start-part.start, 0), End: min(span.End-part.start, len(part.view.text))}
+		if !part.view.visitOriginal(local, yield) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func validSpan(text string, s Span) bool {

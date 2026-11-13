@@ -1,6 +1,7 @@
 package language_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/syntax/language"
@@ -42,6 +43,44 @@ func TestCandidates(t *testing.T) {
 				}
 			}
 			t.Fatalf("missing %s/%s: %+v", tc.want, tc.basis, language.Detect(tc.name, tc.data))
+		})
+	}
+}
+
+func TestShebangSelectsInterpreterInsteadOfArguments(t *testing.T) {
+	for _, tc := range []struct{ name, line, want string }{
+		{"plain shell", "#!/bin/bash -eu", language.Shell},
+		{"env shell", "#!/usr/bin/env sh", language.Shell},
+		{"env split with options", "#!/usr/bin/env -S -i MODE=test /bin/sh -e", language.Shell},
+		{"env split long option", "#!/usr/bin/env --split-string -- dash -e", language.Shell},
+		{"python wins over shell argument", "#!/usr/bin/env -S python3.12 bash", language.Python},
+		{"known TypeScript interpreter", "#!/usr/bin/env tsx", language.TypeScript},
+		{"uv run", "#!/usr/bin/env -S uv run --script", language.Python},
+		{"unknown interpreter", "#!/usr/bin/custom sh", language.Unknown},
+		{"unknown env interpreter", "#!/usr/bin/env -S custom sh", language.Unknown},
+		{"env needs split for multiple words", "#!/usr/bin/env sh -e", language.Unknown},
+		{"env terminator prevents more options", "#!/usr/bin/env -S -- -i sh", language.Unknown},
+		{"assignment is not executable", "#!/usr/bin/env PATH=/usr/bin/bash", language.Unknown},
+		{"unresolved env variable", "#!/usr/bin/env -S ${BIN}/bash", language.Unknown},
+		{"escaped space in an env assignment", "#!/usr/bin/env -S NAME=prefix\\ sh", language.Unknown},
+		{"not an executable path", "#!/bin/sh/", language.Unknown},
+		{"leading whitespace", " #!/bin/sh", language.Unknown},
+		{"overlong incomplete header", "#!/usr/bin/env -S " + strings.Repeat(" ", 512) + "sh", language.Unknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			content := tc.line + "\ntrue\n"
+			hints := language.Detect("tool", content)
+			if tc.want == language.Unknown {
+				if len(hints) != 0 {
+					t.Fatalf("unsupported shebang yielded candidates: %+v", hints)
+				}
+
+				return
+			}
+
+			if len(hints) != 1 || hints[0].Language != tc.want {
+				t.Fatalf("candidates = %+v, want only %s", hints, tc.want)
+			}
 		})
 	}
 }
