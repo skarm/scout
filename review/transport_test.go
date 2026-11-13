@@ -2,7 +2,6 @@ package review_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -10,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/skarm/scout/fetch"
@@ -74,98 +74,112 @@ func TestProviderFamiliesTreatContentCodingNamesWithoutCase(t *testing.T) {
 }
 
 func TestProviderFamiliesPreserveClientDeadline(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { time.Sleep(100 * time.Millisecond) }))
-	defer server.Close()
-	opts := review.HTTPOptions{
-		Endpoint:         server.URL + "/review",
-		Model:            "fixture",
-		AllowLoopback:    true,
-		Timeout:          20 * time.Millisecond,
-		MaxOutputTokens:  128,
-		MaxResponseBytes: 1024,
-	}
-	chat, err := review.NewHTTP(opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	messages, err := review.NewMessages(review.MessagesOptions{HTTPOptions: opts, Transport: "anthropic"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	prompt, err := review.PromptForMode("discovery")
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload, err := json.Marshal(review.Request{
-		SchemaVersion: review.ProtocolVersion,
-		PromptVersion: review.PromptVersion,
-		Mode:          "discovery",
-		PromptSHA256:  review.PromptDigest(prompt),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, p := range []review.Provider{chat, messages} {
-		_, err = p.Complete(context.Background(), payload)
-		if !errors.Is(err, context.DeadlineExceeded) || review.ErrorCode(err) != "timeout" {
-			t.Fatalf("%s lost timeout identity: %v (%s)", p.Identity().Provider, err, review.ErrorCode(err))
-		}
+	for _, family := range []string{"chat", "messages"} {
+		t.Run(family, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				provider, client := testProvider(t, family)
+				client.Transport = responseTransport(func(r *http.Request) (*http.Response, error) {
+					<-r.Context().Done()
+					return nil, r.Context().Err()
+				})
+
+				ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+				defer cancel()
+				_, err := provider.Complete(ctx, payload())
+				if !errors.Is(err, context.DeadlineExceeded) || review.ErrorCode(err) != "timeout" || ctx.Err() != nil {
+					t.Fatalf("waiting for response headers: got %v (%s), parent context %v; want client timeout", err, review.ErrorCode(err), ctx.Err())
+				}
+			})
+		})
 	}
 }
 
 func TestProviderFamiliesPreserveCancellationDuringResponseBody(t *testing.T) {
 	for _, family := range []string{"chat", "messages"} {
-		for _, stop := range []string{"cancel", "context-deadline", "client-deadline"} {
-			t.Run(family+"/"+stop, func(t *testing.T) {
-				started := make(chan struct{})
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if _, err := io.Copy(io.Discard, r.Body); err != nil {
-						t.Error(err)
+		for _, tc := range []struct {
+			name string
+			want error
+			code string
+		}{
+			{name: "cancel", want: context.Canceled, code: "cancelled"},
+			{name: "context-deadline", want: context.DeadlineExceeded, code: "timeout"},
+			{name: "client-deadline", want: context.DeadlineExceeded, code: "timeout"},
+		} {
+			t.Run(family+"/"+tc.name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					provider, client := testProvider(t, family)
+					parentTimeout := time.Second
+					if tc.name == "context-deadline" {
+						parentTimeout = 10 * time.Millisecond
 					}
-					w.Header().Set("Content-Type", "application/json")
-					w.(http.Flusher).Flush()
-					close(started)
-					<-r.Context().Done()
-				}))
-				defer server.Close()
-				opts := httpOptions(server.URL + "/review")
-				if stop == "client-deadline" {
-					opts.Timeout = 100 * time.Millisecond
-				}
-				var provider review.Provider
-				var err error
-				if family == "chat" {
-					provider, err = review.NewHTTP(opts)
-				} else {
-					provider, err = review.NewMessages(review.MessagesOptions{HTTPOptions: opts, Transport: "anthropic"})
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				ctx, cancel := context.WithCancel(context.Background())
-				if stop == "context-deadline" {
-					cancel()
-					ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
-				}
-				defer cancel()
-				if stop == "cancel" {
-					go func() {
-						select {
-						case <-started:
-							cancel()
-						case <-ctx.Done():
-						}
-					}()
-				}
-				_, err = provider.Complete(ctx, payload())
-				want, code := context.DeadlineExceeded, "timeout"
-				if stop == "cancel" {
-					want, code = context.Canceled, "cancelled"
-				}
-				if !errors.Is(err, want) || review.ErrorCode(err) != code {
-					t.Fatalf("body read lost cancellation: %v (%s), want %v", err, review.ErrorCode(err), want)
-				}
+
+					ctx, cancel := context.WithTimeout(t.Context(), parentTimeout)
+					defer cancel()
+					read := false
+					client.Transport = responseTransport(func(r *http.Request) (*http.Response, error) {
+						body := readerFunc(func([]byte) (int, error) {
+							read = true
+							if tc.name == "cancel" {
+								cancel()
+							}
+
+							<-r.Context().Done()
+							return 0, r.Context().Err()
+						})
+						return &http.Response{
+							StatusCode:    http.StatusOK,
+							Header:        http.Header{"Content-Type": []string{"application/json"}},
+							Body:          io.NopCloser(body),
+							ContentLength: -1,
+						}, nil
+					})
+
+					_, err := provider.Complete(ctx, payload())
+					if !read || !errors.Is(err, tc.want) || review.ErrorCode(err) != tc.code {
+						t.Fatalf("reading response body: read=%t, got %v (%s), want %v (%s)", read, err, review.ErrorCode(err), tc.want, tc.code)
+					}
+
+					if tc.name == "client-deadline" && ctx.Err() != nil {
+						t.Fatalf("client timeout fell back to parent context: %v", ctx.Err())
+					}
+				})
 			})
 		}
 	}
 }
+
+// Keep the provider's real http.Client so its Timeout still controls the request.
+func testProvider(t *testing.T, family string) (review.Provider, *http.Client) {
+	t.Helper()
+	opts := httpOptions("https://example.com/review")
+	opts.Timeout = 20 * time.Millisecond
+	if family == "messages" {
+		p, err := review.NewMessages(review.MessagesOptions{HTTPOptions: opts, Transport: "anthropic"})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return p, review.MessagesHTTPClientForTest(p)
+	}
+
+	p, err := review.NewHTTP(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return p, review.HTTPClientForTest(p)
+}
+
+type responseTransport func(*http.Request) (*http.Response, error)
+
+func (f responseTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if err := r.Body.Close(); err != nil {
+		return nil, err
+	}
+
+	return f(r)
+}
+
+type readerFunc func([]byte) (int, error)
+
+func (f readerFunc) Read(p []byte) (int, error) { return f(p) }

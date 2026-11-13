@@ -193,32 +193,77 @@ func TestHTTPRedirectNeverForwardsCredentials(t *testing.T) {
 	}
 }
 
-func TestHTTPResponseBudgetAndCancellation(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if _, err := io.WriteString(w, strings.Repeat("x", 2000)); err != nil {
-			t.Error(err)
-		}
-	}))
-	defer s.Close()
-	o := httpOptions(s.URL + "/api")
-	o.MaxResponseBytes = 1024
-	p, e := review.NewHTTP(o)
-	if e != nil {
-		t.Fatal(e)
+func TestHTTPResponseBudget(t *testing.T) {
+	const limit = 1024
+	for _, tc := range []struct {
+		name    string
+		size    int
+		chunked bool
+	}{
+		{name: "at_limit", size: limit},
+		{name: "declared_over_limit", size: limit + 1},
+		{name: "streamed_over_limit", size: limit + 1, chunked: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			envelope := apiEnvelope(`{}`)
+			body := envelope + strings.Repeat(" ", tc.size-len(envelope))
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if tc.chunked {
+					w.(http.Flusher).Flush()
+				}
+
+				if _, err := io.WriteString(w, body); err != nil {
+					t.Error(err)
+				}
+			}))
+			t.Cleanup(s.Close)
+
+			o := httpOptions(s.URL + "/api")
+			o.MaxResponseBytes = limit
+			p, err := review.NewHTTP(o)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := p.Complete(t.Context(), payload())
+			if tc.size == limit {
+				if err != nil || string(got.Output) != `{}` {
+					t.Fatalf("response with %d bytes: got output %q, err %v; want {}", tc.size, got.Output, err)
+				}
+
+				return
+			}
+
+			if code := review.ErrorCode(err); code != "transport_response_limit" {
+				t.Fatalf("response with %d bytes: got %v (%s), want transport_response_limit", tc.size, err, code)
+			}
+		})
 	}
-	if _, e = p.Complete(context.Background(), payload()); e == nil {
-		t.Fatal("oversize body accepted")
+}
+
+func TestHTTPRejectsInvalidRequestsBeforeTransport(t *testing.T) {
+	p, err := review.NewHTTP(httpOptions("https://example.com/api"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+
+	review.HTTPClientForTest(p).Transport = responseTransport(func(r *http.Request) (*http.Response, error) {
+		t.Errorf("unexpected transport call for %s", r.Method)
+		return nil, errors.New("unexpected request")
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, e = p.Complete(ctx, payload()); !errors.Is(e, context.Canceled) {
-		t.Fatal(e)
+	if _, err := p.Complete(ctx, payload()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled context: got %v, want %v", err, context.Canceled)
 	}
-	if _, e = p.Complete(nil, payload()); e == nil {
+
+	if _, err := p.Complete(nil, payload()); err == nil {
 		t.Fatal("nil context accepted")
 	}
-	if _, e = p.Complete(context.Background(), []byte("invalid")); e == nil {
+
+	if _, err := p.Complete(t.Context(), []byte("invalid")); err == nil {
 		t.Fatal("invalid request accepted")
 	}
 }

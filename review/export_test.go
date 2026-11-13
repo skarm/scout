@@ -10,3 +10,5 @@ func SignBedrockForTest(r *http.Request, body []byte, o MessagesOptions, now tim
 }
 
 func HTTPClientForTest(p *HTTPProvider) *http.Client { return p.client }
+
+func MessagesHTTPClientForTest(p *MessagesProvider) *http.Client { return p.base.client }

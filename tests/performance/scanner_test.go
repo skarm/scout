@@ -288,12 +288,19 @@ func BenchmarkStandardParallel(b *testing.B) {
 			o.Concurrency.Workers = workers
 			s := performanceScanner(b, o)
 			b.ReportAllocs()
+			var firstErr error
+			var record sync.Once
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					checkPerformanceRun(b, s, scout.Reader("SKILL.md", strings.NewReader(text)))
+					if err := performanceRunError(s, scout.Reader("SKILL.md", strings.NewReader(text))); err != nil {
+						record.Do(func() { firstErr = err })
+					}
 				}
 			})
+			if firstErr != nil {
+				b.Fatal(firstErr)
+			}
 		})
 	}
 }
@@ -456,11 +463,18 @@ func performanceScanner(b *testing.B, o scout.Options) *scout.Scanner {
 
 func checkPerformanceRun(b *testing.B, s *scout.Scanner, target scout.Target) {
 	b.Helper()
-	run, err := s.Scan(context.Background(), target)
-	if err != nil && !errors.Is(err, scout.ErrIncomplete) {
+	if err := performanceRunError(s, target); err != nil {
 		b.Fatal(err)
 	}
-	if run.State != report.RunComplete && run.State != report.RunIncomplete {
-		b.Fatalf("unexpected state %s: %v", run.State, err)
+}
+
+func performanceRunError(s *scout.Scanner, target scout.Target) error {
+	run, err := s.Scan(context.Background(), target)
+	if err != nil && !errors.Is(err, scout.ErrIncomplete) {
+		return err
 	}
+	if run.State != report.RunComplete && run.State != report.RunIncomplete {
+		return errors.Join(fmt.Errorf("unexpected scan state %s", run.State), err)
+	}
+	return nil
 }

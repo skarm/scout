@@ -24,27 +24,38 @@ func TestStdinPipeRespectsOperationTimeout(t *testing.T) {
 	var out, diag bytes.Buffer
 	done := make(chan int, 1)
 	go func() {
-		done <- scanCommand(context.Background(), []string{"--profile", "custom", "--checks", "none", "--timeout", "30ms", "--format", "json", "--input", "-", "--name", "input.txt"}, read, &out, &diag)
+		done <- scanCommand(t.Context(), []string{"--profile", "custom", "--checks", "none", "--timeout", "30ms", "--format", "json", "--input", "-", "--name", "input.txt"}, read, &out, &diag)
 	}()
+
+	// The CLI owns the operation deadline. This watchdog only unblocks the pipe
+	// if the command fails to finish; it also allows time to render the report.
+	var code int
 	select {
-	case code := <-done:
-		var doc report.Document
-		if code != 2 || json.Unmarshal(out.Bytes(), &doc) != nil || doc.Run.State != report.RunCancelled {
-			t.Fatalf("stdin deadline outcome: code=%d out=%s diag=%s", code, &out, &diag)
-		}
-		if _, err := write.Write([]byte("still borrowed")); err != nil {
-			t.Fatal("scan closed its caller's stdin", err)
-		}
-		data := make([]byte, len("still borrowed"))
-		if _, err := io.ReadFull(read, data); err != nil || string(data) != "still borrowed" {
-			t.Fatal("stdin no longer usable after timeout", err)
-		}
-	case <-time.After(300 * time.Millisecond):
+	case code = <-done:
+	case <-time.After(5 * time.Second):
 		if err := write.Close(); err != nil {
 			t.Error(err)
 		}
-		<-done
-		t.Fatal("stdin capture remained blocked after the operation deadline")
+		select {
+		case code = <-done:
+			t.Fatalf("scan did not finish until the pipe was closed: code=%d out=%s diag=%s", code, &out, &diag)
+		case <-time.After(5 * time.Second):
+			t.Fatal("scan did not finish even after closing the pipe")
+		}
+	}
+
+	var doc report.Document
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil || code != 2 || doc.Run.State != report.RunCancelled {
+		t.Fatalf("stdin deadline outcome: code=%d state=%s decode=%v out=%s diag=%s", code, doc.Run.State, err, &out, &diag)
+	}
+
+	const probe = "still borrowed"
+	if _, err := write.Write([]byte(probe)); err != nil {
+		t.Fatal("scan closed its caller's stdin", err)
+	}
+	data := make([]byte, len(probe))
+	if _, err := io.ReadFull(read, data); err != nil || string(data) != probe {
+		t.Fatalf("stdin after timeout: read %q, err %v; want %q", data, err, probe)
 	}
 }
 

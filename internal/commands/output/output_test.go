@@ -32,23 +32,36 @@ func TestCreateNewIsPrivateAndNeverReplaces(t *testing.T) {
 }
 
 func TestCreateNewFailureLeavesNoOutputOrTemporary(t *testing.T) {
-	for _, name := range []string{"renderer", "cancelled"} {
-		t.Run(name, func(t *testing.T) {
+	renderErr := errors.New("renderer failed")
+	for _, tc := range []struct {
+		name   string
+		want   error
+		cancel bool
+	}{
+		{name: "renderer", want: renderErr},
+		{name: "cancelled", want: context.Canceled, cancel: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "bundle.zip")
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			writer := func(w io.Writer) error {
-				_, _ = io.WriteString(w, "partial")
-				if name == "cancelled" {
+				if _, err := io.WriteString(w, "partial"); err != nil {
+					return err
+				}
+
+				if tc.cancel {
 					cancel()
 					return nil
 				}
-				return errors.New("renderer failed")
+
+				return renderErr
 			}
-			if err := output.CreateNew(ctx, path, writer); err == nil {
-				t.Fatal("failure ignored")
+			if err := output.CreateNew(ctx, path, writer); !errors.Is(err, tc.want) {
+				t.Fatalf("CreateNew: got %v, want %v", err, tc.want)
 			}
+
 			entries, err := os.ReadDir(dir)
 			if err != nil || len(entries) != 0 {
 				t.Fatalf("partial output remains: %v %v", entries, err)

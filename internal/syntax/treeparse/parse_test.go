@@ -83,38 +83,36 @@ func TestParsePreservesSyntaxTreesAndRefusesExpiredWork(t *testing.T) {
 }
 
 func TestChunkedInputPreservesNativeTreeAndSourceSpans(t *testing.T) {
-	for i, text := range []string{
-		"text = '" + strings.Repeat("🙂", 3000) + "'\n",
-		strings.Repeat("value = 1\n", 1200) + "print(value)\n",
-		"value = [" + strings.Repeat("1,", 5000),
+	for _, tc := range []struct{ name, text string }{
+		{name: "multibyte_string", text: "text = '" + strings.Repeat("🙂", 3000) + "'\n"},
+		{name: "many_statements", text: strings.Repeat("value = 1\n", 1200) + "print(value)\n"},
+		{name: "unterminated_list", text: "value = [" + strings.Repeat("1,", 5000)},
 	} {
-		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			parser := treeparse.NewParser()
+			t.Cleanup(parser.Close)
 			if err := parser.SetLanguage(sitter.NewLanguage(python.Language())); err != nil {
-				parser.Close()
 				t.Fatal(err)
 			}
+
 			oracle := sitter.NewParser()
+			t.Cleanup(oracle.Close)
 			if err := oracle.SetLanguage(sitter.NewLanguage(python.Language())); err != nil {
 				t.Fatal(err)
 			}
-			want := oracle.Parse([]byte(text), nil)
-			defer oracle.Close()
-			got := treeparse.Parse(t.Context(), parser, []byte(text), time.Now().Add(5*time.Second))
-			if want == nil || got == nil {
-				if want != nil {
-					want.Close()
-				}
-				if got != nil {
-					got.Close()
-				}
-				parser.Close()
-				t.Fatal("native parse did not produce comparison trees")
+
+			want := oracle.Parse([]byte(tc.text), nil)
+			if want == nil {
+				t.Fatal("reference parser did not return a tree")
 			}
+			t.Cleanup(want.Close)
+
+			got := treeparse.Parse(t.Context(), parser, []byte(tc.text), time.Now().Add(5*time.Second))
+			if got == nil {
+				t.Fatal("chunked parser did not return a tree")
+			}
+			t.Cleanup(got.Close)
 			assertNativeTreeEqual(t, got.RootNode(), want.RootNode())
-			got.Close()
-			want.Close()
-			parser.Close()
 		})
 	}
 }

@@ -218,8 +218,13 @@ func TestMCPSnapshotPreservesEmptyServerMetadata(t *testing.T) {
 			}
 
 			snapshot, err := mcpsnapshot.Inspect(root)
-			if err != nil || snapshot.Initialize.Get("serverInfo").Get(field.name).String != "" {
-				t.Fatal("empty display metadata was not retained", err)
+			if err != nil {
+				t.Fatalf("inspect snapshot: %v", err)
+			}
+
+			got := snapshot.Initialize.Get("serverInfo").Get(field.name)
+			if got == nil || got.Kind != jsonconfig.KindString || got.String != "" {
+				t.Fatalf("serverInfo.%s = %+v; want an empty string", field.name, got)
 			}
 		})
 	}

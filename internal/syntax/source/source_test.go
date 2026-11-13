@@ -124,8 +124,18 @@ func TestRejectSourceSpans(t *testing.T) {
 }
 
 func FuzzIndex(f *testing.F) {
-	for _, s := range []string{"", "abc", "🙂\r\nПривет\n", "a\nb\nc", "a\rb\r\nc"} {
-		f.Add(s, uint16(0))
+	for _, seed := range []struct {
+		text   string
+		offset uint16
+	}{
+		{text: "", offset: 0},
+		{text: "abc", offset: 3},           // EOF after ordinary characters.
+		{text: "🙂\r\nПривет\n", offset: 5}, // Between CR and LF.
+		{text: "🙂\r\nПривет\n", offset: 8}, // After a multibyte character on the second line.
+		{text: "a\nb\nc", offset: 4},
+		{text: "a\rb\rc", offset: 4},
+	} {
+		f.Add(seed.text, seed.offset)
 	}
 	f.Fuzz(func(t *testing.T, text string, offset uint16) {
 		if len(text) > 64<<10 || !utf8.ValidString(text) {

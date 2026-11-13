@@ -19,39 +19,58 @@ import (
 	"github.com/skarm/scout/fetch"
 )
 
-func TestResponseBodyPreservesCancellation(t *testing.T) {
+func TestRequestPreservesCancellation(t *testing.T) {
 	for _, method := range []string{"get", "post"} {
 		for _, stop := range []string{"cancel", "context-deadline", "client-deadline", "client-header-deadline"} {
 			t.Run(method+"/"+stop, func(t *testing.T) {
-				started := make(chan struct{})
+				const timeout = 200 * time.Millisecond
+				watchdog, stopWatchdog := context.WithTimeout(t.Context(), 5*time.Second)
+				defer stopWatchdog()
+				reachedPhase := make(chan struct{})
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if _, err := io.Copy(io.Discard, r.Body); err != nil {
 						t.Error(err)
-					}
-					if stop == "client-header-deadline" {
-						<-r.Context().Done()
 						return
 					}
-					w.Header().Set("Content-Type", "application/json")
-					w.(http.Flusher).Flush()
-					close(started)
-					<-r.Context().Done()
+
+					if stop != "client-header-deadline" {
+						w.Header().Set("Content-Type", "application/json")
+						w.(http.Flusher).Flush()
+					}
+					close(reachedPhase)
+
+					select {
+					case <-r.Context().Done():
+					case <-watchdog.Done():
+					}
 				}))
 				defer server.Close()
 				opts := enabled()
-				if strings.HasPrefix(stop, "client-") {
-					opts.Timeout = 100 * time.Millisecond
+				opts.Timeout = 10 * time.Second
+				clientDeadline := strings.HasPrefix(stop, "client-")
+				if clientDeadline {
+					opts.Timeout = timeout
 				}
-				ctx, cancel := context.WithCancel(context.Background())
+
+				var ctx context.Context
+				var cancel context.CancelFunc
 				if stop == "context-deadline" {
-					cancel()
-					ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+					ctx, cancel = context.WithTimeout(watchdog, timeout)
+				} else {
+					ctx, cancel = context.WithCancel(watchdog)
 				}
 				defer cancel()
+
 				if stop == "cancel" {
+					done := make(chan struct{})
+					defer func() {
+						cancel()
+						<-done
+					}()
 					go func() {
+						defer close(done)
 						select {
-						case <-started:
+						case <-reachedPhase:
 							cancel()
 						case <-ctx.Done():
 						}
@@ -63,12 +82,19 @@ func TestResponseBodyPreservesCancellation(t *testing.T) {
 				} else {
 					_, err = fetch.PostJSON(ctx, server.URL, []byte(`{}`), opts)
 				}
+
+				select {
+				case <-reachedPhase:
+				case <-watchdog.Done():
+					t.Fatalf("server did not reach the expected response phase: %v (request error %v)", watchdog.Err(), err)
+				}
+
 				want := context.DeadlineExceeded
 				if stop == "cancel" {
 					want = context.Canceled
 				}
-				if !errors.Is(err, want) {
-					t.Fatalf("body read lost cancellation: %v, want %v", err, want)
+				if !errors.Is(err, want) || watchdog.Err() != nil || clientDeadline && ctx.Err() != nil {
+					t.Fatalf("request cancellation: got %v, want %v (caller context %v, watchdog %v)", err, want, ctx.Err(), watchdog.Err())
 				}
 			})
 		}
