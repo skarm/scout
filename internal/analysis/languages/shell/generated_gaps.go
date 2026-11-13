@@ -6,11 +6,12 @@ import (
 
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
+	"github.com/skarm/scout/internal/syntax/source"
 )
 
 // Recognize writes even when their paths or contents cannot be recovered.
 // This check never supplies a body or a write-to-execution link.
-func generatedShellWriteGaps(c *shellsyntax.Command, vars map[string]string) document.GeneratedShellGaps {
+func generatedShellWriteGaps(c *shellsyntax.Command, vars map[string]string, view source.View) document.GeneratedShellGaps {
 	if len(c.Words) == 0 || len(c.Redirects) == 0 {
 		return 0
 	}
@@ -31,7 +32,7 @@ func generatedShellWriteGaps(c *shellsyntax.Command, vars map[string]string) doc
 		return 0
 	}
 
-	var targets generatedWriteTargets
+	targets := generatedWriteTargets{shellInput: shellShebang(generatedHeredocPreamble(view, input, vars))}
 
 	if output != nil {
 		switch output.Op {
@@ -195,16 +196,16 @@ func catHeredocOption(value string, bsd bool) bool {
 }
 
 type generatedWriteTargets struct {
-	script, dynamic, appendScript bool
+	script, dynamic, appendScript, shellInput bool
 }
 
 func (t *generatedWriteTargets) observe(word *shellsyntax.Word, vars map[string]string, appendMode bool) {
 	value, known := scriptPathWord(word, vars)
 
-	script := known && generatedScriptDestination(value)
+	script := known && localGeneratedDestination(value) && (generatedShellName(value) || t.shellInput)
 	if !known {
 		t.dynamic = true
-		script = dynamicScriptPath(word, vars)
+		script = dynamicScriptPath(word, vars) || t.shellInput && word != nil && !fixedNonlocalScriptPath(word)
 	}
 
 	t.script = t.script || script
@@ -212,12 +213,16 @@ func (t *generatedWriteTargets) observe(word *shellsyntax.Word, vars map[string]
 }
 
 func generatedScriptDestination(value string) bool {
+	return generatedShellName(value) && localGeneratedDestination(value)
+}
+
+func localGeneratedDestination(value string) bool {
 	// Redirect targets and operands after -- may begin with a dash.
 	if strings.HasPrefix(value, "-") {
 		value = "./" + value
 	}
 
-	return strings.HasSuffix(value, ".sh") && localWritePath(value)
+	return strings.TrimPrefix(value, "./") != "." && localWritePath(value)
 }
 
 func (t *generatedWriteTargets) teeOperands(args []*shellsyntax.Word, vars map[string]string, bsd bool) bool {

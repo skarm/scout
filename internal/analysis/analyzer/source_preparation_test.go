@@ -56,13 +56,36 @@ func TestPrepareGeneratedShellReportsNestedWriteGapOnCapturedFile(t *testing.T) 
 			continue
 		}
 
-		if !want[diagnostic.Code] || diagnostic.Path != path || !diagnostic.AffectsScope {
+		if !want[diagnostic.Code] || diagnostic.Path != path || !diagnostic.AffectsScope || diagnostic.Line != 2 || diagnostic.Column != 1 {
 			t.Fatalf("unexpected generated diagnostic: %+v", diagnostic)
 		}
 		delete(want, diagnostic.Code)
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing nested diagnostics: %v", want)
+	}
+}
+
+func TestPrepareGeneratedShellLocatesGapsAndDistinguishesReasons(t *testing.T) {
+	const input = "  ```bash\n  cat > first.sh <<END\n  printf '%s' \"$unknown\"\n  END\n" +
+		"  PATH=/custom/bin\n  cat > second.sh <<'END'\n  printf ok\n  END\n  ```\n"
+	doc := document.Prepare(t.Context(), artifact.NewFile("README.md", []byte(input), false))
+	prepared := analyzer.PrepareGeneratedShellWithin(t.Context(), shell.Rules()[:1], []document.File{doc}, 100)[0]
+	want := map[int]document.GeneratedShellReason{2: document.GeneratedShellExpansion, 6: document.GeneratedShellWriter}
+	for _, diagnostic := range prepared.Diagnostics() {
+		if diagnostic.Code != "generated_shell_incomplete" {
+			continue
+		}
+
+		if reason, ok := want[diagnostic.Line]; !ok || diagnostic.Column != 3 || diagnostic.Path != "README.md" || diagnostic.Message != string(reason) {
+			t.Fatalf("unexpected diagnostic: %+v", diagnostic)
+		}
+
+		delete(want, diagnostic.Line)
+	}
+
+	if len(want) != 0 {
+		t.Fatalf("missing located diagnostics: %v", want)
 	}
 }
 

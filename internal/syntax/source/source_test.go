@@ -8,6 +8,34 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+func TestJoinedViewMapsOnlySelectedSourceFragments(t *testing.T) {
+	const text = "middle AA ZZ"
+	build := func(start, end int) source.View {
+		t.Helper()
+		view, err := source.NewView(text, []source.Span{{Start: start, End: end}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return view
+	}
+	joined := source.Concat(build(7, 9), build(0, 6), build(10, 12))
+	selected, err := joined.Select([]source.Span{{End: 2}, {Start: 8, End: 10}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := selected.Original(source.Span{End: len(selected.Text())})
+	if want := (source.Span{Start: 7, End: 12}); got != want || err != nil {
+		t.Fatalf("original span = %v, %v, want %v", got, err, want)
+	}
+	if selected.ContainsMappedEndpoints(source.Span{End: 6}) || selected.ContainsMappedEndpoints(source.Span{Start: 9, End: 10}) || !selected.ContainsMappedEndpoints(got) {
+		t.Fatalf("selection included a skipped fragment or excluded its own endpoints")
+	}
+	joinedAgain := source.Concat(selected, build(1, 2))
+	if joinedAgain.ContainsMappedEndpoints(source.Span{Start: 3, End: 5}) {
+		t.Fatalf("second join included a skipped fragment")
+	}
+}
+
 func TestIndex(t *testing.T) {
 	text := "Привет🙂\r\nabc\n"
 	index := source.NewIndex(text)

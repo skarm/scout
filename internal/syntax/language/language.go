@@ -4,7 +4,6 @@ package language
 
 import (
 	"path"
-	"slices"
 	"strings"
 
 	"github.com/skarm/scout/report"
@@ -195,48 +194,13 @@ func Detect(name, data string) []Hint {
 	}
 
 	prefix = strings.TrimPrefix(prefix, "\ufeff")
-	if hint, ok := shebangHint(prefix); ok {
+	if hint, ok := Shebang(strings.TrimPrefix(data, "\ufeff")); ok {
 		add(hint.Language, hint.Basis)
 	}
 
 	out = append(out, prefixHints(prefix)...)
 
 	return out
-}
-
-func shebangHint(prefix string) (Hint, bool) {
-	if !strings.HasPrefix(prefix, "#!") {
-		return Hint{}, false
-	}
-
-	line, _, _ := strings.Cut(prefix[2:], "\n")
-	fields := strings.Fields(line)
-	// Only fixed tokens are recognized; options and assignments are never executed.
-	for _, field := range fields {
-		if strings.HasPrefix(field, "-") || strings.Contains(field, "=") {
-			continue
-		}
-
-		exe := path.Base(field)
-		if exe == "uv" {
-			return Hint{Language: Python, Basis: "uv-shebang"}, slices.Contains(fields, "run")
-		}
-
-		if exe == "env" {
-			continue
-		}
-
-		id := Normalize(exe)
-		if strings.HasPrefix(exe, "python2.") || strings.HasPrefix(exe, "python3.") {
-			id = Python
-		}
-
-		if Structured(id) {
-			return Hint{Language: id, Basis: "shebang"}, true
-		}
-	}
-
-	return Hint{}, false
 }
 
 func prefixHints(prefix string) []Hint {

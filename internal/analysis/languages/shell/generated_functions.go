@@ -31,17 +31,25 @@ type generatedFunctionDefinition struct {
 
 type functionReturnState struct {
 	scope *scriptScope
+	flow  *generatedShellFlow
 }
 
-func (r *functionReturnState) add(scope *scriptScope) {
+func (r *functionReturnState) add(scope *scriptScope, flow *generatedShellFlow) {
 	if r.scope == nil {
 		snapshot := scope.nested()
+		snapshot.failedReturn = scope.failedReturn
 		r.scope = &snapshot
+		r.flow = flow.clone()
 
 		return
 	}
 
 	r.scope.mergeAlternativeFunctionState(scope)
+	r.scope.failedReturn = r.scope.failedReturn || scope.failedReturn
+
+	if r.flow != nil {
+		r.flow.intersect(flow)
+	}
 }
 
 func newGeneratedFunctionScan(root *shellsyntax.File) generatedFunctionScan {
@@ -96,7 +104,7 @@ func (f *generatedFunctionScan) define(c *shellsyntax.Command, scope *scriptScop
 	effects.merge(scope.scriptEffects)
 	f.declared[body] = effects
 
-	if !stable || scope.conditionalDefs {
+	if !stable || scope.conditionalDefs || len(c.Redirects) != 0 {
 		body = nil
 	}
 
@@ -122,6 +130,34 @@ func (s *scriptScope) nested() scriptScope {
 		variables: maps.Clone(s.variables), functions: maps.Clone(s.functions), aliases: maps.Clone(s.aliases),
 		functionBody: s.functionBody, repeated: s.repeated, stdoutPiped: s.stdoutPiped,
 		temporaryPath: s.temporaryPath, temporaryCDPath: s.temporaryCDPath, scriptEffects: s.scriptEffects,
+	}
+}
+
+func positionalBinding(name string) bool {
+	return len(name) > 0 && name[0] >= '0' && name[0] <= '9'
+}
+
+func (s *scriptScope) clearNamedVariables() {
+	for name := range s.variables {
+		if !positionalBinding(name) {
+			delete(s.variables, name)
+		}
+	}
+}
+
+func (s *scriptScope) clearPositionals() {
+	for name := range s.variables {
+		if positionalBinding(name) {
+			delete(s.variables, name)
+		}
+	}
+}
+
+func (s *scriptScope) retainPositionals(other *scriptScope) {
+	for name, value := range s.variables {
+		if next, known := other.variables[name]; positionalBinding(name) && (!known || next != value) {
+			delete(s.variables, name)
+		}
 	}
 }
 
@@ -213,7 +249,7 @@ func (s *scriptScope) localFunctionCall(c *shellsyntax.Command) *shellsyntax.Fil
 	}
 
 	for _, arg := range c.Words[1:] {
-		if _, known := arg.Literal(); !known {
+		if _, known := scriptPathWord(arg, s.variables); !known {
 			return nil
 		}
 	}
@@ -242,31 +278,35 @@ func (s *scriptScope) applyFunctionAssignments(assignments []shellsyntax.Assignm
 	}
 }
 
-func (s *scriptScope) plainFunctionReturn(c *shellsyntax.Command) bool {
+func (s *scriptScope) plainFunctionReturn(c *shellsyntax.Command) (int, bool) {
 	if s.conditionalDefs || s.trapUnsafe || len(c.Words) == 0 || len(c.Words) > 2 || len(c.Assignments) != 0 || len(c.Redirects) != 0 {
-		return false
+		return 0, false
 	}
 
 	if _, shadowed := s.functions["return"]; shadowed || !literalWordEquals(c.Words[0], "return") || s.mayAlias(c.Words[0], "return") {
-		return false
+		return 0, false
 	}
 
 	if len(c.Words) == 1 {
-		return true
+		return 0, true
 	}
 
 	value, _ := c.Words[1].Literal()
-	_, err := strconv.Atoi(value)
+	status, err := strconv.Atoi(value)
 
-	return err == nil
+	return status, err == nil
 }
 
-func (s *generatedShellScan) callFunction(c *shellsyntax.Command, body *shellsyntax.File, scope *scriptScope, stdoutPiped, stable bool) bool {
+func (s *generatedShellScan) callFunction(c *shellsyntax.Command, body *shellsyntax.File, scope *scriptScope, flow *generatedShellFlow, stdoutPiped, stable bool) bool {
 	f := &s.functions
 	if f.active[body] || len(f.active) >= shellsyntax.MaxDepth {
-		s.gaps |= document.GeneratedShellUnrecovered
+		s.noteGap(c.Span.Start, document.GeneratedShellUnrecovered, document.GeneratedShellCall)
 
 		scope.unknown()
+
+		if flow != nil {
+			flow.reset()
+		}
 
 		f.opaque = f.opaque || !f.fallback
 
@@ -280,9 +320,30 @@ func (s *generatedShellScan) callFunction(c *shellsyntax.Command, body *shellsyn
 	f.active[body] = true
 	nested := scope.nested()
 	nested.stdoutPiped = nested.stdoutPiped || stdoutPiped
+
+	if flow != nil {
+		for _, assignment := range c.Assignments {
+			if assignment.Name == "PWD" || assignment.Name == "OLDPWD" {
+				flow.reset()
+				break
+			}
+		}
+	}
+
 	nested.applyFunctionAssignments(c.Assignments)
-	more := s.walkFunctionBody(body, &nested)
+	nested.clearPositionals()
+
+	for i, arg := range c.Words[1:min(len(c.Words), MaxShellBindings+1)] {
+		value, _ := scriptPathWord(arg, scope.variables)
+		nested.variables[strconv.Itoa(i+1)] = value
+	}
+
+	more := s.walkFunctionBody(body, &nested, flow)
 	delete(f.active, body)
+
+	if flow != nil && (nested.trapUnsafe || !stable && nested.failedReturn) {
+		flow.reset()
+	}
 
 	if stable && !scope.conditionalDefs {
 		scope.merge(nested.scriptEffects)
@@ -295,7 +356,7 @@ func (s *generatedShellScan) callFunction(c *shellsyntax.Command, body *shellsyn
 	return more
 }
 
-func (s *generatedShellScan) walkFunctionBody(body *shellsyntax.File, scope *scriptScope) bool {
+func (s *generatedShellScan) walkFunctionBody(body *shellsyntax.File, scope *scriptScope, flow *generatedShellFlow) bool {
 	// Return branches contribute their effects to the caller, while the
 	// remaining body sees only the branches that can continue.
 	var exits functionReturnState
@@ -303,9 +364,14 @@ func (s *generatedShellScan) walkFunctionBody(body *shellsyntax.File, scope *scr
 	scope.functionBody = true
 	scope.returnEffects = &exits
 
-	more := s.walk(body, scope, nil)
+	more := s.walk(body, scope, flow)
 	if exits.scope != nil {
 		scope.mergeAlternativeFunctionState(exits.scope)
+		scope.failedReturn = scope.failedReturn || exits.scope.failedReturn
+
+		if flow != nil {
+			flow.intersect(exits.flow)
+		}
 	}
 
 	return more
@@ -346,7 +412,7 @@ func (s *generatedShellScan) walkFunctions(scope *scriptScope) bool {
 			scriptEffects: effects,
 		}
 		f.active[definition.body] = true
-		more := s.walkFunctionBody(definition.body, &nested)
+		more := s.walkFunctionBody(definition.body, &nested, nil)
 		delete(f.active, definition.body)
 
 		if !more {

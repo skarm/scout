@@ -13,7 +13,7 @@ func TestHumanReportsExplainDecisionAndConcreteCoverageGaps(t *testing.T) {
 	d := documentFixture(t, true)
 	a := &d.Run.Targets[0].Analysis
 	a.Diagnostics = []report.Diagnostic{{
-		Code: "parser_failed", Path: "source.py", Message: "Python syntax could not be parsed.", AffectsScope: true,
+		Code: "parser_failed", Path: "source.py", Message: "Python syntax could not be parsed.", AffectsScope: true, Line: 7, Column: 4,
 	}, {
 		Code: "go_semantics_limited", Path: "handler.go", Message: "Cross-file flows are outside the selected analysis.",
 	}}
@@ -48,7 +48,7 @@ func TestHumanReportsExplainDecisionAndConcreteCoverageGaps(t *testing.T) {
 		for _, required := range []string{
 			"2 retained (2 critical", "1 complete, 1 incomplete", "Operator-approved occurrences: 1",
 			"meets the configured blocking threshold", "custom_policy_reason", "Operator approved",
-			"A required backend was unavailable.", "Coverage gaps", "source.py", "Python syntax could not be parsed.",
+			"A required backend was unavailable.", "Coverage gaps", "source.py", ":7:4", "Python syntax could not be parsed.",
 			"Analysis notes", "handler.go", "Cross-file flows", "Required task", "backend_unavailable",
 		} {
 			if !strings.Contains(text, required) {

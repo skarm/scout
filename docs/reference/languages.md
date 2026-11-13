@@ -28,32 +28,48 @@ SH001–SH004 check download-to-execution, credentials in requests, eval/source/
 capabilities and sensitive reads. Selected curl/wget options and saved-file provenance
 are tracked. Dynamic arguments and unsupported control flow limit completeness.
 
-Scout reconstructs `cat` and `tee` heredoc writes to relative `.sh` paths,
-including supported blocks, functions, pipelines with explicit stdin, and
-shell files captured from archives. It resolves simple parameters from
+Scout reconstructs `cat` and `tee` heredoc writes to relative paths. Shell
+evidence comes from a `.sh` suffix, a shell shebang, or a later modeled use
+through a shell interpreter, `source`, `.`, or an explicit executable path.
+For direct execution of other filenames, an explicit non-shell shebang prevents
+shell recovery. This works in supported blocks, functions, pipelines with explicit
+stdin, and files captured from archives. The same shebang parser identifies the
+interpreter for ordinary files and generated scripts. It handles a fixed
+interpreter path and simple `env` or `env -S` forms. Scout also analyzes verified
+heredocs read directly by a shell on stdin, including an unchanged `cat | sh`
+pipeline. Scout resolves simple parameters from
 preceding, unambiguous assignments and analyzes up to four nested generations
 under shared limits. Findings retain byte and line coordinates in the
 enclosing captured file or archive member. Substituted text cites the parameter
 reference that produced it. Observed effects from functions, traps, PATH and
 command hash entries can make a writer's identity or its input uncertain.
 Scout evaluates statically resolved local function calls with the bindings and
-lookup state at each call site, including simple temporary assignments. Later
+lookup state at each call site, including simple temporary assignments and known
+positional arguments such as `$1` and `${10}`. Later
 changes to `PATH` or `hash` do not affect an earlier resolved call. Uncalled
 functions and unresolved calls use conservative file-wide effects. Recursion,
 unresolved expansions, uncertain writers and exhausted limits leave coverage gaps.
 
-Recognizable `.sh` writes with unresolved destinations, such as `"${name}.sh"`,
-report `generated_shell_dynamic_path`. Writes that append to a shell script via
-`>>` or `tee -a`/`--append` report `generated_shell_append`. Both diagnostics
-refer to the enclosing captured file. A wholly unknown destination with no
-evidence of a `.sh` target remains outside this detection.
+Recognizable shell writes with unresolved destinations, such as `"${name}.sh"`,
+report `generated_shell_dynamic_path`. Scout combines supported `>>` and
+`tee -a`/`--append` writes with the latest known complete version and maps each
+fragment to its own source bytes. An unknown base or intervening mutation leaves
+`generated_shell_append`. Diagnostics include the original line and column when
+available. Generic recovery gaps include a specific reason. A wholly unknown
+destination with no shell evidence remains outside this detection.
 
 The informational SH005 finding links a recovered write, its body and a later
 `source`, `.`, shell invocation or explicit executable path in the same modeled
-command sequence. The trace follows literal `cd` and uses the latest recovered
-write to a path. Unresolved changes to the working directory, intervening
-overwrites and commands with unknown effects invalidate earlier links. Use an
-explicit path with `source` or `.` to avoid search-path ambiguity.
+command sequence, including direct local function calls. The trace follows
+resolvable `cd` and simple `mv` renames between two local file paths. It uses the
+latest recovered write and preserves the original write, append, rename and use
+locations. For `if`/`elif`/`else`, a link survives when continuing branches agree
+on the working directory and the file's version and source. Long chains of
+appends and renames can exceed the trace limit while their contents are still
+analyzed. Unresolved directory changes, overwrites and commands with unknown
+effects invalidate earlier links. File paths are lexical and runtime file types,
+permissions and command success are unverified. Use an explicit path with
+`source` or `.` to avoid search-path ambiguity.
 
 ## JavaScript and TypeScript
 

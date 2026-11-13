@@ -172,6 +172,9 @@ type Diagnostic struct {
 	// Path identifies the affected inventory object, when the diagnostic is
 	// file-specific.
 	Path string `json:"path,omitempty"`
+	// Line and Column locate the diagnostic in the captured text when known.
+	Line   int `json:"line,omitempty"`
+	Column int `json:"column,omitempty"`
 	// Message contains a bounded explanation without copying source secrets.
 	Message string `json:"message"`
 	// AffectsScope reports whether this diagnostic leaves selected work
