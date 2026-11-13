@@ -258,7 +258,11 @@ func (o *operation) budget() (int64, error) {
 // emit only publishes a child after EOF and successful integrity checks by the
 // reader. Failed, discarded reads consume the aggregate budget too. A single
 // lookahead byte is permitted to distinguish EOF from limit exhaustion.
-func (o *operation) emit(name string, r io.Reader, expected int64, executable bool, region *report.ByteRange) (err error) {
+func (o *operation) emit(name string, r io.Reader, expected int64, executable bool, region *report.ByteRange) error {
+	return o.emitValidated(name, r, expected, executable, region, nil)
+}
+
+func (o *operation) emitValidated(name string, r io.Reader, expected int64, executable bool, region *report.ByteRange, valid func([]byte) bool) (err error) {
 	ordinal := o.ordinal
 	o.ordinal++
 
@@ -272,6 +276,10 @@ func (o *operation) emit(name string, r io.Reader, expected int64, executable bo
 	data, err := o.readOutput(r, expected)
 	if err != nil {
 		return err
+	}
+
+	if valid != nil && !valid(data) {
+		return errFormat
 	}
 
 	if region != nil && (region.Start < 0 || region.End < region.Start || region.End > len(o.parent.file.Content())) {

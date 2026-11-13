@@ -55,6 +55,49 @@ func TestNativeYAMLRejectsTypedAmbiguity(t *testing.T) {
 	}
 }
 
+func TestNativeYAMLMappingStartsUsePhysicalBytes(t *testing.T) {
+	o := frontend.DefaultOptions()
+	o.YAML = true
+	const first = "name: alpha"
+	const second = "ключ: value"
+	for _, tc := range []struct{ name, prefix, separator string }{
+		{"LF", "", "\n"},
+		{"bare CR", "", "\r"},
+		{"CRLF", "", "\r\n"},
+		{"UTF-8 BOM", "\ufeff", "\n"},
+		{"UTF-8 BOM with CRLF", "\ufeff", "\r\n"},
+		{"NEL", "", "\u0085"},
+		{"line separator", "", "\u2028"},
+		{"paragraph separator", "", "\u2029"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := tc.prefix + first + tc.separator + second + tc.separator
+			result, err := frontend.Parse(t.Context(), o, "yaml", text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Config == nil || len(result.Config.Members) != 2 {
+				t.Fatalf("expected two mapping members: %+v", result.Config)
+			}
+			for i, want := range []struct {
+				key, value     string
+				keyAt, valueAt int
+			}{
+				{"name", "alpha", len(tc.prefix), len(tc.prefix + "name: ")},
+				{"ключ", "value", len(tc.prefix + first + tc.separator), len(tc.prefix + first + tc.separator + "ключ: ")},
+			} {
+				got := result.Config.Members[i]
+				if got.Key != want.key || got.Value == nil || got.Value.Text != want.value {
+					t.Fatalf("member %d content changed: %+v", i, got)
+				}
+				if got.Start != want.keyAt || got.End != want.valueAt || got.Value.Start != want.valueAt {
+					t.Fatalf("member %d starts at key/value bytes %d/%d, want %d/%d (key span ends at %d)", i, got.Start, got.Value.Start, want.keyAt, want.valueAt, got.End)
+				}
+			}
+		})
+	}
+}
+
 func TestNativePythonStringAndOperatorAlternatives(t *testing.T) {
 	o := frontend.DefaultOptions()
 	o.Python = true

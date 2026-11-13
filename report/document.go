@@ -354,14 +354,12 @@ func failureToSARIF(operation Operation, problem Problem) documentSARIF {
 		Schema: DocumentSchema, Operation: operation, RunState: RunFailed, Problems: []Problem{problem},
 	}}
 	log.Runs = []run{{
-		Tool:       tool{Driver: driver{Name: "scout", Rules: []rule{}}},
-		ColumnKind: "unicodeCodePoints",
-		Results:    []result{},
+		Tool: tool{Driver: driver{Name: "scout", Rules: []rule{}}},
 		Invocations: []invocation{{
 			ExecutionSuccessful: false,
 			ToolExecutionNotifications: []notification{{
 				Level:   "error",
-				Message: message{Text: problem.Message + " Code: " + problem.Code},
+				Message: sarifMessage(problem.Message + " Code: " + problem.Code),
 			}},
 		}},
 		Properties: map[string]any{"runState": RunFailed, "problems": []Problem{problem}},

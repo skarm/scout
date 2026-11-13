@@ -18,11 +18,12 @@ type (
 	}
 
 	run struct {
-		Tool        tool           `json:"tool"`
-		ColumnKind  string         `json:"columnKind"`
-		Results     []result       `json:"results"`
-		Invocations []invocation   `json:"invocations"`
-		Properties  map[string]any `json:"properties"`
+		Tool             tool           `json:"tool"`
+		ColumnKind       string         `json:"columnKind,omitempty"`
+		NewlineSequences []string       `json:"newlineSequences,omitempty"`
+		Results          *[]result      `json:"results,omitempty"`
+		Invocations      []invocation   `json:"invocations"`
+		Properties       map[string]any `json:"properties"`
 	}
 
 	tool struct {
@@ -112,6 +113,14 @@ type (
 	}
 )
 
+//nolint:gochecknoglobals // SARIF message escaping is immutable and shared by exporters.
+var sarifBraces = strings.NewReplacer("{", "{{", "}", "}}")
+
+// SARIF 2.1.0 section 3.11.5 reserves single braces for placeholders.
+func sarifMessage(text string) message {
+	return message{Text: sarifBraces.Replace(text)}
+}
+
 func writeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -193,8 +202,9 @@ func toSARIF(r Analysis, evaluation Evaluation) sarif {
 				Version: r.EngineVersion,
 				Rules:   rules,
 			}},
-			ColumnKind: "unicodeCodePoints",
-			Results:    results,
+			ColumnKind:       "unicodeCodePoints",
+			NewlineSequences: []string{"\r\n", "\n", "\r"},
+			Results:          &results,
 			Invocations: []invocation{{
 				ExecutionSuccessful:        r.Coverage.Completeness == Complete,
 				ToolExecutionNotifications: notes,
@@ -369,8 +379,8 @@ func sarifRules(r Analysis) []rule {
 	for _, x := range r.Rules {
 		item := rule{
 			ID:               x.ID,
-			ShortDescription: message{Text: x.Title},
-			FullDescription:  message{Text: x.Description},
+			ShortDescription: sarifMessage(x.Title),
+			FullDescription:  sarifMessage(x.Description),
 			Properties: map[string]any{
 				"severity":   x.Severity,
 				"version":    x.Version,
@@ -379,7 +389,8 @@ func sarifRules(r Analysis) []rule {
 			},
 		}
 		if x.Guidance != nil {
-			item.Help = &message{Text: x.Guidance.Explanation + "\nRemediation: " + x.Guidance.Remediation + "\nReview: " + strings.Join(x.Guidance.ReviewChecks, "; ") + "\nConsider: " + strings.Join(x.Guidance.BenignConsiderations, "; ")}
+			help := sarifMessage(x.Guidance.Explanation + "\nRemediation: " + x.Guidance.Remediation + "\nReview: " + strings.Join(x.Guidance.ReviewChecks, "; ") + "\nConsider: " + strings.Join(x.Guidance.BenignConsiderations, "; "))
+			item.Help = &help
 
 			item.Properties["guidance"] = x.Guidance
 			if len(x.Guidance.Sources) > 0 {
@@ -437,7 +448,7 @@ func sarifFindings(r Analysis, evaluation Evaluation, kinds map[string]string) [
 		item := result{
 			RuleID:              f.RuleID,
 			Level:               level,
-			Message:             message{Text: f.Message},
+			Message:             sarifMessage(f.Message),
 			Locations:           []location{{PhysicalLocation: p}},
 			PartialFingerprints: map[string]string{"occurrence/v1": f.ID},
 			Properties: map[string]any{
@@ -489,7 +500,7 @@ func sarifProposals(semantic SemanticReport) []result {
 		results = append(results, result{
 			RuleID:              "SEMANTIC-PROPOSAL",
 			Level:               "warning",
-			Message:             message{Text: "Model proposal: " + p.Reason + ". Human review required; not a verified static finding."},
+			Message:             sarifMessage("Model proposal: " + p.Reason + ". Human review required; not a verified static finding."),
 			Locations:           locations,
 			PartialFingerprints: map[string]string{"semanticProposal/v1": p.ID},
 			Properties: map[string]any{
@@ -524,7 +535,7 @@ func sarifDiagnostics(diagnostics []Diagnostic) []notification {
 
 		notes = append(notes, notification{
 			Level:     "warning",
-			Message:   message{Text: d.Code + " " + at + ": " + d.Message},
+			Message:   sarifMessage(d.Code + " " + at + ": " + d.Message),
 			Locations: locations,
 		})
 	}

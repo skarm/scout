@@ -124,7 +124,7 @@ func TestRejectSourceSpans(t *testing.T) {
 }
 
 func FuzzIndex(f *testing.F) {
-	for _, s := range []string{"", "abc", "🙂\r\nПривет\n", "a\nb\nc"} {
+	for _, s := range []string{"", "abc", "🙂\r\nПривет\n", "a\nb\nc", "a\rb\r\nc"} {
 		f.Add(s, uint16(0))
 	}
 	f.Fuzz(func(t *testing.T, text string, offset uint16) {
@@ -139,7 +139,11 @@ func FuzzIndex(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		prefix := text[:at]
+		// Mark complete CRLF pairs before converting bare CR. When the
+		// queried offset is inside a CRLF pair, CR still occupies a column.
+		normalized := strings.ReplaceAll(text, "\r\n", "\x00\n")
+		normalized = strings.ReplaceAll(normalized, "\r", "\n")
+		prefix := normalized[:at]
 		if line != strings.Count(prefix, "\n")+1 || column != utf8.RuneCountInString(prefix[strings.LastIndexByte(prefix, '\n')+1:])+1 {
 			t.Fatal("coordinate mismatch")
 		}
@@ -253,5 +257,18 @@ func TestViewSelectComposesAcrossDisjointAndReplacedSource(t *testing.T) {
 	}
 	if _, err := parent.Select([]source.Span{{Start: 7, End: 8}}); err == nil {
 		t.Fatal("selection split a UTF-8 rune")
+	}
+}
+
+func TestIndexCountsBareCRAndCRLFAsSingleBreaks(t *testing.T) {
+	const text = "α\rβ\r\nγ\n"
+	index := source.NewIndex(text)
+	for _, want := range []struct{ offset, line, column int }{
+		{2, 1, 2}, {3, 2, 1}, {5, 2, 2}, {6, 2, 3}, {7, 3, 1}, {9, 3, 2}, {10, 4, 1},
+	} {
+		line, column, err := index.Position(want.offset)
+		if err != nil || line != want.line || column != want.column {
+			t.Fatalf("byte %d: got %d:%d, %v, want %d:%d", want.offset, line, column, err, want.line, want.column)
+		}
 	}
 }

@@ -106,8 +106,8 @@ remain unsupported. Go and JS/TS SQL interpolation is checked on their own ASTs.
 ## Markdown
 
 Goldmark parses CommonMark block containers, including nested lists, blockquotes,
-fenced code and indented code. Code views preserve LF/CRLF and physical byte
-coordinates after container prefixes are removed. Unlabelled indented code uses
+fenced code and indented code. Code views preserve LF and CRLF, project bare CR
+as LF, and retain physical byte coordinates after removing container prefixes. Unlabelled indented code uses
 only existing narrow language hints; an unknown language remains a coverage gap.
 Fences inside HTML blocks are inspected in a separate bounded raw-content pass;
 HTML/runtime semantics remain unsupported. No rendering or reference fetching occurs.

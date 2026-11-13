@@ -1,12 +1,14 @@
 package extract
 
 import (
+	"bytes"
 	"compress/zlib"
 	"encoding/binary"
 	"hash/crc32"
 	"io"
 	"math"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/skarm/scout/report"
 )
@@ -161,7 +163,7 @@ func pngText(o *operation, typ, data string, span *report.ByteRange) error {
 
 	switch typ {
 	case "tEXt":
-		return o.emit("png-text.txt", &latinStream{r: strings.NewReader(rest)}, -1, false, span)
+		return o.emitValidated("png-text.txt", &latinStream{r: strings.NewReader(rest)}, -1, false, span, validPNGText)
 	case "zTXt":
 		if len(rest) < 1 || rest[0] != 0 {
 			return errFormat
@@ -191,7 +193,7 @@ func pngInternationalText(o *operation, rest string, span *report.ByteRange) err
 	rest = rest[lang+1:]
 
 	translated := strings.IndexByte(rest, 0)
-	if translated < 0 {
+	if translated < 0 || !utf8.ValidString(rest[:translated]) {
 		return errFormat
 	}
 
@@ -200,7 +202,7 @@ func pngInternationalText(o *operation, rest string, span *report.ByteRange) err
 		return pngCompressed(o, rest, false, span)
 	}
 
-	return o.text("png-itext.txt", rest, span)
+	return o.emitValidated("png-itext.txt", strings.NewReader(rest), int64(len(rest)), false, span, validPNGText)
 }
 
 func pngCompressed(o *operation, data string, latin bool, span *report.ByteRange) error {
@@ -216,7 +218,7 @@ func pngCompressed(o *operation, data string, latin bool, span *report.ByteRange
 		r = &latinStream{r: r}
 	}
 
-	err = o.emit("png-text.txt", r, -1, false, span)
+	err = o.emitValidated("png-text.txt", r, -1, false, span, validPNGText)
 	closed := zr.Close()
 
 	if err != nil {
@@ -224,6 +226,12 @@ func pngCompressed(o *operation, data string, latin bool, span *report.ByteRange
 	}
 
 	return closed
+}
+
+// PNG section 11.3.3 disallows NUL. At this boundary Latin-1 streams
+// have already been converted to UTF-8.
+func validPNGText(data []byte) bool {
+	return utf8.Valid(data) && bytes.IndexByte(data, 0) < 0
 }
 
 func stringLatin1(b []byte) string {

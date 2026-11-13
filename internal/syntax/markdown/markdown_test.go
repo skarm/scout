@@ -111,3 +111,39 @@ func FuzzMarkdownSourceMapping(f *testing.F) {
 		}
 	})
 }
+
+func TestCommonMarkBareCarriageReturnFences(t *testing.T) {
+	const input = "header\r\r> ```sh\r> printf ready\r> ```\r"
+	result := markdown.Parse(t.Context(), input, 0)
+	if result.Failure != "" || len(result.Blocks) != 1 {
+		t.Fatalf("fence after CR-only lines lost: %+v", result)
+	}
+
+	block := result.Blocks[0]
+	if block.Failure != "" || block.Unclosed || block.Info != "sh" || block.View.Text() != "printf ready\n" {
+		t.Fatalf("incorrect fenced projection: %+v, code=%q", block, block.View.Text())
+	}
+
+	at := strings.Index(input, "printf")
+	span, err := block.View.Original(source.Span{End: len(block.View.Text())})
+	if err != nil || span != (source.Span{Start: at, End: at + len("printf ready\r")}) {
+		t.Fatalf("original span = %+v, err = %v", span, err)
+	}
+}
+
+// CommonMark 0.31.2 example 278, with CRLF line endings.
+func TestCommonMarkEmptyListMarkersWithCRLF(t *testing.T) {
+	const input = "-\r\n  foo\r\n-\r\n  ```\r\n  bar\r\n  ```\r\n-\r\n      baz\r\n"
+	result := markdown.Parse(t.Context(), input, 0)
+	if result.Failure != "" || len(result.Blocks) != 2 {
+		t.Fatalf("expected both code blocks: %+v", result)
+	}
+	for i, want := range []string{"bar\r\n", "baz\r\n"} {
+		block := result.Blocks[i]
+		at := strings.Index(input, want)
+		span, err := block.View.Original(source.Span{End: len(want)})
+		if block.View.Text() != want || span != (source.Span{Start: at, End: at + len(want)}) || err != nil {
+			t.Fatalf("block %d: %q, %+v, %v", i, block.View.Text(), span, err)
+		}
+	}
+}

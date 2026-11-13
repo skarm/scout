@@ -114,17 +114,17 @@ func (w *hookSourceWalk) argv(e *entry, command, args *jsonconfig.Node, initial 
 }
 
 type hookSourceState struct {
+	vars               map[string]string
+	ambiguousFunctions map[string]bool
+	returns            *hookSourceState
+	functions          map[string]hookSourceFunction
 	cwd                string
 	positional         []hookSourceArgument
 	canReturn          bool
 	lookupUnknown      bool
 	rootUnknown        bool
-	vars               map[string]string
-	ambiguousFunctions map[string]bool
 	returned           bool
-	returns            *hookSourceState
 	exited             bool
-	functions          map[string]hookSourceFunction
 }
 
 func (w *hookSourceWalk) commands(e *entry, view source.View, tree *shellsyntax.File, state hookSourceState, chain []report.SourceRef, entrypoint bool) hookSourceState {

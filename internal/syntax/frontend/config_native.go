@@ -133,15 +133,37 @@ func parseYAML(ctx context.Context, text string) (*ConfigNode, error) {
 		return nil, &Failure{Category: "deadline"}
 	}
 
-	p := yamlProjection{configProjection: configProjection{ctx: ctx, text: text}, lines: []int{0}}
+	p := yamlProjection{configProjection: configProjection{ctx: ctx, text: text}, lines: yamlLineStarts(text)}
 
-	for i := range text {
-		if text[i] == '\n' {
-			p.lines = append(p.lines, i+1)
+	return p.node(&document, 0)
+}
+
+func yamlLineStarts(text string) []int {
+	const bom = "\ufeff"
+
+	start := 0
+	if strings.HasPrefix(text, bom) {
+		start = len(bom) // The decoder removes the stream BOM before counting columns.
+	}
+
+	lines := []int{start}
+	for i, r := range text[start:] {
+		at := start + i
+
+		switch r {
+		case '\r':
+			if at+1 < len(text) && text[at+1] == '\n' {
+				continue
+			}
+
+			lines = append(lines, at+1)
+		case '\n', '\u0085', '\u2028', '\u2029':
+			// Match the selected YAML decoder, which also recognizes legacy breaks.
+			lines = append(lines, at+utf8.RuneLen(r))
 		}
 	}
 
-	return p.node(&document, 0)
+	return lines
 }
 
 func (p *yamlProjection) offset(line, column int) (int, error) {
@@ -152,7 +174,7 @@ func (p *yamlProjection) offset(line, column int) (int, error) {
 	at := p.lines[line-1]
 
 	for col := 1; col < column; col++ {
-		if at >= len(p.text) || p.text[at] == '\n' {
+		if at >= len(p.text) || line < len(p.lines) && at >= p.lines[line] {
 			return 0, &Failure{Category: "invalid_tree"}
 		}
 

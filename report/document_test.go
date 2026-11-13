@@ -301,3 +301,25 @@ func documentFixture(t *testing.T, incomplete bool) report.Document {
 		}, {FindingID: "unrelated"}},
 	})
 }
+
+func TestSARIFPreflightFailureHasNoResultsArray(t *testing.T) {
+	var out bytes.Buffer
+	if err := report.WriteFailure(&out, report.SARIF, report.ScanOperation, report.Problem{
+		Code: "invalid_target", Phase: "preflight",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var log struct {
+		Runs []struct {
+			Results    json.RawMessage
+			ColumnKind string
+		}
+	}
+	if err := json.Unmarshal(out.Bytes(), &log); err != nil {
+		t.Fatal(err)
+	}
+	if len(log.Runs) != 1 || len(log.Runs[0].Results) != 0 || log.Runs[0].ColumnKind != "" {
+		t.Fatalf("preflight failure represented as an analyzed run: %s", out.String())
+	}
+}

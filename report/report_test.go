@@ -3,6 +3,7 @@ package report_test
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/skarm/scout/report"
@@ -23,6 +24,9 @@ func TestSARIFContract(t *testing.T) {
 	run := got["runs"].([]any)[0].(map[string]any)
 	if run["columnKind"] != "unicodeCodePoints" {
 		t.Fatal("wrong columns")
+	}
+	if want := []any{"\r\n", "\n", "\r"}; !reflect.DeepEqual(run["newlineSequences"], want) {
+		t.Fatalf("newline sequences = %v, want %v", run["newlineSequences"], want)
 	}
 	result := run["results"].([]any)[0].(map[string]any)
 	if result["level"] != "error" || result["properties"].(map[string]any)["severity"] != "critical" {
@@ -184,5 +188,44 @@ func sample() report.Analysis {
 				EndColumn:   2,
 			},
 		}},
+	}
+}
+
+func TestSARIFMessagesEscapeLiteralBraces(t *testing.T) {
+	analysis := sample()
+	const literal = "Example {0} includes {literal} and }"
+	analysis.Findings[0].Message = literal
+	analysis.Diagnostics = []report.Diagnostic{{Code: "test_notice", Message: literal}}
+	var out bytes.Buffer
+	if err := writeFixture(&out, "sarif", analysis); err != nil {
+		t.Fatal(err)
+	}
+
+	var log struct {
+		Runs []struct {
+			Results []struct {
+				Message struct {
+					Text string
+				}
+			}
+			Invocations []struct {
+				ToolExecutionNotifications []struct {
+					Message struct {
+						Text string
+					}
+				}
+			}
+		}
+	}
+	if err := json.Unmarshal(out.Bytes(), &log); err != nil {
+		t.Fatal(err)
+	}
+	run := log.Runs[0]
+	const want = "Example {{0}} includes {{literal}} and }}"
+	if got := run.Results[0].Message.Text; got != want {
+		t.Fatalf("result message = %q, want %q", got, want)
+	}
+	if got := run.Invocations[0].ToolExecutionNotifications[0].Message.Text; !bytes.HasSuffix([]byte(got), []byte(want)) {
+		t.Fatalf("notification message = %q, want suffix %q", got, want)
 	}
 }

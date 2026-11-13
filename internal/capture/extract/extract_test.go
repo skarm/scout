@@ -589,3 +589,24 @@ func issue(r extract.Result, code string) bool {
 	}
 	return false
 }
+
+func TestPNGRejectsMalformedTextBeforePublishingIt(t *testing.T) {
+	for _, tc := range []struct{ name, kind, data string }{
+		{"tEXt null", "tEXt", "key\x00A\x00B"},
+		{"zTXt null", "zTXt", "key\x00\x00" + zlibData(t, "A\x00B")},
+		{"iTXt translated keyword", "iTXt", "key\x00\x00\x00en\x00\xff\x00valid"},
+		{"iTXt invalid text", "iTXt", "key\x00\x00\x00en\x00key\x00\xff"},
+		{"iTXt compressed invalid text", "iTXt", "key\x00\x01\x00\x00\x00" + zlibData(t, "\xff")},
+		{"iTXt compressed null", "iTXt", "key\x00\x01\x00\x00\x00" + zlibData(t, "A\x00B")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := expand(t, "text.png", pngData(pngChunk("tEXt", "key\x00valid"), pngChunk(tc.kind, tc.data)), report.DefaultExtractionLimits())
+			if len(got.Report.Objects) != 1 || len(got.Files) != 1 || got.Files[0].Content() != "valid" {
+				t.Fatalf("invalid text published or earlier valid text lost: %+v", got.Report.Objects)
+			}
+			if !slices.ContainsFunc(got.Diagnostics, func(d report.Diagnostic) bool { return d.Code == "extraction_invalid_or_unsupported" }) {
+				t.Fatalf("missing format diagnostic: %+v", got.Diagnostics)
+			}
+		})
+	}
+}

@@ -120,6 +120,8 @@ func parseRange(ctx context.Context, original string, span source.Span, inspectH
 	}
 
 	p := preparation{ctx: ctx, buffer: []byte(original[span.Start:span.End]), fences: map[ast.Node]*rawBlock{}, inspectHTML: inspectHTML}
+	normalizeLineEndings(p.buffer)
+
 	result := Result{Failure: p.parse()}
 
 	result.HTML = len(p.opaque) != 0
@@ -135,6 +137,23 @@ func parseRange(ctx context.Context, original string, span source.Span, inspectH
 	}
 
 	return result
+}
+
+// Some Goldmark block parsers expect LF even though CommonMark also admits
+// CR and CRLF. Keep parser offsets physical by replacing CRLF's CR with a
+// space and using the original bytes when projecting code.
+func normalizeLineEndings(buffer []byte) {
+	for i, ch := range buffer {
+		if ch != '\r' {
+			continue
+		}
+
+		if i+1 < len(buffer) && buffer[i+1] == '\n' {
+			buffer[i] = ' '
+		} else {
+			buffer[i] = '\n'
+		}
+	}
 }
 
 func (p *preparation) parse() (failure string) {
@@ -258,7 +277,7 @@ func project(original string, offset int, buffer []byte, raw *rawBlock) Block {
 	lines := raw.node.Lines()
 	block.Span.Start += offset
 	block.Span.End += offset
-	block.View, block.Failure = projectLines(original, offset, lines)
+	block.View, block.Failure = projectLines(original, offset, buffer, lines)
 
 	return block
 }
@@ -278,7 +297,7 @@ func blockSpan(raw *rawBlock) source.Span {
 	return span
 }
 
-func projectLines(original string, offset int, lines *text.Segments) (source.View, string) {
+func projectLines(original string, offset int, buffer []byte, lines *text.Segments) (source.View, string) {
 	if lines.Len() > MaxSegments {
 		return source.View{}, "document_segment_limit"
 	}
@@ -287,7 +306,7 @@ func projectLines(original string, offset int, lines *text.Segments) (source.Vie
 
 	var replacements []source.Replacement
 
-	bytes := 0
+	bytes, padding := 0, 0
 
 	for i := range lines.Len() {
 		line := lines.At(i)
@@ -305,11 +324,17 @@ func projectLines(original string, offset int, lines *text.Segments) (source.Vie
 			}
 
 			span.Start--
+			padding += line.Padding - 1
 			replacements = append(replacements, source.Replacement{Span: source.Span{Start: bytes, End: bytes + 1}, Text: strings.Repeat(" ", line.Padding)})
 		}
 
+		if line.Stop > line.Start && buffer[line.Stop-1] == '\n' && original[span.End-1] == '\r' {
+			end := bytes + span.End - span.Start
+			replacements = append(replacements, source.Replacement{Span: source.Span{Start: end - 1, End: end}, Text: "\n"})
+		}
+
 		bytes += span.End - span.Start
-		if bytes+len(replacements)*3 > MaxUnitBytes {
+		if bytes+padding > MaxUnitBytes {
 			return source.View{}, "source_limit"
 		}
 

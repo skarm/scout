@@ -106,7 +106,7 @@ func NewIndex(text string) Index {
 			next = at + indexByteStride
 		}
 
-		if char == '\n' {
+		if lineBreak(text, at, char) {
 			line, column = line+1, 1
 		} else {
 			column++
@@ -130,15 +130,21 @@ func (i Index) Position(offset int) (line, column int, err error) {
 	}
 
 	point := i.points[n]
-	block := i.text[point.offset:offset]
-	line = point.line + strings.Count(block, "\n")
 
-	column = point.column
-	if last := strings.LastIndexByte(block, '\n'); last >= 0 {
-		block, column = block[last+1:], 1
+	line, column = point.line, point.column
+	for at, char := range i.text[point.offset:offset] {
+		if lineBreak(i.text, point.offset+at, char) {
+			line, column = line+1, 1
+		} else {
+			column++
+		}
 	}
 
-	return line, column + utf8.RuneCountInString(block), nil
+	return line, column, nil
+}
+
+func lineBreak(text string, offset int, r rune) bool {
+	return r == '\n' || r == '\r' && (offset+1 == len(text) || text[offset+1] != '\n')
 }
 
 // NewView concatenates ordered, nonoverlapping source spans and retains their
