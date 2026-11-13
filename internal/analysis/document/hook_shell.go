@@ -58,6 +58,35 @@ func (f File) WithDeclaredHookShell(ctx context.Context) File {
 	return f
 }
 
+// WithHookSourceShell prepares an explicit local shell input identified by a
+// captured hook or source command, including files without a shell suffix.
+func (f File) WithHookSourceShell(ctx context.Context) File {
+	if f.budget == nil || f.file.Metadata().Kind != "text" || ctx.Err() != nil {
+		return f
+	}
+
+	for _, unit := range f.units {
+		if unit.Origin == "file" && unit.Language == language.Shell {
+			return f
+		}
+	}
+
+	f.units = slices.Clone(f.units)
+	f.diagnostics = slices.Clone(f.diagnostics)
+	preparation := (*filePreparation)(&f)
+	span := source.Span{End: len(f.file.Content())}
+
+	view, err := source.NewView(f.file.Content(), []source.Span{span})
+	if err != nil {
+		preparation.issue("source_map_error", "Source mapping could not be constructed.")
+		return f
+	}
+
+	preparation.addUnit(ctx, language.Shell, "file", span, view)
+
+	return f
+}
+
 func (f *filePreparation) prepareHookShell(ctx context.Context) {
 	f.hookShellReady = true
 

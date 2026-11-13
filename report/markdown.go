@@ -142,6 +142,15 @@ func writeMarkdownFindings(b *strings.Builder, r Analysis, evaluation Evaluation
 			_, _ = fmt.Fprintf(b, "Component %s; relationship %s; activation %s.\n\n", mdCode(c.ComponentID), mdCode(c.Relation), mdCode(c.Activation))
 		}
 
+		for _, hook := range f.HookSources {
+			_, _ = fmt.Fprintf(b, "Hook source path for %s:\n\n", mdCode(hook.Event))
+			for _, step := range hook.Steps {
+				_, _ = fmt.Fprintf(b, "- %s, line %d, column %d\n", mdCode(step.Path), step.StartLine, step.StartColumn)
+			}
+
+			b.WriteString("\n")
+		}
+
 		for _, s := range f.Trace {
 			_, _ = fmt.Fprintf(b, "Trace %s: %s, bytes %d–%d.\n\n", mdCode(s.Role), mdCode(s.Location.Path), s.Location.ByteStart, s.Location.ByteEnd)
 		}

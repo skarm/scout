@@ -225,19 +225,19 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 			return
 		}
 
-		if !p.hookEvent(e, event.Value, parent, activation, eventIndex) {
+		if !p.hookEvent(e, event, parent, activation, eventIndex) {
 			return
 		}
 	}
 }
 
-func (p *plugin) hookEvent(e *entry, event *jsonconfig.Node, parent, activation string, eventIndex int) bool {
-	if event.Kind != jsonconfig.KindArray {
+func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation string, eventIndex int) bool {
+	if event.Value.Kind != jsonconfig.KindArray {
 		p.issue("plugin_hooks_invalid", e.meta.Path, "invalid")
 		return true
 	}
 
-	for gi, group := range event.Elements {
+	for gi, group := range event.Value.Elements {
 		if !p.b.step() {
 			return false
 		}
@@ -253,14 +253,14 @@ func (p *plugin) hookEvent(e *entry, event *jsonconfig.Node, parent, activation 
 				return false
 			}
 
-			p.hookHandler(e, h, parent, activation, eventIndex, gi, hi)
+			p.hookHandler(e, h, parent, activation, event.Key, eventIndex, gi, hi)
 		}
 	}
 
 	return true
 }
 
-func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation string, eventIndex, gi, hi int) {
+func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, event string, eventIndex, gi, hi int) {
 	s := ref(e, h.Span)
 	id := p.component("hook", e, activation, "configuration", s, fmt.Sprintf("hook:%d:%d:%d", eventIndex, gi, hi))
 	p.b.edge(parent, id, "registers", "configuration", activation, s)
@@ -269,7 +269,7 @@ func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation st
 	kind, _ := h.Get("type").Text()
 	switch kind {
 	case "command":
-		p.hookCommand(e, h, id, activation)
+		p.hookCommand(e, h, id, activation, event)
 	case "http":
 		p.reference(id, "remote_endpoint", "unresolved", "remote_behavior_unverified", "", s)
 	case "prompt", "agent":
@@ -281,7 +281,7 @@ func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation st
 	}
 }
 
-func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation string) {
+func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event string) {
 	cmd := h.Get("command")
 
 	text, ok := cmd.Text()
@@ -296,6 +296,10 @@ func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation string
 	if !valid {
 		p.issue("plugin_hook_args_invalid", e.meta.Path, "invalid")
 		return
+	}
+
+	if p.b.prepareHooks {
+		p.inspectHookSources(e, h, event)
 	}
 
 	p.command(id, text, args, argv, ref(e, h.Span), activation)

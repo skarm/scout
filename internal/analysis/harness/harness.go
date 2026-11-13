@@ -33,18 +33,21 @@ type namespace struct {
 	names   []string
 }
 type builder struct {
-	ctx            context.Context
-	r              report.ComponentGraph
-	spaces         []*namespace
-	nodes          map[string]int
-	edges          map[string]bool
-	issues         map[string]bool
-	references     map[string]bool
-	containerRoots map[string]bool
-	operations     int
-	stopped        bool
-	prepareHooks   bool
-	hooks          hookpolicy.Policy
+	ctx                   context.Context
+	r                     report.ComponentGraph
+	spaces                []*namespace
+	nodes                 map[string]int
+	edges                 map[string]bool
+	issues                map[string]bool
+	references            map[string]bool
+	containerRoots        map[string]bool
+	operations            int
+	stopped               bool
+	prepareHooks          bool
+	hookSourcePaths       []HookSourcePath
+	hookSourceDiagnostics []report.Diagnostic
+	hookSourceSeen        map[report.Diagnostic]bool
+	hooks                 hookpolicy.Policy
 }
 type candidate struct {
 	ns                   *namespace
@@ -74,19 +77,28 @@ func Limits() report.HarnessLimits {
 // never mistaken for an installed manifest. Only actual archive members form
 // virtual directory namespaces; decoded strings and metadata cannot impersonate files.
 func Discover(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions) report.ComponentGraph {
-	return discover(ctx, inventory, docs, extraction, opts, false)
+	return discover(ctx, inventory, docs, extraction, opts, nil)
 }
 
 // DiscoverWithHookShell prepares captured hook files as their manifest paths
 // resolve. Discovery then reads the same JSON tree used by shell preparation.
 func DiscoverWithHookShell(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions) (report.ComponentGraph, []document.File) {
-	out := slices.Clone(docs)
-	graph := discover(ctx, inventory, out, extraction, opts, true)
-
+	graph, out, _ := DiscoverWithHookSources(ctx, inventory, docs, extraction, opts)
 	return graph, out
 }
 
-func discover(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions, prepareHooks bool) report.ComponentGraph {
+// DiscoverWithHookSources also retains the local source paths of command hooks.
+func DiscoverWithHookSources(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions) (report.ComponentGraph, []document.File, HookSources) {
+	out := slices.Clone(docs)
+
+	var sources HookSources
+
+	graph := discover(ctx, inventory, out, extraction, opts, &sources)
+
+	return graph, out, sources
+}
+
+func discover(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions, sources *HookSources) report.ComponentGraph {
 	host := opts.Host
 	if host == "" {
 		host = report.HostAuto
@@ -94,7 +106,7 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 
 	b := builder{
 		ctx:            ctx,
-		prepareHooks:   prepareHooks,
+		prepareHooks:   sources != nil,
 		nodes:          map[string]int{},
 		edges:          map[string]bool{},
 		references:     map[string]bool{},
@@ -137,6 +149,10 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 
 	b.standaloneSkills()
 	b.finish()
+
+	if sources != nil {
+		*sources = HookSources{Paths: b.hookSourcePaths, Diagnostics: b.hookSourceDiagnostics}
+	}
 
 	return b.r
 }

@@ -131,6 +131,8 @@ type Finding struct {
 	// Contexts records plugin and host interpretations without changing the
 	// finding's identity.
 	Contexts []FindingContext `json:"contexts,omitempty"`
+	// HookSources retains static paths from declared hook commands to this file.
+	HookSources []HookSourceContext `json:"hook_sources,omitempty"`
 	// ID identifies a source-bound occurrence without collapsing duplicate
 	// evidence.
 	ID string `json:"id"`
@@ -153,6 +155,13 @@ type Finding struct {
 	Evidence Evidence `json:"evidence"`
 	// Trace records ordered, source-bound steps that support the observation.
 	Trace []TraceStep `json:"trace,omitempty"`
+}
+
+// HookSourceContext gives the declared event and ordered command locations
+// connecting it to the file containing a finding.
+type HookSourceContext struct {
+	Event string     `json:"event"`
+	Steps []Location `json:"steps"`
 }
 
 // TraceStep binds one step of an observed flow to its original location and

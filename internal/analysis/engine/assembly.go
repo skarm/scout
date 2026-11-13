@@ -79,6 +79,8 @@ func (run *execution) buildAnalysis() {
 			"Capture is immutable after reading but is not an atomic filesystem snapshot; mounts, hard links and hostile same-user writers require external isolation.",
 		},
 	}
+
+	run.analysis.Diagnostics = append(run.analysis.Diagnostics, run.hookSources.Diagnostics...)
 	if run.analysis.Metadata.Completeness != report.Complete {
 		run.analysis.Diagnostics = append(run.analysis.Diagnostics, report.Diagnostic{
 			Code:         "metadata_contract_partial",
@@ -164,6 +166,13 @@ func (run *execution) finalize() (report.Analysis, error) {
 
 func (run *execution) finish() (report.Analysis, error) {
 	r := &run.analysis
+
+	if run.attachHookSourceContexts() {
+		r.Diagnostics = append(r.Diagnostics, report.Diagnostic{
+			Code: "hook_source_context_limit", Message: "The hook source context budget was exhausted.", AffectsScope: true,
+		})
+	}
+
 	if harness.Enrich(r.Findings, r.Components) {
 		r.Diagnostics = append(r.Diagnostics, report.Diagnostic{
 			Code:         "finding_context_limit",

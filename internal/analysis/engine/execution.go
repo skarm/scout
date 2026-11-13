@@ -28,6 +28,7 @@ type execution struct {
 	files                         []artifact.File
 	documents                     []document.File
 	graph                         report.ComponentGraph
+	hookSources                   harness.HookSources
 	expanded                      extract.Result
 	inputs                        []report.File
 	checks                        []check.Analyzer
@@ -57,7 +58,7 @@ func (run *execution) prepare() error {
 
 	files = append(files, expanded.Files...)
 	documents := document.PrepareAllWithRegistry(run.ctx, files, run.engine.registry)
-	graph, documents := harness.DiscoverWithHookShell(run.ctx, run.snapshot.Metadata().Files, documents, expanded.Report, run.options.Harness)
+	graph, documents, hookSources := harness.DiscoverWithHookSources(run.ctx, run.snapshot.Metadata().Files, documents, expanded.Report, run.options.Harness)
 
 	candidates := run.options.Limits.MaxFindings
 	if run.options.MatchLimit > 0 {
@@ -95,6 +96,7 @@ func (run *execution) prepare() error {
 
 	collector := newFindingCollector(run.options.Limits.MaxFindings)
 	run.files, run.documents, run.graph, run.expanded = files, documents, graph, expanded
+	run.hookSources = hookSources
 	run.inputs, run.checks, run.ledger = inputs, checks, ledger
 	run.results, run.collector, run.operationTasks, run.capturedCount = results, collector, operationTasks, capturedCount
 

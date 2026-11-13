@@ -351,6 +351,13 @@ func writeTerminalFindings(b *strings.Builder, r Analysis, evaluation Evaluation
 			_, _ = fmt.Fprintf(b, "  Component: %s host=%s relation=%s activation=%s\n", c.ComponentID, c.Host, c.Relation, c.Activation)
 		}
 
+		for _, hook := range f.HookSources {
+			_, _ = fmt.Fprintf(b, "  Hook source path (%s):\n", strconv.QuoteToASCII(hook.Event))
+			for _, step := range hook.Steps {
+				_, _ = fmt.Fprintf(b, "    %s:%d:%d\n", strconv.QuoteToASCII(step.Path), step.StartLine, step.StartColumn)
+			}
+		}
+
 		for _, step := range f.Trace {
 			_, _ = fmt.Fprintf(b, "  %s: %s:%d:%d\n", step.Role, strconv.QuoteToASCII(step.Location.Path), step.Location.StartLine, step.Location.StartColumn)
 		}
@@ -449,7 +456,12 @@ func sarifFindings(r Analysis, evaluation Evaluation, kinds map[string]string) [
 
 		item.Properties["contextSignals"] = f.ContextSignals
 		item.Properties["advisoryIds"] = f.AdvisoryIDs
+
 		item.Properties["relatedEvidence"] = f.RelatedEvidence
+		if len(f.HookSources) > 0 {
+			item.Properties["hookSources"] = f.HookSources
+		}
+
 		item.Properties["signatureNames"] = f.SignatureNames
 		item.CodeFlows = sarifCodeFlows(f.Trace, kinds)
 
