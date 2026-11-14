@@ -207,10 +207,19 @@ func TestHTTPResponseBudget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			envelope := apiEnvelope(`{}`)
 			body := envelope + strings.Repeat(" ", tc.size-len(envelope))
-			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Read the POST body before flushing headers on a connection the client will close.
+				if _, err := io.Copy(io.Discard, r.Body); err != nil {
+					t.Error(err)
+					return
+				}
+
 				w.Header().Set("Content-Type", "application/json")
 				if tc.chunked {
-					w.(http.Flusher).Flush()
+					if err := http.NewResponseController(w).Flush(); err != nil {
+						t.Error(err)
+						return
+					}
 				}
 
 				if _, err := io.WriteString(w, body); err != nil {
