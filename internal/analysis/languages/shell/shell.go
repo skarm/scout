@@ -5,6 +5,7 @@ import (
 	"errors"
 	"maps"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
@@ -94,19 +95,20 @@ type shellState struct {
 }
 
 type shellWalk struct {
-	ctx               context.Context
-	view              source.View
-	kind              string
-	limit, operations int
-	result            result
-	err               error
-	gap               error
-	activeFunctions   map[*shellsyntax.File]bool
-	outputs           map[string]*check.Facts
-	observeNetwork    func(string, source.Span)
-	observeSecret     func(source.Span)
-	observeDNS        func(string, source.Span, *shellOrigin)
-	observeCapability func(string, source.Span)
+	ctx                context.Context
+	view               source.View
+	kind               string
+	limit, operations  int
+	result             result
+	err                error
+	gap                error
+	activeFunctions    map[*shellsyntax.File]bool
+	outputs            map[string]*check.Facts
+	observeNetwork     func(string, source.Span)
+	observeSecret      func(source.Span)
+	observeDNS         func(string, source.Span, *shellOrigin)
+	observeCapability  func(string, source.Span)
+	commandTextPending bool
 }
 
 type shellRedirectKind uint8
@@ -173,6 +175,7 @@ func (a shellCheck) Rule() report.Rule {
 		r.Title, r.Category, r.Severity = "Sensitive data reaches a supported curl request argument", "credential-egress", report.High
 	case ruleSH003:
 		r.Title, r.Category = "Shell evaluates text or sources a file", "dynamic-execution"
+		r.Version = "6"
 	case ruleSH004:
 		r.Title, r.Category = "Shell command reads a sensitive credential path", "credential-access"
 	}
@@ -182,8 +185,12 @@ func (a shellCheck) Rule() report.Rule {
 	return r
 }
 
-func (shellCheck) AppliesTo(f document.File) bool {
+func (a shellCheck) AppliesTo(f document.File) bool {
 	for _, u := range f.Units() {
+		if a.kind == ruleSH003 && u.HookCommandText {
+			return true
+		}
+
 		if t, ok := u.Tree.(parse.ShellTree); ok && executionShellTree(u, t) != nil {
 			return true
 		}
@@ -268,16 +275,26 @@ func (v *shellValue) appendPart(x shellValue) {
 func (a *shellWalk) units(units []document.Unit) {
 	for _, u := range units {
 		t, ok := u.Tree.(parse.ShellTree)
-		if !ok {
+		if !ok && !u.HookCommandText {
 			continue
 		}
 
-		a.view = u.View
-		a.list(executionShellTree(u, t), newShellState())
+		a.unit(u, executionShellTree(u, t))
 
 		if a.err != nil || a.result.Truncated {
 			break
 		}
+	}
+}
+
+func (a *shellWalk) unit(unit document.Unit, tree *shellsyntax.File) {
+	a.view = unit.View
+	a.commandTextPending = unit.HookCommandText
+	a.list(tree, newShellState())
+
+	if a.commandTextPending {
+		a.commandTextPending = false
+		a.emit(ruleSH003, source.Span{End: len(unit.View.Text())}, nil, check.ShellCommandText)
 	}
 }
 
@@ -300,9 +317,17 @@ func (a *shellWalk) step() bool {
 	return true
 }
 
-func (a *shellWalk) emit(kind string, s source.Span, origin *shellOrigin) {
+func (a *shellWalk) emit(kind string, s source.Span, origin *shellOrigin, signals ...string) {
 	if !a.beginEmission(kind) {
 		return
+	}
+
+	if kind == ruleSH003 && a.commandTextPending && s.Start == 0 && s.End == len(a.view.Text()) {
+		a.commandTextPending = false
+
+		if !slices.Contains(signals, check.ShellCommandText) {
+			signals = append(signals, check.ShellCommandText)
+		}
 	}
 
 	m, err := a.view.Original(s)
@@ -311,7 +336,7 @@ func (a *shellWalk) emit(kind string, s source.Span, origin *shellOrigin) {
 		return
 	}
 
-	match := match{Start: m.Start, End: m.End}
+	match := match{Start: m.Start, End: m.End, ContextSignals: signals}
 
 	if origin != nil {
 		match.Trace, err = a.sourceTrace(origin, s)
@@ -433,10 +458,30 @@ func (a *shellWalk) wordPart(part shellsyntax.Part, s *shellState) shellValue {
 	switch part.Kind {
 	case "literal":
 		x.text = part.Text
-	case "parameter":
+	case "parameter", "parameter_default_dot":
 		x = s.parameter(part)
+		if part.Kind == "parameter_default_dot" && x.known && x.text == "" {
+			x.text = "."
+		}
+	case "parameter_replace_all", "parameter_script_dir":
+		x = s.parameter(part)
+		x.known = false
 	case "substitution":
 		x = a.list(part.Tree, s.clone())
+		x.known = false
+	case "process_substitution":
+		a.list(part.Tree, s.clone())
+
+		x.known = false
+	case "arithmetic":
+		for _, operand := range part.ArithmeticOperands {
+			a.word(operand, s.clone())
+		}
+
+		x.known = false
+	case "parameter_value":
+		a.word(part.Operand, s.clone())
+
 		x.known = false
 	}
 	// Unquoted known expansions can split/glob into multiple arguments.
@@ -529,6 +574,10 @@ func (a *shellWalk) pipeline(st *shellsyntax.Statement, s *shellState, incoming 
 func (a *shellWalk) command(c *shellsyntax.Command, s *shellState, input shellValue) shellValue {
 	if !a.step() {
 		return shellValue{}
+	}
+
+	for _, operand := range c.ExpansionWords {
+		a.word(operand, s)
 	}
 
 	if c.FunctionName != "" {
@@ -861,7 +910,7 @@ func (a *shellWalk) executionCommand(c *shellsyntax.Command, s *shellState, inpu
 
 	switch name {
 	case "eval":
-		a.emit(ruleSH003, c.Span, nil)
+		a.emit(ruleSH003, c.Span, nil, check.ShellEval)
 
 		for _, v := range args {
 			if v.download != nil {
@@ -875,24 +924,55 @@ func (a *shellWalk) executionCommand(c *shellsyntax.Command, s *shellState, inpu
 		s.barrier()
 	case "sh", "bash", "dash", "zsh", "ksh":
 		a.interpreterExecution(c, input, args)
+	case "exec", "nohup":
+		a.execCommandText(c, input, args)
+		s.barrier()
 	case "true", "false", ":":
 	default:
+		a.powerShellCommandText(c, name, args)
 		s.barrier() // unknown builtins/functions can mutate shell state
 	}
 }
 
 func (a *shellWalk) interpreterExecution(c *shellsyntax.Command, input shellValue, args []shellValue) {
-	commandText, readsInput := shellExecution(args)
+	commandText, _ := shellsyntax.CommandTextIndex(len(args), func(i int) (string, bool) {
+		return args[i].text, args[i].known
+	}, true)
 	if commandText >= 0 {
-		a.emit(ruleSH003, c.Span, nil)
+		if code := args[commandText]; !code.known || strings.TrimSpace(code.text) != "" {
+			a.emit(ruleSH003, c.Span, nil, check.ShellCommandText)
+		}
 
 		if args[commandText].download != nil {
 			a.emit(ruleSH001, c.Span, args[commandText].download)
 		}
 	}
 
+	_, readsInput := shellExecution(args)
 	if readsInput && input.download != nil {
 		a.emit(ruleSH001, c.Span, input.download)
+	}
+}
+
+func (a *shellWalk) execCommandText(c *shellsyntax.Command, input shellValue, argv []shellValue) {
+	name, args, ok := shellInvocation(stripShellDoubleDash(argv))
+	if !ok {
+		return
+	}
+
+	switch name {
+	case "sh", "bash", "dash", "zsh", "ksh":
+		a.interpreterExecution(c, input, args)
+	default:
+		a.powerShellCommandText(c, name, args)
+	}
+}
+
+func (a *shellWalk) powerShellCommandText(c *shellsyntax.Command, name string, args []shellValue) {
+	if shellsyntax.IsPowerShell(name) && shellsyntax.PowerShellCommandIndex(len(args), func(i int) (string, bool) {
+		return args[i].text, args[i].known
+	}) >= 0 {
+		a.emit(ruleSH003, c.Span, nil, check.ShellCommandText)
 	}
 }
 

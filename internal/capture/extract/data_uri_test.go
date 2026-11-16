@@ -45,6 +45,9 @@ func TestDataURIParsingRetainsIndependentCandidatesAndRejectsEmptyBodies(t *test
 		{text: "x data:missing-marker y data:text/plain;base64,T0s=", objects: 1, invalid: false},
 		{text: "x data:text/plain;base64,", objects: 0, invalid: true},
 		{text: "x data:text/plain;base64,T0s=%Q9", objects: 0, invalid: true},
+		{text: "x data:text/plain;base64,T0s=%Q9 y data:text/plain;base64,T0s=", objects: 1, invalid: true},
+		{text: "x data:text/plain;base64,SG y data:text/plain;base64,T0s=", objects: 1, invalid: true},
+		{text: "x data:text/plain;base64,T0s= y data:text/plain;base64,SG", objects: 1, invalid: true},
 		{text: "x data:text/plain;base64,T0s= y data:application/json;base64,e30=", objects: 2, invalid: false},
 	} {
 		result, err := Expand(context.Background(), []artifact.File{artifact.NewFile("input.txt", []byte(tc.text), false)}, report.DefaultExtractionLimits())

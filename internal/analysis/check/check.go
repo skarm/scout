@@ -8,6 +8,12 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+// ShellEval marks an observed eval command in a shell finding.
+const ShellEval = "shell_eval"
+
+// ShellCommandText marks an explicit shell interpreter's command-text operand.
+const ShellCommandText = "shell_command_text"
+
 // Match refers to original file bytes. Bounds are half-open. No source text is
 // returned, preventing accidental credential disclosure through reports.
 type Match struct {

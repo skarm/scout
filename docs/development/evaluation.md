@@ -75,7 +75,7 @@ Without `--split`, all cases are measured, with separate per-split metrics.
 The **entire** corpus is validated before filtering, so an unselected split
 cannot hide contamination. These checks cannot establish source authenticity,
 semantic deduplication, independence from model training data or correct labels.
-The bundled `packages.json` contains five authored format/regression cases;
+The bundled `packages.json` contains authored format and regression cases;
 its `holdout` partition is **not an independent holdout**.
 
 ## Optional LLM measurement
@@ -139,7 +139,35 @@ whole corpus and both modes.
 - `false_positive_rate` is FP / (FP + complete benign negatives), and is `null`
   when the denominator is absent or any benign case remains unresolved.
 
-Metrics use labels and actual findings; `expected_rules` is a regression expectation.
+Signal metrics use labels and actual findings. For cases with a nonempty
+`expected_rules` list, `results[].expected_rules_matched` records whether the
+static scan observed every listed rule. Extra findings are allowed. The optional
+`expected_rules` metrics give matched and missed case counts and `case_match_rate`
+overall, by category and by split. This regression metric uses observed findings
+even on partial scans. Completeness, quality thresholds and LLM metrics have their
+own measures.
+
+`--shell-hooks` adds `shell_hooks.metrics` and per-case `observed_signals` for
+selected `shell_hooks` cases. It counts `eval`, explicit command text passed to
+a supported shell interpreter, and generated script execution. A finding counts
+when it is inside a registered hook command
+or Scout links it to a hook through a captured call path. An `eval` appearing only
+inside a reconstructed heredoc needs an observed generated-script execution to
+count. Ordinary `source` and generic hook registration still appear in `rules`.
+Each `shell_hooks.cases` entry records `completeness` and `gaps` for captured
+hook commands and traced files under SH003 and SH005. This scope accounts for
+unresolved hook references, incomplete capture, shell parser failures and
+check limits. When the bounded execution parser stops at unsupported syntax,
+the Bash declaration projection can satisfy this scope if it covers the
+execution constructs and the hook tracer resolves the required paths.
+The package still reports the bounded parser's failure. Installation and host
+runtime behavior are outside this scope.
+Benign cases with incomplete hook coverage and no targeted signal remain
+unresolved. The threshold flags use the aggregate static metrics in `overall`.
+Native CI checks the authored Shell-hook regression cases for their expected
+signals, a resolved negative control, and zero misses, false positives and
+unresolved controls. The blind evaluation is a separate quality measurement.
+
 Report schema 2 retains the corpus hash, engine/rulepack and plans, case outcomes,
 category/split metrics, incomplete counts and local p50/p95 timings. Undefined
 ratios are `null`. `selected_cases` and `completed` distinguish an interrupted

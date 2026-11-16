@@ -18,5 +18,6 @@ require (
 
 require (
 	github.com/mattn/go-pointer v0.0.1 // indirect
+	golang.org/x/term v0.46.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )

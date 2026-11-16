@@ -686,13 +686,19 @@ func scriptIsolatedTrees(c *shellsyntax.Command) iter.Seq[*shellsyntax.File] {
 		}
 
 		for _, a := range c.Assignments {
-			if a.Value == nil {
-				continue
-			}
-
-			for _, part := range a.Value.Parts {
-				if part.Tree != nil && !yield(part.Tree) {
+			for tree := range a.Value.Substitutions() {
+				if !yield(tree) {
 					return
+				}
+			}
+		}
+
+		for _, redirect := range c.Redirects {
+			for _, word := range []*shellsyntax.Word{redirect.Target, redirect.Body} {
+				for tree := range word.Substitutions() {
+					if !yield(tree) {
+						return
+					}
 				}
 			}
 		}

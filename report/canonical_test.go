@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/report"
@@ -16,12 +17,25 @@ import (
 // production path works directly from concrete Go values instead of this tree.
 func TestConcreteCanonicalDigestMatchesWireContract(t *testing.T) {
 	for _, classified := range []bool{false, true} {
-		for _, message := range []string{"ordinary", "<tag>&\u2028\u2029", "Привет🙂\x00", string([]byte{0xff, 'x'})} {
+		for _, message := range []string{
+			"ordinary", "<tag>&\u2028\u2029", "Привет🙂\x00", string([]byte{0xff, 'x'}),
+			strings.Repeat("<tag>&\u2028", 8<<10),
+		} {
 			run := runFixture()
 			if classified {
 				run = classifiedReportFixture()
 			}
 			run.Targets[0].Analysis.Findings[0].Message = message
+			if len(message) > 64<<10 {
+				// Force reordering of a collection that spans digest writes.
+				findings := &run.Targets[0].Analysis.Findings
+				for i := range 40 {
+					finding := (*findings)[0]
+					finding.ID = fmt.Sprintf("finding-%03d", 40-i)
+					finding.Message = "short"
+					*findings = append(*findings, finding)
+				}
+			}
 			got, err := report.SealRun(run)
 			if err != nil {
 				t.Fatal(err)
@@ -54,7 +68,7 @@ func TestConcreteCanonicalDigestMatchesWireContract(t *testing.T) {
 			}
 			digest := sha256.Sum256(encoded)
 			if want := "sha256:" + hex.EncodeToString(digest[:]); got.Digest != want {
-				t.Fatalf("canonical wire drift for %q: got %s want %s", message, got.Digest, want)
+				t.Fatalf("canonical wire drift for message of %d bytes: got %s want %s", len(message), got.Digest, want)
 			}
 		}
 	}

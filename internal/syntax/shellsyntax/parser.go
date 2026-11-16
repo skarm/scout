@@ -27,6 +27,14 @@ type token struct {
 	word *Word
 }
 
+type listKind uint8
+
+const (
+	topLevelList listKind = iota
+	parenthesizedList
+	caseArmList
+)
+
 type parser struct {
 	text           string
 	at, end, depth int
@@ -60,7 +68,7 @@ func Parse(ctx context.Context, text string) (*File, error) {
 
 	p := parser{text: text, end: len(text), budget: &budget{ctx: ctx}}
 
-	return p.list(false)
+	return p.list(topLevelList)
 }
 
 func (e *Error) Error() string { return "shell syntax: " + e.Code }
@@ -102,7 +110,7 @@ func (p *parser) peek() (token, error) {
 }
 func (p *parser) take() (token, error) { t, e := p.peek(); p.look = nil; return t, e }
 
-func (p *parser) list(nested bool) (*File, error) {
+func (p *parser) list(kind listKind) (*File, error) {
 	out := &File{}
 
 	for {
@@ -111,8 +119,12 @@ func (p *parser) list(nested bool) (*File, error) {
 			return out, err
 		}
 
+		if p.caseArmEnd(t, kind) {
+			return out, nil
+		}
+
 		if t.kind == "eof" || t.kind == ")" {
-			return out, p.listEnd(t.kind, nested)
+			return out, p.listEnd(t.kind, kind)
 		}
 
 		s, err := p.statement()
@@ -120,33 +132,36 @@ func (p *parser) list(nested bool) (*File, error) {
 			return out, err
 		}
 
-		if err := p.statementSeparator(s); err != nil {
+		if err := p.statementSeparator(s, kind); err != nil {
 			return out, err
 		}
 
 		out.Statements = append(out.Statements, s)
 		if s.Next == "&&" || s.Next == "||" {
-			if err := p.conditionalContinuation(); err != nil {
+			if err := p.conditionalContinuation(kind); err != nil {
 				return out, err
 			}
 		}
 	}
 }
 
-func (p *parser) listEnd(kind string, nested bool) error {
-	if kind == "eof" {
+func (p *parser) listEnd(end string, kind listKind) error {
+	if end == "eof" {
 		if len(p.pending) > 0 {
 			return p.fail("missing_heredoc")
 		}
 
-		if nested {
+		switch kind {
+		case caseArmList:
+			return p.fail("unclosed_case")
+		case parenthesizedList:
 			return p.fail("unclosed_substitution_or_group")
 		}
 
 		return nil
 	}
 
-	if nested {
+	if kind == parenthesizedList {
 		return nil
 	}
 
@@ -171,7 +186,7 @@ func (p *parser) skipNewlines() (token, error) {
 	}
 }
 
-func (p *parser) statementSeparator(s *Statement) error {
+func (p *parser) statementSeparator(s *Statement, kind listKind) error {
 	t, err := p.peek()
 	if err != nil {
 		return err
@@ -185,6 +200,11 @@ func (p *parser) statementSeparator(s *Statement) error {
 		if t.kind == "newline" {
 			return p.hereBodies()
 		}
+	case ";;":
+		if kind != caseArmList {
+			// Preserve the classification of this operator outside a case.
+			return &Error{Code: "unsupported_operator", Offset: t.span.Start}
+		}
 	case "eof", ")":
 	default:
 		return p.fail("expected_separator")
@@ -193,13 +213,13 @@ func (p *parser) statementSeparator(s *Statement) error {
 	return nil
 }
 
-func (p *parser) conditionalContinuation() error {
+func (p *parser) conditionalContinuation(kind listKind) error {
 	t, err := p.skipNewlines()
 	if err != nil {
 		return err
 	}
 
-	if t.kind == "eof" || t.kind == ")" {
+	if t.kind == "eof" || t.kind == ")" || p.caseArmEnd(t, kind) {
 		return p.fail("missing_conditional_command")
 	}
 
@@ -259,8 +279,13 @@ func (p *parser) command() (*Command, error) {
 	}
 
 	c := &Command{Span: source.Span{Start: t.span.Start, End: t.span.End}}
-	if t.kind == "(" {
+	switch {
+	case t.kind == "(":
 		if err := p.commandGroup(c); err != nil {
+			return nil, err
+		}
+	case p.keyword(t, "case"):
+		if err := p.commandCase(c); err != nil {
 			return nil, err
 		}
 	}
@@ -276,7 +301,7 @@ func (p *parser) commandGroup(c *Command) error {
 		return err
 	}
 
-	c.Subshell, err = q.list(true)
+	c.Subshell, err = q.list(parenthesizedList)
 	if err != nil {
 		return err
 	}
@@ -317,6 +342,14 @@ func (p *parser) commandWords(c *Command) (*Command, error) {
 				return nil, err
 			}
 		default:
+			if t.kind == "(" && p.functionHead(c, t) {
+				return nil, &Error{Code: "unsupported_function_declaration", Offset: c.Span.Start}
+			}
+
+			if t.kind == "(" && p.arrayAssignmentHead(c, t) {
+				return nil, &Error{Code: "unsupported_array_assignment", Offset: t.span.Start}
+			}
+
 			if c.empty() {
 				return nil, p.fail("expected_command")
 			}
@@ -324,6 +357,32 @@ func (p *parser) commandWords(c *Command) (*Command, error) {
 			return c, nil
 		}
 	}
+}
+
+func (p *parser) arrayAssignmentHead(c *Command, open token) bool {
+	if len(c.Words) != 0 || len(c.Assignments) == 0 || open.span.Start != c.Span.End {
+		return false
+	}
+
+	a := c.Assignments[len(c.Assignments)-1]
+
+	return a.Value != nil && a.Value.Span.Start == open.span.Start
+}
+
+func (p *parser) functionHead(c *Command, open token) bool {
+	if len(c.Words) != 1 || len(c.Assignments) != 0 || len(c.Redirects) != 0 {
+		return false
+	}
+
+	name, literal := c.Words[0].Literal()
+	if !literal || c.Words[0].Quoted || !shellIdentifier(name) {
+		return false
+	}
+
+	tail := strings.TrimLeft(p.text[open.span.End:p.end], " \t")
+	rest, closed := strings.CutPrefix(tail, ")")
+
+	return closed && strings.HasPrefix(strings.TrimLeft(rest, " \t\r\n"), "{")
 }
 
 func (p *parser) commandToken(c *Command, w *Word) error {
@@ -340,6 +399,10 @@ func (p *parser) commandToken(c *Command, w *Word) error {
 
 	if handled {
 		return nil
+	}
+
+	if c.Case != nil {
+		return p.fail("word_after_case")
 	}
 
 	return p.commandWord(c, w)
@@ -600,7 +663,7 @@ func (p *parser) heredocRedirect(r *Redirect, t token) error {
 }
 
 func (c *Command) empty() bool {
-	return c.Subshell == nil && len(c.Words) == 0 && len(c.Assignments) == 0 && len(c.Redirects) == 0
+	return c.Subshell == nil && c.Case == nil && len(c.Words) == 0 && len(c.Assignments) == 0 && len(c.Redirects) == 0
 }
 
 func (q *delimiterQuotes) consume(c byte) bool {

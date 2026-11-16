@@ -111,6 +111,11 @@ func TestHookShellRequiresCommandHandlerAndStaticPayload(t *testing.T) {
 		{"command lookup only", `{"type":"command","command":"command -v bash -c 'printf ready'"}`, 1, false},
 		{"local function named bash", `{"type":"command","command":"bash() { :; }; bash -c 'printf ready'"}`, 1, true},
 		{"dynamic payload", `{"type":"command","command":"bash -c \"$PAYLOAD\""}`, 1, true},
+		{"quoted plugin script", `{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/hooks/start.sh\""}`, 1, false},
+		{"unquoted plugin script", `{"type":"command","command":"bash ${CLAUDE_PLUGIN_ROOT}/hooks/start.sh"}`, 1, false},
+		{"unquoted plugin script with dynamic suffix", `{"type":"command","command":"bash ${CLAUDE_PLUGIN_ROOT}/hooks/$NAME.sh"}`, 1, true},
+		{"plugin path as command text", `{"type":"command","command":"bash -c \"${CLAUDE_PLUGIN_ROOT}/hooks/start.sh\""}`, 1, true},
+		{"unquoted plugin path as command text", `{"type":"command","command":"bash -c ${CLAUDE_PLUGIN_ROOT}/hooks/start.sh"}`, 1, true},
 		{"NUL", `{"type":"command","command":"echo \u0000"}`, 0, true},
 		{"argv is not shell syntax", `{"type":"command","command":"echo","args":["bash -c 'printf ready'"]}`, 0, false},
 	} {

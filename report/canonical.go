@@ -124,20 +124,27 @@ func fieldsFor(t reflect.Type) []canonicalField {
 	return fields
 }
 
+const canonicalChunkSize = 64 << 10
+
 // canonicalValue writes the same sorted-key JSON domain used by run digests,
 // directly from its concrete DTOs. No map[string]any or JSON round trip exists.
-func canonicalValue(out []byte, value reflect.Value, field string) ([]byte, error) {
+// Ordered traversal can flush completed bytes before encoding the next value.
+func canonicalValue(out []byte, value reflect.Value, field string, flush func([]byte) []byte) ([]byte, error) {
+	if len(out) >= canonicalChunkSize && flush != nil {
+		out = flush(out)
+	}
+
 	switch value.Kind() {
 	case reflect.Pointer:
 		if value.IsNil() {
 			return append(out, "null"...), nil
 		}
 
-		return canonicalValue(out, value.Elem(), field)
+		return canonicalValue(out, value.Elem(), field, flush)
 	case reflect.Struct:
-		return canonicalStruct(out, value)
+		return canonicalStruct(out, value, flush)
 	case reflect.Slice, reflect.Array:
-		return canonicalSequence(out, value, field)
+		return canonicalSequence(out, value, field, flush)
 	default:
 		return canonicalScalar(out, value)
 	}
@@ -189,7 +196,7 @@ func canonicalScalar(out []byte, value reflect.Value) ([]byte, error) {
 	}
 }
 
-func canonicalStruct(out []byte, value reflect.Value) ([]byte, error) {
+func canonicalStruct(out []byte, value reflect.Value, flush func([]byte) []byte) ([]byte, error) {
 	out = append(out, '{')
 	count := 0
 
@@ -209,7 +216,7 @@ func canonicalStruct(out []byte, value reflect.Value) ([]byte, error) {
 
 		var err error
 
-		out, err = canonicalValue(out, child, field.name)
+		out, err = canonicalValue(out, child, field.name, flush)
 		if err != nil {
 			return nil, err
 		}
@@ -227,25 +234,24 @@ func emptyJSONValue(value reflect.Value) bool {
 	}
 }
 
-func canonicalSequence(out []byte, value reflect.Value, field string) ([]byte, error) {
+func canonicalSequence(out []byte, value reflect.Value, field string, flush func([]byte) []byte) ([]byte, error) {
 	if value.Kind() == reflect.Slice && value.IsNil() && !unorderedCollection(field) {
 		return append(out, "null"...), nil
 	}
 
 	out = append(out, '[')
 	if unorderedCollection(field) {
-		return canonicalSet(out, value)
+		return canonicalSet(out, value, flush)
 	}
 
-	return canonicalOrdered(out, value)
+	return canonicalOrdered(out, value, flush)
 }
 
-func canonicalSet(out []byte, value reflect.Value) ([]byte, error) {
-	if value.Len() == 0 {
-		return append(out, ']'), nil
+func canonicalSet(out []byte, value reflect.Value, flush func([]byte) []byte) ([]byte, error) {
+	if value.Len() < 2 {
+		return canonicalOrdered(out, value, flush)
 	}
-	// Encode into the destination. Offsets survive growth, and already sorted
-	// collections need no second buffer. Only reordered bytes need a scratch copy.
+
 	type span struct{ start, end int }
 
 	items := make([]span, value.Len())
@@ -254,23 +260,24 @@ func canonicalSet(out []byte, value reflect.Value) ([]byte, error) {
 	for i := range value.Len() {
 		var err error
 
-		if i > 0 {
-			out = append(out, ',')
-		}
-
 		itemStart := len(out) - start
 
-		out, err = canonicalValue(out, value.Index(i), "")
+		// The complete collection must stay in memory until its bytes are sorted.
+		out, err = canonicalValue(out, value.Index(i), "", nil)
 		if err != nil {
 			return nil, err
 		}
 
 		items[i] = span{start: itemStart, end: len(out) - start}
-		if i == 0 && value.Len() > 1 {
+		// A stored comma allows the whole item and delimiter to be copied or
+		// hashed together. The last item in the sorted order omits its comma.
+		out = append(out, ',')
+
+		if i == 0 {
 			// Similar-sized records are common in reports. Reserve from the
 			// first encoded item without a second reflective walk. Cap the
 			// estimate so one unusually large item cannot multiply memory use.
-			itemBytes := len(out) - start + 1
+			itemBytes := len(out) - start
 			out = slices.Grow(out, min(value.Len()-1, (1<<20)/itemBytes)*itemBytes)
 		}
 	}
@@ -282,31 +289,47 @@ func canonicalSet(out []byte, value reflect.Value) ([]byte, error) {
 	}
 
 	if slices.IsSortedFunc(items, compare) {
-		return append(out, ']'), nil
+		return append(out[:len(out)-1], ']'), nil
+	}
+
+	slices.SortFunc(items, compare)
+
+	if len(encoded) >= canonicalChunkSize && flush != nil {
+		// Hash the sorted spans directly so large collections need no scratch copy.
+		flush(out[:start])
+
+		for i, item := range items {
+			end := item.end
+			if i < len(items)-1 {
+				end++
+			}
+
+			flush(encoded[item.start:end])
+		}
+
+		return append(out[:0], ']'), nil
 	}
 
 	buffer := borrowCanonicalBuffer()
 	defer releaseCanonicalBuffer(buffer)
 
 	*buffer = append((*buffer)[:0], encoded...)
-	encoded = *buffer
-
-	slices.SortFunc(items, compare)
 
 	out = out[:start]
 
 	for i, item := range items {
-		if i > 0 {
-			out = append(out, ',')
+		end := item.end
+		if i < len(items)-1 {
+			end++
 		}
 
-		out = append(out, encoded[item.start:item.end]...)
+		out = append(out, (*buffer)[item.start:end]...)
 	}
 
 	return append(out, ']'), nil
 }
 
-func canonicalOrdered(out []byte, value reflect.Value) ([]byte, error) {
+func canonicalOrdered(out []byte, value reflect.Value, flush func([]byte) []byte) ([]byte, error) {
 	for i := range value.Len() {
 		if i > 0 {
 			out = append(out, ',')
@@ -314,7 +337,7 @@ func canonicalOrdered(out []byte, value reflect.Value) ([]byte, error) {
 
 		var err error
 
-		out, err = canonicalValue(out, value.Index(i), "")
+		out, err = canonicalValue(out, value.Index(i), "", flush)
 		if err != nil {
 			return nil, err
 		}

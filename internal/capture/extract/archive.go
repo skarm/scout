@@ -251,13 +251,21 @@ func extractTAR(o *operation) error {
 }
 
 func extractTARMember(o *operation, names *archiveutil.Namespace, data string, at int) (int, bool, error) {
-	if err := o.entry(); err != nil {
+	if err := o.b.ctx.Err(); err != nil {
 		return at, false, err
 	}
 
 	done, err := tarEndMarker(data, at)
-	if err != nil || done {
+	if done {
 		return at, done, err
+	}
+
+	if entryErr := o.entry(); entryErr != nil {
+		return at, false, entryErr
+	}
+
+	if err != nil {
+		return at, false, err
 	}
 
 	hdr, tr, err := readTARHeader(data[at:])

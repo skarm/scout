@@ -267,7 +267,7 @@ func bindCommon(fs *flag.FlagSet, r *request) {
 	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, "fail-on", "minimum blocking `SEVERITY`: info, low, medium, high or critical")
 	fs.Var(stringSetting[policy.ScopePolicy]{value: &r.settings.Policy.Scope}, "scope", "coverage `POLICY`: conservative (default) or selected")
 	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, "block-at", "`SEVERITY` alias for fail-on")
-	fs.StringVar(&r.settings.Scanner.Harness.Host, "harness", r.settings.Scanner.Harness.Host, "`HOST` interpretation: auto, claude-code, codex or agent-skills")
+	fs.StringVar(&r.settings.Scanner.Harness.Host, "harness", r.settings.Scanner.Harness.Host, "`HOST` interpretation: auto, claude-code, codex, gemini-cli or agent-skills")
 	fs.IntVar(&r.settings.Scanner.Concurrency.Workers, "workers", r.settings.Scanner.Concurrency.Workers, "analyzer workers shared across targets (1..32)")
 	fs.IntVar(&r.settings.Scanner.Concurrency.Targets, "target-workers", r.settings.Scanner.Concurrency.Targets, "concurrent targets (1..32)")
 	fs.DurationVar(&r.settings.Scanner.Limits.Timeout, "timeout", r.settings.Scanner.Limits.Timeout, "whole operation timeout")

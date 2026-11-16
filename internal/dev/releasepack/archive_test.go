@@ -72,6 +72,32 @@ func TestCandidatesNeedOnlyBinaryAndChecksum(t *testing.T) {
 	}
 }
 
+func TestArchiveRejectsCandidateChangedAfterVerification(t *testing.T) {
+	for _, tc := range []struct {
+		platform target
+		write    func(string, []entry) error
+	}{
+		{platform: targets()[0], write: writeTar},
+		{platform: targets()[2], write: writeZIP},
+	} {
+		t.Run(tc.platform.name, func(t *testing.T) {
+			candidates, _ := fixture(t)
+			root := filepath.Join(candidates, "native-candidate-"+tc.platform.name)
+			files, err := candidateFiles(root, tc.platform.binary)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Keep the file name and size unchanged.
+			writeFixture(t, filepath.Join(root, tc.platform.binary), "altered-binary")
+			archive := filepath.Join(t.TempDir(), "candidate"+tc.platform.extension)
+			if err = tc.write(archive, files); err == nil {
+				t.Fatal("archive accepted bytes that differed from the verified candidate")
+			}
+		})
+	}
+}
+
 func TestInvalidCandidatesLeaveNoOutput(t *testing.T) {
 	for _, scenario := range []string{"tampered binary", "missing platform", "symlink"} {
 		t.Run(scenario, func(t *testing.T) {

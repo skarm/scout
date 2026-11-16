@@ -9,3 +9,10 @@ const (
 	ruleSH004 = "SH004"
 	ruleSH005 = "SH005"
 )
+
+// HookEvalRule and HookGeneratedExecutionRule identify the checks used for
+// scoped Shell-hook coverage.
+const (
+	HookEvalRule               = ruleSH003
+	HookGeneratedExecutionRule = ruleSH005
+)

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/http"
@@ -177,5 +178,53 @@ func TestRemoteArchiveRequiresExplicitNetworkGrant(t *testing.T) {
 	r, err = scenario.Scanner(t, c).Scan(context.Background(), plain.URL+"/plain.txt")
 	if err == nil || r.Coverage.Completeness != "failed" || r.Source.Status != "rejected_file_budget" {
 		t.Fatal("download bypassed file budget")
+	}
+}
+
+func TestRemoteDownloadUsesConfiguredChecksumWhenTargetHasNoPin(t *testing.T) {
+	const content = "ordinary text\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := fmt.Fprint(w, content); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+
+	opts := scout.DefaultOptions()
+	opts.Profile = scout.Custom
+	opts.Checks = &scout.Checks{}
+	download := fetch.DefaultOptions()
+	download.Enabled, download.AllowLoopback = true, true
+	download.ExpectedSHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("different content")))
+	opts.Download = &download
+	scanner, err := scout.New(t.Context(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = scanner.Close() })
+
+	address := server.URL + "/input.txt"
+	checksum := fmt.Sprintf("%x", sha256.Sum256([]byte(content)))
+	for _, tc := range []struct {
+		name, pin string
+		want      report.State
+	}{
+		{name: "configured checksum", want: report.RunFailed},
+		{name: "explicit target checksum", pin: checksum, want: report.RunComplete},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target, err := scout.Remote(address, scout.RemotePin{SHA256: tc.pin})
+			if err != nil {
+				t.Fatal(err)
+			}
+			run, err := scanner.Scan(t.Context(), target)
+			if len(run.Targets) != 1 || run.Targets[0].State != tc.want || (err != nil) != (tc.want != report.RunComplete) {
+				t.Fatalf("remote checksum policy failed: %+v, %v", run.Targets, err)
+			}
+			source := run.Targets[0].Analysis.Source
+			if source == nil || source.ExpectedChecksumVerified != (tc.want == report.RunComplete) {
+				t.Fatalf("incorrect verification provenance: %+v", source)
+			}
+		})
 	}
 }

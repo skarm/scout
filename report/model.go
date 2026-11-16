@@ -275,6 +275,15 @@ type Coverage struct {
 	Checks []Check `json:"checks"`
 	// Files contains coverage for each inventoried entry, including unread files.
 	Files []FileCoverage `json:"files"`
+	// ShellHooks records the bounded static coverage of captured shell hooks.
+	ShellHooks *ShellHookCoverage `json:"shell_hooks,omitempty"`
+}
+
+// ShellHookCoverage describes the observed eval and generated-shell analysis
+// on captured hook commands and their traced local files.
+type ShellHookCoverage struct {
+	Completeness Completeness `json:"completeness"`
+	Gaps         []string     `json:"gaps,omitempty"`
 }
 
 // FileCoverage covers every inventoried entry, including unread or unsupported

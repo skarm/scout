@@ -309,6 +309,13 @@ func (w *shellSourceWalker) simpleCommand(command *shellsyntax.Command, depth in
 		observeSourceAssignment(key, value, known, span, mark)
 	}
 	w.sourceAssignments(command, assignment)
+
+	for _, word := range command.ExpansionWords {
+		for tree := range word.Substitutions() {
+			w.isolated(tree, depth+1)
+		}
+	}
+
 	words, known := w.sourceWords(command, depth)
 
 	binding := bindSourceArguments(command, words, known, assignment)
@@ -362,10 +369,8 @@ func (w *shellSourceWalker) sourceWords(command *shellsyntax.Command, depth int)
 		value, literal := sourceWord(word, w.variables)
 		words, known = append(words, value), append(known, literal)
 
-		for _, part := range word.Parts {
-			if part.Tree != nil {
-				w.isolated(part.Tree, depth+1)
-			}
+		for tree := range word.Substitutions() {
+			w.isolated(tree, depth+1)
 		}
 	}
 

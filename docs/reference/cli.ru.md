@@ -126,7 +126,7 @@ scout version
   reviewer; `custom` допускает явный выбор проверок. Aliases CLI: `extended` =
   `standard`, `semantic` = `review`, `basic` = `custom` со всеми отключёнными
   необязательными статическими проверками.
-- `--harness auto|claude-code|codex|agent-skills`: интерпретация деклараций агентов
+- `--harness auto|claude-code|codex|gemini-cli|agent-skills`: интерпретация деклараций агентов
   и плагинов; по умолчанию `auto`.
 - `--input -`: читать один вход из stdin; по умолчанию не задан. Поддержан только `-`.
 - `--name RELATIVE_PATH`: обязателен с `--input -`; относительное имя файла для

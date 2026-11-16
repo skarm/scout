@@ -79,6 +79,21 @@ jobs:
           make test race
           make clean
           make acceptance
+      - name: Check expected rules and Shell hook regressions
+        env:
+          GOPROXY: 'off'
+        run: |
+          make build-dev BIN_DIR="$RUNNER_TEMP/scout-evaluation-bin"
+          report="$RUNNER_TEMP/scout-regression-evaluation.json"
+          "$RUNNER_TEMP/scout-evaluation-bin/scout-dev" evaluate --profile standard --shell-hooks \
+            testdata/security-corpus/packages.json > "$report"
+          jq '{completed, expected_rules: .overall.expected_rules, shell_hooks: .shell_hooks.metrics,
+               missed: [.results[] | select(.expected_rules_matched == false) | {id, rules}]}' "$report"
+          jq -e '.completed and (.overall.expected_rules | .cases_matched > 0 and .cases_missed == 0)' \
+            "$report" > /dev/null
+          jq -e '.shell_hooks.metrics | .detected_positive >= 2 and .missed_positive == 0
+                   and .complete_negative_benign >= 1 and .false_positive_benign == 0
+                   and .unresolved_benign == 0' "$report" > /dev/null
 
   core:
     name: Reduced build regressions

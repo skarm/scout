@@ -29,6 +29,11 @@ func (p *plugin) discover() {
 		return
 	}
 
+	if p.host == report.HostGeminiCLI {
+		p.discoverGeminiExtension()
+		return
+	}
+
 	var root *jsonconfig.Node
 	if p.manifest != nil {
 		root = p.object(p.manifest)

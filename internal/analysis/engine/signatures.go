@@ -15,6 +15,9 @@ import (
 //nolint:gochecknoglobals // Read-only signature category metadata shared by all scan executions.
 var signatureCategoryRule = map[string]int{"malware": 0, "webshell": 1, "cryptominer": 2, "hack_tool": 3, "exploit": 3}
 
+//nolint:gochecknoglobals // Fixed per-file check IDs for the shared signature plan.
+var signatureFileRules = [...]string{ruleYR1, ruleYR2, ruleYR3, ruleYR4, ruleYR5}
+
 func SignatureRules() []report.Rule {
 	out := make([]report.Rule, 0, 5)
 
@@ -127,7 +130,7 @@ func signatureFileCoverage(r *report.Analysis, step signatures.Outcome, fileInde
 		fc.Checks = append(fc.Checks, report.FileCheck{AnalyzerID: "yara-x", Status: status})
 		// Every category shares the same compiled rule set and native input plan.
 		// Comparison checks the finding descriptor ID, not the backend name.
-		for _, id := range [...]string{ruleYR1, ruleYR2, ruleYR3, ruleYR4, ruleYR5} {
+		for _, id := range signatureFileRules {
 			fc.Checks = append(fc.Checks, report.FileCheck{AnalyzerID: id, Status: status})
 		}
 

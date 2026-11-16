@@ -8,6 +8,8 @@ const (
 	HostClaudeCode = "claude-code"
 	// HostCodex identifies codex.
 	HostCodex = "codex"
+	// HostGeminiCLI identifies Gemini CLI extensions.
+	HostGeminiCLI = "gemini-cli"
 	// HostAgentSkills identifies agent-skills.
 	HostAgentSkills = "agent-skills"
 )

@@ -13,6 +13,7 @@ import (
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/report"
 )
 
 // OriginHookShell identifies shell source projected from a hook command.
@@ -37,9 +38,15 @@ func (f File) HookEvent(span source.Span) string {
 }
 
 func (f *filePreparation) prepareNamedHookShell(ctx context.Context) {
-	if strings.EqualFold(path.Base(f.file.Metadata().Path), "hooks.json") {
+	if strings.EqualFold(path.Base(f.file.Metadata().Path), "hooks.json") || f.claudeProjectSettings() {
 		f.prepareHookShell(ctx)
 	}
+}
+
+func (f *filePreparation) claudeProjectSettings() bool {
+	name := f.file.Metadata().Path
+
+	return path.Base(name) == "settings.json" && path.Base(path.Dir(name)) == ".claude"
 }
 
 // WithDeclaredHookShell prepares a captured file that a plugin manifest
@@ -54,6 +61,36 @@ func (f File) WithDeclaredHookShell(ctx context.Context) File {
 	f.diagnostics = slices.Clone(f.diagnostics)
 	preparation := (*filePreparation)(&f)
 	preparation.prepareHookShell(ctx)
+
+	return f
+}
+
+// WithGeminiHookShell adds extension-only events to the existing hook units.
+func (f File) WithGeminiHookShell(ctx context.Context) File {
+	if f.geminiHookShellReady || f.budget == nil || f.file.Metadata().Kind != "text" || ctx.Err() != nil {
+		return f
+	}
+
+	f = f.WithDeclaredHookShell(ctx)
+	f.geminiHookShellReady = true
+
+	for _, unit := range f.units {
+		tree, ok := unit.Tree.(parse.JSONTree)
+		if !ok || unit.Origin != "file" {
+			continue
+		}
+
+		f.units = slices.Clone(f.units)
+		f.diagnostics = slices.Clone(f.diagnostics)
+		f.hookShell = slices.Clone(f.hookShell)
+		p := (*filePreparation)(&f)
+		p.projectHookEvents(ctx, unit.View, tree.Root, func(event string) bool {
+			return hookevent.Gemini(event) && !hookevent.Known(event)
+		})
+		sort.Slice(f.hookShell, func(i, j int) bool { return f.hookShell[i].span.Start < f.hookShell[j].span.Start })
+
+		break
+	}
 
 	return f
 }
@@ -91,6 +128,14 @@ func (f File) WithHookSourceShell(ctx context.Context) File {
 	unit.HookSource = true
 	preparation.publishUnit(ctx, unit)
 
+	if f.classification.Category == "unknown" && unit.Status == report.UnitParsedLimited {
+		f.classification.Format = "text"
+		f.classification.Category = "source-or-config"
+		f.classification.Basis = "hook-source"
+		f.classification.Structured = true
+		f.classification.Languages = []language.Hint{{Language: language.Shell, Basis: "hook-source"}}
+	}
+
 	return f
 }
 
@@ -125,11 +170,15 @@ func (f *filePreparation) prepareHookShell(ctx context.Context) {
 
 func (f *filePreparation) projectHookJSON(ctx context.Context, unit Unit) {
 	if tree, ok := unit.Tree.(parse.JSONTree); ok {
-		f.projectHookEvents(ctx, unit.View, tree.Root)
+		if f.claudeProjectSettings() && tree.Root.Get("hooks") == nil {
+			return
+		}
+
+		f.projectHookEvents(ctx, unit.View, tree.Root, hookevent.Known)
 	}
 }
 
-func (f *filePreparation) projectHookEvents(ctx context.Context, parent source.View, root *jsonconfig.Node) {
+func (f *filePreparation) projectHookEvents(ctx context.Context, parent source.View, root *jsonconfig.Node, known func(string) bool) {
 	hooks := root.Get("hooks")
 	if hooks == nil {
 		hooks = root
@@ -140,7 +189,7 @@ func (f *filePreparation) projectHookEvents(ctx context.Context, parent source.V
 	}
 
 	for _, event := range hooks.Members {
-		if !hookevent.Known(event.Key) || event.Value.Kind != jsonconfig.KindArray {
+		if !known(event.Key) || event.Value.Kind != jsonconfig.KindArray {
 			continue
 		}
 
@@ -167,7 +216,7 @@ func (f *filePreparation) projectHookHandler(ctx context.Context, parent source.
 	command := handler.Get("command")
 	if args := handler.Get("args"); args != nil {
 		// The explicit argv form has no outer shell quoting or operators.
-		payload, uncertain := hookArgvScript(command, args)
+		payload, argumentLanguage, uncertain := hookArgvScript(command, args)
 		if uncertain {
 			f.hookShellGap(args.Span.Start)
 		}
@@ -176,38 +225,49 @@ func (f *filePreparation) projectHookHandler(ctx context.Context, parent source.
 			return true
 		}
 
-		return f.projectHookString(ctx, parent, event, payload)
+		return f.projectHookString(ctx, parent, event, payload, argumentLanguage)
 	}
 
-	return f.projectHookString(ctx, parent, event, command)
+	return f.projectHookString(ctx, parent, event, command, "")
 }
 
-func hookArgvScript(command, args *jsonconfig.Node) (*jsonconfig.Node, bool) {
+func hookArgvScript(command, args *jsonconfig.Node) (*jsonconfig.Node, string, bool) {
 	name, ok := command.Text()
-	if !ok || !hookShellInterpreter(name) {
-		return nil, false
+
+	powershell := shellsyntax.IsPowerShell(path.Base(name))
+	if !ok || !hookShellInterpreter(name) && !powershell {
+		return nil, "", false
 	}
 
 	if args.Kind != jsonconfig.KindArray {
-		return nil, true
+		return nil, "", true
 	}
 
 	for _, arg := range args.Elements {
 		value, ok := arg.Text()
 		if !ok || strings.ContainsRune(value, 0) {
-			return nil, true
+			return nil, "", true
 		}
 	}
 
-	index, uncertain := hookShellScriptIndex(len(args.Elements), func(i int) (string, bool) { return args.Elements[i].Text() })
-	if index < 0 {
-		return nil, uncertain
+	operand := func(i int) (string, bool) { return args.Elements[i].Text() }
+	if powershell {
+		if index := shellsyntax.PowerShellCommandIndex(len(args.Elements), operand); index >= 0 {
+			return args.Elements[index], language.PowerShell, false
+		}
+
+		return nil, "", true
 	}
 
-	return args.Elements[index], false
+	index, uncertain := shellsyntax.CommandTextIndex(len(args.Elements), operand, false)
+	if index < 0 {
+		return nil, "", uncertain
+	}
+
+	return args.Elements[index], language.Shell, false
 }
 
-func (f *filePreparation) projectHookString(ctx context.Context, parent source.View, event string, node *jsonconfig.Node) bool {
+func (f *filePreparation) projectHookString(ctx context.Context, parent source.View, event string, node *jsonconfig.Node, argumentLanguage string) bool {
 	text, ok := node.Text()
 	if !ok || strings.TrimSpace(text) == "" {
 		return true
@@ -236,13 +296,19 @@ func (f *filePreparation) projectHookString(ctx context.Context, parent source.V
 	}
 
 	f.hookShell = append(f.hookShell, hookShellContext{span: span, event: event})
-	f.parseHookUnit(ctx, view, span, 0)
+	f.parseHookUnit(ctx, view, span, 0, argumentLanguage)
 
 	return true
 }
 
-func (f *filePreparation) parseHookUnit(ctx context.Context, view source.View, span source.Span, depth int) {
-	unit := f.parseUnit(ctx, language.Shell, OriginHookShell, span, view)
+func (f *filePreparation) parseHookUnit(ctx context.Context, view source.View, span source.Span, depth int, argumentLanguage string) {
+	parserLanguage := language.Shell
+	if argumentLanguage != "" {
+		parserLanguage = argumentLanguage
+	}
+
+	unit := f.parseUnit(ctx, parserLanguage, OriginHookShell, span, view)
+	unit.HookCommandText = argumentLanguage != ""
 	f.publishUnit(ctx, unit)
 
 	if tree, ok := unit.Tree.(parse.ShellTree); ok {
@@ -268,97 +334,6 @@ func hookShellInterpreter(name string) bool {
 	}
 
 	return false
-}
-
-func hookShellScriptIndex(length int, operand func(int) (string, bool)) (int, bool) {
-	var command, shortOptions, noexec bool
-
-	for i := 0; i < length; i++ {
-		value, ok := operand(i)
-		if !ok {
-			return -1, true
-		}
-
-		switch {
-		case value == "-" || value == "--":
-			return hookCommandOperand(command && !noexec, i+1, length)
-		case !strings.HasPrefix(value, "-") && !strings.HasPrefix(value, "+") || value == "+":
-			return hookCommandOperand(command && !noexec, i, length)
-		case !shortOptions && hookLongShellOption(value):
-			continue
-		}
-
-		shortOptions = true
-
-		flags := value[1:]
-		if flags == "o" {
-			i++
-
-			option, ok := hookNamedShellOption(i, length, operand)
-			if !ok {
-				return -1, true
-			}
-
-			if option == "noexec" {
-				noexec = value[0] == '-'
-			}
-
-			continue
-		}
-
-		if strings.Trim(flags, "censufxvlp") != "" {
-			return -1, true
-		}
-
-		if strings.ContainsRune(flags, 'n') {
-			noexec = value[0] == '-'
-		}
-
-		if strings.ContainsRune(flags, 'c') {
-			if value[0] != '-' {
-				return -1, true
-			}
-
-			command = true
-		}
-	}
-
-	return -1, command && !noexec
-}
-
-func hookNamedShellOption(index, length int, operand func(int) (string, bool)) (string, bool) {
-	if index >= length {
-		return "", false
-	}
-
-	value, known := operand(index)
-	if !known {
-		return "", false
-	}
-
-	switch value {
-	case "allexport", "errexit", "noexec", "noglob", "nounset", "pipefail", "verbose", "xtrace":
-		return value, true
-	default:
-		return "", false
-	}
-}
-
-func hookLongShellOption(value string) bool {
-	switch value {
-	case "--noprofile", "--norc", "--login", "--posix":
-		return true
-	default:
-		return false
-	}
-}
-
-func hookCommandOperand(command bool, index, length int) (int, bool) {
-	if command && index < length {
-		return index, false
-	}
-
-	return -1, command
 }
 
 func hookLocalFunctions(tree *shellsyntax.File) map[string]bool {
@@ -420,7 +395,7 @@ func (f *filePreparation) projectHookChildren(ctx context.Context, view source.V
 		}
 	}
 
-	for _, word := range cmd.Words {
+	for _, word := range slices.Concat(cmd.Words, cmd.ExpansionWords) {
 		if !f.projectHookWordTrees(ctx, view, word, depth, functions) {
 			return false
 		}
@@ -443,11 +418,9 @@ func (f *filePreparation) projectHookChildren(ctx context.Context, view source.V
 }
 
 func (f *filePreparation) projectHookWordTrees(ctx context.Context, view source.View, word *shellsyntax.Word, depth int, functions map[string]bool) bool {
-	if word != nil {
-		for _, part := range word.Parts {
-			if part.Tree != nil && !f.projectHookScripts(ctx, view, part.Tree, depth, functions) {
-				return false
-			}
+	for tree := range word.Substitutions() {
+		if !f.projectHookScripts(ctx, view, tree, depth, functions) {
+			return false
 		}
 	}
 
@@ -487,7 +460,17 @@ func (f *filePreparation) projectHookScript(ctx context.Context, parent source.V
 		return
 	}
 
-	index, uncertain := hookShellScriptIndex(len(args), func(i int) (string, bool) { return args[i].Literal() })
+	index, uncertain := shellsyntax.CommandTextIndex(len(args), func(i int) (string, bool) {
+		word := args[i]
+		if hookPluginRootOperand(word) {
+			// The root identifies a file-shaped operand. The harness
+			// separately verifies expansion and path resolution.
+			// A command string after -c still has to pass LiteralView.
+			return ".", true
+		}
+
+		return word.Literal()
+	}, false)
 	if index < 0 {
 		if uncertain {
 			f.hookWordGap(parent, cmd.Span)
@@ -521,10 +504,20 @@ func (f *filePreparation) projectHookScript(ctx context.Context, parent source.V
 	}
 
 	if span, err := view.Original(source.Span{End: len(view.Text())}); err == nil {
-		f.parseHookUnit(ctx, view, span, depth+1)
+		f.parseHookUnit(ctx, view, span, depth+1, "")
 	} else {
 		f.hookWordGap(parent, word.Span)
 	}
+}
+
+func hookPluginRootOperand(word *shellsyntax.Word) bool {
+	for _, name := range []string{"CLAUDE_PLUGIN_ROOT", "PLUGIN_ROOT"} {
+		if word.HasQuotedPluginRootPrefix(name) || word.HasUnquotedPluginRootPath(name) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func hookWrapperArgs(name string, args []*shellsyntax.Word) []*shellsyntax.Word {

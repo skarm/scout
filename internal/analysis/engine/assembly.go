@@ -124,7 +124,13 @@ func (run *execution) complete() (report.Analysis, error) {
 		})
 	}
 
-	run.fileIndex = initializeFileCoverage(r, run.documents)
+	checksPerFile := len(run.results)
+	if run.engine.signatures.Enabled {
+		checksPerFile += 1 + len(signatureFileRules)
+	}
+
+	run.fileIndex = initializeFileCoverage(r, run.documents, checksPerFile)
+	r.Coverage.Checks = make([]report.Check, 0, len(run.results)+1)
 
 	return run.finalize()
 }
@@ -182,6 +188,7 @@ func (run *execution) finish() (report.Analysis, error) {
 	}
 
 	sortFileCoverage(r.Coverage.Files)
+	r.Coverage.ShellHooks = run.shellHookCoverage()
 
 	r.Semantic = semantic.RunWithin(run.ctx, run.files, r.Components, r.Findings, r.Artifact.SnapshotSHA256, run.options.Semantic, run.options.Provider, r.Extraction, run.options.SemanticQuota)
 	if run.options.Semantic.Enabled {

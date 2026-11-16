@@ -32,13 +32,13 @@ func (p *parser) lex() (token, error) {
 		return token{kind: "newline", span: source.Span{Start: start, End: p.at}}, nil
 	}
 
-	for _, op := range []string{";;&", ";&", ";;", "((", "<(", ">("} {
+	for _, op := range []string{";;&", ";&", "((", "<(", ">("} {
 		if strings.HasPrefix(p.text[p.at:p.end], op) {
 			return token{}, p.fail("unsupported_operator")
 		}
 	}
 
-	for _, op := range []string{"&>>", "<<-", "<<<", "&&", "||", "|&", ">>", "<<", "<&", ">&", "<>", ">|", "&>", ";", "&", "|", "(", ")", "<", ">"} {
+	for _, op := range []string{"&>>", "<<-", "<<<", "&&", "||", "|&", ">>", "<<", "<&", ">&", "<>", ">|", "&>", ";;", ";", "&", "|", "(", ")", "<", ">"} {
 		if strings.HasPrefix(p.text[p.at:p.end], op) {
 			p.at += len(op)
 			return token{kind: op, span: source.Span{Start: start, End: p.at}}, nil
@@ -231,7 +231,7 @@ func (p *parser) commandSubstitution(w *Word, quoted bool, start int) error {
 		return err
 	}
 
-	tree, err := q.list(true)
+	tree, err := q.list(parenthesizedList)
 	if err != nil {
 		return err
 	}
@@ -381,20 +381,46 @@ func (p *parser) bracedParameter(w *Word, quoted bool, start int) error {
 		}
 	}
 
-	if p.at == begin || p.at == p.end || p.text[p.at] != '}' {
+	if p.at == begin || p.at == p.end {
 		return p.fail("unsupported_parameter_expansion")
 	}
 
 	name := p.text[begin:p.at]
+
+	kind := "parameter"
+	if quoted && strings.HasPrefix(p.text[p.at:p.end], ":-.}") {
+		kind = "parameter_default_dot"
+		p.at += 3
+	} else if quoted && name == "0" {
+		if suffix := scriptDirectorySuffix(p.text[p.at:p.end]); suffix != "" {
+			kind = "parameter_script_dir"
+			p.at += len(suffix) - 1
+		}
+	}
+
+	if p.text[p.at] != '}' {
+		return p.fail("unsupported_parameter_expansion")
+	}
+
 	p.at++
 	w.Parts = append(w.Parts, Part{
-		Kind:   "parameter",
+		Kind:   kind,
 		Text:   name,
 		Span:   source.Span{Start: start, End: p.at},
 		Quoted: quoted,
 	})
 
 	return nil
+}
+
+func scriptDirectorySuffix(text string) string {
+	for _, suffix := range []string{"%[/\\\\]*}", "%/*}"} {
+		if strings.HasPrefix(text, suffix) {
+			return suffix
+		}
+	}
+
+	return ""
 }
 
 func (p *parser) heredocEnd(op, delim string, quoted bool) (int, bool, error) {

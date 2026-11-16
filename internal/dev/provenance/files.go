@@ -110,24 +110,62 @@ func artifactIdentity(ctx context.Context, root, path string) (artifact, error) 
 	defer func() { _ = file.Close() }() // The input file is read-only; read failures are handled separately.
 
 	hash := sha256.New()
-	if _, err = io.Copy(hash, contextReader{ctx: ctx, reader: file}); err != nil {
+	input := boundedArtifact(ctx, file)
+
+	if _, err = io.Copy(hash, input); err != nil {
+		return artifact{}, err
+	}
+
+	if err = artifactReadStatus(ctx, input); err != nil {
 		return artifact{}, err
 	}
 
 	return artifact{Path: relative, SHA256: hex.EncodeToString(hash.Sum(nil))}, nil
 }
 
-func verifyArtifact(ctx context.Context, root string, expected artifact) error {
+func boundedArtifact(ctx context.Context, reader io.Reader) *io.LimitedReader {
+	return &io.LimitedReader{R: contextReader{ctx: ctx, reader: reader}, N: maxArtifactBytes + 1}
+}
+
+func artifactReadStatus(ctx context.Context, input *io.LimitedReader) error {
+	if input.N <= 0 {
+		return errors.New("evidence artifact byte limit")
+	}
+
+	return ctx.Err()
+}
+
+func readVerifiedArtifact(ctx context.Context, root string, expected artifact, read func(io.Reader) error) error {
 	if !hexDigest(expected.SHA256, 64) {
 		return errors.New("invalid artifact digest")
 	}
 
-	actual, err := artifactIdentity(ctx, root, expected.Path)
+	relative, err := relativePath(root, expected.Path)
 	if err != nil {
 		return err
 	}
 
-	if actual.Path != expected.Path || actual.SHA256 != expected.SHA256 {
+	if relative != expected.Path {
+		return errors.New("invalid artifact path")
+	}
+
+	file, err := openFile(root, relative)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }() // The input file is read-only; read failures are handled separately.
+
+	// Bind validation to the exact bytes delivered to the parser.
+	input, digest := boundedArtifact(ctx, file), sha256.New()
+	if err = read(io.TeeReader(input, digest)); err != nil {
+		return err
+	}
+
+	if err = artifactReadStatus(ctx, input); err != nil {
+		return err
+	}
+
+	if hex.EncodeToString(digest.Sum(nil)) != expected.SHA256 {
 		return fmt.Errorf("artifact changed: %s", expected.Path)
 	}
 
@@ -225,7 +263,11 @@ func readJSONFile(root, path string) ([]byte, error) {
 	}
 	defer func() { _ = file.Close() }() // The input file is read-only; read failures are handled separately.
 
-	data, err := io.ReadAll(io.LimitReader(file, maxJSONBytes+1))
+	return readJSON(file)
+}
+
+func readJSON(reader io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maxJSONBytes+1))
 	if err != nil {
 		return nil, err
 	}

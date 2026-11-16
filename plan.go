@@ -29,6 +29,7 @@ func inspectionPlan(o Options, c Checks) report.InspectionPlan {
 		RequestedProfile: string(o.Profile),
 		Checks:           []report.InspectionCheck{},
 		Requirements:     []string{},
+		ShellHookRoot:    o.Harness.ShellHookRoot,
 	}
 	add := func(id string, selected, available bool, reason string) {
 		p.Checks = append(p.Checks, report.InspectionCheck{

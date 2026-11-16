@@ -57,6 +57,7 @@ type Unit struct {
 	View                                              source.View
 	Tree                                              any
 	HookSource                                        bool
+	HookCommandText                                   bool
 	failureCategory                                   string
 	preparationDiagnostic                             report.Diagnostic
 }
@@ -70,28 +71,29 @@ type ConfigScope struct {
 }
 
 type File struct {
-	foldedASCII         string
-	isASCII             bool
-	securityViews       []source.View
-	configScopes        []ConfigScope
-	file                artifact.File
-	index               source.Index
-	regions             []region
-	units               []Unit
-	classification      filetype.Description
-	registry            parse.Registry
-	diagnostics         []report.Diagnostic
-	budget              *parseBudget
-	derived             []derivedConfig
-	derivedReady        bool
-	derivedGap          bool
-	shellReady          bool
-	shellGap            bool
-	shellUnits          []Unit
-	shellExecutions     []GeneratedShellExecution
-	shellExecutionLimit bool
-	hookShell           []hookShellContext
-	hookShellReady      bool
+	foldedASCII          string
+	isASCII              bool
+	securityViews        []source.View
+	configScopes         []ConfigScope
+	file                 artifact.File
+	index                source.Index
+	regions              []region
+	units                []Unit
+	classification       filetype.Description
+	registry             parse.Registry
+	diagnostics          []report.Diagnostic
+	budget               *parseBudget
+	derived              []derivedConfig
+	derivedReady         bool
+	derivedGap           bool
+	shellReady           bool
+	shellGap             bool
+	shellUnits           []Unit
+	shellExecutions      []GeneratedShellExecution
+	shellExecutionLimit  bool
+	hookShell            []hookShellContext
+	hookShellReady       bool
+	geminiHookShellReady bool
 }
 
 // filePreparation confines mutation to the preparation phase; File values remain snapshots.
@@ -208,6 +210,12 @@ func (f File) Context(s source.Span) (kind, lang string) {
 
 	if f.HookEvent(s) != "" {
 		return OriginHookShell, language.Shell
+	}
+
+	for _, u := range f.units {
+		if u.HookSource && u.Origin == "file" && s.Start >= u.Span.Start && s.End <= u.Span.End {
+			return "source-file", u.Language
+		}
 	}
 
 	for _, r := range f.regions {

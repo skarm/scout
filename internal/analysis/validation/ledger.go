@@ -21,12 +21,14 @@ type Ledger struct {
 	analyzers map[string]int
 	files     []report.File
 	fileIndex map[string]int
-	results   map[string]report.TaskOutcome
+	results   []taskResult
 	issues    map[string]bool
 	omitted   int
 	max       int
 	digest    string
 }
+
+type taskResult struct{ status, reason string }
 
 func New(files []report.File, rules []report.Rule, g report.ComponentGraph) *Ledger {
 	return NewWithLimit(files, rules, g, MaxTasks)
@@ -50,9 +52,17 @@ func newLedger(files []report.File, rules []report.Rule, g report.ComponentGraph
 		limit = MaxTasks
 	}
 
+	// Bound the initial reservation because declarations may be duplicates
+	// or exceed the retained plan limit.
+	capacity := min(limit, 256, 1+len(rules)+len(g.Plugins)+len(g.References)+len(g.Issues))
 	l := &Ledger{
-		tasks: []report.AnalysisTask{}, index: map[string]int{}, analyzers: map[string]int{},
-		fileIndex: map[string]int{}, results: map[string]report.TaskOutcome{}, issues: map[string]bool{}, max: limit,
+		tasks:     make([]report.AnalysisTask, 0, capacity),
+		index:     make(map[string]int, capacity),
+		analyzers: make(map[string]int, min(capacity, len(rules))),
+		fileIndex: make(map[string]int, len(files)),
+		results:   make([]taskResult, 0, capacity),
+		issues:    map[string]bool{},
+		max:       limit,
 	}
 	// Discovery-dependent obligations are explicit; unsupported is not success.
 	// Phase order is part of the bounded plan and its stable hash.
@@ -131,22 +141,22 @@ func (l *Ledger) Finalize() report.ValidationReport {
 		MaxTasks:     l.max,
 		OmittedTasks: l.omitted,
 		Tasks:        l.Tasks(),
-		Outcomes:     []report.TaskOutcome{},
+		Outcomes:     make([]report.TaskOutcome, 0, len(l.tasks)),
 		Completeness: report.Complete,
 		Issues:       []string{},
 	}
-	for _, t := range l.tasks {
-		o, ok := l.results[t.ID]
-		if !ok {
-			o = report.TaskOutcome{TaskID: t.ID, Status: report.OutcomeMissing, Reason: "planned_task_has_no_result"}
+	for i, t := range l.tasks {
+		result := l.results[i]
+		if result.status == "" {
+			result = taskResult{status: report.OutcomeMissing, reason: "planned_task_has_no_result"}
 			r.Completeness = report.Partial
 		}
 
-		if t.Required && o.Status != report.OutcomeCompleted && o.Status != report.OutcomeNotApplicable {
+		if t.Required && result.status != report.OutcomeCompleted && result.status != report.OutcomeNotApplicable {
 			r.Completeness = report.Partial
 		}
 
-		r.Outcomes = append(r.Outcomes, o)
+		r.Outcomes = append(r.Outcomes, report.TaskOutcome{TaskID: t.ID, Status: result.status, Reason: result.reason})
 	}
 
 	if l.omitted > 0 {
@@ -313,17 +323,19 @@ func (l *Ledger) add(t report.AnalysisTask) string {
 	l.index[t.ID] = len(l.tasks)
 
 	l.tasks = append(l.tasks, t)
+	l.results = append(l.results, taskResult{})
 
 	return t.ID
 }
 
 func (l *Ledger) record(id, status, reason string) {
-	if _, ok := l.index[id]; !ok {
+	index, ok := l.index[id]
+	if !ok {
 		l.issues["unknown_task_result"] = true
 		return
 	}
 
-	if _, ok := l.results[id]; ok {
+	if l.results[index].status != "" {
 		l.issues["duplicate_task_result"] = true
 		return
 	}
@@ -338,7 +350,7 @@ func (l *Ledger) record(id, status, reason string) {
 		status = report.OutcomeFailed
 	}
 
-	l.results[id] = report.TaskOutcome{TaskID: id, Status: status, Reason: reason}
+	l.results[index] = taskResult{status: status, reason: reason}
 }
 
 func (l *Ledger) normalizeStatus(status string) string {

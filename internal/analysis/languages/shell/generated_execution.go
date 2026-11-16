@@ -138,12 +138,8 @@ func generatedRedirectRunsCode(r *shellsyntax.Redirect) bool {
 }
 
 func generatedWordRunsCode(word *shellsyntax.Word) bool {
-	if word != nil {
-		for _, p := range word.Parts {
-			if p.Kind == "substitution" || p.Tree != nil {
-				return true
-			}
-		}
+	for range word.Substitutions() {
+		return true
 	}
 
 	return false

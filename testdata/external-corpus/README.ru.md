@@ -19,6 +19,201 @@ bin/scout-dev corpus collect --manifest testdata/external-corpus/sources.json \
 bin/scout-dev evaluate --split holdout /tmp/scout-external-corpus.json
 ```
 
+## Shell-хуки
+
+`shell-hooks.sources.json` сохраняет все файлы плагина `gh-cli` от Trail of Bits
+и хук `SessionStart` из Superpowers вместе с обёрткой, скриптом и навыком, который
+он читает. Пример Superpowers ограничен этим хуком. В обоих примерах сохранены
+исходные лицензии, права на выполнение и метки `ambiguous` до независимой разметки.
+
+```sh
+bin/scout-dev corpus collect --manifest testdata/external-corpus/shell-hooks.sources.json \
+  --allow-download --output /tmp/scout-shell-hooks.json
+bin/scout-dev evaluate --profile standard --split holdout /tmp/scout-shell-hooks.json
+```
+
+В `shell-hooks.review.json` сохранена предварительная разметка Codex со ссылками
+на исходники закреплённых ревизий. Codex участвовал в подготовке выборки и видел
+отчёты сканирования, поэтому в рецензии указано `independent: false`. Независимый
+рецензент может создать новый файл через `corpus review-template` и разметить
+примеры по закреплённым исходникам до просмотра результатов сканирования.
+
+И `v0.7.0`, и сборка на основе `670cc18` выдали находки с неполным покрытием
+на обоих примерах с предварительной меткой `benign`. Оценщик считает любую
+находку на таком примере ложным срабатыванием, поэтому в этой выборке их 2/2.
+Recall не определён из-за отсутствия положительных примеров. В нативном CI
+проверяется авторский `testdata/security-corpus/packages.json`. Порог требует
+совпадения всех заданных ожиданий по правилам. Исходный результат обеих сборок — 3/3.
+
+### Пакет для слепой разметки
+
+Пакет объединяет два закреплённых внешних примера и четыре синтетических примера
+с сопоставимым поведением хуков. Для сборки нужен Python 3 и корпус
+`/tmp/scout-shell-hooks.json` из команды выше. Можно использовать локально
+собранный корпус. Сборщик сверяет набор файлов, хеши и права на выполнение с
+манифестом, затем запускает `corpus review-template`.
+
+```sh
+python3 testdata/external-corpus/prepare-shell-hook-review.py \
+  --scout-dev bin/scout-dev --upstream-corpus /tmp/scout-shell-hooks.json \
+  --output /tmp/scout-shell-hook-review.zip
+```
+
+Передайте независимому рецензенту архив. В нём есть источники, инструкция и
+пустой `review.json`, привязанный к байтам `corpus.json`. Отчёты Scout и
+предварительная рецензия остаются у оператора. После получения рецензии:
+
+```sh
+bin/scout-dev evaluate --profile standard --split holdout --require-independent --shell-hooks \
+  --label-review /path/to/completed/review.json --trusted-label-reviewer REVIEWER_ID \
+  /path/to/unpacked/corpus.json
+```
+
+Результаты для поведения из инструкции рецензента находятся в
+`shell_hooks.metrics`. Общий recall в `overall` засчитывает любую находку в
+положительном примере. Два внешних и четыре синтетических примера дают первую
+проверку сценариев.
+
+### Расширенная выборка Shell-хуков
+
+Расширение добавляет 15 примеров из восьми публичных репозиториев. Примеры
+подбирались по объявленным Shell-хукам и доступности исходников до прогона
+Scout. Манифест закрепляет оригинальные регистрации хуков, скрипты,
+выбранные локальные зависимости и лицензии. Примеры из одного репозитория
+имеют общий идентификатор источника.
+
+```sh
+bin/scout-dev corpus collect --allow-download --timeout 8m \
+  --manifest testdata/external-corpus/shell-hooks.expansion.sources.json \
+  --output /tmp/scout-shell-hooks-expansion.json
+python3 testdata/external-corpus/prepare-shell-hook-review.py \
+  --scout-dev bin/scout-dev --upstream-corpus /tmp/scout-shell-hooks.json \
+  --additional-manifest testdata/external-corpus/shell-hooks.expansion.sources.json \
+  --additional-corpus /tmp/scout-shell-hooks-expansion.json \
+  --output artifacts/scout-shell-hook-review-expanded.zip
+```
+
+Для прогона извлеките точные байты корпуса из каждого архива и передайте
+заполненную разметку для расширенного корпуса. В архиве лежит шаблон `review.json`.
+
+```sh
+unzip -p artifacts/scout-shell-hook-review.zip corpus.json > artifacts/shell-hooks.corpus.json
+unzip -p artifacts/scout-shell-hook-review-expanded.zip corpus.json > artifacts/shell-hooks.expanded.corpus.json
+bin/scout-dev evaluate --profile standard --split holdout --require-independent --shell-hooks \
+  --label-review artifacts/shell-hooks.expanded.blind-review.json \
+  --trusted-label-reviewer codex-external-blind-reviewer \
+  artifacts/shell-hooks.expanded.corpus.json > artifacts/shell-hooks.expanded-completion.evaluation.json
+python3 testdata/external-corpus/assess-shell-hook-fpr.py \
+  --corpus artifacts/shell-hooks.expanded.corpus.json \
+  --baseline artifacts/shell-hooks.corpus.json \
+  --report artifacts/shell-hooks.expanded-completion.evaluation.json \
+  --target 0.05 > artifacts/shell-hooks.expanded-completion.fpr-assessment.json
+```
+
+Скрипт считает ложные срабатывания, отрицательные с полным покрытием и
+отрицательные с пробелами покрытия среди новых внешних примеров. Пилотные
+сценарии исключены из знаменателя. Пока есть пробелы покрытия, FPR остаётся
+неопределённым. Односторонняя 95%-ная граница для FPR предполагает независимые
+и репрезентативные примеры. При интерпретации подборки учитывайте число
+репозиториев и способ отбора.
+Регрессионная проверка CI использует версионируемый `testdata/security-corpus/packages.json`.
+Внешняя оценка запускается отдельно с архивным корпусом и разметкой.
+
+### Сценарии запуска трёх закреплённых хуков
+
+`check-shell-hook-scenarios.py` сверяет SHA‑256 расширенного корпуса и
+воспроизводит семь выбранных путей исходных Bash-хуков в sandbox macOS.
+Условия включают Bash 5 или новее, локаль `C`, временные входные файлы и
+абсолютный путь плагина без пробелов и символов glob. Sandbox запрещает
+сеть и ограничивает запуск процессов и запись файлов.
+
+- Ralph Loop продолжает корректную итерацию или останавливается на лимите.
+- Security Guidance использует ветку POSIX без `cygpath` и кеша Windows.
+  Заглушка Python проверяет передачу управления обеим захваченным точкам входа.
+- Luca Toolkit получает абсолютный путь к транскрипту. Проверяются короткая
+  сессия, успешная обработка и ошибка обработки. Ответы Git и Claude
+  задаются заглушками.
+
+```sh
+python3 testdata/external-corpus/check-shell-hook-scenarios.py \
+  --corpus artifacts/shell-hooks.expanded.corpus.json \
+  --bash /opt/homebrew/bin/bash > artifacts/shell-hooks.conditional-scenarios.json
+```
+
+Отчёт перечисляет достигнутые строки Bash и проверенные исходы сценариев.
+Статическое покрытие и FPR на 134 примерах измеряются отдельно.
+
+### Условный статический анализ трёх закреплённых хуков
+
+`scout-dev hook-scenarios` проверяет хеши корпуса и исходников и анализирует
+зарегистрированные команды и Bash AST обработчиков для тех же семи наборов
+входных данных. Scout использует временную файловую систему и моделирует
+ответы внешних команд без запуска процессов. Статус `complete` требует
+подтверждения ожидаемого исхода и прохождения заданных строк. Для Security
+Guidance граница проходит в точке передачи управления Python. Для Luca
+Toolkit ответ Claude задаёт модель.
+
+```sh
+bin/scout-dev hook-scenarios --corpus artifacts/shell-hooks.expanded.corpus.json \
+  > artifacts/shell-hooks.conditional-static.evaluation.json
+```
+
+Команда возвращает 1, если хотя бы один сценарий получил `partial`.
+Общее покрытие и FPR измеряет команда `evaluate --shell-hooks`.
+
+### Свежая выборка для порога FPR
+
+До выдачи пустой формы разметки закрепите выбор репозиториев, область
+анализа и байты исходников. Берите по одному примеру от владельца,
+исключайте известные форки и ранее оценённые источники, сохраняйте
+сведения о дубликатах Shell-обработчиков и исключениях при захвате.
+Результат относится к области поиска и правилам отбора этой выборки.
+
+Для выборки от 15 ноября 2026 года поиск и хеши файлов зафиксированы в
+`artifacts/shell-hooks.fpr-blind.sampling.json`. Повторный прогон с заполненной
+разметкой:
+
+```sh
+bin/scout-dev evaluate --profile standard --split holdout --require-independent --shell-hooks \
+  --label-review artifacts/shell-hooks.fpr-blind.review.json \
+  --trusted-label-reviewer codex-shell-fpr-blind-reviewer \
+  artifacts/shell-hooks.fpr-blind.corpus.json > artifacts/shell-hooks.fpr-blind.evaluation.json
+python3 testdata/external-corpus/assess-shell-hook-fpr.py \
+  --corpus artifacts/shell-hooks.fpr-blind.corpus.json \
+  --report artifacts/shell-hooks.fpr-blind.evaluation.json \
+  --target 0.05 > artifacts/shell-hooks.fpr-blind.assessment.json
+```
+
+Точная односторонняя 95%-ная верхняя граница требует независимой выборки
+с полным покрытием отрицательных примеров. Поле
+`corpus_false_positive_rate_bounds` показывает диапазон на размеченной
+выборке в двух крайних случаях, когда все неопределённые результаты
+считаются чистыми или ложными срабатываниями. Для тех же двух случаев
+скрипт вычисляет 95%-ные верхние границы при условии независимой и
+репрезентативной выборки. Скрипт также выводит необходимый объём выборки
+при нуле ошибок для заданного порога.
+С `--require-target` результат, который не подтверждает порог, даёт код
+выхода 1 и сохраняет отчёт в JSON.
+
+После того как результаты по примерам использованы для доработки Scout,
+повторный прогон этих примеров проверяет регрессии. Для подтверждения порога
+зафиксируйте версию сканера и оцените её на новой выборке, примеры и разметка
+которой были недоступны при разработке.
+
+Для прогона с явным условием запуска добавьте к той же статической оценке
+`--shell-hook-roots FILE`. В JSON укажите хост плагина `host`, абсолютный
+путь `path` из латинских букв, цифр, `/`, `.`, `_` и `-`, и массив
+`cases` с идентификаторами выбранных Shell-хуков. Пример для 41 случая:
+`artifacts/shell-hooks.fpr-static-safe-root-rerun.assumptions.json`.
+Значение `host: "auto"` применяет условие к запускам Claude Code, Codex
+и Gemini CLI в выбранных примерах.
+Необязательное поле `lc_all` принимает `"C"` или `"POSIX"` и задаёт локаль
+на входе в первый захваченный скрипт. Такой прогон оценивается отдельно
+от прогона с неизвестной локалью.
+Путь задаёт корень плагина в простых шаблонах команд. Scout разрешает файлы
+в захваченном плагине, не задаёт переменные окружения и не исполняет хуки.
+Оба отчёта сохраняют это условие; результаты относятся к указанной среде запуска.
+
 Сборка делает ограниченные HTTPS GET без учётных данных и перенаправлений.
 Все хеши проверяются до публикации. Исходные файлы не исполняются, ссылки из них
 не загружаются. Несовпадение хеша, некорректный UTF-8 или манифест, пересечение

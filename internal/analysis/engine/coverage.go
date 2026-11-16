@@ -13,7 +13,7 @@ import (
 
 type coverageGap struct{ code, message string }
 
-func initializeFileCoverage(r *report.Analysis, documents []document.File) map[string]int {
+func initializeFileCoverage(r *report.Analysis, documents []document.File, checksPerFile int) map[string]int {
 	inventory := append([]report.File(nil), r.Artifact.Files...)
 	for _, object := range r.Extraction.Objects {
 		inventory = append(inventory, object.File)
@@ -53,6 +53,8 @@ func initializeFileCoverage(r *report.Analysis, documents []document.File) map[s
 	for _, doc := range documents {
 		f := doc.Artifact()
 		fc := &r.Coverage.Files[fileIndex[f.Metadata().Path]]
+
+		fc.Checks = make([]report.FileCheck, 0, checksPerFile)
 		classifyCoverage(r, fc, doc, extracted)
 	}
 

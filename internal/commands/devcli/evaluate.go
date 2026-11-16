@@ -17,10 +17,12 @@ import (
 type evaluationInvocation struct {
 	path, split, llmConfig string
 	labelReviewPath        string
+	shellHookRootsPath     string
 	trustedLabelReviewers  []string
 	profile                scout.Profile
 	timeout                time.Duration
 	allowUpload            bool
+	shellHooks             bool
 	price                  *evaluation.TokenPrice
 	requirements           evaluation.Requirements
 }
@@ -57,7 +59,7 @@ func evaluate(ctx context.Context, args []string, out, diag io.Writer) int {
 		return failure(diag, err)
 	}
 
-	measure := evaluation.Options{Split: command.split, Price: command.price, LabelReview: labelReview}
+	measure := evaluation.Options{Split: command.split, Price: command.price, LabelReview: labelReview, ShellHooks: command.shellHooks}
 	if opts.Review != nil {
 		measure.Reviewer, err = scout.New(call, opts)
 		if err != nil {
@@ -77,6 +79,29 @@ func evaluate(ctx context.Context, args []string, out, diag io.Writer) int {
 	}
 
 	defer func() { _ = scanner.Close() }()
+
+	if command.shellHookRootsPath != "" {
+		raw, err := readEvaluationFile(call, command.shellHookRootsPath, evaluation.MaxShellHookRootsBytes)
+		if err != nil {
+			return failure(diag, err)
+		}
+
+		roots, err := evaluation.ParseShellHookRoots(raw)
+		if err != nil {
+			return failure(diag, err)
+		}
+
+		measure.ShellHookRoots = &roots
+
+		opts.Harness.ShellHookRoot = roots.ShellHookRoot
+
+		measure.ShellHookRootScanner, err = scout.New(call, opts)
+		if err != nil {
+			return failure(diag, err)
+		}
+
+		defer func() { _ = measure.ShellHookRootScanner.Close() }()
+	}
 
 	r, measureErr := evaluation.MeasureWithOptions(call, scanner, data, measure)
 	if command.requirements.Enabled() {
@@ -159,6 +184,8 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 	profile := fs.String("profile", "standard", "standard or custom (builtins only); mutually exclusive with --llm-config")
 	fs.DurationVar(&c.timeout, "timeout", 2*time.Minute, "whole corpus deadline")
 	fs.StringVar(&c.split, "split", "", "measure only train, tune or holdout after validating all splits")
+	fs.BoolVar(&c.shellHooks, "shell-hooks", false, "report targeted signal metrics for shell_hooks cases labelled for eval and generated-script execution")
+	fs.StringVar(&c.shellHookRootsPath, "shell-hook-roots", "", "explicit host, shell-safe plugin path and case IDs to assume for simple hook launches; requires --shell-hooks")
 	fs.StringVar(&c.llmConfig, "llm-config", "", "explicit scout.config/v1 with review provider and scanner settings")
 	fs.StringVar(&c.labelReviewPath, "label-review", "", "separate scout.corpus-review/v1 decisions bound to the exact corpus SHA-256")
 	fs.Func("trusted-label-reviewer", "explicitly trusted reviewer ID for --label-review; repeatable, at most 32", func(id string) error {
@@ -200,6 +227,10 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 
 	if err := c.requirements.Validate(); err != nil {
 		return c, err
+	}
+
+	if present["shell-hook-roots"] && (!c.shellHooks || c.shellHookRootsPath == "" || c.llmConfig != "") {
+		return c, errors.New("--shell-hook-roots requires a file, --shell-hooks and a static profile")
 	}
 
 	if (c.labelReviewPath == "") != (len(c.trustedLabelReviewers) == 0) || present["label-review"] && c.labelReviewPath == "" {

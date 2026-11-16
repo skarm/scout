@@ -163,6 +163,7 @@ type Options struct {
 	// declarations.
 	Harness report.HarnessOptions
 	// Download permits and configures remote acquisition when non-nil and enabled.
+	// A Remote target can override Revision and ExpectedSHA256 individually.
 	Download *fetch.Options
 	// External configures explicit traversal of external references when non-nil.
 	External *ExternalOptions

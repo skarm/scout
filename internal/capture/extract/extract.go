@@ -60,6 +60,8 @@ type Result struct {
 	Files       []artifact.File
 	Report      report.ExtractionReport
 	Diagnostics []report.Diagnostic
+	// HookNamespacesIncomplete records loss that may hide package members.
+	HookNamespacesIncomplete bool
 }
 
 type queued struct {
@@ -81,6 +83,10 @@ type operation struct {
 	parent  queued
 	step    int
 	ordinal int
+	// Set only after reading a complete JSON stream whose skipped tokens
+	// have no supported decoder that could produce an archive namespace.
+	skippedNonContainers bool
+	skipped              bool
 }
 
 type contextReader struct {
@@ -131,18 +137,19 @@ func Expand(ctx context.Context, files []artifact.File, limits report.Extraction
 
 func (b *builder) expand(parent queued) {
 	meta, text := parent.file.Metadata(), parent.file.Content()
-	kind := filetype.Inspect(meta.Path, text, meta.Executable)
+	candidates := extractionCandidatesFor(meta.Path, text, meta.Executable)
+
 	// Dispatch is static and trusted. Format hints select attempts, not trust.
-	if extractor, ok := formatExtractors[kind.Format]; ok {
+	if extractor, ok := formatExtractors[candidates.format]; ok {
 		b.run(parent, extractor.id, extractor.run)
 	}
 
-	if strings.HasPrefix(text, "\xff\xfe") || strings.HasPrefix(text, "\xfe\xff") {
+	if candidates.utf16 {
 		b.run(parent, "utf16-bom", extractUTF16)
 	}
 	// Explicit data URIs are searched in every byte stream, not just text files.
 	// Whole-file Base64 is a bounded candidate, not an accusation of malice.
-	if jsonCandidate(meta.Path, text) {
+	if candidates.json {
 		b.run(parent, "json-strings", extractJSON)
 
 		if omsCandidate(meta.Path, text) {
@@ -150,8 +157,22 @@ func (b *builder) expand(parent queued) {
 		}
 	}
 
-	if base64Candidate(meta.Path, text) {
+	if candidates.base64 {
 		b.run(parent, "base64", extractBase64)
+	}
+}
+
+type extractionCandidates struct {
+	format              string
+	utf16, json, base64 bool
+}
+
+func extractionCandidatesFor(name, text string, executable bool) extractionCandidates {
+	return extractionCandidates{
+		format: filetype.Inspect(name, text, executable).Format,
+		utf16:  strings.HasPrefix(text, "\xff\xfe") || strings.HasPrefix(text, "\xfe\xff"),
+		json:   jsonCandidate(name, text),
+		base64: base64Candidate(name, text),
 	}
 }
 
@@ -170,6 +191,11 @@ func (b *builder) run(parent queued, id string, fn func(*operation) error) {
 		if recover() != nil {
 			b.result.Report.Steps[op.step].Status = report.OutcomeFailed
 			op.issue("extractor_panic", "A trusted extractor failed; original bytes and previously validated children are retained. Panic details are withheld.")
+		}
+
+		if !op.skippedNonContainers && (op.skipped ||
+			archiveContainersUnverified(id, b.result.Report.Steps[op.step].Status)) {
+			b.result.HookNamespacesIncomplete = true
 		}
 	}()
 
@@ -201,6 +227,26 @@ func (b *builder) run(parent queued, id string, fn func(*operation) error) {
 	// Successful decoding is not full format/behavior coverage. This is explicit
 	// even for a text-looking child with no other diagnostic.
 	op.issue("extraction_scope_limited", "Only supported representations were extracted. This does not establish complete container, encoding or behavior coverage.")
+}
+
+func archiveContainersUnverified(extractorID, status string) bool {
+	if status == "budget_exceeded" {
+		// A budget can stop an extractor before it identifies a skipped
+		// value. The unread tail may still contain a nested archive.
+		return true
+	}
+
+	return status != report.OutcomeCompleted && (extractorID == "zip32" || extractorID == "tar" || extractorID == "gzip")
+}
+
+// A plain synthetic JSON token cannot be a named package member. It can
+// affect package coverage if a chained extractor could expose an archive.
+func mayDecodeContainer(text string) bool {
+	candidates := extractionCandidatesFor("json-string.txt", text, false)
+
+	_, format := formatExtractors[candidates.format]
+
+	return format || candidates.utf16 || candidates.json || candidates.base64
 }
 
 func (o *operation) issue(code, message string) {
@@ -363,6 +409,8 @@ func (o *operation) text(name, text string, region *report.ByteRange) error {
 }
 
 func (o *operation) recordSkip(name, reason string, size int64, ordinal int) {
+	o.skipped = true
+
 	// Emit attempts originate from charged entries. Bound metadata as well in
 	// case a future extractor violates that trusted contract.
 	if len(o.b.result.Report.Skipped) >= o.b.limits.MaxEntries {

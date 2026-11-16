@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"sync"
 
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/knowledge"
@@ -15,6 +16,12 @@ import (
 // Quota limits admission inside an already valid provider configuration. Zero
 // is a real exhausted quota, not an invalid transport or an unlimited budget.
 type Quota struct{ Requests, InputBytes int }
+
+//nolint:gochecknoglobals // The compiled schema is immutable; cache only its digest.
+var responseSchemaDigest = sync.OnceValue(func() string {
+	schema, _ := json.Marshal(review.ResponseSchema())
+	return artifact.Hash(schema)
+})
 
 // ProviderIdentity catches a broken trusted adapter without exposing panic text.
 func ProviderIdentity(p review.Provider) (id review.Identity, err error) {
@@ -42,16 +49,16 @@ func runWithExtraction(ctx context.Context, files []artifact.File, graph report.
 }
 
 func RunWithin(ctx context.Context, files []artifact.File, graph report.ComponentGraph, findings []report.Finding, snapshot string, o review.Options, provider review.Provider, extraction report.ExtractionReport, quota *Quota) report.SemanticReport {
-	schema, _ := json.Marshal(review.ResponseSchema())
+	pack := knowledge.Inventory()
 
 	r := report.SemanticReport{
 		Enabled:              o.Enabled,
 		Scope:                "bounded text discovery; declared-plugin/standalone-document intent context; static-finding assessment and second-stage semantic-proposal assessment (not runtime verification)",
 		ProtocolVersion:      review.ProtocolVersion,
 		PromptVersion:        review.PromptVersion,
-		InstructionPack:      knowledge.Inventory(),
-		PromptSHA256:         knowledge.Inventory().SHA256,
-		ResponseSchemaSHA256: artifact.Hash(schema),
+		InstructionPack:      pack,
+		PromptSHA256:         pack.SHA256,
+		ResponseSchemaSHA256: responseSchemaDigest(),
 		Options:              report.SemanticSettings(o),
 		Tasks:                []report.SemanticTask{},
 		Outcomes:             []report.SemanticOutcome{},

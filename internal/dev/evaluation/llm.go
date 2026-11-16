@@ -10,10 +10,13 @@ import (
 )
 
 type Options struct {
-	Split       string
-	Reviewer    *scout.Scanner
-	Price       *TokenPrice
-	LabelReview *LabelReview
+	Split                string
+	Reviewer             *scout.Scanner
+	Price                *TokenPrice
+	LabelReview          *LabelReview
+	ShellHooks           bool
+	ShellHookRoots       *ShellHookRoots
+	ShellHookRootScanner *scout.Scanner
 }
 
 // TokenPrice is an operator assumption, not a fetched provider tariff.
@@ -68,6 +71,12 @@ type LLMReport struct {
 func (o Options) validate(c Corpus) error {
 	if o.Split != "" && (!validSplit(o.Split) || !slices.ContainsFunc(c.Cases, func(tc Case) bool { return tc.Split == o.Split })) {
 		return errors.New("selected split is invalid or empty")
+	}
+
+	if o.ShellHooks && !slices.ContainsFunc(c.Cases, func(tc Case) bool {
+		return tc.Category == "shell_hooks" && (o.Split == "" || tc.Split == o.Split)
+	}) {
+		return errors.New("shell hook metrics require a selected shell_hooks case")
 	}
 
 	if o.Price != nil {

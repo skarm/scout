@@ -1,0 +1,45 @@
+package harness
+
+import (
+	"github.com/skarm/scout/internal/syntax/shellsyntax"
+	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/report"
+)
+
+func (w *hookSourceWalk) traceSubstitutions(e *entry, view source.View, cmd *shellsyntax.Command, state hookSourceState, chain []report.SourceRef) {
+	for _, word := range cmd.NumericTest {
+		w.traceWordSubstitutions(e, view, word, state, chain)
+	}
+
+	for _, word := range cmd.ExpansionWords {
+		w.traceWordSubstitutions(e, view, word, state, chain)
+	}
+
+	for _, word := range cmd.Words {
+		w.traceWordSubstitutions(e, view, word, state, chain)
+	}
+
+	for _, assignment := range cmd.Assignments {
+		w.traceWordSubstitutions(e, view, assignment.Value, state, chain)
+	}
+
+	for _, redirect := range cmd.Redirects {
+		w.traceWordSubstitutions(e, view, redirect.Target, state, chain)
+		w.traceWordSubstitutions(e, view, redirect.Body, state, chain)
+	}
+}
+
+func (w *hookSourceWalk) traceWordSubstitutions(e *entry, view source.View, word *shellsyntax.Word, state hookSourceState, chain []report.SourceRef) {
+	if w.knownPluginDefault(word, state) {
+		return
+	}
+
+	for tree := range word.Substitutions() {
+		if hookCountPipeline(tree, state) {
+			continue
+		}
+
+		// The projection retains only forms that run in an isolated shell.
+		w.commands(e, view, tree, state.child(), chain, true)
+	}
+}

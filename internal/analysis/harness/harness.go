@@ -45,8 +45,10 @@ type builder struct {
 	stopped               bool
 	prepareHooks          bool
 	hookSourcePaths       []HookSourcePath
+	hookSourceCommands    []HookSourceCommand
 	hookSourceDiagnostics []report.Diagnostic
 	hookSourceSeen        map[report.Diagnostic]bool
+	shellHookRoot         report.ShellHookRoot
 	hooks                 hookpolicy.Policy
 }
 type candidate struct {
@@ -128,6 +130,8 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 		return b.r
 	}
 
+	b.shellHookRoot = opts.ShellHookRoot
+
 	b.spaces = namespaces(inventory, docs, extraction)
 
 	b.hooks = hookpolicy.Bind(ctx, docs, extraction)
@@ -151,7 +155,7 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 	b.finish()
 
 	if sources != nil {
-		*sources = HookSources{Paths: b.hookSourcePaths, Diagnostics: b.hookSourceDiagnostics}
+		*sources = HookSources{Paths: b.hookSourcePaths, Diagnostics: b.hookSourceDiagnostics, Commands: b.hookSourceCommands}
 	}
 
 	return b.r
@@ -168,12 +172,14 @@ func (b *builder) candidates(host string) []candidate {
 				break
 			}
 
-			base := path.Base(name)
-			if base == "plugin.json" {
+			switch path.Base(name) {
+			case "plugin.json":
 				root, loader := manifestLayout(name)
 				set.add(ns, root, loader, name)
 
 				found = true
+			case "gemini-extension.json":
+				set.add(ns, path.Dir(name), report.HostGeminiCLI, name)
 			}
 
 			b.marketplace(ns, name)

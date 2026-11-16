@@ -22,6 +22,7 @@ type target struct {
 type entry struct {
 	path, name string
 	info       fs.FileInfo
+	sha256     string
 }
 
 type candidate struct {
@@ -147,6 +148,8 @@ func candidateFiles(root, binary string) ([]entry, error) {
 		return nil, errors.New("candidate checksum mismatch")
 	}
 
+	files[0].sha256 = actual
+
 	return files, nil
 }
 
@@ -190,7 +193,7 @@ func writeTar(path string, files []entry) (err error) {
 			return err
 		}
 
-		if err = copyFile(archive, item.path); err != nil {
+		if err = copyFile(archive, item); err != nil {
 			return err
 		}
 	}
@@ -222,7 +225,7 @@ func writeZIP(path string, files []entry) (err error) {
 			return err
 		}
 
-		if err = copyFile(writer, item.path); err != nil {
+		if err = copyFile(writer, item); err != nil {
 			return err
 		}
 	}
@@ -230,13 +233,30 @@ func writeZIP(path string, files []entry) (err error) {
 	return nil
 }
 
-func copyFile(writer io.Writer, path string) error {
-	file, err := os.Open(path) //nolint:gosec // G304: copies an enumerated regular file from a verified build candidate.
+func copyFile(writer io.Writer, item entry) (err error) {
+	file, err := os.Open(item.path)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, file.Close()) }()
+
+	info, err := file.Stat()
 	if err != nil {
 		return err
 	}
 
-	_, err = io.Copy(writer, file)
+	if !info.Mode().IsRegular() || info.Size() != item.info.Size() {
+		return errors.New("candidate file changed before archiving")
+	}
 
-	return errors.Join(err, file.Close())
+	hash := sha256.New()
+	if _, err = io.CopyN(io.MultiWriter(writer, hash), file, info.Size()); err != nil {
+		return err
+	}
+
+	if hex.EncodeToString(hash.Sum(nil)) != item.sha256 {
+		return errors.New("candidate checksum changed during archiving")
+	}
+
+	return nil
 }

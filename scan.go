@@ -525,8 +525,14 @@ func captureRemote(ctx context.Context, target Target, options Options) (artifac
 	}
 
 	download := *options.Download
-	download.Revision = target.pin.Revision
-	download.ExpectedSHA256 = target.pin.SHA256
+	if target.pin.Revision != "" {
+		download.Revision = target.pin.Revision
+	}
+
+	if target.pin.SHA256 != "" {
+		download.ExpectedSHA256 = target.pin.SHA256
+	}
+
 	download.MaxBytes = min(download.MaxBytes, max(options.Limits.Capture.MaxFileBytes, options.Limits.Capture.MaxArchiveBytes), options.Limits.Capture.MaxTotalBytes)
 
 	payload, err := fetch.Get(ctx, target.name, download)

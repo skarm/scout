@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 
 	"github.com/skarm/scout/internal/dev/replaywire"
@@ -240,11 +241,15 @@ func verifyArtifacts(ctx context.Context, root string, m Manifest, observed repl
 }
 
 func readArtifactJSON(ctx context.Context, root string, artifact artifact, out any) error {
-	if err := verifyArtifact(ctx, root, artifact); err != nil {
-		return err
-	}
+	var data []byte
 
-	data, err := readJSONFile(root, artifact.Path)
+	err := readVerifiedArtifact(ctx, root, artifact, func(input io.Reader) error {
+		var err error
+
+		data, err = readJSON(input)
+
+		return err
+	})
 	if err != nil {
 		return err
 	}

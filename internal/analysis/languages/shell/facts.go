@@ -61,17 +61,16 @@ func walkShellFacts(ctx context.Context, doc document.File, outputs map[string]*
 
 	for _, unit := range doc.Units() {
 		tree, ok := unit.Tree.(parse.ShellTree)
-		if !ok {
+		if !ok && !unit.HookCommandText {
 			continue
 		}
 
 		root := selectTree(unit, tree)
-		if root == nil {
+		if root == nil && !unit.HookCommandText {
 			continue
 		}
 
-		walk.view = unit.View
-		walk.list(root, newShellState())
+		walk.unit(unit, root)
 
 		if walk.err != nil {
 			break

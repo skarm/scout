@@ -96,6 +96,60 @@ func TestSupportedRepresentations(t *testing.T) {
 	}
 }
 
+func TestJSONBudgetKeepsArchiveNamespaceUncertainty(t *testing.T) {
+	limits := report.DefaultExtractionLimits()
+	limits.MaxObjects = 1
+
+	for _, tc := range []struct {
+		name, input string
+		incomplete  bool
+	}{
+		{"plain tokens", `["retained","ordinary text","another token"]`, false},
+		{"encoded token beyond first skip", `["retained","ordinary text","data:application/zip;base64,UEsDBA=="]`, true},
+		{"unverified tail", `["retained","ordinary text",`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := expand(t, "input.json", tc.input, limits)
+			if r.HookNamespacesIncomplete != tc.incomplete || len(r.Report.Skipped) == 0 {
+				t.Fatalf("unexpected namespace uncertainty or missing extraction gap: %+v", r)
+			}
+		})
+	}
+}
+
+func TestJSONBudgetWithAnUnreadTailKeepsNamespaceUncertainty(t *testing.T) {
+	t.Run("token limit", func(t *testing.T) {
+		limits := report.DefaultExtractionLimits()
+		limits.MaxEntries = 2
+		result := expand(t, "input.json", `[0,1,2]`, limits)
+		if !result.HookNamespacesIncomplete || len(result.Report.Steps) != 1 ||
+			result.Report.Steps[0].Status != "budget_exceeded" {
+			t.Fatalf("unread JSON tokens did not affect namespace coverage: %+v", result.Report)
+		}
+	})
+
+	t.Run("nesting limit", func(t *testing.T) {
+		depth := extract.MaxJSONDepth + 1
+		data := strings.Repeat("[", depth) + "0" + strings.Repeat("]", depth)
+		result := expand(t, "input.json", data, report.DefaultExtractionLimits())
+		if !result.HookNamespacesIncomplete || len(result.Report.Steps) != 1 ||
+			result.Report.Steps[0].Status != "budget_exceeded" {
+			t.Fatalf("unread nested JSON did not affect namespace coverage: %+v", result.Report)
+		}
+	})
+}
+
+func TestImplicitBase64RejectsMalformedQuanta(t *testing.T) {
+	text := strings.Repeat("A", 48) + "a="
+	limits := report.DefaultExtractionLimits()
+	implicit := expand(t, "input.txt", text, limits)
+	explicit := expand(t, "input.b64", text, limits)
+
+	if len(implicit.Report.Steps) != 0 || len(explicit.Report.Skipped) != 1 || !explicit.HookNamespacesIncomplete {
+		t.Fatalf("implicit=%+v explicit=%+v", implicit.Report, explicit.Report)
+	}
+}
+
 func TestRecursiveGraph(t *testing.T) {
 	payload := "#!/usr/bin/env python3\nprint('SECRET_SENTINEL')\n"
 	encoded := base64.StdEncoding.EncodeToString([]byte(utf16Data(payload, true)))
@@ -398,6 +452,27 @@ func TestBudgetCountsInvalidZIPEntries(t *testing.T) {
 	}
 	if r.Report.EntriesVisited != 1 || len(r.Files) != 0 {
 		t.Fatal("invalid archives bypassed shared entry charging")
+	}
+}
+
+func TestExtractionEntryLimitDoesNotCountEndMarkers(t *testing.T) {
+	tests := []struct {
+		name, data string
+		entries    int
+	}{
+		{name: "input.json", data: `[0]`, entries: 3},
+		{name: "input.tar", data: tarData(t, "member.txt", "ordinary text", tar.TypeReg), entries: 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := report.DefaultExtractionLimits()
+			limits.MaxEntries = tc.entries
+			result := expand(t, tc.name, tc.data, limits)
+			if result.Report.EntriesVisited != tc.entries || result.HookNamespacesIncomplete ||
+				len(result.Report.Steps) != 1 || result.Report.Steps[0].Status != report.OutcomeCompleted {
+				t.Fatalf("exact entry budget should cover the complete input: %+v", result)
+			}
+		})
 	}
 }
 

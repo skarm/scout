@@ -97,7 +97,7 @@ func DefaultOptions() Options {
 func BuiltinRulesSHA256() string { return hash([]byte(builtinRules)) }
 
 func Check(ctx context.Context, inputs []Input, o Options) (Report, error) {
-	return check(ctx, inputs, o, nil, true)
+	return check(ctx, inputs, o, nil, true, "")
 }
 
 func (o Options) Validate() error {
@@ -130,11 +130,11 @@ func (o Options) Validate() error {
 	return nil
 }
 
-func checkCompiled(ctx context.Context, inputs []Input, o Options, engine compiledEngine) (Report, error) {
-	return check(ctx, inputs, o, engine, false)
+func selectedRules(o Options) string {
+	return builtinRules + "\n" + string(o.ExtraRules)
 }
 
-func check(ctx context.Context, inputs []Input, o Options, engine compiledEngine, ownsEngine bool) (Report, error) {
+func check(ctx context.Context, inputs []Input, o Options, engine compiledEngine, ownsEngine bool, rulesDigest string) (Report, error) {
 	r := Report{
 		Enabled:      o.Enabled,
 		Rulepack:     cloneRulepack(o.Rulepack),
@@ -161,11 +161,15 @@ func check(ctx context.Context, inputs []Input, o Options, engine compiledEngine
 		return r, nil
 	}
 
-	rules := builtinRules + "\n" + string(o.ExtraRules)
+	var rules string
+	if ownsEngine {
+		rules = selectedRules(o)
+		rulesDigest = hash([]byte(rules))
+	}
 
-	r.RulesSHA256 = hash([]byte(rules))
-
+	r.RulesSHA256 = rulesDigest
 	state := signatureScan{engine: engine, ownsEngine: ownsEngine, rules: rules, options: o, backend: r.Engine}
+
 	defer state.close()
 
 	for _, input := range inputs {

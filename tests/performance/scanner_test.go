@@ -12,8 +12,10 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"runtime/metrics"
 	"runtime/pprof"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -68,7 +70,15 @@ func TestPerformanceDiagnostics(t *testing.T) {
 			t.Fatal("SCOUT_PERFORMANCE_DURATION must be between 1s and 1m")
 		}
 	}
-	s, err := scout.New(context.Background(), scout.DefaultOptions())
+	options := scout.DefaultOptions()
+	if value := os.Getenv("SCOUT_PERFORMANCE_WORKERS"); value != "" {
+		workers, err := strconv.Atoi(value)
+		if err != nil || workers < 1 || workers > 32 {
+			t.Fatal("SCOUT_PERFORMANCE_WORKERS must be in 1..32")
+		}
+		options.Concurrency.Workers = workers
+	}
+	s, err := scout.New(context.Background(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +132,8 @@ func TestPerformanceDiagnostics(t *testing.T) {
 		GCCount                                           uint32
 		RetainedHeapBefore, RetainedHeapAfter             uint64
 		GoroutinesBefore, GoroutinesAfter, PeakGoroutines int
-		PeakGoHeap                                        uint64
+		PeakGoHeap, PeakGoMapped, PeakGoStacks            uint64
+		GoCPUSeconds, GoIdleSeconds, GoGCSeconds          float64
 	}
 	text := strings.Repeat("Summarize the supplied text.\n", 40)
 	var results []loadResult
@@ -136,6 +147,7 @@ func TestPerformanceDiagnostics(t *testing.T) {
 		latencies := make([][]time.Duration, concurrency)
 		incomplete := make([]int, concurrency)
 		failures := make([]error, concurrency)
+		cpuBefore := diagnosticCPU()
 		started := time.Now()
 		deadline := started.Add(duration)
 		for worker := range concurrency {
@@ -154,6 +166,7 @@ func TestPerformanceDiagnostics(t *testing.T) {
 		finished := make(chan struct{})
 		go func() { wg.Wait(); close(finished) }()
 		peakGoroutines, peakHeap := initialGoroutines, before.HeapAlloc
+		peakMapped, peakStacks := before.Sys-before.HeapReleased, before.StackInuse
 		ticker := time.NewTicker(50 * time.Millisecond)
 		captured := false
 	monitor:
@@ -165,6 +178,8 @@ func TestPerformanceDiagnostics(t *testing.T) {
 				var sample goruntime.MemStats
 				goruntime.ReadMemStats(&sample)
 				peakHeap = max(peakHeap, sample.HeapAlloc)
+				peakMapped = max(peakMapped, sample.Sys-sample.HeapReleased)
+				peakStacks = max(peakStacks, sample.StackInuse)
 				peakGoroutines = max(peakGoroutines, goruntime.NumGoroutine())
 				if !captured && time.Since(started) > time.Second {
 					profilePerformance(t, dir, fmt.Sprintf("goroutine-active-%d.txt", concurrency), "goroutine", 2)
@@ -174,6 +189,7 @@ func TestPerformanceDiagnostics(t *testing.T) {
 		}
 		ticker.Stop()
 		elapsed := time.Since(started)
+		cpuAfter := diagnosticCPU()
 		goruntime.GC()
 		goruntime.ReadMemStats(&after)
 		profilePerformance(t, dir, fmt.Sprintf("heap-%d.pprof", concurrency), "heap", 0)
@@ -207,9 +223,24 @@ func TestPerformanceDiagnostics(t *testing.T) {
 			GoroutinesAfter:     goruntime.NumGoroutine(),
 			PeakGoroutines:      peakGoroutines,
 			PeakGoHeap:          peakHeap,
+			PeakGoMapped:        peakMapped,
+			PeakGoStacks:        peakStacks,
+			GoCPUSeconds:        cpuAfter[0] - cpuBefore[0],
+			GoIdleSeconds:       cpuAfter[1] - cpuBefore[1],
+			GoGCSeconds:         cpuAfter[2] - cpuBefore[2],
 		})
 	}
 	writePerformanceJSON(t, dir, "load.json", results)
+}
+
+func diagnosticCPU() [3]float64 {
+	samples := []metrics.Sample{
+		{Name: "/cpu/classes/total:cpu-seconds"},
+		{Name: "/cpu/classes/idle:cpu-seconds"},
+		{Name: "/cpu/classes/gc/total:cpu-seconds"},
+	}
+	metrics.Read(samples)
+	return [3]float64{samples[0].Value.Float64(), samples[1].Value.Float64(), samples[2].Value.Float64()}
 }
 
 func BenchmarkScanPlugin(b *testing.B) {

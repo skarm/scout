@@ -65,6 +65,43 @@ func TestReplayEvidenceRejectsFalseCompletionAndMutation(t *testing.T) {
 	}
 }
 
+func TestJSONLVerificationHashesTheBytesItParses(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "replay.jsonl")
+	prefix := "{}\n" + strings.Repeat(" ", 128<<10)
+	if err := os.WriteFile(path, []byte(prefix+"{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	expected, err := artifactIdentity(t.Context(), root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lines := 0
+	_, err = walkJSONL(t.Context(), root, expected, func(_ []byte) error {
+		lines++
+		if lines != 1 {
+			return nil
+		}
+		// The next record is beyond the scanner's initial read buffer.
+		file, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = file.WriteAt([]byte("[]"), int64(len(prefix))); err != nil {
+			t.Fatal(err)
+		}
+		if err = file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return nil
+	})
+	if err == nil {
+		t.Fatal("parsed bytes differed from the recorded digest but were accepted")
+	}
+}
+
 func TestComparisonCannotHideChangedObservations(t *testing.T) {
 	id := "input"
 	before := replayEvidence{

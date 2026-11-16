@@ -1,0 +1,180 @@
+{
+  "schema": "scout.corpus-sources/v1",
+  "kind": "external_unreviewed_corpus",
+  "sources": [
+    {
+      "id": "trailofbits",
+      "origin": "https://github.com/trailofbits/skills",
+      "revision": "711af095215ad4ecde5b90cd1d0124b3f1c4ca9e",
+      "license": "CC-BY-SA-4.0",
+      "label_review": "Pending independent review."
+    },
+    {
+      "id": "superpowers",
+      "origin": "https://github.com/obra/superpowers",
+      "revision": "22f0b463e7a5e579904dd6211a520321035526f7",
+      "license": "MIT",
+      "label_review": "Pending independent review."
+    }
+  ],
+  "cases": [
+    {
+      "id": "gh-cli",
+      "category": "shell_hooks",
+      "label": "ambiguous",
+      "source_id": "trailofbits",
+      "split": "holdout",
+      "expected_rules": [],
+      "files": [
+        {
+          "path": ".claude-plugin/plugin.json",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/.claude-plugin/plugin.json",
+          "sha256": "a3d660d1abe1b339903dbc4256397c2ad78ffe157ed99decb05adda40d07df20"
+        },
+        {
+          "path": "LICENSE",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/LICENSE",
+          "sha256": "7abe19ec9bb73b36141b999b861d24ad855e808bafe0f81e84cce28556f6c297"
+        },
+        {
+          "path": "README.md",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/README.md",
+          "sha256": "d60b5251cc5293b2f5d94ca431f8fbb7905aac6eda11fbf800c091ea81b5d2a0"
+        },
+        {
+          "path": "hooks/cleanup-clones.sh",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/cleanup-clones.sh",
+          "sha256": "9a2a511221d3b7228ec80d8adc7c82a3f68ca164c5f29540cc2c66cfc21c8ad9",
+          "executable": true
+        },
+        {
+          "path": "hooks/hooks.json",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/hooks.json",
+          "sha256": "428142b25d3185467d2da13c341adbc64f01e0712f90809afe008898b4fdf2ff"
+        },
+        {
+          "path": "hooks/intercept-github-curl.bats",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/intercept-github-curl.bats",
+          "sha256": "b98139d3f3860391f334b358e2212197463cf4357a7c08a5b7cab6f8cedf4e94"
+        },
+        {
+          "path": "hooks/intercept-github-curl.sh",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/intercept-github-curl.sh",
+          "sha256": "b475e5164e6101bc6b67114692b56ff79bae82da68bc6d30e24e354b629c045b",
+          "executable": true
+        },
+        {
+          "path": "hooks/intercept-github-fetch.bats",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/intercept-github-fetch.bats",
+          "sha256": "1a9ecff33e5dcc0cea9d294a822dfaf0b34b86d5dcc215960e304d7da352a82d"
+        },
+        {
+          "path": "hooks/intercept-github-fetch.sh",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/intercept-github-fetch.sh",
+          "sha256": "1aff4f5db1bcf51010a47e047044fbca6b20a26e0f36eee55dd3e4297f19b89d",
+          "executable": true
+        },
+        {
+          "path": "hooks/matcher.bats",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/matcher.bats",
+          "sha256": "3a7f7569a84a796b18f0d1a6fbc7294c7354dbb75447ed0cbd114d2e84b5dd1b"
+        },
+        {
+          "path": "hooks/persist-session-id.sh",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/persist-session-id.sh",
+          "sha256": "71a0742583cfcde25ce3debd3474536c67f04d714d2702cee961c5fbc51bc78e",
+          "executable": true
+        },
+        {
+          "path": "hooks/session-hooks.bats",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/session-hooks.bats",
+          "sha256": "4029ec26fe8bdd5f8f92fbe31e7354fc7931b59d37e3c6efbe6f72bc4f2a3471"
+        },
+        {
+          "path": "hooks/setup-shims.bats",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/setup-shims.bats",
+          "sha256": "526c14aee5e4ff808513ef15ad6e9b2a624afe8d268cd6e7831633fc972e9e27"
+        },
+        {
+          "path": "hooks/setup-shims.sh",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/setup-shims.sh",
+          "sha256": "25f39decb242d6cd6d074dc2e4b0a3a519bd341adf44a9813d6f0f8c7857dda3",
+          "executable": true
+        },
+        {
+          "path": "hooks/shims/gh",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/shims/gh",
+          "sha256": "ddfb21427f876d62e75fa371a58aab546d177d16747970a75cd59d68547f1e81",
+          "executable": true
+        },
+        {
+          "path": "hooks/shims/gh-shim.bats",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/shims/gh-shim.bats",
+          "sha256": "953304dfd264184db8da6c0b3831228ec2b510b6314cdc5e603f78b1bd9d66b9"
+        },
+        {
+          "path": "hooks/test_helper.bash",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/test_helper.bash",
+          "sha256": "b9c9a79e51bc96f04c3a93a5ad68c4daad59e0e9eded691b35fa26ee6045779c"
+        },
+        {
+          "path": "skills/gh-cli/SKILL.md",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/skills/gh-cli/SKILL.md",
+          "sha256": "3810c9ff56ae9a26f4c6c1e0d058a946cd97e800441630208007a0983b9cfc49"
+        },
+        {
+          "path": "skills/gh-cli/agents/openai.yaml",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/skills/gh-cli/agents/openai.yaml",
+          "sha256": "e54fa71494218daa4b9dd532cd89978b539604071ae725f8ba2b32bd51788860"
+        },
+        {
+          "path": "skills/gh-cli/assets/trail-of-bits-mark.svg",
+          "url": "https://raw.githubusercontent.com/trailofbits/skills/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/skills/gh-cli/assets/trail-of-bits-mark.svg",
+          "sha256": "4bf74c789b38dcf6ad762c136b6832363d27ae19fbaa9a18ec18d66ecce6ca05"
+        }
+      ]
+    },
+    {
+      "id": "superpowers-session-start",
+      "category": "shell_hooks",
+      "label": "ambiguous",
+      "source_id": "superpowers",
+      "split": "holdout",
+      "expected_rules": [],
+      "files": [
+        {
+          "path": ".claude-plugin/plugin.json",
+          "url": "https://raw.githubusercontent.com/obra/superpowers/22f0b463e7a5e579904dd6211a520321035526f7/.claude-plugin/plugin.json",
+          "sha256": "6728b554d1aaf9235f7981c7838a32f50c191297284af97f4c2a808155f7c399"
+        },
+        {
+          "path": "LICENSE",
+          "url": "https://raw.githubusercontent.com/obra/superpowers/22f0b463e7a5e579904dd6211a520321035526f7/LICENSE",
+          "sha256": "a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400"
+        },
+        {
+          "path": "hooks/hooks.json",
+          "url": "https://raw.githubusercontent.com/obra/superpowers/22f0b463e7a5e579904dd6211a520321035526f7/hooks/hooks.json",
+          "sha256": "19fa1af26a0ed32bfabee6c4d744e5447ea3bdf769efceba9e268f2d9f6dc263"
+        },
+        {
+          "path": "hooks/run-hook.cmd",
+          "url": "https://raw.githubusercontent.com/obra/superpowers/22f0b463e7a5e579904dd6211a520321035526f7/hooks/run-hook.cmd",
+          "sha256": "324b298bd370d6f3ea71c165e0b732d5678e5cff68d0d7f7e47c13bc2cb2559a",
+          "executable": true
+        },
+        {
+          "path": "hooks/session-start",
+          "url": "https://raw.githubusercontent.com/obra/superpowers/22f0b463e7a5e579904dd6211a520321035526f7/hooks/session-start",
+          "sha256": "38fdeed045b28b62034a809e45602e33358573acbc23c83787d76d449cb89902",
+          "executable": true
+        },
+        {
+          "path": "skills/using-superpowers/SKILL.md",
+          "url": "https://raw.githubusercontent.com/obra/superpowers/22f0b463e7a5e579904dd6211a520321035526f7/skills/using-superpowers/SKILL.md",
+          "sha256": "82c5c8866ad7f5dd4440ce66bd7806ba48a2f13771beae5cf112e53f08fe36ba"
+        }
+      ]
+    }
+  ]
+}

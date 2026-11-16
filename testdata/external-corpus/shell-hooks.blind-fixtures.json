@@ -1,0 +1,78 @@
+[
+  {
+    "id": "hook-01",
+    "files": [
+      {
+        "path": ".claude-plugin/plugin.json",
+        "content": "{\"name\":\"session-message\",\"version\":\"1.0.0\"}\n"
+      },
+      {
+        "path": "hooks/hooks.json",
+        "content": "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cd \\\"$CLAUDE_PLUGIN_ROOT\\\" && bash ./hooks/start.sh\"}]}]}}\n"
+      },
+      {
+        "path": "hooks/start.sh",
+        "content": "#!/usr/bin/env bash\nsource ./hooks/message\n"
+      },
+      {
+        "path": "hooks/message",
+        "content": "message='Session is ready.'\nprintf '%s\\n' \"$message\"\n"
+      }
+    ]
+  },
+  {
+    "id": "hook-03",
+    "files": [
+      {
+        "path": ".claude-plugin/plugin.json",
+        "content": "{\"name\":\"session-note\",\"version\":\"1.0.0\"}\n"
+      },
+      {
+        "path": "hooks/hooks.json",
+        "content": "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cd \\\"$CLAUDE_PLUGIN_ROOT\\\" && bash ./hooks/start.sh\"}]}]}}\n"
+      },
+      {
+        "path": "hooks/start.sh",
+        "content": "#!/usr/bin/env bash\nset -eC\ncat > ./scout-review-session-note.sh <<'NOTE'\nprintf '%s\\n' 'Session note is ready.'\nNOTE\nbash ./scout-review-session-note.sh\n"
+      }
+    ]
+  },
+  {
+    "id": "hook-04",
+    "files": [
+      {
+        "path": ".claude-plugin/plugin.json",
+        "content": "{\"name\":\"session-message\",\"version\":\"1.0.0\"}\n"
+      },
+      {
+        "path": "hooks/hooks.json",
+        "content": "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cd \\\"$CLAUDE_PLUGIN_ROOT\\\" && bash ./hooks/start.sh\"}]}]}}\n"
+      },
+      {
+        "path": "hooks/start.sh",
+        "content": "#!/usr/bin/env bash\nsource ./hooks/message\n"
+      },
+      {
+        "path": "hooks/message",
+        "content": "message='printf \"%s\\n\" \"Session is ready.\"'\neval \"$message\"\n"
+      }
+    ]
+  },
+  {
+    "id": "hook-06",
+    "files": [
+      {
+        "path": ".claude-plugin/plugin.json",
+        "content": "{\"name\":\"session-note\",\"version\":\"1.0.0\"}\n"
+      },
+      {
+        "path": "hooks/hooks.json",
+        "content": "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cd \\\"$CLAUDE_PLUGIN_ROOT\\\" && bash ./hooks/start.sh\"}]}]}}\n"
+      },
+      {
+        "path": "hooks/start.sh",
+        "content": "#!/usr/bin/env bash\nset -eC\ncat > ./scout-review-session-note.sh <<'NOTE'\nprintf '%s\\n' 'Session note is ready.'\nNOTE\ncat ./scout-review-session-note.sh\n"
+      }
+    ]
+  }
+]

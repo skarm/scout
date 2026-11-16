@@ -3,6 +3,7 @@ package shell
 import (
 	"context"
 	"iter"
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
@@ -15,6 +16,9 @@ import (
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var shellPatternCommands = stringSet("curl wget rm chmod git cp mv install")
+
+//nolint:gochecknoglobals // The same concurrency-safe replacement applies to every parsed operand.
+var shellPatternWordBreaks = strings.NewReplacer("\r", "__scout_word_break__", "\n", "__scout_word_break__")
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var (
@@ -156,6 +160,10 @@ func (p *shellPatternWalker) walk(tree *shellsyntax.File, view source.View, dept
 			for child := range shellNestedTrees(command) {
 				p.walk(child, view, depth+1)
 			}
+
+			for _, branch := range command.Alternatives {
+				p.walk(branch, view, depth+1)
+			}
 		}
 	}
 }
@@ -175,9 +183,9 @@ func shellNestedTrees(command *shellsyntax.Command) iter.Seq[*shellsyntax.File] 
 			return
 		}
 
-		for _, word := range command.Words {
-			for _, part := range word.Parts {
-				if part.Kind == "substitution" && !yield(part.Tree) {
+		for _, word := range slices.Concat(command.Words, command.ExpansionWords) {
+			for tree := range word.Substitutions() {
+				if !yield(tree) {
 					return
 				}
 			}
@@ -240,7 +248,7 @@ func shellPatternWords(command *shellsyntax.Command, mode PatternMode) []string 
 		}
 
 		if len(words) > 0 {
-			v = strings.NewReplacer("\r", "__scout_word_break__", "\n", "__scout_word_break__").Replace(v)
+			v = shellPatternWordBreaks.Replace(v)
 		}
 
 		words = append(words, v)
