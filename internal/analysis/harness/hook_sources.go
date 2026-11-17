@@ -38,11 +38,12 @@ type HookSourceCommand struct {
 }
 
 type HookSourcePath struct {
-	Target  string
-	Event   string
-	Steps   []report.SourceRef
-	Scope   source.Span
-	Exclude []source.Span
+	Target   string
+	Event    string
+	Language string
+	Steps    []report.SourceRef
+	Scope    source.Span
+	Exclude  []source.Span
 }
 
 type hookSourceWalk struct {
@@ -536,8 +537,17 @@ func (w *hookSourceWalk) command(e *entry, view source.View, stmt *shellsyntax.S
 
 	w.traceSubstitutions(e, view, cmd, *state, chain)
 
+	return w.applySimpleCommand(e, view, cmd, chain, entrypoint, state)
+}
+
+func (w *hookSourceWalk) applySimpleCommand(e *entry, view source.View, cmd *shellsyntax.Command, chain []report.SourceRef, entrypoint bool, state *hookSourceState) bool {
 	if w.traceHostEnvironmentWrite(e, view, cmd, *state) {
 		return true
+	}
+
+	if replaces, traced := w.traceNodeLaunch(e, view, cmd, *state, chain); traced {
+		state.exited = replaces
+		return !replaces
 	}
 
 	if w.bindAssignment(cmd, state) {

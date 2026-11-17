@@ -88,10 +88,12 @@ func Collect(ctx context.Context, doc document.File, facts *check.FileLanguageFa
 
 func (a scriptCheck) Rule() report.Rule {
 	title, category := "", ""
+	version := "1"
 
 	switch a.id {
 	case ruleJS001:
 		title, category = "JavaScript constructs a shell command", "process-execution"
+		version = "2"
 	case ruleJS002:
 		title, category = "JavaScript evaluates code dynamically", "dynamic-execution"
 	case ruleJS003:
@@ -106,7 +108,7 @@ func (a scriptCheck) Rule() report.Rule {
 
 	return report.Rule{
 		ID:          a.id,
-		Version:     "1",
+		Version:     version,
 		Title:       title,
 		Description: title,
 		Severity:    report.High,
@@ -202,7 +204,7 @@ func (w *scriptWalk) text(n *scriptsyntax.Node) string {
 	return w.unit.View.Text()[n.Start:n.End]
 }
 
-func (w *scriptWalk) emit(id string, n, origin *scriptsyntax.Node) {
+func (w *scriptWalk) emit(id string, n, origin *scriptsyntax.Node, signals ...string) {
 	f := w.facts.Rules[id]
 	if f == nil || f.Done() || n == nil || n.Invalid {
 		return
@@ -214,7 +216,7 @@ func (w *scriptWalk) emit(id string, n, origin *scriptsyntax.Node) {
 		return
 	}
 
-	m := match{Start: span.Start, End: span.End}
+	m := match{Start: span.Start, End: span.End, ContextSignals: signals}
 	if origin != nil {
 		at, err := w.unit.View.Original(source.Span{Start: origin.Start, End: origin.End})
 		if err != nil {

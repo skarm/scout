@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/languages/literals"
 	"github.com/skarm/scout/internal/syntax/scriptsyntax"
 	"github.com/skarm/scout/internal/syntax/sqlsyntax"
@@ -220,7 +221,11 @@ func (w *scriptWalk) call(n *scriptsyntax.Node, s *scriptScope, depth int) scrip
 	}
 
 	if scriptShellCall(name, args) {
-		w.emit(ruleJS001, n, nil)
+		if scriptExecCommandText(name, args) {
+			w.emit(ruleJS001, n, nil, check.ShellCommandText)
+		} else {
+			w.emit(ruleJS001, n, nil)
+		}
 	}
 
 	if scriptCodeCall(name, args) {
@@ -264,6 +269,11 @@ func (w *scriptWalk) call(n *scriptsyntax.Node, s *scriptScope, depth int) scrip
 	}
 
 	return scriptValue{}
+}
+
+func scriptExecCommandText(name string, args []scriptValue) bool {
+	return (name == "child_process.exec" || name == "child_process.execSync") &&
+		len(args) > 0 && (!args[0].known || strings.TrimSpace(args[0].text) != "") && args[0].valueType != scriptNonString
 }
 
 func scriptShellCall(name string, args []scriptValue) bool {

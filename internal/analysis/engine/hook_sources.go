@@ -36,7 +36,9 @@ func (run *execution) shellHookCoverage() *report.ShellHookCoverage {
 	}
 
 	for _, traced := range run.hookSources.Paths {
-		paths[traced.Target] = true
+		if traced.Language == "" {
+			paths[traced.Target] = true
+		}
 	}
 
 	gaps := make(map[string]bool)
@@ -156,12 +158,17 @@ func hookShellProjectionComplete(unit document.Unit) bool {
 }
 
 type scopedHookContext struct {
-	context report.HookSourceContext
-	scope   source.Span
-	exclude []source.Span
+	context  report.HookSourceContext
+	language string
+	scope    source.Span
+	exclude  []source.Span
 }
 
 func (c scopedHookContext) contains(loc report.Location) bool {
+	if c.language != loc.Language || c.language != language.Shell && loc.Structure != "source-file" {
+		return false
+	}
+
 	if c.scope != (source.Span{}) && (loc.ByteStart < c.scope.Start || loc.ByteEnd > c.scope.End) {
 		return false
 	}
@@ -183,9 +190,6 @@ func (run *execution) attachHookSourceContexts() bool {
 
 	for i := range run.analysis.Findings {
 		finding := &run.analysis.Findings[i]
-		if finding.Location.Language != language.Shell {
-			continue
-		}
 
 		for _, candidate := range byPath[finding.Location.Path] {
 			checks++
@@ -232,7 +236,14 @@ func (run *execution) indexHookSourceContexts() map[string][]scopedHookContext {
 		}
 
 		if len(context.Steps) == len(path.Steps) {
-			byPath[path.Target] = append(byPath[path.Target], scopedHookContext{context, path.Scope, path.Exclude})
+			lang := path.Language
+			if lang == "" {
+				lang = language.Shell
+			}
+
+			byPath[path.Target] = append(byPath[path.Target], scopedHookContext{
+				context: context, language: lang, scope: path.Scope, exclude: path.Exclude,
+			})
 		}
 	}
 

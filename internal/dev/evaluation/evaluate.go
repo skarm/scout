@@ -17,6 +17,7 @@ import (
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/languages/javascript"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
@@ -280,7 +281,7 @@ func (r *Report) configureShellHookReport(o Options) {
 	}
 
 	r.ShellHooks = &ShellHookReport{Cases: []ShellHookCase{}}
-	r.Limitations = append(r.Limitations, "Shell hook metrics count observed eval commands and generated script execution linked to a captured hook. Coverage is scoped to those hooks and checks. A benign case without a signal stays unresolved if this scope is incomplete.")
+	r.Limitations = append(r.Limitations, "Shell hook metrics count observed eval, shell command text and generated script execution linked to captured hooks. Coverage is scoped to those hooks and checks. A benign case without a signal stays unresolved if this scope is incomplete.")
 
 	if o.ShellHookRoots != nil {
 		root := *o.ShellHookRoots
@@ -482,6 +483,8 @@ func shellHookSignals(findings []report.Finding) []string {
 			}
 		case shell.HookGeneratedExecutionRule:
 			generated = true
+		case javascript.HookShellCommandRule:
+			commandText = commandText || slices.Contains(finding.ContextSignals, check.ShellCommandText)
 		}
 	}
 

@@ -109,6 +109,7 @@ type shellWalk struct {
 	observeDNS         func(string, source.Span, *shellOrigin)
 	observeCapability  func(string, source.Span)
 	commandTextPending bool
+	hookShell          bool
 }
 
 type shellRedirectKind uint8
@@ -175,7 +176,7 @@ func (a shellCheck) Rule() report.Rule {
 		r.Title, r.Category, r.Severity = "Sensitive data reaches a supported curl request argument", "credential-egress", report.High
 	case ruleSH003:
 		r.Title, r.Category = "Shell evaluates text or sources a file", "dynamic-execution"
-		r.Version = "6"
+		r.Version = "7"
 	case ruleSH004:
 		r.Title, r.Category = "Shell command reads a sensitive credential path", "credential-access"
 	}
@@ -290,6 +291,7 @@ func (a *shellWalk) units(units []document.Unit) {
 func (a *shellWalk) unit(unit document.Unit, tree *shellsyntax.File) {
 	a.view = unit.View
 	a.commandTextPending = unit.HookCommandText
+	a.hookShell = unit.HookSource || unit.Origin == document.OriginHookShell
 	a.list(tree, newShellState())
 
 	if a.commandTextPending {
@@ -927,11 +929,38 @@ func (a *shellWalk) executionCommand(c *shellsyntax.Command, s *shellState, inpu
 	case "exec", "nohup":
 		a.execCommandText(c, input, args)
 		s.barrier()
+	case "npm":
+		if a.hookShell && npmRunsScript(args) {
+			a.emit(ruleSH003, c.Span, nil, check.ShellCommandText, check.ShellPackageScript)
+		}
+
+		s.barrier()
 	case "true", "false", ":":
 	default:
 		a.powerShellCommandText(c, name, args)
 		s.barrier() // unknown builtins/functions can mutate shell state
 	}
+}
+
+func npmRunsScript(args []shellValue) bool {
+	if len(args) < 2 || !args[0].known || (args[0].text != "run" && args[0].text != "run-script") {
+		return false
+	}
+
+	for _, arg := range args[1:] {
+		if !arg.known {
+			return false
+		}
+
+		switch arg.text {
+		case "--silent", "-s", "--if-present":
+		default:
+			// The built-in env command can list environment data instead.
+			return arg.text != "" && arg.text != "env" && !strings.HasPrefix(arg.text, "-")
+		}
+	}
+
+	return false
 }
 
 func (a *shellWalk) interpreterExecution(c *shellsyntax.Command, input shellValue, args []shellValue) {

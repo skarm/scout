@@ -14,6 +14,9 @@ const ShellEval = "shell_eval"
 // ShellCommandText marks an explicit shell interpreter's command-text operand.
 const ShellCommandText = "shell_command_text"
 
+// ShellPackageScript marks a shell command supplied by a package script.
+const ShellPackageScript = "shell_package_script"
+
 // ShellHostEnvironment marks a write to a host-sourced shell environment file.
 const ShellHostEnvironment = "shell_host_environment"
 

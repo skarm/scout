@@ -148,8 +148,9 @@ even on partial scans. Completeness, quality thresholds and LLM metrics have the
 own measures.
 
 `--shell-hooks` adds `shell_hooks.metrics` and per-case `observed_signals` for
-selected `shell_hooks` cases. It counts `eval`, explicit command text passed to
-a supported shell interpreter, and generated script execution. A finding counts
+selected `shell_hooks` cases. It counts `eval`, supported launches of shell
+command text (including traced npm scripts and Node `exec`/`execSync`)
+and generated script execution. A finding counts
 when it is inside a registered hook command
 or Scout links it to a hook through a captured call path. An `eval` appearing only
 inside a reconstructed heredoc needs an observed generated-script execution to

@@ -186,7 +186,17 @@ Claude Code hooks that receive the variable. The trace ends at the redirect
 whose output Bash can read as code on a later invocation.
 [Claude Code hooks reference](https://code.claude.com/docs/en/hooks#persist-environment-variables)
 
+For captured hook sources, SH003 also records explicit `npm run` invocations
+that name a package script. The command refers to the package's `scripts`
+entry in the execution environment. [npm run reference](https://docs.npmjs.com/cli/v11/commands/npm-run/)
+
 ## JavaScript and TypeScript
+
+Scout links observed Node `child_process.exec` and `execSync` calls to a hook
+when a supported launch resolves to the captured JavaScript file. This includes
+shell wrappers that forward known arguments through `exec env -i`. The report
+keeps a coverage gap for Node module resolution and runtime execution.
+[Node child process reference](https://nodejs.org/api/child_process.html)
 
 The full CGO build uses official Tree-sitter grammars. JS001–JS006 check shell APIs,
 dynamic evaluation, credentials in network arguments, dynamic SQL, sensitive files

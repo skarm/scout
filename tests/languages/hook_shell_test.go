@@ -76,6 +76,36 @@ func TestClaudeHookHostEnvironmentWrite(t *testing.T) {
 	}
 }
 
+func TestHookNpmScriptObservations(t *testing.T) {
+	root := t.TempDir()
+	scenario.WriteFile(t, root, ".claude-plugin/plugin.json", `{"name":"test-plugin"}`)
+	scenario.WriteFile(t, root, "hooks/hooks.json", `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/startup.sh\""}]}]}}`)
+	scenario.WriteFile(t, root, "startup.sh", `npm run --silent typecheck
+npm run
+npm run env
+npm run --help
+npm() { :; }
+npm run script-with-shadowed-command
+`)
+	scenario.WriteFile(t, root, "ordinary.sh", "npm run outside-hook\n")
+
+	result, err := scenario.Scan(t, root)
+	if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+		t.Fatal(err)
+	}
+
+	var observed []report.Location
+	for _, finding := range result.Findings {
+		if finding.RuleID == "SH003" && slices.Contains(finding.ContextSignals, check.ShellPackageScript) {
+			observed = append(observed, finding.Location)
+		}
+	}
+
+	if len(observed) != 1 || observed[0].Path != "startup.sh" || observed[0].StartLine != 1 {
+		t.Fatalf("expected only the hook's explicit npm script invocation: %+v", observed)
+	}
+}
+
 func TestHookShellFindingsKeepEventAndPhysicalLine(t *testing.T) {
 	const name = "hooks/hooks.json"
 	const input = `{
