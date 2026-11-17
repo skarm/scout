@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
@@ -18,10 +19,10 @@ func (generatedShellExecutionCheck) OmitNotApplicableFileCoverage() bool { retur
 
 func (generatedShellExecutionCheck) Rule() report.Rule {
 	return report.Rule{
-		ID: ruleSH005, Version: "1", Severity: report.Info, Category: "dynamic-execution", Method: "shell-generated-file-flow",
-		Title:       "Generated shell script reaches a local execution command",
-		Description: "A recovered heredoc write reaches a later source or execution command through a modeled local path.",
-		Limitation:  "Bounded command sequences within one shell unit or local block, using lexical paths and successful modeled commands. Runtime success, permissions, symlinks and external shell state are unverified.",
+		ID: ruleSH005, Version: "2", Severity: report.Info, Category: "dynamic-execution", Method: "shell-generated-file-flow",
+		Title:       "A write reaches a generated shell script execution sink",
+		Description: "A recovered heredoc write reaches a later source or execution command, or a traced hook writes to a host-sourced shell file.",
+		Limitation:  "Bounded command sequences and hook traces under documented host behavior. Runtime success, permissions, symlinks and external shell state are unverified.",
 	}
 }
 
@@ -55,7 +56,13 @@ func (generatedShellExecutionCheck) Find(ctx context.Context, doc document.File,
 		}
 
 		steps = append(steps, trace{Role: "sink", Start: link.Use.Start, End: link.Use.End})
-		out.Matches = append(out.Matches, match{Start: link.Use.Start, End: link.Use.End, Trace: steps})
+		finding := match{Start: link.Use.Start, End: link.Use.End, Trace: steps}
+
+		if link.HostEnvironment {
+			finding.ContextSignals = []string{check.ShellHostEnvironment}
+		}
+
+		out.Matches = append(out.Matches, finding)
 	}
 
 	return out, ctx.Err()

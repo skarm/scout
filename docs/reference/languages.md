@@ -181,6 +181,11 @@ effects invalidate earlier links. File paths are lexical and runtime file types,
 permissions and command success are unverified. Use an explicit path with
 `source` or `.` to avoid search-path ambiguity.
 
+SH005 also records supported output redirects to `CLAUDE_ENV_FILE` on traced
+Claude Code hooks that receive the variable. The trace ends at the redirect
+whose output Bash can read as code on a later invocation.
+[Claude Code hooks reference](https://code.claude.com/docs/en/hooks#persist-environment-variables)
+
 ## JavaScript and TypeScript
 
 The full CGO build uses official Tree-sitter grammars. JS001–JS006 check shell APIs,

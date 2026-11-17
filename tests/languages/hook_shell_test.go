@@ -3,6 +3,7 @@ package scout_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +13,68 @@ import (
 	scenario "github.com/skarm/scout/internal/scantest/scenarios"
 	"github.com/skarm/scout/report"
 )
+
+func TestClaudeHookHostEnvironmentWrite(t *testing.T) {
+	const output = `printf 'export MODE=%s\n' ready >> "$CLAUDE_ENV_FILE"`
+	const command = `bash \"${CLAUDE_PLUGIN_ROOT}/startup.sh\"`
+
+	for _, tc := range []struct {
+		name, host, event, command, script string
+		want                               bool
+	}{
+		{name: "session", event: "SessionStart", command: command, script: "[ -n \"${CLAUDE_ENV_FILE:-}\" ] || exit 0\n" + output, want: true},
+		{name: "setup", event: "Setup", command: command, script: output, want: true},
+		{name: "change directory", event: "CwdChanged", command: command, script: output, want: true},
+		{name: "file changed", event: "FileChanged", command: command, script: output, want: true},
+		{
+			name: "grouped writers", event: "SessionStart", command: command,
+			script: `{ echo "export MODE=$value"; printf 'export LEVEL=%s\n' easy; } >> "$CLAUDE_ENV_FILE" 2>/dev/null`,
+			want:   true,
+		},
+		{name: "other event", event: "Stop", command: command, script: output},
+		{name: "inactive host", host: report.HostCodex, event: "SessionStart", command: command, script: output},
+		{name: "reassigned path", event: "SessionStart", command: command, script: "CLAUDE_ENV_FILE=/tmp/ordinary\n" + output},
+		{
+			name: "temporary override", event: "SessionStart", command: command,
+			script: `CLAUDE_ENV_FILE=/tmp/ordinary bash "${CLAUDE_PLUGIN_ROOT}/child.sh" 2>/dev/null`,
+		},
+		{name: "stdout goes elsewhere", event: "SessionStart", command: command, script: output + " >other"},
+		{name: "empty output", event: "SessionStart", command: command, script: `printf '' >> "$CLAUDE_ENV_FILE"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			scenario.WriteFile(t, root, ".claude-plugin/plugin.json", `{"name":"test-plugin"}`)
+			scenario.WriteFile(t, root, "hooks/hooks.json", fmt.Sprintf(`{"hooks":{"%s":[{"hooks":[{"type":"command","command":"%s"}]}]}}`, tc.event, tc.command))
+			scenario.WriteFile(t, root, "startup.sh", tc.script+"\n")
+			scenario.WriteFile(t, root, "child.sh", output+"\n")
+
+			options := scantest.DefaultConfig()
+			options.Scanner.Harness.Host = tc.host
+			result, err := scenario.Scanner(t, options).Scan(t.Context(), root)
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+
+			var observed bool
+			for _, finding := range result.Findings {
+				if finding.RuleID != "SH005" || !slices.Contains(finding.ContextSignals, check.ShellHostEnvironment) {
+					continue
+				}
+
+				observed = true
+				if finding.Location.Path != "startup.sh" || !slices.ContainsFunc(finding.HookSources, func(source report.HookSourceContext) bool {
+					return source.Event == tc.event && len(source.Steps) == 1 && source.Steps[0].Path == "hooks/hooks.json"
+				}) {
+					t.Fatalf("unexpected location or hook path: %+v", finding)
+				}
+			}
+
+			if observed != tc.want {
+				t.Fatalf("host-sourced file observation = %v, want %v", observed, tc.want)
+			}
+		})
+	}
+}
 
 func TestHookShellFindingsKeepEventAndPhysicalLine(t *testing.T) {
 	const name = "hooks/hooks.json"

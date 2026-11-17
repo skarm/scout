@@ -42,12 +42,13 @@ type GeneratedShellIssue struct {
 	At     int // -1 when the exact location is unavailable
 }
 
-// GeneratedShellExecution binds a recovered write and body to a later command
-// in the same captured object. Transforms retain intervening appends and moves.
+// GeneratedShellExecution binds a write to a later command or a host-provided
+// execution sink. Transforms retain intervening appends and moves.
 // All spans use physical coordinates.
 type GeneratedShellExecution struct {
 	Write, Body, Use source.Span
 	Transforms       [MaxGeneratedShellTransforms]source.Span
+	HostEnvironment  bool
 }
 
 // MaxGeneratedShellTransforms leaves room for the initial write, body and use

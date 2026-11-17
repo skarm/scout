@@ -208,7 +208,7 @@ func findingContext(doc document.File, m check.Match) ([]string, error) {
 
 	for _, signal := range m.ContextSignals {
 		switch signal {
-		case "registry_assertion", "evidence_unavailable", check.ShellEval, check.ShellCommandText:
+		case "registry_assertion", "evidence_unavailable", check.ShellEval, check.ShellCommandText, check.ShellHostEnvironment:
 			signals = append(signals, signal)
 		default:
 			return nil, errors.New("invalid analyzer context signal")

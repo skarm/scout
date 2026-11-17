@@ -123,7 +123,12 @@ func (p *plugin) inspectHookSources(e *entry, hook *jsonconfig.Node, event strin
 				}
 			}
 
-			walk.commands(e, unit.View, shell, hookSourceState{}, nil, true)
+			state := hookSourceState{}
+			if args == nil && unit.View.Text() == commandText {
+				walk.seedHostEnvironment(&state)
+			}
+
+			walk.commands(e, unit.View, shell, state, nil, true)
 		}
 	}
 }
@@ -196,6 +201,7 @@ func (w *hookSourceWalk) argv(e *entry, command, args *jsonconfig.Node, initial 
 		scriptPath: value, sourcePath: value, explicitBash: w.knownLaunchBash(rel, steps, name, direct),
 		positional: w.fileArgv(args.Elements[firstArgument:]),
 	}
+	w.seedHostEnvironment(&state)
 	w.plugin.seedHookLocale(&state)
 	_, checked := w.follow(rel, state, steps, direct)
 
@@ -529,6 +535,10 @@ func (w *hookSourceWalk) command(e *entry, view source.View, stmt *shellsyntax.S
 	}
 
 	w.traceSubstitutions(e, view, cmd, *state, chain)
+
+	if w.traceHostEnvironmentWrite(e, view, cmd, *state) {
+		return true
+	}
 
 	if w.bindAssignment(cmd, state) {
 		return true
@@ -1081,7 +1091,7 @@ func (s *hookSourceState) forgetFileBindings() {
 
 	// Filesystem operations leave the caller's arithmetic values and locale intact.
 	for name, value := range s.vars {
-		if name != "LC_ALL" && value != "false" && value != "true" && !decimalDigits(value) {
+		if name != "LC_ALL" && value != hostEnvironmentMarker && value != "false" && value != "true" && !decimalDigits(value) {
 			delete(s.vars, name)
 		}
 	}
@@ -1480,7 +1490,10 @@ func (w *hookSourceWalk) resolveCommand(e *entry, view source.View, cmd *shellsy
 	}
 
 	if !isSource {
-		state = hookSourceState{cwd: state.cwd, rootUnknown: state.rootUnknown}
+		child := hookSourceState{cwd: state.cwd, rootUnknown: state.rootUnknown}
+		w.inheritHostEnvironment(&child, state, cmd.Assignments)
+		state = child
+
 		state.scriptPath = value
 		state.explicitBash = w.knownLaunchBash(rel, steps, name, direct)
 
@@ -1633,7 +1646,7 @@ func (s hookSourceState) parameter(name string) (string, bool) {
 	}
 
 	if value, ok := s.vars[name]; ok {
-		return value, true
+		return value, value != hostEnvironmentMarker
 	}
 
 	if name == "BASH" && s.explicitBash {
