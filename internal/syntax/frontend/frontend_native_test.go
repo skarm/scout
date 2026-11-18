@@ -55,6 +55,47 @@ func TestNativeYAMLRejectsTypedAmbiguity(t *testing.T) {
 	}
 }
 
+func TestNativePythonProjectsTryClauses(t *testing.T) {
+	const program = `try:
+    work()
+except ValueError as problem:
+    recover(problem)
+except:
+    fallback()
+else:
+    success()
+finally:
+    cleanup()
+`
+
+	cfg := frontend.DefaultOptions()
+	cfg.Python = true
+	result, err := frontend.Parse(t.Context(), cfg, "python", program)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n := result.AST.List(frontend.Body)[0]
+	if n.Kind() != frontend.Try || len(n.List(frontend.Body)) != 1 ||
+		len(n.List(frontend.Orelse)) != 1 || len(n.List(frontend.Finalbody)) != 1 {
+		t.Fatalf("unexpected try clauses: %+v", n)
+	}
+
+	handlers := n.List(frontend.Handlers)
+	if len(handlers) != 2 || handlers[0].Kind() != frontend.ExceptHandler ||
+		handlers[0].String(frontend.FieldName) != "problem" ||
+		handlers[0].Child(frontend.Test).String(frontend.ID) != "ValueError" ||
+		handlers[1].Child(frontend.Test) != nil || len(handlers[1].List(frontend.Body)) != 1 {
+		t.Fatalf("unexpected exception handlers: %+v", handlers)
+	}
+
+	_, err = frontend.Parse(t.Context(), cfg, "python", "try:\n    work()\nexcept* TypeError:\n    recover()\n")
+	var limitation *frontend.Failure
+	if !errors.As(err, &limitation) || limitation.Category != "unsupported_projection" {
+		t.Fatalf("exception group limitation: %v", err)
+	}
+}
+
 func TestNativeYAMLMappingStartsUsePhysicalBytes(t *testing.T) {
 	o := frontend.DefaultOptions()
 	o.YAML = true
@@ -252,10 +293,9 @@ func TestNativePythonProjectionContract(t *testing.T) {
 			digest:   "6defac90191a7a8f77da439554623df4f4d70b01dc59fadef4faf98f5eff534a",
 		},
 		{
-			name:     "unknown-statements",
-			source:   "try:\n    run()\nexcept Error as error:\n    recover(error)\nfinally:\n    cleanup()\n",
-			category: "unsupported_projection",
-			digest:   "f064cf6f65fac3297f2ecf5b3afd36edbb31738095fdbc68c424dc7263a93162",
+			name:   "try-statement",
+			source: "try:\n    run()\nexcept Error as error:\n    recover(error)\nfinally:\n    cleanup()\n",
+			digest: "fcd61aab797d6d93865a94dc9739843da004d97b909dce412f50bc874ed980a8",
 		},
 		{
 			name:     "type-parameters",

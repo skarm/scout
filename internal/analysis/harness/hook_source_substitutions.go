@@ -30,16 +30,20 @@ func (w *hookSourceWalk) traceSubstitutions(e *entry, view source.View, cmd *she
 }
 
 func (w *hookSourceWalk) traceWordSubstitutions(e *entry, view source.View, word *shellsyntax.Word, state hookSourceState, chain []report.SourceRef) {
-	if w.knownPluginDefault(word, state) {
+	if word == nil {
 		return
 	}
 
-	for tree := range word.Substitutions() {
+	for tree := range word.SubstitutionsExcept(func(part shellsyntax.Part) bool {
+		return !word.Writes && w.knownPluginDefault(part, state)
+	}) {
 		if hookCountPipeline(tree, state) {
 			continue
 		}
 
 		// The projection retains only forms that run in an isolated shell.
-		w.commands(e, view, tree, state.child(), chain, true)
+		child := state.child()
+		child.hookOutput = false
+		w.commands(e, view, tree, child, chain, true)
 	}
 }

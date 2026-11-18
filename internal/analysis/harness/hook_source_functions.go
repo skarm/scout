@@ -281,7 +281,8 @@ func (w *hookSourceWalk) followFunction(fn hookSourceFunction, state hookSourceS
 	b := w.plugin.b
 
 	b.hookSourcePaths = append(b.hookSourcePaths, HookSourcePath{
-		Target: fn.entry.meta.Path, Event: w.event, Steps: steps, Scope: fn.scope, Exclude: hookFunctionSpans(fn.view, fn.body),
+		Target: fn.entry.meta.Path, Event: w.event, HostOutput: state.hookOutput,
+		Steps: steps, Scope: fn.scope, Exclude: hookFunctionSpans(fn.view, fn.body),
 	})
 	if w.activeFunctions == nil {
 		w.activeFunctions = make(map[hookFunctionKey]bool)

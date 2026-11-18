@@ -187,6 +187,10 @@ func (a shellCheck) Rule() report.Rule {
 }
 
 func (a shellCheck) AppliesTo(f document.File) bool {
+	if a.kind == ruleSH003 && len(f.TracedShellCommands()) > 0 {
+		return true
+	}
+
 	for _, u := range f.Units() {
 		if a.kind == ruleSH003 && u.HookCommandText {
 			return true
@@ -216,6 +220,7 @@ func (a shellCheck) Find(ctx context.Context, f document.File, limit int) (resul
 	walk := shellWalk{ctx: ctx, kind: a.kind, limit: limit}
 
 	walk.units(f.Units())
+	walk.tracedCommands(f)
 
 	return walk.result, errors.Join(walk.err, walk.gap, ctx.Err())
 }
@@ -348,11 +353,31 @@ func (a *shellWalk) emit(kind string, s source.Span, origin *shellOrigin, signal
 		}
 	}
 
+	a.record(kind, match)
+}
+
+func (a *shellWalk) tracedCommands(doc document.File) {
+	for _, command := range doc.TracedShellCommands() {
+		if !a.beginEmission(ruleSH003) {
+			return
+		}
+
+		signals := []string{check.ShellCommandText}
+		if command.HostUpdatedInput {
+			signals = append(signals, check.ShellHostUpdatedInput)
+		}
+
+		a.record(ruleSH003, match{Start: command.Span.Start, End: command.Span.End, ContextSignals: signals})
+	}
+}
+
+func (a *shellWalk) record(kind string, match match) {
 	if a.outputs != nil {
 		a.outputs[kind].Add(match)
-	} else {
-		a.result.Matches = append(a.result.Matches, match)
+		return
 	}
+
+	a.result.Matches = append(a.result.Matches, match)
 }
 
 func (a *shellWalk) beginEmission(kind string) bool {
@@ -524,12 +549,15 @@ func (a *shellWalk) listInput(f *shellsyntax.File, s *shellState, incoming shell
 
 	conditional := false
 
-	for _, st := range f.Statements {
+	for i, st := range f.Statements {
 		if !a.step() {
 			break
 		}
 
 		branch := conditional || shellBranchLinks[st.Next]
+		if a.hookShell && !branch && i+3 < len(f.Statements) {
+			a.optionalTimeoutCommand(f.Statements[i:i+4], s)
+		}
 
 		previousMayWrite := s.mayWrite
 		if branch {

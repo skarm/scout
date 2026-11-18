@@ -1,12 +1,88 @@
 package harness
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/report"
 )
+
+// Keep a constant fallback separate from the unvalidated input arm when an
+// immediately following arithmetic assignment reads the selector.
+func (w *hookSourceWalk) numericCaseContinuation(e *entry, view source.View, stmts []*shellsyntax.Statement, state hookSourceState, chain []report.SourceRef, entrypoint bool) (hookSourceState, bool) {
+	if w.splitNumericCase || !state.explicitBash || state.lookupUnknown || len(stmts) < 2 {
+		return state, false
+	}
+
+	if !hookNumericCaseStatement(stmts[0]) || !hookNumericCaseStatement(stmts[1]) {
+		return state, false
+	}
+
+	cmd, arith := stmts[0].Commands[0], stmts[1].Commands[0]
+	if !hookPlainCompound(cmd) || cmd.Case == nil || len(cmd.Case.Patterns) != 1 || len(cmd.Alternatives) != 2 ||
+		len(cmd.Alternatives[1].Statements) != 0 || len(arith.Assignments) != 1 || len(arith.Words) != 0 {
+		return state, false
+	}
+
+	name := arith.Assignments[0].Name
+	if !quotedGlobVariable(cmd.Case.Word, name) || !hookLocalVariable(name, pluginRootParameters[w.plugin.host]) ||
+		w.decimalBinding(name, state) || state.readonly[name] {
+		return state, false
+	}
+
+	operands := arithmeticOperands(arith.Assignments[0].Value)
+	if !slices.ContainsFunc(operands, func(operand *shellsyntax.Word) bool {
+		return len(operand.Parts) == 1 && operand.Parts[0].Kind == "arithmetic_variable" && operand.Parts[0].Text == name
+	}) || !hookStaticCasePatterns(cmd.Case) || !numericCaseFallback(cmd, name) {
+		return state, false
+	}
+
+	if !slices.ContainsFunc(cmd.Case.Patterns[0], func(pattern *shellsyntax.Word) bool {
+		value, literal := pattern.Literal()
+		return literal && value == ""
+	}) {
+		return state, false
+	}
+
+	if _, known := w.value(cmd.Case.Word, state, true); known {
+		return state, false
+	}
+
+	w.splitNumericCase = true
+	defer func() { w.splitNumericCase = false }()
+
+	arms := cmd.Alternatives
+	fallback := w.commands(e, view, arms[0], state.clone(), chain, entrypoint)
+	rest := &shellsyntax.File{Statements: stmts[1:]}
+	matched := w.commands(e, view, rest, fallback, chain, entrypoint)
+	unmatched := w.commands(e, view, rest, state, chain, entrypoint)
+
+	return matched.join(unmatched), true
+}
+
+func hookNumericCaseStatement(stmt *shellsyntax.Statement) bool {
+	return !stmt.Background && !stmt.Negated && stmt.Next != "&" && len(stmt.Commands) == 1
+}
+
+func numericCaseFallback(cmd *shellsyntax.Command, name string) bool {
+	body := cmd.Alternatives[0].Statements
+	if len(body) != 1 || body[0].Background || body[0].Negated || body[0].Next == "&" ||
+		hookAndOrLink(body[0].Next) || len(body[0].Commands) != 1 {
+		return false
+	}
+
+	set := body[0].Commands[0]
+	if len(set.Words) != 0 || len(set.Assignments) != 1 || set.Assignments[0].Name != name ||
+		len(set.Redirects) != 0 || set.Declaration != "" {
+		return false
+	}
+
+	value, known := set.Assignments[0].Value.Literal()
+
+	return known && decimalDigits(strings.TrimPrefix(value, "-"))
+}
 
 func (w *hookSourceWalk) caseStatement(e *entry, view source.View, cmd *shellsyntax.Command, state hookSourceState, chain []report.SourceRef, entrypoint bool) hookSourceState {
 	if cmd.Case.Word.Writes {
@@ -112,6 +188,18 @@ func casePattern(view source.View, word *shellsyntax.Word, value string) (bool, 
 		head := value[:size]
 
 		return false, strings.IndexFunc(head, func(r rune) bool { return r > 127 }) < 0 && !strings.EqualFold(head, prefix)
+	}
+
+	if suffix, found := strings.CutPrefix(raw, "*"); found && suffix != "" && strings.Trim(suffix,
+		"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._=-/") == "" {
+		if strings.HasSuffix(value, suffix) {
+			return true, true
+		}
+
+		tail := value[max(0, len(value)-len(suffix)):]
+
+		return false, (symbol < 0 || len(tail) == len(suffix) && !strings.ContainsRune(tail, 0)) &&
+			strings.IndexFunc(tail, func(r rune) bool { return r > 127 }) < 0 && !strings.EqualFold(tail, suffix)
 	}
 
 	literal, known := word.Literal()

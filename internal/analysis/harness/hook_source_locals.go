@@ -59,16 +59,21 @@ func (w *hookSourceWalk) bindLocals(cmd *shellsyntax.Command, state *hookSourceS
 	}
 
 	// All initializers expand against the bindings before the declaration.
-	values := make([]hookSourceArgument, len(cmd.Assignments))
+	values := make([]struct {
+		arg  hookSourceArgument
+		kind hookVariableKind
+	}, len(cmd.Assignments))
+
 	for i, assignment := range cmd.Assignments {
-		values[i].value, values[i].known = w.value(assignment.Value, *state, true)
+		values[i].arg.value, values[i].arg.known = w.value(assignment.Value, *state, true)
+		values[i].kind = w.assignmentKind(assignment.Value, *state)
 	}
 
 	for i, assignment := range cmd.Assignments {
-		state.declareLocal(assignment.Name, assignment.Value != nil, values[i])
+		state.declareLocal(assignment.Name, assignment.Value != nil, values[i].arg)
 
-		if assignment.Value != nil && assignment.Value.IndexedArray {
-			state.markAssignmentKind(assignment, w.assignmentKind(assignment.Value, *state))
+		if values[i].kind != 0 {
+			state.markAssignmentKind(assignment, values[i].kind)
 		}
 	}
 

@@ -57,8 +57,8 @@ func (w *pyWalker) charge(depth int) bool {
 	return w.err == nil && !w.truncated && !w.facts.exhausted()
 }
 
-func (w *pyWalker) emit(id string, n *frontend.Node, o *pyOrigin) {
-	w.facts.emit(id, n, o, w.unit)
+func (w *pyWalker) emit(id string, n *frontend.Node, o *pyOrigin, signals ...string) {
+	w.facts.emit(id, n, o, w.unit, signals...)
 }
 
 func (w *pyWalker) flow(n *frontend.Node, v pyValue, sink string) {

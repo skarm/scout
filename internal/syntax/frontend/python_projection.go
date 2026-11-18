@@ -177,6 +177,7 @@ func init() {
 				source: "right",
 			}},
 		},
+		"comparison_operator": {kind: Compare, build: (*pythonNormalizer).comparisonNode},
 		"list_splat": {
 			kind: Starred,
 			fields: []pythonProjectedField{{
@@ -241,9 +242,9 @@ func init() {
 				source: "",
 			}},
 		},
-		"pass_statement":           {kind: pass},
+		"pass_statement":           {kind: Pass},
 		"break_statement":          {kind: breakNode},
-		"continue_statement":       {kind: continueNode},
+		"continue_statement":       {kind: Continue},
 		"expression_statement":     {kind: Expr, build: (*pythonNormalizer).expressionStatement},
 		"import_statement":         {kind: Import, build: (*pythonNormalizer).importNode},
 		"import_from_statement":    {kind: ImportFrom, build: (*pythonNormalizer).importNode},
@@ -279,6 +280,7 @@ func init() {
 		"for_statement":            {kind: For, build: (*pythonNormalizer).loopNode},
 		"while_statement":          {kind: While, build: (*pythonNormalizer).loopNode},
 		"with_statement":           {kind: With, build: (*pythonNormalizer).withNode},
+		"try_statement":            {kind: Try, build: (*pythonNormalizer).tryNode},
 		"global_statement":         {kind: Global, build: (*pythonNormalizer).nameDeclarationNode},
 		"nonlocal_statement":       {kind: Nonlocal, build: (*pythonNormalizer).nameDeclarationNode},
 	}

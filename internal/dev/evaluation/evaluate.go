@@ -18,6 +18,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/javascript"
+	"github.com/skarm/scout/internal/analysis/languages/python"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
@@ -483,7 +484,7 @@ func shellHookSignals(findings []report.Finding) []string {
 			}
 		case shell.HookGeneratedExecutionRule:
 			generated = true
-		case javascript.HookShellCommandRule:
+		case javascript.HookShellCommandRule, python.HookShellCommandRule:
 			commandText = commandText || slices.Contains(finding.ContextSignals, check.ShellCommandText)
 		}
 	}

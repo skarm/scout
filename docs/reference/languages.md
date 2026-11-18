@@ -31,7 +31,11 @@ the hook event and physical file coordinates. An unresolved command string
 argument leaves a coverage diagnostic.
 Explicit interpreter text is reported separately from `source`. This includes
 POSIX shell `-c` and supported PowerShell `-Command` invocations. Scout also
-maps declared commands in `.claude/settings.json` to their original JSON bytes.
+maps declared commands in `.claude/settings.json` and
+`.claude/settings.local.json` to their original JSON bytes. Under automatic
+host detection, a captured project with either declaration is inspected even
+when it has no plugin manifest. A quoted `CLAUDE_PROJECT_DIR` in a project
+hook can resolve to a captured script in that project.
 For simple hook launches, Scout follows local `source` and `.` references within
 the captured package. Relative paths require a known working directory, such as
 after `cd "$PLUGIN_ROOT" &&`. Findings in sourced files retain their own source
@@ -88,12 +92,18 @@ operands are analyzed in isolated shell scopes.
 For a modeled `while` condition and body, Scout discards values the loop can
 assign and preserves independent bindings. A command with unresolved effects
 or a change to command lookup in the loop leaves a coverage gap.
+An `until mkdir -- ...` retry with a resolved, unshadowed command can use the
+same loop analysis. A literal EXIT trap can remove a directory with
+`rmdir -- ...`. Local function calls redirected to a verified `mktemp` file
+retain their source trace.
 For `while IFS=… read -r name …` with supported input redirects, the tracer
 accepts multiple read variables, literal `IFS` separators, scalar assignments,
-simple local declarations and read-only tests. The tracer discards bindings
-that a loop may write and checks substitutions for local source edges in an
+simple local declarations and read-only tests. A quoted substitution of an
+unshadowed `printf` with a constant format can supply the separator. The tracer
+discards bindings that a loop may write and checks substitutions for local source edges in an
 isolated scope.
-An anchored decimal check or a `grep -c` count with a verified option boundary
+An anchored decimal check, optionally allowing an initial minus sign, or a
+`grep -c` count with a verified option boundary
 also establishes a numeric binding. Regex ranges such as `[0-9]` require a
 known `C` or `POSIX` locale. A simple scalar assignment from `$((…))` preserves
 numeric provenance when its operands are verified. Supported numeric inputs
@@ -197,6 +207,23 @@ when a supported launch resolves to the captured JavaScript file. This includes
 shell wrappers that forward known arguments through `exec env -i`. The report
 keeps a coverage gap for Node module resolution and runtime execution.
 [Node child process reference](https://nodejs.org/api/child_process.html)
+
+For traced shell hooks, Scout parses literal programs passed to `node -e`
+or `python -c` and Python programs supplied through a quoted heredoc when
+the program maps directly to captured source. Findings cite the embedded
+program and the hook that reached it. On the Standard profile, a direct
+`python3 -I -S -c` launch can have complete shell-hook coverage for a literal
+program that reads standard-input JSON and prints a value selected through
+`dict.get`, with an optional dictionary type guard or an exception handler
+that only passes. Covered forms also include JSON serialization of literal objects
+containing positional arguments and UTC date formatting with a fixed format
+and optional fixed day offset. An isolated `python3 -I -S -` command can
+also cover a quoted heredoc that performs a bounded UTF-8 file read and
+serializes the result as JSON, or counts JSON Lines records using fixed
+field and type tests with a no-op error handler.
+Other Python launches retain runtime or import-scope diagnostics
+when that behavior cannot be established statically.
+[Python command-line options](https://docs.python.org/3/using/cmdline.html#cmdoption-I).
 
 The full CGO build uses official Tree-sitter grammars. JS001–JS006 check shell APIs,
 dynamic evaluation, credentials in network arguments, dynamic SQL, sensitive files

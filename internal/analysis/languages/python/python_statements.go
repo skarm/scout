@@ -217,21 +217,47 @@ func (w *pyWalker) controlStatement(n *frontend.Node, s *pyState, depth int) boo
 func (w *pyWalker) tryStatement(n *frontend.Node, s *pyState, depth int) {
 	a := s.fork()
 	w.block(n.List(frontend.Body), a, depth+1)
+
+	var entry *pyState
+
+	handlers := n.List(frontend.Handlers)
+	if len(handlers) != 0 {
+		// Exceptions can occur before or after the body changes a binding.
+		entry = mergePy(s, a, map[pyValuePair]pyValue{})
+	}
+
 	w.block(n.List(frontend.Orelse), a, depth+1)
+
 	merged := a
 
-	for _, h := range n.List(frontend.Handlers) {
-		b := s.fork()
-		if h.String(frontend.FieldName) != "" {
-			b.names[h.String(frontend.FieldName)] = pyValue{}
-		}
-
-		w.block(h.List(frontend.Body), b, depth+1)
-		merged = mergePy(merged, b, map[pyValuePair]pyValue{})
+	if entry != nil {
+		merged = w.mergeTryHandlers(handlers, entry, merged, depth)
 	}
 
 	mergePyBranches(s, s, merged)
 	w.block(n.List(frontend.Finalbody), s, depth+1)
+}
+
+func (w *pyWalker) mergeTryHandlers(handlers []*frontend.Node, entry, merged *pyState, depth int) *pyState {
+	for _, h := range handlers {
+		b := entry.fork()
+		w.expr(h.Child(frontend.Test), b, depth+1)
+
+		name := h.String(frontend.FieldName)
+		if name != "" {
+			b.set(name, pyValue{})
+		}
+
+		w.block(h.List(frontend.Body), b, depth+1)
+
+		if name != "" {
+			b.set(name, pyValue{})
+		}
+
+		merged = mergePy(merged, b, map[pyValuePair]pyValue{})
+	}
+
+	return merged
 }
 
 func (w *pyWalker) loopStatement(n *frontend.Node, s *pyState, depth int) {

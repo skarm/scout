@@ -28,6 +28,10 @@ func (w *hookSourceWalk) applyArgumentLoop(e *entry, view source.View, cmd *shel
 
 	effects := hookLoopEffects{writes: []string{cmd.ForArguments}}
 	if !w.hookReadLoopWrites(body, &effects, *state, root) {
+		if w.applyRuntimeLoop(e, view, cmd, state, chain) {
+			return true
+		}
+
 		if w.applyBoundedArray(e, view, cmd, state, chain) {
 			return true
 		}
@@ -48,6 +52,37 @@ func (w *hookSourceWalk) applyArgumentLoop(e *entry, view source.View, cmd *shel
 	// The list may contain runtime arguments or glob results. Analyze all
 	// loop bodies with the bindings they can change forgotten.
 	w.traceReadLoopBody(e, view, body, *state, chain)
+
+	return true
+}
+
+func (w *hookSourceWalk) applyRuntimeLoop(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState, chain []report.SourceRef) bool {
+	if len(cmd.ForWords) == 0 || w.boundedArrayDepth >= 2 {
+		return false
+	}
+
+	args := w.arguments(cmd.ForWords, *state)
+	if !args.exact || len(args.values) != len(cmd.ForWords) ||
+		!slices.ContainsFunc(args.values, func(arg hookSourceArgument) bool {
+			return arg.known && (hookRuntime(arg.value) != "" || hookUV(arg.value))
+		}) {
+		return false
+	}
+
+	w.traceSubstitutions(e, view, cmd, *state, chain)
+
+	w.boundedArrayDepth++
+	defer func() { w.boundedArrayDepth-- }()
+
+	// The loop evaluates the entire list before running its first iteration.
+	for _, arg := range args.values {
+		state.bindValue(cmd.ForArguments, arg.value, arg.known)
+		*state = w.commands(e, view, cmd.Alternatives[0], *state, chain, false)
+
+		if state.exited || state.returned || state.traceBlocked || state.lookupUnknown {
+			break
+		}
+	}
 
 	return true
 }

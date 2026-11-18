@@ -63,6 +63,7 @@ type Command struct {
 	DecimalGuard       *DecimalGuard
 	ForFileGlob        *ForFileGlob
 	ForArguments       string // loop variable for a projected word list
+	ForWords           []*Word
 	ForPositional      bool   // the list is the shell positional parameters
 	ForArray           string // exact quoted all-elements expansion of an indexed array
 	ForArraySlice      *ForArraySlice
@@ -111,11 +112,13 @@ type Word struct {
 	Span            source.Span
 	Parts           []Part
 	Quoted          bool
-	Expands         bool // unquoted glob/tilde/brace expansion: value is not a static word
-	Writes          bool // expansion may change a variable in the current shell
-	IndexedArray    bool // complete replacement with an indexed array
-	DecimalElements bool // every element is a literal decimal digit string
-	FixedArraySize  int  // number of elements plus one, or zero if unknown
+	Expands         bool    // unquoted glob/tilde/brace expansion: value is not a static word
+	Writes          bool    // expansion may change a variable in the current shell
+	IndexedArray    bool    // complete replacement with an indexed array
+	ArrayAppend     bool    // append to an already indexed array
+	ArrayWords      []*Word // indexed array replacement words before shell expansion
+	DecimalElements bool    // every element is a literal decimal digit string
+	FixedArraySize  int     // number of elements plus one, or zero if unknown
 }
 
 type Part struct {
@@ -125,7 +128,7 @@ type Part struct {
 	Tree               *File
 	Operand            *Word  // operand of a read-only parameter expansion
 	SingleField        bool   // a quoted parameter transformation cannot expand to multiple fields
-	DefaultIfUnset     bool   // select the operand when the parameter is unset or empty
+	DefaultIfUnset     bool   // scalar default expansion for an unset or empty parameter
 	TrimPrefix         string // literal prefix removed by a parameter expansion
 	Quoted             bool
 	PlainParameter     bool // exact $name or ${name} without a transformation or subscript
@@ -144,21 +147,30 @@ type ArithmeticIndex struct {
 // Substitutions yields child shell bodies, each of which runs in an isolated
 // shell. An operand of a parameter expansion may itself contain substitutions.
 func (w *Word) Substitutions() iter.Seq[*File] {
-	return func(yield func(*File) bool) { yieldSubstitutions(w, yield) }
+	return w.SubstitutionsExcept(nil)
 }
 
-func yieldSubstitutions(w *Word, yield func(*File) bool) bool {
+// SubstitutionsExcept omits the children of parts that a caller has proved inactive.
+func (w *Word) SubstitutionsExcept(skip func(Part) bool) iter.Seq[*File] {
+	return func(yield func(*File) bool) { yieldSubstitutions(w, skip, yield) }
+}
+
+func yieldSubstitutions(w *Word, skip func(Part) bool, yield func(*File) bool) bool {
 	if w == nil {
 		return true
 	}
 
 	for _, part := range w.Parts {
-		if part.Tree != nil && !yield(part.Tree) || !yieldSubstitutions(part.Operand, yield) {
+		if skip != nil && skip(part) {
+			continue
+		}
+
+		if part.Tree != nil && !yield(part.Tree) || !yieldSubstitutions(part.Operand, skip, yield) {
 			return false
 		}
 
 		for _, operand := range part.ArithmeticOperands {
-			if !yieldSubstitutions(operand, yield) {
+			if !yieldSubstitutions(operand, skip, yield) {
 				return false
 			}
 		}

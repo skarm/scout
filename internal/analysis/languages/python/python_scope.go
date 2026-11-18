@@ -302,6 +302,12 @@ func (w *pyWalker) prebindStatement(n *frontend.Node, s *pyState) {
 		for _, alias := range n.List(frontend.Names) {
 			s.prebindName(pyAliasName(alias))
 		}
+	case frontend.Try, frontend.TryStar:
+		for _, handler := range n.List(frontend.Handlers) {
+			if name := handler.String(frontend.FieldName); name != "" {
+				s.prebindName(name)
+			}
+		}
 	default:
 		return
 	}

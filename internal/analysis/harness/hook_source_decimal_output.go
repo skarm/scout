@@ -24,6 +24,75 @@ func hookDecimalOutput(tree *shellsyntax.File, state hookSourceState) bool {
 	return true
 }
 
+// An isolated two-argument function can print a validated first argument or
+// a literal fallback. Every other function body remains opaque as a producer.
+func hookDecimalFunction(tree *shellsyntax.File, state hookSourceState) bool {
+	call, simple := simpleShellCommand(tree)
+	if !simple || tree.Statements[0].Background || tree.Statements[0].Negated || state.lookupUnknown ||
+		!state.explicitBash || state.hasFunction("printf") || len(call.Words) != 3 || !hookFixedArgument(call.Words[1]) {
+		return false
+	}
+
+	name, known := call.Words[0].Literal()
+	value, fixed := call.Words[2].Literal()
+	fn, single := state.singleFunction(name)
+
+	if !known || !fixed || value != "" && !decimalDigits(value) || !single {
+		return false
+	}
+
+	branch := hookOnlyDecimalCompound(fn.body)
+	if branch != nil && branch.Group != nil {
+		branch = hookOnlyDecimalCompound(branch.Group)
+	}
+
+	if branch == nil || !branch.ExclusiveBranches || branch.Prelude == nil ||
+		len(branch.Prelude.Statements) != 1 || len(branch.Alternatives) != 2 {
+		return false
+	}
+
+	test := hookOnlyDecimalCompound(branch.Prelude)
+	if test == nil {
+		return false
+	}
+
+	guard := test.DecimalGuard
+	if guard == nil || guard.Name != "1" || guard.MatchOnFailure ||
+		guard.RequiresC && state.vars["LC_ALL"] != "C" && state.vars["LC_ALL"] != "POSIX" {
+		return false
+	}
+
+	return hookPrintDecimalArgument(branch.Alternatives[0], "1") && hookPrintDecimalArgument(branch.Alternatives[1], "2")
+}
+
+func hookOnlyDecimalCompound(body *shellsyntax.File) *shellsyntax.Command {
+	if body == nil || len(body.Statements) != 1 {
+		return nil
+	}
+
+	stmt := body.Statements[0]
+	if stmt.Negated || stmt.Background || len(stmt.Commands) != 1 || stmt.Next == "&" || hookAndOrLink(stmt.Next) ||
+		!hookPlainCompound(stmt.Commands[0]) {
+		return nil
+	}
+
+	return stmt.Commands[0]
+}
+
+func hookPrintDecimalArgument(tree *shellsyntax.File, name string) bool {
+	cmd, simple := simpleShellCommand(tree)
+	if !simple || tree.Statements[0].Background || tree.Statements[0].Negated || len(cmd.Words) != 3 {
+		return false
+	}
+
+	exe, _ := cmd.Words[0].Literal()
+	format, _ := cmd.Words[1].Literal()
+	arg := cmd.Words[2]
+
+	return exe == "printf" && format == "%s" && len(arg.Parts) == 1 && arg.Parts[0].Kind == "parameter" &&
+		arg.Parts[0].Quoted && arg.Parts[0].PlainParameter && arg.Parts[0].Text == name
+}
+
 func hookDecimalStage(stmt *shellsyntax.Statement, state hookSourceState, fallback bool) bool {
 	if len(stmt.Commands) == 0 || len(stmt.Commands) > 3 {
 		return false

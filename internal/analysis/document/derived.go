@@ -15,6 +15,34 @@ import (
 // OriginGeneratedShell is the coverage origin for shell reconstructed from captured code.
 const OriginGeneratedShell = "heredoc"
 
+// OriginHookInlineRuntime marks a literal program passed to a hook interpreter.
+const OriginHookInlineRuntime = "hook-inline-runtime"
+
+// WithHookInlineRuntime prepares a literal child program using the same
+// parser registry, byte budget, and source coordinates as its shell wrapper.
+func (f File) WithHookInlineRuntime(ctx context.Context, lang string, view source.View) (File, bool) {
+	span, err := view.Original(source.Span{End: len(view.Text())})
+	if err != nil || f.budget == nil || ctx.Err() != nil {
+		return f, false
+	}
+
+	for _, unit := range f.units {
+		if unit.Origin == OriginHookInlineRuntime && unit.Language == lang && unit.Span == span && unit.View.SameProjection(view) {
+			return f, true
+		}
+	}
+
+	if len(f.units)+len(f.shellUnits) >= MaxRegions {
+		return f, false
+	}
+
+	f.units = slices.Clone(f.units)
+	f.diagnostics = slices.Clone(f.diagnostics)
+	(*filePreparation)(&f).addUnit(ctx, lang, OriginHookInlineRuntime, span, view)
+
+	return f, true
+}
+
 // GeneratedShellGaps records distinct reasons for incomplete heredoc recovery.
 type GeneratedShellGaps uint8
 
@@ -54,6 +82,31 @@ type GeneratedShellExecution struct {
 // MaxGeneratedShellTransforms leaves room for the initial write, body and use
 // in the report's eight-step evidence trace.
 const MaxGeneratedShellTransforms = 5
+
+// TracedShellCommand records command text passed to a shell sink established
+// by the hook tracer. Its span is in the captured file.
+type TracedShellCommand struct {
+	Span             source.Span
+	HostUpdatedInput bool
+}
+
+func (f File) TracedShellCommands() []TracedShellCommand {
+	return slices.Clone(f.tracedShellCommands)
+}
+
+func (f File) WithTracedShellCommand(command TracedShellCommand) (File, bool) {
+	if slices.Contains(f.tracedShellCommands, command) {
+		return f, true
+	}
+
+	if len(f.tracedShellCommands) >= MaxRegions {
+		return f, false
+	}
+
+	f.tracedShellCommands = append(slices.Clone(f.tracedShellCommands), command)
+
+	return f, true
+}
 
 func (f File) GeneratedShellExecutions() ([]GeneratedShellExecution, bool) {
 	return append([]GeneratedShellExecution(nil), f.shellExecutions...), f.shellExecutionLimit

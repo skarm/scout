@@ -73,16 +73,27 @@ func (p *declarationProjection) decimalGuard(expr syntax.TestExpr, depth int) *D
 	}
 
 	pattern := p.text[match.Y.Pos().Offset():match.Y.End().Offset()]
-	if pattern != "^[0123456789]+$" && pattern != "^[0-9]+$" {
+	requiresC := pattern == "^[0-9]+$" || pattern == "^-?[0-9]+$"
+
+	if !requiresC && pattern != "^[0123456789]+$" && pattern != "^-?[0123456789]+$" {
 		return nil
+	}
+
+	if raw := p.text[input.Pos().Offset():input.End().Offset()]; raw == "${1:-}" || raw == `"${1:-}"` {
+		return &DecimalGuard{Name: "1", RequiresC: requiresC, MatchOnFailure: negated}
 	}
 
 	word := p.word(input, depth)
-	if word.Expands || word.Writes || len(word.Parts) != 1 || word.Parts[0].Kind != "parameter" || !shellIdentifier(word.Parts[0].Text) {
+	if word.Expands || word.Writes || len(word.Parts) != 1 {
 		return nil
 	}
 
-	return &DecimalGuard{Name: word.Parts[0].Text, RequiresC: pattern == "^[0-9]+$", MatchOnFailure: negated}
+	part := word.Parts[0]
+	if part.Kind != "parameter" || !shellIdentifier(part.Text) {
+		return nil
+	}
+
+	return &DecimalGuard{Name: part.Text, RequiresC: requiresC, MatchOnFailure: negated}
 }
 
 // arithmeticPredicate projects only scalar expressions without assignments,
@@ -131,6 +142,12 @@ func (p *declarationProjection) arithmeticOperand(c *Command, n *syntax.Word, de
 		return true
 	}
 
+	if len(value.Parts) == 1 && !value.Writes && value.Parts[0].Kind == "parameter_length" &&
+		p.text[value.Span.Start:value.Span.End] == "${#"+value.Parts[0].Text+"[@]}" {
+		c.NumericTest = append(c.NumericTest, value)
+		return true
+	}
+
 	if !value.Writes && len(value.Parts) == 2 && value.Parts[0].Kind == "literal" && value.Parts[0].Text == "10#" &&
 		value.Parts[1].Kind == "substitution" && value.Parts[1].Tree != nil {
 		c.NumericTest = append(c.NumericTest, value)
@@ -151,7 +168,9 @@ func (p *declarationProjection) arithmeticOperand(c *Command, n *syntax.Word, de
 		return false
 	}
 
-	part.Kind = "parameter"
+	if part.Kind == "literal" {
+		part.Kind = "arithmetic_variable"
+	}
 
 	c.NumericTest = append(c.NumericTest, value)
 

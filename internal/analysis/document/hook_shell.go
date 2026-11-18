@@ -45,8 +45,9 @@ func (f *filePreparation) prepareNamedHookShell(ctx context.Context) {
 
 func (f *filePreparation) claudeProjectSettings() bool {
 	name := f.file.Metadata().Path
+	base := path.Base(name)
 
-	return path.Base(name) == "settings.json" && path.Base(path.Dir(name)) == ".claude"
+	return (base == "settings.json" || base == "settings.local.json") && path.Base(path.Dir(name)) == ".claude"
 }
 
 // WithDeclaredHookShell prepares a captured file that a plugin manifest
@@ -462,7 +463,7 @@ func (f *filePreparation) projectHookScript(ctx context.Context, parent source.V
 
 	index, uncertain := shellsyntax.CommandTextIndex(len(args), func(i int) (string, bool) {
 		word := args[i]
-		if hookPluginRootOperand(word) {
+		if hookPluginRootOperand(word) || f.claudeProjectSettings() && word.HasQuotedPluginRootPrefix("CLAUDE_PROJECT_DIR") {
 			// The root identifies a file-shaped operand. The harness
 			// separately verifies expansion and path resolution.
 			// A command string after -c still has to pass LiteralView.

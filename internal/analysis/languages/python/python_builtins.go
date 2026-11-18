@@ -7,6 +7,7 @@ package python
 import (
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/syntax/frontend"
 )
 
@@ -129,13 +130,69 @@ func (w *pyWalker) observeProcess(call pyCall) {
 
 		switch strings.TrimPrefix(name, "subprocess.") {
 		case "call", "run", "Popen", "check_output", "check_call", "getoutput", "getstatusoutput":
-			w.emit(ruleAST4, n, nil)
+			if pySubprocessShell(call) {
+				w.emit(ruleAST4, n, nil, check.ShellCommandText)
+			} else {
+				w.emit(ruleAST4, n, nil)
+			}
 		}
 	}
 
 	if pyOSExecution(name) {
 		w.emit(ruleAST5, n, nil)
 	}
+}
+
+func pySubprocessShell(call pyCall) bool {
+	// An executable override, additional positional Popen parameters, or a
+	// keyword spread can change which program receives the argument vector.
+	argv, supplied := call.argument("args", 0)
+	if call.name == "subprocess.getoutput" || call.name == "subprocess.getstatusoutput" {
+		_, supplied = call.argument("cmd", 0)
+		return supplied
+	}
+
+	if !supplied || len(call.args) > 1 || len(call.positional) > 1 {
+		return false
+	}
+
+	for _, keyword := range call.node.List(frontend.Keywords) {
+		switch keyword.String(frontend.FieldArg) {
+		case "", "executable":
+			return false
+		}
+	}
+
+	if call.keywords["shell"].truth == 2 {
+		return true
+	}
+
+	args := argv.elements()
+	if len(args) < 3 {
+		return false
+	}
+
+	program, known := args[0].literal()
+	if !known || program != "adb" && program != "adb.exe" {
+		return false
+	}
+
+	flag, _ := args[1].literal()
+	switch flag {
+	case "-d", "-e":
+		args = args[1:]
+	case "-s":
+		args = args[2:]
+	}
+
+	if len(args) < 3 {
+		return false
+	}
+
+	mode, known := args[1].literal()
+	command, commandKnown := args[2].literal()
+
+	return known && mode == "shell" && commandKnown && command != "" && !strings.HasPrefix(command, "-")
 }
 
 func (w *pyWalker) callResult(call pyCall) pyValue {

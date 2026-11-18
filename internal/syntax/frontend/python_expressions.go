@@ -2,6 +2,22 @@ package frontend
 
 import "strings"
 
+func (b *pythonNormalizer) comparisonNode(n *pythonSyntax, depth int, kind NodeKind) *Node {
+	values := n.named()
+	op := b.textOf(n.field("operators"))
+
+	if len(values) != 2 || op != "==" && op != "!=" {
+		return b.unsupportedNode(n, depth)
+	}
+
+	out := b.make(n, kind)
+	b.set(out, Left, childValue(b.node(values[0], depth+1)))
+	b.set(out, Right, childValue(b.node(values[1], depth+1)))
+	b.set(out, Op, StringValue(op))
+
+	return out
+}
+
 func (b *pythonNormalizer) typeNode(n *pythonSyntax, depth int, _ NodeKind) *Node {
 	// Grammar wrappers preserve annotations without inferring host timing.
 	if len(n.named()) == 1 {

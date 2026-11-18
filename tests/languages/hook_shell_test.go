@@ -106,6 +106,39 @@ npm run script-with-shadowed-command
 	}
 }
 
+func TestHookOptionalTimeoutCommandText(t *testing.T) {
+	root := t.TempDir()
+	scenario.WriteFile(t, root, ".claude-plugin/plugin.json", `{"name":"test-plugin"}`)
+	scenario.WriteFile(t, root, "hooks/hooks.json", `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/run.sh\""}]}]}}`)
+	scenario.WriteFile(t, root, "run.sh", `prefix=""; command -v timeout >/dev/null 2>&1 && prefix="timeout ${DURATION:-120}"
+out=$(cd "$working" 2>/dev/null && $prefix bash -c "$check" 2>&1)
+prefix=""; command -v timeout >/dev/null 2>&1 && prefix="timeout 120"
+out=$("$prefix" bash -c "$check")
+prefix="printf"; command -v timeout >/dev/null 2>&1 && prefix="timeout 120"
+out=$($prefix bash -c "$check")
+prefix=""; command -v timeout >/dev/null 2>&1 && prefix="timeout 120"
+out=$($prefix bash -n -c "$check")
+prefix=""; command -v timeout >/dev/null 2>&1 && prefix="timeout 120"
+out=$($prefix ./bash -c "$check")
+`)
+
+	result, err := scenario.Scan(t, root)
+	if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+		t.Fatal(err)
+	}
+
+	var lines []int
+	for _, f := range result.Findings {
+		if f.Location.Path == "run.sh" && f.RuleID == "SH003" && len(f.HookSources) != 0 &&
+			slices.Contains(f.ContextSignals, check.ShellCommandText) {
+			lines = append(lines, f.Location.StartLine)
+		}
+	}
+	if !slices.Equal(lines, []int{2}) {
+		t.Fatalf("shell command evidence at lines %v, want [2]", lines)
+	}
+}
+
 func TestHookShellFindingsKeepEventAndPhysicalLine(t *testing.T) {
 	const name = "hooks/hooks.json"
 	const input = `{
@@ -304,5 +337,39 @@ func TestLiteralInlineHookHasShellCoverage(t *testing.T) {
 		if finding.RuleID == "SH003" {
 			t.Fatalf("literal output was treated as a shell execution signal: %+v", finding.Location)
 		}
+	}
+}
+
+func TestStandaloneClaudeProjectSettingsHookCoverage(t *testing.T) {
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			scenario.WriteFile(t, root, ".claude/"+name, `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR/run-hook.sh\""}]}]}}`)
+			scenario.WriteFile(t, root, "run-hook.sh", "printf '%s\\n' ready\n")
+
+			result, err := scenario.Scan(t, root)
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+
+			if coverage := result.Coverage.ShellHooks; coverage == nil || coverage.Completeness != report.Complete || len(coverage.Gaps) != 0 {
+				t.Fatalf("standalone project hook coverage: %+v", coverage)
+			}
+		})
+	}
+}
+
+func TestStandaloneClaudeProjectRootNeedsQuoting(t *testing.T) {
+	root := t.TempDir()
+	scenario.WriteFile(t, root, ".claude/settings.json", `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash $CLAUDE_PROJECT_DIR/run-hook.sh"}]}]}}`)
+	scenario.WriteFile(t, root, "run-hook.sh", "printf '%s\\n' ready\n")
+
+	result, err := scenario.Scan(t, root)
+	if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+		t.Fatal(err)
+	}
+
+	if coverage := result.Coverage.ShellHooks; coverage == nil || coverage.Completeness != report.Partial || len(coverage.Gaps) == 0 {
+		t.Fatalf("unquoted project-root hook coverage: %+v", coverage)
 	}
 }

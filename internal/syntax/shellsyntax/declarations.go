@@ -755,7 +755,7 @@ func (p *declarationProjection) readOnlyParameter(n *syntax.ParamExp, part *Part
 		part.TrimPrefix = literalParameterPrefix(n.Exp.Op, operand)
 		part.SingleField = singleFieldParameterOperand(n, operand)
 
-		part.DefaultIfUnset = n.Exp.Op == syntax.DefaultUnset || n.Exp.Op == syntax.DefaultUnsetOrNull
+		part.DefaultIfUnset = n.Index == nil && (n.Exp.Op == syntax.DefaultUnset || n.Exp.Op == syntax.DefaultUnsetOrNull)
 		if hasSubstitution {
 			part.Operand = operand
 		}
@@ -811,7 +811,8 @@ func (p *declarationProjection) readOnlyArrayParameter(n *syntax.ParamExp, part 
 		return false
 	}
 
-	if part.Kind == "parameter_array_all" || part.Kind == "parameter_length" || part.Kind == "parameter_bash_source" {
+	if part.Kind == "parameter_array_all" || part.Kind == "parameter_array_all_default_empty" ||
+		part.Kind == "parameter_length" || part.Kind == "parameter_bash_source" {
 		return true
 	}
 
@@ -853,24 +854,23 @@ func (p *declarationProjection) parameterPart(out *Word, n *syntax.ParamExp, par
 		}
 
 		if part.Quoted {
-			if raw == "${BASH_SOURCE[0]}" || raw == "${BASH_SOURCE[0]:-$0}" {
+			switch {
+			case raw == "${BASH_SOURCE[0]}" || raw == "${BASH_SOURCE[0]:-$0}":
 				part.Kind = "parameter_bash_source"
 				return
-			}
-
-			if shellIdentifier(part.Text) && raw == "${"+part.Text+"[@]}" {
+			case raw == "${"+part.Text+"[@]}" && shellIdentifier(part.Text):
 				part.Kind, out.Expands = "parameter_array_all", true
 				return
-			}
-
-			switch raw {
-			case "${" + part.Text + ":-.}":
+			case raw == "${"+part.Text+"[@]:-}" && shellIdentifier(part.Text):
+				part.Kind, out.Expands = "parameter_array_all_default_empty", true
+				return
+			case raw == "${"+part.Text+":-.}":
 				part.Kind = "parameter_default_dot"
 				return
-			case "${" + part.Text + ":-}":
+			case raw == "${"+part.Text+":-}":
 				part.Kind = "parameter_default_empty"
 				return
-			case "${" + part.Text + `%$'\n'}`:
+			case raw == "${"+part.Text+`%$'\n'}`:
 				part.Kind = "parameter_trim_newline"
 				return
 			}
@@ -1072,6 +1072,7 @@ func (p *declarationProjection) assignmentWord(a *syntax.Assign, depth int) *Wor
 	if a.Array != nil && a.Index == nil {
 		value := p.arrayAssignmentWord(a.Array, depth)
 		value.IndexedArray = !a.Append && !value.Writes
+		value.ArrayAppend = a.Append && !value.Writes
 
 		return value
 	}
@@ -1099,6 +1100,10 @@ func (p *declarationProjection) arrayAssignmentWord(arr *syntax.ArrayExpr, depth
 		}
 
 		part := p.word(element.Value, depth+1)
+		if len(arr.Elems) <= 8 {
+			value.ArrayWords = append(value.ArrayWords, part)
+		}
+
 		literal, known := part.Literal()
 		value.DecimalElements = value.DecimalElements && known && digits(literal)
 

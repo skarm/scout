@@ -38,7 +38,11 @@ func (w *hookSourceWalk) applyWhile(e *entry, view source.View, cmd *shellsyntax
 	// Analyze any iteration with all loop-written values forgotten.
 	effects := hookLoopEffects{writes: readNames}
 	if !w.hookReadLoopWrites(body, &effects, *state, root) {
-		return reader && w.applyReadCallbackLoop(e, view, cmd, readNames, state, chain)
+		if reader {
+			return w.applyReadCallbackLoop(e, view, cmd, readNames, state, chain)
+		}
+
+		return w.applyDirectoryRetry(e, view, cmd, state, chain)
 	}
 
 	w.traceSubstitutions(e, view, cmd, *state, chain)
@@ -52,6 +56,31 @@ func (w *hookSourceWalk) applyWhile(e *entry, view source.View, cmd *shellsyntax
 	}
 
 	w.traceReadLoopBody(e, view, body, iteration, chain)
+
+	return true
+}
+
+// An until loop can retry directory creation. The condition changes only the
+// filesystem, so the usual loop join can track shell effects of the body.
+func (w *hookSourceWalk) applyDirectoryRetry(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState, chain []report.SourceRef) bool {
+	if !cmd.Until || len(cmd.Prelude.Statements) != 1 {
+		return false
+	}
+
+	test := cmd.Prelude.Statements[0]
+	if test.Negated || test.Background || test.Next == "&" || hookAndOrLink(test.Next) || len(test.Commands) != 1 ||
+		!hookDirectoryOperation(test.Commands[0], *state, "mkdir") {
+		return false
+	}
+
+	start := state.clone()
+	start.forgetFileBindings()
+
+	if !w.traceLoopInvariant(e, view, cmd, cmd.Alternatives[0], nil, &start, chain, "mkdir") {
+		return false
+	}
+
+	*state = start
 
 	return true
 }
@@ -155,7 +184,7 @@ func hookReadsFinalLine(stmt *shellsyntax.Statement, state hookSourceState, name
 }
 
 func hookReadDestinations(cmd *shellsyntax.Command, state hookSourceState, root string) ([]string, bool) {
-	if state.lookupUnknown || state.hasFunction("read") || len(cmd.Words) < 2 || !hookReadLoopEnvironment(cmd.Assignments) ||
+	if state.lookupUnknown || state.hasFunction("read") || len(cmd.Words) < 2 || !hookReadLoopEnvironment(cmd.Assignments, state) ||
 		!hookReadLoopInput(cmd) {
 		return nil, false
 	}
@@ -223,7 +252,7 @@ func (w *hookSourceWalk) forgetReadDestinations(cmd *shellsyntax.Command, state 
 	return true
 }
 
-func hookReadLoopEnvironment(assignments []shellsyntax.Assignment) bool {
+func hookReadLoopEnvironment(assignments []shellsyntax.Assignment, state hookSourceState) bool {
 	if len(assignments) == 0 {
 		return true
 	}
@@ -233,8 +262,31 @@ func hookReadLoopEnvironment(assignments []shellsyntax.Assignment) bool {
 	}
 
 	value := assignments[0].Value
+	if value == nil || value.Writes {
+		return false
+	}
 
-	return hookLiteralAssignmentWord(value) || value != nil && hookTestOperand(value)
+	if hookLiteralAssignmentWord(value) || hookTestOperand(value) {
+		return true
+	}
+
+	// A quoted substitution of a constant printf supplies only the IFS
+	// value. The caller still traces the substitution in its child scope.
+	if len(value.Parts) != 1 || value.Parts[0].Kind != "substitution" || !value.Parts[0].Quoted || state.hasFunction("printf") {
+		return false
+	}
+
+	tree := value.Parts[0].Tree
+	cmd, known := simpleShellCommand(tree)
+
+	if !known || tree.OmittedExecution || len(cmd.Words) != 2 {
+		return false
+	}
+
+	name, _ := cmd.Words[0].Literal()
+	format, fixed := cmd.Words[1].Literal()
+
+	return name == "printf" && fixed && hookReadOnlyPrintf(format)
 }
 
 func hookLiteralAssignmentWord(word *shellsyntax.Word) bool {
@@ -283,14 +335,15 @@ func hookProcessInput(word *shellsyntax.Word) bool {
 }
 
 type hookLoopEffects struct {
-	writes        []string
-	locals        []string
-	tests         []*shellsyntax.Command
-	counters      []string
-	foldedExports []string
-	fileWrites    bool
-	statusOnly    bool
-	helperDepth   int
+	writes         []string
+	locals         []string
+	tests          []*shellsyntax.Command
+	counters       []string
+	foldedExports  []string
+	indexedAppends []string
+	helperDepth    int
+	fileWrites     bool
+	statusOnly     bool
 }
 
 const maxHookLoopHelperDepth = 3
@@ -304,6 +357,10 @@ func (effects hookLoopEffects) forgetWrites(state *hookSourceState) {
 
 	for _, key := range effects.writes {
 		state.bindValue(key, "", false)
+	}
+
+	for _, key := range effects.indexedAppends {
+		state.forgetAppendedArray(key)
 	}
 
 	for _, counter := range effects.counters {
@@ -373,6 +430,10 @@ func (w *hookSourceWalk) hookReadLoopWrites(body *shellsyntax.File, effects *hoo
 	for _, key := range effects.writes {
 		delete(state.vars, key)
 		delete(state.kinds, key)
+	}
+
+	for _, key := range effects.indexedAppends {
+		state.forgetAppendedArray(key)
 	}
 
 	for _, counter := range effects.counters {
@@ -483,7 +544,12 @@ func hookLoopCounter(cmd *shellsyntax.Command, root string, explicitBash bool) s
 	}
 
 	for _, operand := range operands {
-		if len(operand.Parts) != 1 || operand.Parts[0].Kind != "parameter" || operand.Parts[0].Text != assignment.Name {
+		if len(operand.Parts) != 1 || operand.Parts[0].Text != assignment.Name {
+			return ""
+		}
+
+		kind := operand.Parts[0].Kind
+		if kind != "parameter" && kind != "arithmetic_variable" {
 			return ""
 		}
 	}
@@ -683,7 +749,13 @@ func (w *hookSourceWalk) recordLoopWrites(cmd *shellsyntax.Command, effects *hoo
 			return false
 		}
 
-		effects.writes = append(effects.writes, assignment.Name)
+		if cmd.Declaration == "" && assignment.Value != nil && assignment.Value.ArrayAppend &&
+			state.explicitBash && state.kinds[assignment.Name].indexedArray() {
+			effects.indexedAppends = append(effects.indexedAppends, assignment.Name)
+		} else {
+			effects.writes = append(effects.writes, assignment.Name)
+		}
+
 		if cmd.Declaration == "local" {
 			effects.locals = append(effects.locals, assignment.Name)
 		}

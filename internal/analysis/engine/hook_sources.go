@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
 	"github.com/skarm/scout/internal/capture/artifact"
@@ -158,14 +159,16 @@ func hookShellProjectionComplete(unit document.Unit) bool {
 }
 
 type scopedHookContext struct {
-	context  report.HookSourceContext
-	language string
-	scope    source.Span
-	exclude  []source.Span
+	hostOutput bool
+	context    report.HookSourceContext
+	language   string
+	scope      source.Span
+	exclude    []source.Span
 }
 
 func (c scopedHookContext) contains(loc report.Location) bool {
-	if c.language != loc.Language || c.language != language.Shell && loc.Structure != "source-file" {
+	if c.language != loc.Language || c.language != language.Shell &&
+		loc.Structure != "source-file" && loc.Structure != document.OriginHookInlineRuntime {
 		return false
 	}
 
@@ -190,11 +193,16 @@ func (run *execution) attachHookSourceContexts() bool {
 
 	for i := range run.analysis.Findings {
 		finding := &run.analysis.Findings[i]
+		hostOutput := slices.Contains(finding.ContextSignals, check.ShellHostUpdatedInput)
 
 		for _, candidate := range byPath[finding.Location.Path] {
 			checks++
 			if checks > maxHookContextChecks || run.ctx.Err() != nil {
 				return true
+			}
+
+			if hostOutput && !candidate.hostOutput {
+				continue
 			}
 
 			if !candidate.contains(finding.Location) || slices.ContainsFunc(finding.HookSources, func(other report.HookSourceContext) bool {
@@ -242,7 +250,7 @@ func (run *execution) indexHookSourceContexts() map[string][]scopedHookContext {
 			}
 
 			byPath[path.Target] = append(byPath[path.Target], scopedHookContext{
-				context: context, language: lang, scope: path.Scope, exclude: path.Exclude,
+				context: context, language: lang, hostOutput: path.HostOutput, scope: path.Scope, exclude: path.Exclude,
 			})
 		}
 	}

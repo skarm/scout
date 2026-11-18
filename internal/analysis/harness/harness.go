@@ -54,6 +54,7 @@ type builder struct {
 type candidate struct {
 	ns                   *namespace
 	root, host, manifest string
+	projectSettings      bool
 }
 type plugin struct {
 	manifest                   *entry
@@ -63,6 +64,7 @@ type plugin struct {
 	index                      int
 	processedConfigs           map[string]bool
 	rootNode                   string
+	projectSettings            bool
 }
 
 type candidateSet struct {
@@ -189,11 +191,48 @@ func (b *builder) candidates(host string) []candidate {
 		if !found && !b.containerCollection(ns) && slices.Contains([]string{report.HostClaudeCode, report.HostCodex}, host) {
 			set.add(ns, ".", host, "")
 		}
+
+		if host == report.HostAuto {
+			set.addProjectHookSettings(ns)
+		}
 	}
 
 	sort.Slice(set.values, func(i, j int) bool { return candidateLess(set.values[i], set.values[j]) })
 
 	return set.values
+}
+
+func (s *candidateSet) addProjectHookSettings(ns *namespace) {
+	for _, name := range ns.names {
+		if !s.b.step() {
+			return
+		}
+
+		dir := path.Dir(name)
+		base := path.Base(name)
+
+		if path.Base(dir) != ".claude" || base != "settings.json" && base != "settings.local.json" {
+			continue
+		}
+
+		e := ns.entries[name]
+		if e.doc == nil || !slices.ContainsFunc(e.doc.Units(), projectSettingsHasHooks) {
+			continue
+		}
+
+		count := len(s.values)
+		s.add(ns, path.Dir(dir), report.HostClaudeCode, "")
+
+		if len(s.values) > count {
+			s.values[count].projectSettings = true
+		}
+	}
+}
+
+func projectSettingsHasHooks(unit document.Unit) bool {
+	tree, ok := unit.Tree.(parse.JSONTree)
+
+	return ok && unit.Origin == "file" && tree.Root.Get("hooks") != nil
 }
 
 func (b *builder) marketplace(ns *namespace, name string) {
@@ -368,21 +407,28 @@ func (b *builder) plugin(c candidate) *plugin {
 		activation:       activation,
 		index:            len(b.r.Plugins),
 		processedConfigs: map[string]bool{},
+		projectSettings:  c.projectSettings,
 	}
+
+	adapter, kind := c.host+"-layout-subset", "plugin"
+	if c.projectSettings {
+		adapter, kind = c.host+"-project-settings-subset", "host_project"
+	}
+
 	b.r.Plugins = append(b.r.Plugins, report.PluginInterpretation{
 		ID:             id,
 		Host:           c.host,
 		Namespace:      c.ns.id,
 		Root:           c.root,
 		Manifests:      manifests,
-		AdapterID:      c.host + "-layout-subset",
+		AdapterID:      adapter,
 		AdapterVersion: version,
 		Contract:       "docs-2026-10-26-subset",
 		FormatStatus:   report.OutcomePartial,
 		Activation:     activation,
 		Assumptions:    []string{"No host binary/version, trust grants or installation are evaluated; only closed captured Claude hook-disable precedence is modeled.", "Paths are resolved only against this package namespace; external configuration is not read."},
 	})
-	p.rootNode = b.node(id, "plugin", e, c.host, activation, whole(e), c.ns.id+"/"+c.root)
+	p.rootNode = b.node(id, kind, e, c.host, activation, whole(e), c.ns.id+"/"+c.root)
 
 	return p
 }

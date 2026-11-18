@@ -10,15 +10,29 @@ import (
 type hookVariableKind uint8
 
 type hookVariableFact struct {
-	kind           hookVariableKind
 	fixedArraySize int
+	kind           hookVariableKind
+	notifierAction bool
+	nonemptyArray  bool
 }
 
 const (
 	hookDecimalScalar hookVariableKind = iota + 1
 	hookIndexedArray
 	hookDecimalArray
+	hookFreshTemporary
 )
+
+func (fact hookVariableFact) indexedArray() bool {
+	return fact.kind == hookIndexedArray || fact.kind == hookDecimalArray
+}
+
+func (s *hookSourceState) forgetAppendedArray(name string) {
+	fact := s.kinds[name]
+	if fact.indexedArray() {
+		s.kinds[name] = hookVariableFact{kind: hookIndexedArray, nonemptyArray: fact.nonemptyArray}
+	}
+}
 
 func (w *hookSourceWalk) hookSafeTest(cmd *shellsyntax.Command, state hookSourceState) bool {
 	if !cmd.ReadOnlyTest || slices.ContainsFunc(cmd.Redirects, func(r *shellsyntax.Redirect) bool { return !hookDiscardedOutput(r) }) {
@@ -32,6 +46,14 @@ func (w *hookSourceWalk) hookSafeTest(cmd *shellsyntax.Command, state hookSource
 
 func (w *hookSourceWalk) safeArithmeticOperands(operands []*shellsyntax.Word, state hookSourceState) bool {
 	for _, operand := range operands {
+		if len(operand.Parts) == 1 && operand.Parts[0].Kind == "parameter_length" {
+			if !state.kinds[operand.Parts[0].Text].nonemptyArray {
+				return false
+			}
+
+			continue
+		}
+
 		if len(operand.Parts) == 1 && operand.Parts[0].Kind == "substitution" {
 			if !hookDecimalOutput(operand.Parts[0].Tree, state) {
 				return false
@@ -48,7 +70,14 @@ func (w *hookSourceWalk) safeArithmeticOperands(operands []*shellsyntax.Word, st
 			continue
 		}
 
-		if !w.decimalBinding(operand.Parts[0].Text, state) {
+		part := operand.Parts[0]
+		if part.Kind == "arithmetic_variable" && strings.HasPrefix(state.vars[part.Text], "-") &&
+			hookLocalVariable(part.Text, pluginRootParameters[w.plugin.host]) &&
+			!state.lookupUnknown && decimalDigits(strings.TrimPrefix(state.vars[part.Text], "-")) {
+			continue
+		}
+
+		if !w.decimalBinding(part.Text, state) {
 			return false
 		}
 	}
@@ -69,25 +98,35 @@ func (w *hookSourceWalk) hasUnverifiedExpansion(cmd *shellsyntax.Command, state 
 	if len(cmd.Words) != 0 && len(cmd.Assignments) == 0 && cmd.Declaration == "" &&
 		!slices.ContainsFunc(cmd.Redirects, func(redirect *shellsyntax.Redirect) bool { return !hookDiscardedOutput(redirect) }) {
 		return slices.ContainsFunc(cmd.Words, func(word *shellsyntax.Word) bool {
-			return word.Writes && !w.safeIndirectWord(word, state) && !w.safeArithmeticText(word, state)
+			return word.Writes && !w.safeIndirectWord(word, state) && !w.safeArithmeticText(word, state) &&
+				!(word.Quoted && w.safeArrayLookup(word, state))
 		})
 	}
 
-	if len(cmd.Assignments) != 1 || len(cmd.Words) != 0 || len(cmd.Redirects) != 0 || cmd.Declaration != "" {
+	if len(cmd.Words) != 0 || len(cmd.Redirects) != 0 {
 		return true
 	}
 
-	assignment := cmd.Assignments[0]
+	if cmd.Declaration == "local" && w.canBindLocals(cmd, state) {
+		return slices.ContainsFunc(cmd.Assignments, func(a shellsyntax.Assignment) bool {
+			return a.Value != nil && a.Value.Writes && !w.safeAssignmentExpansion(a, state)
+		})
+	}
+
+	return len(cmd.Assignments) != 1 || cmd.Declaration != "" || !w.safeAssignmentExpansion(cmd.Assignments[0], state)
+}
+
+func (w *hookSourceWalk) safeAssignmentExpansion(assignment shellsyntax.Assignment, state hookSourceState) bool {
 	if state.lookupUnknown || !hookLocalVariable(assignment.Name, pluginRootParameters[w.plugin.host]) {
-		return true
+		return false
 	}
 
 	operands := arithmeticOperands(assignment.Value)
 	if operands != nil {
-		return !w.safeArithmeticOperands(operands, state)
+		return w.safeArithmeticOperands(operands, state)
 	}
 
-	return !w.safeArrayLookup(assignment.Value, state) && !w.safeIndirectWord(assignment.Value, state)
+	return w.safeArrayLookup(assignment.Value, state) || w.safeIndirectWord(assignment.Value, state)
 }
 
 func (w *hookSourceWalk) safeArithmeticText(word *shellsyntax.Word, state hookSourceState) bool {
@@ -211,10 +250,27 @@ func (w *hookSourceWalk) refineIntegerComparison(cmd *shellsyntax.Command, state
 	}
 
 	op, _ := expr[1].Literal()
+	w.refineNonemptyArray(expr, op, state)
+
 	switch op {
 	case "-eq", "-ne", "-lt", "-le", "-gt", "-ge":
 		w.markQuotedDecimal(expr[0], state)
 		w.markQuotedDecimal(expr[2], state)
+	}
+}
+
+func (w *hookSourceWalk) refineNonemptyArray(expr []*shellsyntax.Word, operator string, state *hookSourceState) {
+	if operator != "-gt" || len(expr[0].Parts) != 1 || expr[0].Parts[0].Kind != "parameter_length" {
+		return
+	}
+
+	limit, _ := expr[2].Literal()
+	name := expr[0].Parts[0].Text
+
+	fact := state.kinds[name]
+	if limit == "0" && (fact.kind == hookIndexedArray || fact.kind == hookDecimalArray) {
+		fact.nonemptyArray = true
+		state.kinds[name] = fact
 	}
 }
 
@@ -226,6 +282,7 @@ func (s *hookSourceState) markAssignmentKind(assignment shellsyntax.Assignment, 
 	fact := hookVariableFact{kind: kind}
 	if assignment.Value != nil && assignment.Value.IndexedArray {
 		fact.fixedArraySize = assignment.Value.FixedArraySize
+		fact.notifierAction = hookNotifierAction(assignment.Value.ArrayWords)
 	}
 
 	s.markVariable(assignment.Name, fact)
@@ -285,7 +342,15 @@ func (w *hookSourceWalk) assignmentKind(word *shellsyntax.Word, state hookSource
 
 	if !word.Expands && !word.Writes && len(word.Parts) == 1 {
 		part := word.Parts[0]
+		if part.Kind == "substitution" && hookFreshTemporaryCommand(part.Tree, state) {
+			return hookFreshTemporary
+		}
+
 		if part.Kind == "parameter" && part.Text == "?" {
+			return hookDecimalScalar
+		}
+
+		if part.Kind == "parameter" && part.PlainParameter && w.decimalBinding(part.Text, state) {
 			return hookDecimalScalar
 		}
 	}
@@ -295,6 +360,22 @@ func (w *hookSourceWalk) assignmentKind(word *shellsyntax.Word, state hookSource
 	}
 
 	return 0
+}
+
+func hookFreshTemporaryCommand(tree *shellsyntax.File, state hookSourceState) bool {
+	cmd, simple := simpleShellCommand(tree)
+	if !simple || tree.OmittedExecution || state.lookupUnknown || state.hasFunction("mktemp") {
+		return false
+	}
+
+	stmt := tree.Statements[0]
+	if stmt.Negated || stmt.Background || len(cmd.Words) != 1 {
+		return false
+	}
+
+	name, _ := cmd.Words[0].Literal()
+
+	return name == "mktemp"
 }
 
 func hookLengthExpansion(word *shellsyntax.Word) bool {
@@ -316,7 +397,7 @@ func (w *hookSourceWalk) hookNumericSubstitution(word *shellsyntax.Word, state h
 		}
 	}
 
-	return hookDecimalOutput(tree, state) || w.hookGrepCount(tree, state)
+	return hookDecimalOutput(tree, state) || w.hookGrepCount(tree, state) || hookDecimalFunction(tree, state)
 }
 
 func (w *hookSourceWalk) hookGrepCount(tree *shellsyntax.File, state hookSourceState) bool {

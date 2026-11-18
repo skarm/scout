@@ -1,5 +1,8 @@
 package python
 
+// HookShellCommandRule identifies subprocess calls with shell command evidence.
+const HookShellCommandRule = rulePrefixPython + ruleAST4
+
 // Stable check identities shared by metadata, dispatch and evidence emission.
 const (
 	rulePrefixPython = "PY-"

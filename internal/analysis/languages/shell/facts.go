@@ -77,6 +77,8 @@ func walkShellFacts(ctx context.Context, doc document.File, outputs map[string]*
 		}
 	}
 
+	walk.tracedCommands(doc)
+
 	for _, output := range outputs {
 		output.Finish(errors.Join(walk.err, walk.gap, ctx.Err()), false)
 	}

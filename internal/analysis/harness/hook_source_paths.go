@@ -18,6 +18,10 @@ func (w *hookSourceWalk) hookPathSubstitution(part shellsyntax.Part, state hookS
 		return value, true
 	}
 
+	if assignment && hookNotifierLookup(part.Tree, state) {
+		return hookNotifierExecutable, true
+	}
+
 	stmts := part.Tree.Statements
 	if len(stmts) != 2 || stmts[0].Next != "&&" || !hookKnownStatus(stmts[0], state, "cd") ||
 		!hookKnownStatus(stmts[1], state, "pwd") {
@@ -115,12 +119,23 @@ func (w *hookSourceWalk) hookDiscardRedirectedLaunch(cmd *shellsyntax.Command, s
 	}
 
 	for _, redirect := range cmd.Redirects {
-		if !hookDiscardedOutput(redirect) {
+		if !hookDiscardedOutput(redirect) && !(function && hookFreshTemporaryRedirect(redirect, state)) {
 			return false
 		}
 	}
 
 	return true
+}
+
+func hookFreshTemporaryRedirect(r *shellsyntax.Redirect, state hookSourceState) bool {
+	if r.Op != ">" || r.FD != "" && r.FD != "1" || r.Target == nil || r.Target.Writes ||
+		r.Target.Expands || len(r.Target.Parts) != 1 {
+		return false
+	}
+
+	part := r.Target.Parts[0]
+
+	return part.Kind == "parameter" && part.PlainParameter && part.Quoted && state.kinds[part.Text].kind == hookFreshTemporary
 }
 
 func (w *hookSourceWalk) traceTemporaryEnvLaunch(e *entry, view source.View, cmd *shellsyntax.Command, state hookSourceState, chain []report.SourceRef) bool {

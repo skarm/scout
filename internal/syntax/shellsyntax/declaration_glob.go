@@ -23,7 +23,10 @@ func (p *declarationProjection) projectForList(c *Command, loop *syntax.WordIter
 }
 
 func (p *declarationProjection) forArguments(c *Command, loop *syntax.WordIter, depth int) string {
-	var expansions []*Word
+	var (
+		expansions []*Word
+		list       []*Word
+	)
 
 	for _, item := range loop.Items {
 		word := p.word(item, depth+1)
@@ -31,6 +34,10 @@ func (p *declarationProjection) forArguments(c *Command, loop *syntax.WordIter, 
 		hasSubstitution, safe := readOnlyExpansion(word, true)
 		if !safe {
 			return ""
+		}
+
+		if len(loop.Items) <= 8 {
+			list = append(list, word)
 		}
 
 		if hasSubstitution {
@@ -44,7 +51,11 @@ func (p *declarationProjection) forArguments(c *Command, loop *syntax.WordIter, 
 	}
 
 	c.ExpansionWords = expansions
+
 	c.ForPositional = p.positionalIteration(loop)
+	if !c.ForPositional && c.ForArray == "" {
+		c.ForWords = list
+	}
 
 	return loop.Name.Value
 }

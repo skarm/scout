@@ -250,14 +250,15 @@ func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation
 				return false
 			}
 
-			p.hookHandler(e, h, parent, activation, event.Key, eventIndex, gi, hi)
+			matcher, _ := group.Get("matcher").Text()
+			p.hookHandler(e, h, parent, activation, event.Key, matcher, eventIndex, gi, hi)
 		}
 	}
 
 	return true
 }
 
-func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, event string, eventIndex, gi, hi int) {
+func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, event, matcher string, eventIndex, gi, hi int) {
 	s := ref(e, h.Span)
 	id := p.component("hook", e, activation, "configuration", s, fmt.Sprintf("hook:%d:%d:%d", eventIndex, gi, hi))
 	p.b.edge(parent, id, "registers", "configuration", activation, s)
@@ -266,7 +267,7 @@ func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, e
 	kind, _ := h.Get("type").Text()
 	switch kind {
 	case "command":
-		p.hookCommand(e, h, id, activation, event)
+		p.hookCommand(e, h, id, activation, event, matcher)
 	case "http":
 		p.reference(id, "remote_endpoint", "unresolved", "remote_behavior_unverified", "", s)
 	case "prompt", "agent":
@@ -278,7 +279,7 @@ func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, e
 	}
 }
 
-func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event string) {
+func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event, matcher string) {
 	cmd := h.Get("command")
 
 	text, ok := cmd.Text()
@@ -296,16 +297,16 @@ func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event
 	}
 
 	s := ref(e, h.Span)
-	if p.b.prepareHooks && p.linkTracedHook(e, h, event, id, activation, s) {
+	if p.b.prepareHooks && p.linkTracedHook(e, h, event, matcher, id, activation, s) {
 		return
 	}
 
 	p.command(id, text, args, argv, s, activation, true)
 }
 
-func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, id, activation string, s *report.SourceRef) bool {
+func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, matcher, id, activation string, s *report.SourceRef) bool {
 	start := len(p.b.hookSourcePaths)
-	p.inspectHookSources(e, h, event)
+	p.inspectHookSources(e, h, event, matcher)
 
 	if p.host == report.HostGeminiCLI && p.linkGeminiHandler(start, id, activation, s) {
 		return true
@@ -330,7 +331,10 @@ func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, id, activat
 			return true
 		}
 
-		if start != len(p.b.hookSourcePaths) && guardedShellLaunch(hookSourceTree(tree), p.host) {
+		shell := hookSourceTree(tree)
+		_, simple := simpleShellCommand(shell)
+
+		if start != len(p.b.hookSourcePaths) && (guardedShellLaunch(shell, p.host) || p.projectSettings && simple && !shell.OmittedExecution) {
 			for _, traced := range p.b.hookSourcePaths[start:] {
 				if target := p.ns.entries[traced.Target]; len(traced.Steps) == 1 && target != nil {
 					p.capturedHandler(id, target, activation, s)

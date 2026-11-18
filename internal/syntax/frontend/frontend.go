@@ -16,7 +16,7 @@ import (
 
 const (
 	// AdapterVersion identifies Scout's projection of embedded parser output.
-	AdapterVersion = "5"
+	AdapterVersion = "6"
 
 	MaxBytes  = 256 << 10
 	maxOutput = 2 << 20

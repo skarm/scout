@@ -91,6 +91,7 @@ type File struct {
 	shellUnits           []Unit
 	shellExecutions      []GeneratedShellExecution
 	shellExecutionLimit  bool
+	tracedShellCommands  []TracedShellCommand
 	hookShell            []hookShellContext
 	hookShellReady       bool
 	geminiHookShellReady bool
@@ -201,8 +202,12 @@ func (f File) Diagnostics() []report.Diagnostic {
 }
 
 func (f File) Context(s source.Span) (kind, lang string) {
-	for i := len(f.units) - 1; i >= 0 && f.units[i].Origin == OriginGeneratedShell; i-- {
+	for i := len(f.units) - 1; i >= 0; i-- {
 		u := f.units[i]
+		if u.Origin != OriginGeneratedShell && u.Origin != OriginHookInlineRuntime {
+			break
+		}
+
 		if s.Start >= u.Span.Start && s.End <= u.Span.End && u.View.ContainsMappedEndpoints(s) {
 			return u.Origin, u.Language
 		}

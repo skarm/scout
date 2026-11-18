@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"slices"
 	"strconv"
 
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
@@ -13,6 +14,7 @@ const (
 	hookTrapEcho
 	hookTrapRemove
 	hookTrapTrue
+	hookTrapRemoveDirectory
 )
 
 func hookTrapCommand(name string) hookTrapCommands {
@@ -23,6 +25,8 @@ func hookTrapCommand(name string) hookTrapCommands {
 		return hookTrapEcho
 	case "rm":
 		return hookTrapRemove
+	case "rmdir":
+		return hookTrapRemoveDirectory
 	case "true":
 		return hookTrapTrue
 	default:
@@ -93,13 +97,19 @@ func (w *hookSourceWalk) applyHookTrap(args []*shellsyntax.Word, state *hookSour
 	return true
 }
 
-// A fixed rm command with one scalar operand runs during process exit.
+// A fixed cleanup command runs during process exit.
 // Preserve the proof only while all of its command names remain unshadowed.
 func hookCleanupTrap(tree *shellsyntax.File, state hookSourceState) hookTrapCommands {
 	statements := tree.Statements
 	first := *statements[0]
 	link := first.Next
 	first.Next = ""
+
+	if link != "&" && !hookAndOrLink(link) && len(statements) == 1 {
+		if cmd := hookTrapStatement(&first, "rmdir"); cmd != nil && hookDirectoryOperation(cmd, state, "rmdir") {
+			return hookTrapRemoveDirectory
+		}
+	}
 
 	cmd := hookTrapStatement(&first, "rm")
 	if state.hasFunction("rm") || cmd == nil || len(cmd.Redirects) > 1 || !hookCleanupOperands(cmd.Words) {
@@ -122,7 +132,7 @@ func hookCleanupTrap(tree *shellsyntax.File, state hookSourceState) hookTrapComm
 }
 
 func hookCleanupOperands(words []*shellsyntax.Word) bool {
-	if len(words) != 3 && len(words) != 4 {
+	if len(words) < 3 || len(words) > 11 {
 		return false
 	}
 
@@ -131,14 +141,29 @@ func hookCleanupOperands(words []*shellsyntax.Word) bool {
 		return false
 	}
 
-	if len(words) == 4 {
-		separator, _ := words[2].Literal()
-		if separator != "--" {
-			return false
-		}
+	if len(words) == 3 {
+		return hookTestOperand(words[2])
 	}
 
-	return hookTestOperand(words[len(words)-1])
+	separator, _ := words[2].Literal()
+
+	return separator == "--" && !slices.ContainsFunc(words[3:], func(operand *shellsyntax.Word) bool {
+		return !hookCleanupOperand(operand)
+	})
+}
+
+func hookCleanupOperand(word *shellsyntax.Word) bool {
+	if hookTestOperand(word) {
+		return true
+	}
+
+	if word.Writes || len(word.Parts) != 1 || !word.Parts[0].Quoted {
+		return false
+	}
+
+	part := word.Parts[0]
+
+	return part.Kind == "parameter_array_all" || part.Kind == "parameter_array_all_default_empty"
 }
 
 func hookCleanupRedirect(r *shellsyntax.Redirect) bool {

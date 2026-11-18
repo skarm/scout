@@ -24,6 +24,13 @@ var manifestFieldKinds = map[string]string{
 }
 
 func (p *plugin) discover() {
+	if p.projectSettings {
+		p.discoverHostConfig(".claude/settings.json")
+		p.discoverHostConfig(".claude/settings.local.json")
+
+		return
+	}
+
 	if p.host == "unknown" {
 		p.issue("plugin_layout_unverified", p.manifest.meta.Path, report.OutcomePartial)
 		return
@@ -85,17 +92,24 @@ func (p *plugin) rootSkill(root *jsonconfig.Node) {
 
 func (p *plugin) discoverHostConfigs() {
 	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "settings.json", ".claude/settings.json", ".claude/settings.local.json", ".codex/config.toml", "agents/openai.yaml"} {
-		if e := p.entry(name); e != nil {
-			id := p.component("host_config", e, "unknown", "package_inventory", whole(e), name)
-			if name == "settings.json" || strings.HasSuffix(name, "/settings.json") || strings.HasSuffix(name, "/settings.local.json") {
-				if settings := p.object(e); settings != nil {
-					p.settings(e, settings, id)
-				}
-			}
+		p.discoverHostConfig(name)
+	}
+}
 
-			p.issue("plugin_host_configuration_unverified", e.meta.Path, report.OutcomePartial)
+func (p *plugin) discoverHostConfig(name string) {
+	e := p.entry(name)
+	if e == nil {
+		return
+	}
+
+	id := p.component("host_config", e, "unknown", "package_inventory", whole(e), name)
+	if name == "settings.json" || strings.HasSuffix(name, "/settings.json") || strings.HasSuffix(name, "/settings.local.json") {
+		if settings := p.object(e); settings != nil {
+			p.settings(e, settings, id)
 		}
 	}
+
+	p.issue("plugin_host_configuration_unverified", e.meta.Path, report.OutcomePartial)
 }
 
 func (p *plugin) discoverExtensions(root *jsonconfig.Node) {

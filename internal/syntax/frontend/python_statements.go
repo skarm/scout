@@ -70,6 +70,80 @@ func (b *pythonNormalizer) loopNode(n *pythonSyntax, depth int, kind NodeKind) *
 	return out
 }
 
+func (b *pythonNormalizer) tryNode(n *pythonSyntax, depth int, kind NodeKind) *Node {
+	clauses := n.named()
+	for _, clause := range clauses {
+		if clause.Kind == "except_clause" && !plainPythonExcept(clause) {
+			return b.unsupportedNode(n, depth)
+		}
+	}
+
+	out := b.make(n, kind)
+	b.set(out, Body, nodesValue(b.list(n.field("body"), depth)))
+
+	var handlers, otherwise, final []*Node
+
+	for _, clause := range clauses {
+		switch clause.Kind {
+		case "except_clause":
+			h := b.make(clause, ExceptHandler)
+			test, alias := pythonExceptBinding(clause)
+			b.set(h, Test, childValue(b.node(test, depth+1)))
+			b.set(h, FieldName, StringValue(b.textOf(alias)))
+			b.set(h, Body, nodesValue(b.list(pythonClauseBlock(clause), depth+1)))
+			handlers = append(handlers, h)
+		case "else_clause":
+			otherwise = b.list(clause.field("body"), depth)
+		case "finally_clause":
+			final = b.list(pythonClauseBlock(clause), depth)
+		}
+	}
+
+	b.set(out, Handlers, nodesValue(handlers))
+	b.set(out, Orelse, nodesValue(otherwise))
+	b.set(out, Finalbody, nodesValue(final))
+
+	return out
+}
+
+func plainPythonExcept(clause *pythonSyntax) bool {
+	_, alias := pythonExceptBinding(clause)
+	if alias != nil && alias.Kind != "identifier" {
+		return false
+	}
+
+	value := false
+
+	for _, child := range clause.Children {
+		if child.Kind == "*" || child.Field == "value" && value {
+			return false
+		}
+
+		value = value || child.Field == "value"
+	}
+
+	return true
+}
+
+func pythonExceptBinding(clause *pythonSyntax) (test, alias *pythonSyntax) {
+	test, alias = clause.field("value"), clause.field("alias")
+	if test != nil && test.Kind == "as_pattern" {
+		return test.first(), test.field("alias").first()
+	}
+
+	return test, alias
+}
+
+func pythonClauseBlock(clause *pythonSyntax) *pythonSyntax {
+	for _, child := range clause.Children {
+		if child.Kind == "block" {
+			return child
+		}
+	}
+
+	return nil
+}
+
 func (b *pythonNormalizer) nameDeclarationNode(n *pythonSyntax, _ int, kind NodeKind) *Node {
 	out := b.make(n, kind)
 

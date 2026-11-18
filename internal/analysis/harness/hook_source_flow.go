@@ -101,6 +101,7 @@ func (s hookSourceState) joinBindings(other hookSourceState) hookSourceState {
 
 	s.explicitBash = s.explicitBash && other.explicitBash
 	s.noglob = s.noglob && other.noglob
+	s.hookOutput = s.hookOutput && other.hookOutput
 
 	if !slices.Equal(s.positional.values, other.positional.values) {
 		s.positional = hookSourceArguments{}
@@ -120,7 +121,10 @@ func (s hookSourceState) joinBindings(other hookSourceState) hookSourceState {
 	}
 
 	for key, kind := range s.kinds {
-		if other.kinds[key] != kind {
+		next := other.kinds[key]
+		if merged, known := mergeNotifierOptions(kind, next); known {
+			s.kinds[key] = merged
+		} else if next != kind {
 			delete(s.kinds, key)
 		}
 	}
