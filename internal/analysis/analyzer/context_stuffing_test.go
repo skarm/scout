@@ -35,6 +35,10 @@ func TestContextRepetitionFindGrammarAndByteSpans(t *testing.T) {
 		{name: "long punctuation displacement", text: strings.Repeat("-=", 129), start: 0, end: 258},
 		{name: "maximum phrase width", text: strings.Repeat("abcdefghijklmnopqrst", 21), start: 0, end: 420},
 		{name: "phrase beyond bounded width", text: strings.Repeat("abcdefghijklmnopqrstu", 21), start: 0, end: 0},
+		{name: "invalid byte prefix", text: "\xff " + strings.Repeat("AB", 21), start: 2, end: 44},
+		{name: "Unicode and invalid byte prefix", text: "π\xff" + strings.Repeat("AB", 21), start: 3, end: 45},
+		{name: "short invalid byte run", text: strings.Repeat("\xff\xfe", 128), start: 0, end: 0},
+		{name: "long invalid byte run", text: strings.Repeat("\xff\xfe", 129), start: 0, end: 258},
 	}
 	a := patternAnalyzerForTest(t, "NV-MP2")
 	for _, tt := range tests {

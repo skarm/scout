@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	MaxGoFlowOperations = 20000
-	MaxGoFlowBindings   = 1024
+	maxGoFlowDepth        = 32
+	maxGoFlowTraceSources = 7
+	MaxGoFlowOperations   = 20000
+	MaxGoFlowBindings     = 1024
 )
 
 type goFlow struct{}
@@ -94,21 +96,33 @@ func (a *flowWalker) fileFunctions(declarations []ast.Decl) {
 }
 
 func (a *flowWalker) charge(depth int) bool {
-	if depth > 32 {
+	if depth > maxGoFlowDepth {
 		a.out.Truncated = true
 		return false
 	}
 
-	*a.remaining--
-	if *a.remaining < 0 || !analysisbudget.Consume(a.ctx, 1) {
-		a.out.Truncated = true
+	return chargeGoWork(a.ctx, a.remaining, a.out, 1)
+}
+
+// Charge bulk scope operations before copying or merging their bindings, just
+// as AST visits are charged before traversing syntax.
+func chargeGoWork(ctx context.Context, remaining *int, out *result, units int) bool {
+	if out.Truncated {
+		return false
 	}
 
-	return !a.out.Truncated && a.ctx.Err() == nil
+	if units > *remaining || !analysisbudget.Consume(ctx, uint64(units)) { //nolint:gosec // G115: callers supply a positive AST cost or nonnegative bounded map lengths.
+		out.Truncated = true
+		return false
+	}
+
+	*remaining -= units
+
+	return true
 }
 
 func (a *flowWalker) trace(v flowValue, node ast.Node, role string) flowValue {
-	if len(v.trace) >= 7 {
+	if len(v.trace) >= maxGoFlowTraceSources {
 		a.out.Truncated = true
 		return flowValue{}
 	}
@@ -224,12 +238,12 @@ func (a *flowWalker) sink(call *ast.CallExpr, v flowValue) {
 		}
 	}
 
-	if len(v.trace) > 7 {
+	if len(v.trace) > maxGoFlowTraceSources {
 		a.out.Truncated = true
 		return
 	}
 
-	tr := append(append([]trace(nil), v.trace...), trace{Role: "sink", Start: span.Start, End: span.End})
+	tr := append(append([]trace(nil), v.trace...), trace{Role: report.TraceSink, Start: span.Start, End: span.End})
 	a.out.Matches = append(a.out.Matches, match{Start: span.Start, End: span.End, Trace: tr})
 }
 
@@ -299,7 +313,7 @@ func (a *flowWalker) assignmentValues(rhs []ast.Expr, count int, s flowState) []
 
 // block returns false when execution unconditionally leaves this block.
 func (a *flowWalker) block(stmts []ast.Stmt, s flowState, depth int) bool {
-	if depth > 32 {
+	if depth > maxGoFlowDepth {
 		a.out.Truncated = true
 		return false
 	}
@@ -381,12 +395,30 @@ func (a *flowWalker) ifStatement(x *ast.IfStmt, s flowState, depth int) bool {
 	}
 
 	a.expr(x.Cond, s, 0)
+
+	if !chargeGoWork(a.ctx, a.remaining, a.out, 2*len(s)) {
+		return false
+	}
+
 	left, right := cloneState(s), cloneState(s)
 	lok := a.block(x.Body.List, left, depth+1)
 
 	rok := true
 	if x.Else != nil {
 		rok = a.block([]ast.Stmt{x.Else}, right, depth+1)
+	}
+
+	mergeWork := len(s)
+	if lok {
+		mergeWork += len(left)
+	}
+
+	if rok {
+		mergeWork += len(right)
+	}
+
+	if !chargeGoWork(a.ctx, a.remaining, a.out, mergeWork) {
+		return false
 	}
 
 	clearState(s)

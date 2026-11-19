@@ -88,16 +88,16 @@ func TestNativeMessagesTransports(t *testing.T) {
 }
 
 func TestMessagesRejectToolTruncatedAndDuplicateResponses(t *testing.T) {
-	for _, raw := range []string{
-		`{"type":"message","role":"assistant","stop_reason":"max_tokens","content":[{"type":"text","text":"{}"}]}`,
-		`{"type":"message","role":"assistant","stop_reason":"end_turn","content":[{"type":"tool_use","name":"exec","input":{}}]}`,
-		`{"type":"message","role":"assistant","stop_reason":"end_turn","stop_reason":"end_turn","content":[{"type":"text","text":"{}"}]}`,
-		`{"type":"message","Role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"{}"}]}`,
+	for _, tc := range []struct{ name, raw string }{
+		{name: "token_limit", raw: `{"type":"message","role":"assistant","stop_reason":"max_tokens","content":[{"type":"text","text":"{}"}]}`},
+		{name: "tool_use", raw: `{"type":"message","role":"assistant","stop_reason":"end_turn","content":[{"type":"tool_use","name":"exec","input":{}}]}`},
+		{name: "duplicate_stop_reason", raw: `{"type":"message","role":"assistant","stop_reason":"end_turn","stop_reason":"end_turn","content":[{"type":"text","text":"{}"}]}`},
+		{name: "incorrect_key_case", raw: `{"type":"message","Role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"{}"}]}`},
 	} {
-		t.Run(raw[:min(30, len(raw))], func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				if _, err := io.WriteString(w, raw); err != nil {
+				if _, err := io.WriteString(w, tc.raw); err != nil {
 					t.Error(err)
 				}
 			}))

@@ -16,10 +16,10 @@ import (
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hookpolicy"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
-
 	"github.com/skarm/scout/report"
 )
 
@@ -124,7 +124,7 @@ func (a bundledSurface) Find(ctx context.Context, d document.File, budget int) (
 
 func (a bundledSurface) inspectSurfaceUnit(ctx context.Context, d document.File, u document.Unit, root *jsonconfig.Node, emit func(*jsonconfig.Node, ...report.Severity), partial *bool) {
 	name := strings.ToLower(path.Base(d.Artifact().Metadata().Path))
-	settings := name == "settings.json" || name == "settings.local.json"
+	settings := name == artifact.ClaudeSettings || name == artifact.ClaudeLocalSettings
 	state := a.surfaceHookState(d, u, root, settings)
 
 	*partial = *partial || state.Uncertain
@@ -133,11 +133,11 @@ func (a bundledSurface) inspectSurfaceUnit(ctx context.Context, d document.File,
 	}
 
 	for _, scope := range d.ConfigScopes() {
-		if scope.Role != "hook_config" {
+		if u.Origin != "file" || scope.Role != "hook_config" {
 			continue
 		}
 
-		if n := scopedNode(root, scope.Span); n != nil {
+		if n := scopedConfigNode(root, scope.Span, len(d.Artifact().Content())); n != nil {
 			a.inspectSurface(ctx, n, false, state.Disabled, emit, partial)
 		}
 	}

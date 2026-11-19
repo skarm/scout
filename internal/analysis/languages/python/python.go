@@ -13,6 +13,11 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+const (
+	maxValueOrigins     = 4
+	maxValueTransitions = 5
+)
+
 //nolint:gochecknoglobals // Read-only Python semantic classification tables are shared by scans.
 var pyFlowRules = map[[2]string]string{
 	{"network", "environment"}: ruleTT3, {"network", "file"}: ruleTT4,
@@ -25,6 +30,15 @@ type pyOrigin struct {
 	start, end int
 	steps      []source.Span
 }
+
+const (
+	maxPythonOperations  = 100000
+	maxPythonDepth       = 64
+	maxSequenceItems     = 64
+	maxDictionaryEntries = 64
+	maxCallFrames        = 16
+	maxCalls             = 4096
+)
 
 type pyWalker struct {
 	ctx        context.Context
@@ -47,7 +61,7 @@ func (w *pyWalker) charge(depth int) bool {
 		return false
 	}
 
-	if w.ops > 100000 || depth > 64 || !analysisbudget.Consume(w.ctx, 1) {
+	if w.ops > maxPythonOperations || depth > maxPythonDepth || !analysisbudget.Consume(w.ctx, 1) {
 		w.err = w.ctx.Err()
 		w.truncated = w.err == nil
 
@@ -92,7 +106,7 @@ func joinPy(vs ...pyValue) pyValue {
 
 			seen[k] = true
 
-			if len(r.origins) < 4 {
+			if len(r.origins) < maxValueOrigins {
 				r.origins = append(r.origins, o)
 			}
 		}
@@ -113,7 +127,7 @@ func transformed(v pyValue, n *frontend.Node) pyValue {
 		p := r.origins[i]
 
 		p.steps = append([]source.Span(nil), p.steps...)
-		if len(p.steps) < 5 {
+		if len(p.steps) < maxValueTransitions {
 			p.steps = append(p.steps, source.Span{Start: n.Start, End: n.End})
 		}
 

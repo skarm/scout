@@ -11,6 +11,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	stdinPollIntervalMilliseconds = 50
+)
+
 func readStdinFile(ctx context.Context, file *os.File, p []byte) (int, error) {
 	raw, err := file.SyscallConn()
 	if err != nil {
@@ -27,7 +31,7 @@ func readStdinFile(ctx context.Context, file *os.File, p []byte) (int, error) {
 	}
 
 	for {
-		wait := 50
+		wait := stdinPollIntervalMilliseconds
 		if deadline, ok := ctx.Deadline(); ok {
 			wait = max(1, min(wait, int(time.Until(deadline).Milliseconds())+1))
 		}

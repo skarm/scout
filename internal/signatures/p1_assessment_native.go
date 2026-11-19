@@ -25,7 +25,7 @@ func (s nativeSource) assessP1Rule(rule string, patterns []yrx.Pattern) (report.
 
 		for _, hit := range pattern.Matches() {
 			count++
-			if count > 4096 {
+			if count > maxNativeAssessedMatches {
 				return severity, eligible, true, nil
 			}
 
@@ -129,7 +129,7 @@ func (s nativeSource) p1PatternWitness(pattern yrx.Pattern) (int, bool) {
 	}
 
 	for i, hit := range hits {
-		if i >= 4096 {
+		if i >= maxNativeAssessedMatches {
 			break
 		}
 

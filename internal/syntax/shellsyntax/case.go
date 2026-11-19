@@ -8,7 +8,7 @@ func (p *parser) commandCase(c *Command) error {
 		return err
 	}
 
-	if selector.kind != "word" {
+	if selector.kind != tokenWord {
 		return p.fail("expected_case_selector")
 	}
 
@@ -47,7 +47,7 @@ func (p *parser) caseArms(c *Command, selection *CaseSelection) error {
 			return err
 		}
 
-		if p.keyword(t, "esac") {
+		if p.keyword(t, keywordEsac) {
 			_, _ = p.take()
 			c.Span.End = t.span.End
 			c.Case = selection
@@ -57,7 +57,7 @@ func (p *parser) caseArms(c *Command, selection *CaseSelection) error {
 			return nil
 		}
 
-		if t.kind == "(" {
+		if t.kind == tokenOpenParen {
 			_, _ = p.take()
 		}
 
@@ -75,7 +75,7 @@ func (p *parser) caseArms(c *Command, selection *CaseSelection) error {
 		c.Alternatives = append(c.Alternatives, body)
 
 		t, _ = p.peek() // the arm list stops at ;; or esac
-		if t.kind == ";;" {
+		if t.kind == tokenEndCase {
 			_, _ = p.take()
 		}
 	}
@@ -90,7 +90,7 @@ func (p *parser) casePatterns() ([]*Word, error) {
 			return nil, err
 		}
 
-		if pattern.kind != "word" {
+		if pattern.kind != tokenWord {
 			return nil, p.fail("expected_case_pattern")
 		}
 
@@ -106,9 +106,9 @@ func (p *parser) casePatterns() ([]*Word, error) {
 		}
 
 		switch end.kind {
-		case ")":
+		case tokenCloseParen:
 			return patterns, nil
-		case "|":
+		case Pipe:
 		default:
 			return nil, p.fail("expected_case_pattern_end")
 		}
@@ -116,16 +116,16 @@ func (p *parser) casePatterns() ([]*Word, error) {
 }
 
 func (p *parser) caseArmEnd(t token, kind listKind) bool {
-	return kind == caseArmList && (t.kind == ";;" || p.keyword(t, "esac"))
+	return kind == caseArmList && (t.kind == tokenEndCase || p.keyword(t, keywordEsac))
 }
 
 func (p *parser) keyword(t token, text string) bool {
-	return t.kind == "word" && p.text[t.span.Start:t.span.End] == text
+	return t.kind == tokenWord && p.text[t.span.Start:t.span.End] == text
 }
 
 func caseHeaderHasSubstitution(word *Word) bool {
 	for _, part := range word.Parts {
-		if part.Kind == "substitution" {
+		if part.Kind == PartSubstitution {
 			return true
 		}
 	}

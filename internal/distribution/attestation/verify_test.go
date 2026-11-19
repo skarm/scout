@@ -1,6 +1,7 @@
 package attestation_test
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -31,14 +32,17 @@ func TestExplicitKeyAndArtifactBinding(t *testing.T) {
 	if err != nil || !result.Verified || result.KeySHA256 == "" || result.PayloadSHA256 == "" {
 		t.Fatalf("%+v %v", result, err)
 	}
-	artifact.SHA256 = strings.Repeat("a", 64)
-	result, err = attestation.Verify(context.Background(), trusted, envelope, artifact)
+	otherArtifact := artifact
+	otherArtifact.SHA256 = strings.Repeat("a", 64)
+	result, err = attestation.Verify(context.Background(), trusted, envelope, otherArtifact)
 	if err != nil || result.Verified || result.Code != "subject_mismatch" {
 		t.Fatalf("unrelated artifact trusted: %+v %v", result, err)
 	}
-	_, other, _ := ed25519.GenerateKey(rand.Reader)
+	_, other, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _, wrong := signedEnvelope(t, other)
-	artifact, _, _ = signedEnvelope(t, key)
 	result, err = attestation.Verify(context.Background(), wrong, envelope, artifact)
 	if err != nil || result.Verified || result.Code != "signature_mismatch" {
 		t.Fatalf("untrusted signer accepted: %+v %v", result, err)
@@ -48,20 +52,38 @@ func TestExplicitKeyAndArtifactBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	decoded["payloadType"] = "application/json"
-	invalid, _ := json.Marshal(decoded)
+	invalid, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := attestation.Verify(context.Background(), trusted, invalid, artifact); err == nil {
-		t.Fatal("payload type was not bound")
+		t.Fatal("unsupported payload type accepted")
 	}
 	duplicate := strings.Replace(string(envelope), `"payloadType":`, `"payloadType":"application/json","payloadType":`, 1)
 	if _, err := attestation.Verify(context.Background(), trusted, []byte(duplicate), artifact); err == nil {
 		t.Fatal("ambiguous envelope accepted")
 	}
+	encoded, ok := decoded["payload"].(string)
+	if !ok {
+		t.Fatal("fixture is missing the encoded payload")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := bytes.Replace(payload, []byte("https://example.invalid/test"), []byte("https://example.invalid/changed"), 1)
+	if bytes.Equal(mutated, payload) {
+		t.Fatal("fixture is missing the original predicate type")
+	}
 	decoded["payloadType"] = "application/vnd.in-toto+json"
-	decoded["payload"] = base64.StdEncoding.EncodeToString([]byte(`{"_type":"https://in-toto.io/Statement/v1","subject":[]}`))
-	invalid, _ = json.Marshal(decoded)
+	decoded["payload"] = base64.RawURLEncoding.EncodeToString(mutated)
+	invalid, err = json.Marshal(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err = attestation.Verify(context.Background(), trusted, invalid, artifact)
-	if err != nil || result.Verified {
-		t.Fatal("mutated signed payload trusted")
+	if err != nil || result.Verified || result.Code != "signature_mismatch" {
+		t.Fatalf("modified payload with unchanged subject: got %+v, %v; want signature_mismatch", result, err)
 	}
 }
 

@@ -77,7 +77,7 @@ func newGeneratedHeredocWrite(input *shellsyntax.Redirect, writer *shellsyntax.W
 }
 
 func scriptAppendTargets(name string, args []*shellsyntax.Word, output *shellsyntax.Redirect, stdoutPiped bool) []*shellsyntax.Word {
-	if output != nil && output.Op == ">>" {
+	if output != nil && output.Op == shellsyntax.RedirectAppend {
 		operands := skipGeneratedOptionEnd(args)
 		if name == "cat" && (len(operands) == 0 || len(operands) == 1 && literalWordEquals(operands[0], "-")) ||
 			name == "tee" && len(operands) == 0 {

@@ -9,12 +9,16 @@ import (
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/environment"
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/report"
 )
 
-const maxSurfaceFacts = 4096
+const (
+	maxSurfaceFactBytes = 1024
+	maxSurfaceFacts     = 4096
+)
 
 var skillLink = regexp.MustCompile(`\[[^\]\r\n]*\]\(([^\s)]+)\)`)
 
@@ -30,7 +34,7 @@ func CollectSurface(ctx context.Context, docs []document.File, extraction report
 
 	for _, d := range docs {
 		name := d.Artifact().Metadata().Path
-		if !strings.HasPrefix(name, "scout-object://") && (strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".toml")) && !surfaceParsedConfig(d) {
+		if !strings.HasPrefix(name, report.ObjectPathPrefix) && (strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".toml")) && !surfaceParsedConfig(d) {
 			surface.Complete = false
 		}
 	}
@@ -59,7 +63,7 @@ func (b *bundleAnalysis) surfaceFact(kind, value, file string, ref report.Source
 		return
 	}
 
-	if len(value) > 1024 {
+	if len(value) > maxSurfaceFactBytes {
 		b.surface.Limited = true
 		return
 	}
@@ -157,12 +161,12 @@ func (b *bundleAnalysis) surfaceSkills(docs []document.File) {
 		name := d.Artifact().Metadata().Path
 
 		addr, ok := b.addresses[name]
-		if !ok || !strings.EqualFold(path.Base(addr.Name), "SKILL.md") || !b.step() {
+		if !ok || !strings.EqualFold(path.Base(addr.Name), artifact.SkillManifest) || !b.step() {
 			continue
 		}
 
 		text := d.Artifact().Content()
-		if len(text) == 0 || d.Artifact().Metadata().Kind != "text" {
+		if len(text) == 0 || d.Artifact().Metadata().Kind != report.FileKindText {
 			b.surface.Limited = true
 			continue
 		}

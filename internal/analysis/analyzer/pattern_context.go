@@ -15,6 +15,15 @@ import (
 	"github.com/skarm/scout/internal/promptguard"
 )
 
+const (
+	credentialNounContextBytes     = 64
+	maxProtectedDirectoryExamples  = 32
+	readProhibitionContextBytes    = 512
+	reversalNegationContextBytes   = 64
+	directProhibitionFollowupBytes = 160
+	prohibitionContinuationBytes   = 128
+)
+
 var credentialNounPrefix = regexp.MustCompile(`(?i)\b(?:validate|verify|refresh|rotate|expire|parse|manage|revoke)\s+$`)
 
 // Adapted from SkillSpector prohibition_context: only an unambiguous bounded
@@ -27,7 +36,7 @@ var (
 	prohibitionException    = regexp.MustCompile(`(?i)\b(?:unless|except|until|but|however|instead|if|when|only|otherwise|else)\b`)
 	prohibitionUndo         = regexp.MustCompile(`(?i)^[\s.!?;]*(?:(?:instead[, ]+|actually[\t ]+yes[, ]+)(?:do|execute|perform|run)\s+(?:it|that|them)\b|(?:do|execute|perform|run)\s+(?:it|that|them)\s+(?:anyway|instead|remotely)\b)`)
 	prohibitionFollowup     = regexp.MustCompile(`(?i)^[\s.!?;]*(?:but|however|instead|unless|except|until|only)\b`)
-	prohibitionContinuation = regexp.MustCompile(`(?i)^(?:unless|except|until|if|when|only|in|to|for|as)\b`)
+	prohibitionContinuation = regexp.MustCompile(`(?i)^(?:unless|except|until|if|when|only|but|however|instead|in|to|for|as)\b`)
 	prohibitionReversal     = regexp.MustCompile(`(?i)\b(?:opposit\w*|invers\w*|invert\w*|revers\w*|contrar\w*|negat\w*|ignore|disregard|override|bypass|suspend|violat\w*)\b`)
 	prohibitionSubject      = regexp.MustCompile(`(?i)\b(?:meaning|prohibition|instructions?|rules?|assistant|agent|negation)\b`)
 	negatedReversal         = regexp.MustCompile(`(?i)(?:do[\t ]+not|don't|don’t|never|must[\t ]+not)[\t ]+$`)
@@ -119,7 +128,7 @@ func promptPatternExempt(text string, start, end int) bool {
 }
 
 func credentialNounExempt(text string, start, end int) bool {
-	return strings.HasPrefix(strings.ToLower(text[start:end]), "access ") && credentialNounPrefix.MatchString(text[max(0, start-64):start])
+	return strings.HasPrefix(strings.ToLower(text[start:end]), "access ") && credentialNounPrefix.MatchString(text[max(0, start-credentialNounContextBytes):start])
 }
 
 func disabledTrustExempt(text string, start, end int) bool {
@@ -140,7 +149,7 @@ func emojiCarrierExempt(text string, start, end int) bool {
 func protectedDirectoryExample(text string, start, end int) bool {
 	matched := text[start:end]
 	if strings.HasPrefix(matched, "mkdir") || strings.HasPrefix(matched, "create") || strings.HasPrefix(matched, "write") {
-		paths := hiddenDirectoryTargets.FindAllStringSubmatch(matched, 32)
+		paths := hiddenDirectoryTargets.FindAllStringSubmatch(matched, maxProtectedDirectoryExamples)
 		if len(paths) > 0 && !slices.ContainsFunc(paths, func(path []string) bool { return !protectedDirectoryName.MatchString(path[1]) }) {
 			return true
 		}
@@ -166,7 +175,7 @@ func readProhibition(text string, start, end int) (prohibitionText, bool) {
 		return prohibitionText{}, false
 	}
 
-	contextStart, contextEnd := max(0, start-512), min(len(text), end+512)
+	contextStart, contextEnd := max(0, start-readProhibitionContextBytes), min(len(text), end+readProhibitionContextBytes)
 	if boundaries := paragraphBoundaries(text[contextStart:start]); len(boundaries) > 0 {
 		contextStart += boundaries[len(boundaries)-1][1]
 	}
@@ -175,7 +184,7 @@ func readProhibition(text string, start, end int) (prohibitionText, bool) {
 		contextEnd = end + boundaries[0][0]
 	}
 
-	left, right := max(0, start-512), min(len(text), end+512)
+	left, right := max(0, start-readProhibitionContextBytes), min(len(text), end+readProhibitionContextBytes)
 	if at := strings.LastIndexAny(text[left:start], "\r\n.!?;"); at >= 0 {
 		left += at + 1
 	}
@@ -200,7 +209,7 @@ func (p prohibitionText) reversed() bool {
 	}
 
 	for _, at := range prohibitionReversal.FindAllStringIndex(p.context, -1) {
-		if !negatedReversal.MatchString(p.context[max(0, at[0]-64):at[0]]) {
+		if !negatedReversal.MatchString(p.context[max(0, at[0]-reversalNegationContextBytes):at[0]]) {
 			return true
 		}
 	}
@@ -217,7 +226,7 @@ func (p prohibitionText) direct() bool {
 	}
 
 	if p.right < len(p.text) {
-		following := p.text[p.right:min(len(p.text), p.right+160)]
+		following := p.text[p.right:min(len(p.text), p.right+directProhibitionFollowupBytes)]
 		if prohibitionUndo.MatchString(following) || prohibitionFollowup.MatchString(following) {
 			return false
 		}
@@ -243,11 +252,14 @@ func directlyProhibited(text string, start, end int) bool {
 
 func prohibitionContinuesSafely(text string, right int) bool {
 	if right < len(text) {
-		next := text[right:min(len(text), right+128)]
+		next := text[right:min(len(text), right+prohibitionContinuationBytes)]
 		// A sentence terminator before the line break does not make an
 		// immediately following list qualifier a separate safe prohibition.
-		if at := strings.IndexByte(next, '\n'); at >= 0 && strings.Trim(next[:at], " \t\r.!?;") == "" && !strings.HasPrefix(next[at+1:], "\n") {
-			next = next[at+1:]
+		if at := strings.IndexAny(next, "\r\n"); at >= 0 && strings.Trim(next[:at], " \t.!?;") == "" {
+			after := logicalBreak(next, at)
+			if logicalBreak(next, after) == after {
+				next = next[after:]
+			}
 		}
 
 		continuation := strings.TrimLeft(next, " \t\r\n-*+>0123456789.)")
@@ -256,8 +268,8 @@ func prohibitionContinuesSafely(text string, right int) bool {
 		}
 
 		if strings.HasPrefix(continuation, "#") {
-			if _, after, ok := strings.Cut(continuation, "\n"); ok {
-				following := strings.TrimLeft(after, " \t\r\n-*+>0123456789.)")
+			if at := strings.IndexAny(continuation, "\r\n"); at >= 0 {
+				following := strings.TrimLeft(continuation[logicalBreak(continuation, at):], " \t\r\n-*+>0123456789.)")
 				if prohibitionContinuation.MatchString(following) {
 					return false
 				}

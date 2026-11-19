@@ -18,6 +18,11 @@ import (
 	"github.com/skarm/scout/review"
 )
 
+const (
+	maxAnalysisWorkers = 32
+	maxAnalysisChecks  = 256
+)
+
 // Engine holds immutable trusted analyzers and parser configuration shared by
 // independent executions.
 type Engine struct {
@@ -84,11 +89,11 @@ func New(checks []check.Analyzer, workers int) (*Engine, error) {
 // NewWithRegistry copies trusted analyzer configuration, validates unique rule
 // identities and binds an explicit parser registry.
 func NewWithRegistry(checks []check.Analyzer, workers int, r parse.Registry) (*Engine, error) {
-	if workers < 1 || workers > 32 {
+	if workers < 1 || workers > maxAnalysisWorkers {
 		return nil, errors.New("workers must be in 1..32")
 	}
 
-	if len(checks) == 0 || len(checks) > 256 {
+	if len(checks) == 0 || len(checks) > maxAnalysisChecks {
 		return nil, errors.New("need 1..256 analyzers")
 	}
 

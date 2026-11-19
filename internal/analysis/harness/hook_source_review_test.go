@@ -120,6 +120,49 @@ source "$PLUGIN_ROOT/lib.sh"
 `, ""), "p/lib.sh")
 }
 
+func TestHookSourceTracesReadLoopWithLoggingHelper(t *testing.T) {
+	const loop = `
+record() { write_log "$@"; }
+while IFS= read -r line; do
+  record "$line"
+done <<< "$input"
+source "$PLUGIN_ROOT/lib.sh"
+`
+	assertHookTerminalPath(t, analyzeHookSourceFlow(t, `write_log() { printf '%s\n' "$*" >> "$log"; }`+loop, ""), "p/lib.sh")
+
+	for _, definition := range []string{
+		`write_log() { printf -v helper '%s' "$*" >> "$log"; }`,
+		`printf() { source ./other.sh; }
+write_log() { printf '%s\n' "$*" >> "$log"; }`,
+	} {
+		hooks := analyzeHookSourceFlow(t, definition+loop, "")
+		if len(hooks.Diagnostics) == 0 || !hooks.Diagnostics[0].AffectsScope {
+			t.Fatalf("expected a coverage gap for %s: %+v", definition, hooks)
+		}
+	}
+}
+
+func TestHookSourceTracesFileCopyLoop(t *testing.T) {
+	const loop = `
+for item in "$directory"/*.txt; do
+  [ -f "$item" ] || continue
+  name=$(basename "$item")
+  cmp -s "$item" "$destination/$name" 2>/dev/null || cp "$item" "$destination/$name" 2>/dev/null
+done
+source "$PLUGIN_ROOT/lib.sh"
+`
+	assertHookTerminalPath(t, analyzeHookSourceFlow(t, loop, ""), "p/lib.sh")
+
+	for _, name := range []string{"cmp", "cp"} {
+		t.Run(name, func(t *testing.T) {
+			hooks := analyzeHookSourceFlow(t, name+"() { source ./other.sh; }\n"+loop, "")
+			if len(hooks.Diagnostics) == 0 || !hooks.Diagnostics[0].AffectsScope {
+				t.Fatalf("expected a gap when the loop command is shadowed: %+v", hooks)
+			}
+		})
+	}
+}
+
 func TestHookSourceTracesCaseWithDiscardedOutput(t *testing.T) {
 	assertHookTerminalPath(t, analyzeHookSourceFlow(t, `
 case match in

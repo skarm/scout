@@ -14,6 +14,11 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxDataURIHeaderBytes = 1024
+	minBase64Characters   = 48
+)
+
 //nolint:gochecknoglobals // Read-only format dispatch and encoding grammar shared by extraction runs.
 var dataURINames = map[string]string{
 	"text/plain":             "content.txt",
@@ -166,7 +171,7 @@ func wholeBase64(data string) bool {
 	}
 
 	// Short identifiers and ordinary words should not become decoding candidates.
-	if count < 48 || padding > 2 || standard && url {
+	if count < minBase64Characters || padding > 2 || standard && url {
 		return false
 	}
 
@@ -267,7 +272,7 @@ func decodeDataURI(o *operation, header, data string, start, end int) error {
 }
 
 func dataURIRange(data string, i int) (header string, start, end int, valid bool) {
-	endHeader := min(len(data), i+1024)
+	endHeader := min(len(data), i+maxDataURIHeaderBytes)
 
 	j := strings.Index(data[i:endHeader], ";base64,")
 	if j < 0 {

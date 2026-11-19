@@ -23,7 +23,7 @@ func (w *hookSourceWalk) hookPathSubstitution(part shellsyntax.Part, state hookS
 	}
 
 	stmts := part.Tree.Statements
-	if len(stmts) != 2 || stmts[0].Next != "&&" || !hookKnownStatus(stmts[0], state, "cd") ||
+	if len(stmts) != 2 || stmts[0].Next != shellsyntax.AndThen || !hookKnownStatus(stmts[0], state, "cd") ||
 		!hookKnownStatus(stmts[1], state, "pwd") {
 		return "", false
 	}
@@ -104,7 +104,7 @@ func (w *hookSourceWalk) capturedHookDirectory(value string) (string, bool) {
 	return dir, true
 }
 
-func (w *hookSourceWalk) hookDiscardRedirectedLaunch(cmd *shellsyntax.Command, state hookSourceState, entrypoint bool) bool {
+func (w *hookSourceWalk) hookTraceableRedirectedLaunch(cmd *shellsyntax.Command, state hookSourceState, entrypoint bool) bool {
 	if state.lookupUnknown || len(cmd.Words) == 0 || len(cmd.Assignments) != 0 || len(cmd.Redirects) == 0 {
 		return false
 	}
@@ -119,7 +119,7 @@ func (w *hookSourceWalk) hookDiscardRedirectedLaunch(cmd *shellsyntax.Command, s
 	}
 
 	for _, redirect := range cmd.Redirects {
-		if !hookDiscardedOutput(redirect) && !(function && hookFreshTemporaryRedirect(redirect, state)) {
+		if !hookDiscardedOutput(redirect) && !(function && hookFunctionRedirect(redirect, state)) {
 			return false
 		}
 	}
@@ -127,15 +127,20 @@ func (w *hookSourceWalk) hookDiscardRedirectedLaunch(cmd *shellsyntax.Command, s
 	return true
 }
 
+func hookFunctionRedirect(r *shellsyntax.Redirect, state hookSourceState) bool {
+	return hookFreshTemporaryRedirect(r, state) || r.Op == shellsyntax.RedirectInput && (r.FD == "" || r.FD == shellsyntax.StdinFD) &&
+		r.Target != nil && hookTestOperand(r.Target)
+}
+
 func hookFreshTemporaryRedirect(r *shellsyntax.Redirect, state hookSourceState) bool {
-	if r.Op != ">" || r.FD != "" && r.FD != "1" || r.Target == nil || r.Target.Writes ||
+	if r.Op != shellsyntax.RedirectOutput || r.FD != "" && r.FD != shellsyntax.StdoutFD || r.Target == nil || r.Target.Writes ||
 		r.Target.Expands || len(r.Target.Parts) != 1 {
 		return false
 	}
 
 	part := r.Target.Parts[0]
 
-	return part.Kind == "parameter" && part.PlainParameter && part.Quoted && state.kinds[part.Text].kind == hookFreshTemporary
+	return part.Kind == shellsyntax.PartParameter && part.PlainParameter && part.Quoted && state.kinds[part.Text].kind == hookFreshTemporary
 }
 
 func (w *hookSourceWalk) traceTemporaryEnvLaunch(e *entry, view source.View, cmd *shellsyntax.Command, state hookSourceState, chain []report.SourceRef) bool {

@@ -74,6 +74,8 @@ func TestHookCommonJSDispatchLinksOnlyCalledExports(t *testing.T) {
 		want       bool
 	}{
 		{name: "called export", call: "handler.run()", want: true},
+		{name: "alternate property spelling", call: "handler.r\\u0075n()", want: true},
+		{name: "alternate spelling of shadowing binding", call: "{ const h\\u0061ndler = {run() {}}; handler.run(); }"},
 		{name: "inactive branch", call: "if (false) handler.run()"},
 		{name: "short circuit and", call: "false && handler.run()"},
 		{name: "short circuit or", call: "true || handler.run()"},
@@ -136,8 +138,97 @@ module.exports = {execute, unused};
 				}
 			}
 
-			if (count == 1) != tc.want {
+			wantCount := 0
+			if tc.want {
+				wantCount = 1
+			}
+
+			if count != wantCount {
 				t.Fatalf("linked %d CommonJS findings, want presence %v", count, tc.want)
+			}
+		})
+	}
+}
+
+func TestHookCommonJSPatternsPreserveCallOwnership(t *testing.T) {
+	for _, tc := range []struct {
+		name, declaration string
+		count             int
+	}{
+		{"object default shadows", "const {handler = {run(){}}} = {};", 0},
+		{"renamed default leaves reference", "const {value: other = handler} = {};", 1},
+		{"array default leaves reference", "const [other = handler] = [];", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			scenario.WriteFile(t, root, ".claude-plugin/plugin.json", `{"name":"fixture"}`)
+			scenario.WriteFile(t, root, "hooks/hooks.json", `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"node \"${CLAUDE_PLUGIN_ROOT}/dispatch.cjs\""}]}]}}`)
+			scenario.WriteFile(t, root, "dispatch.cjs", "const handler = require('./handler.cjs');\n{"+tc.declaration+" handler.run();}\n")
+			scenario.WriteFile(t, root, "handler.cjs", "const {execSync} = require('node:child_process');\nfunction run(){execSync('printf ready');}\nmodule.exports = {run};\n")
+			result, err := scenario.Scanner(t, scantest.FullConfig()).Scan(t.Context(), root)
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			if err := result.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			count := 0
+			for _, finding := range result.Findings {
+				if finding.RuleID != "JS001" || finding.Location.Path != "handler.cjs" {
+					continue
+				}
+
+				count++
+				if len(finding.HookSources) != tc.count {
+					t.Fatalf("handler hook sources=%d, want %d: %+v", len(finding.HookSources), tc.count, finding)
+				}
+			}
+			if count != 1 {
+				t.Fatalf("handler observations=%d, want 1", count)
+			}
+		})
+	}
+}
+
+func TestHookCommonJSInvocationOrderPreservesFindingOwnership(t *testing.T) {
+	for _, tc := range []struct {
+		name, declaration string
+		count             int
+	}{
+		{"argument rebind", "function invoke(){handler.run()} function start(){invoke()} start(invoke = () => {});", 0},
+		{"argument update", "function invoke(){handler.run()} function start(){invoke()} start(invoke++);", 0},
+		{"helper rebind", "function invoke(){handler.run()} function clear(){invoke = () => {}} clear(); invoke();", 0},
+		{"callee captured before arguments", "function invoke(){handler.run()} invoke(invoke = () => {});", 1},
+		{"argument snapshot", "function invoke(){handler.run()} function start(saved){saved()} start(invoke, invoke = () => {});", 1},
+		{"saved function", "function invoke(){handler.run()} const saved = invoke; function clear(){invoke++} clear(); saved();", 1},
+		{"isolated alternative closure", "function invoke(){handler.run()} function clear(){invoke++} function call(){invoke()} if (unknown) { clear(); } else { call(); }", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			scenario.WriteFile(t, root, ".claude-plugin/plugin.json", `{"name":"fixture"}`)
+			scenario.WriteFile(t, root, "hooks/hooks.json", `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"node \"${CLAUDE_PLUGIN_ROOT}/dispatch.cjs\""}]}]}}`)
+			scenario.WriteFile(t, root, "dispatch.cjs", "const handler = require('./handler.cjs');\n"+tc.declaration+"\n")
+			scenario.WriteFile(t, root, "handler.cjs", "const {execSync} = require('node:child_process');\nfunction run(){execSync('printf ready');}\nmodule.exports = {run};\n")
+			result, err := scenario.Scanner(t, scantest.FullConfig()).Scan(t.Context(), root)
+			if !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			if err := result.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			count := 0
+			for _, finding := range result.Findings {
+				if finding.RuleID != "JS001" || finding.Location.Path != "handler.cjs" {
+					continue
+				}
+
+				count++
+				if len(finding.HookSources) != tc.count {
+					t.Fatalf("handler hook sources=%d, want %d: %+v", len(finding.HookSources), tc.count, finding)
+				}
+			}
+			if count != 1 {
+				t.Fatalf("handler observations=%d, want 1", count)
 			}
 		})
 	}

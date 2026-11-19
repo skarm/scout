@@ -29,7 +29,7 @@ const (
 //nolint:gochecknoinits // Registered methods recurse through this table; a variable initializer creates an initialization cycle.
 func init() {
 	pythonProjections = map[string]pythonProjection{
-		"module": {
+		pyKindModule: {
 			kind: Module,
 			fields: []pythonProjectedField{{
 				kind:   Body,
@@ -37,7 +37,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"block": {
+		pyKindBlock: {
 			kind: Module,
 			fields: []pythonProjectedField{{
 				kind:   Body,
@@ -45,71 +45,71 @@ func init() {
 				source: "",
 			}},
 		},
-		"identifier": {
+		pyKindIdentifier: {
 			kind:   Name,
 			fields: []pythonProjectedField{{kind: ID, form: pythonText, source: ""}},
 		},
-		"attribute": {
+		pyKindAttribute: {
 			kind: Attribute,
 			fields: []pythonProjectedField{{
 				kind:   FieldValue,
 				form:   pythonChild,
-				source: "object",
+				source: pyFieldObject,
 			}, {
 				kind:   Attr,
 				form:   pythonText,
-				source: "attribute",
+				source: pyFieldAttribute,
 			}},
 		},
-		"subscript": {
+		pyKindSubscript: {
 			kind: Subscript,
 			fields: []pythonProjectedField{{
 				kind:   FieldValue,
 				form:   pythonChild,
-				source: "value",
+				source: pyFieldValue,
 			}, {
 				kind:   Slice,
 				form:   pythonChild,
-				source: "subscript",
+				source: pyFieldSubscript,
 			}},
 		},
-		"augmented_assignment": {
+		pyKindAugmentedAssignment: {
 			kind: AugAssign,
 			fields: []pythonProjectedField{{
 				kind:   Target,
 				form:   pythonChild,
-				source: "left",
+				source: pyFieldLeft,
 			}, {
 				kind:   FieldValue,
 				form:   pythonChild,
-				source: "right",
+				source: pyFieldRight,
 			}},
 		},
-		"named_expression": {
+		pyKindNamedExpression: {
 			kind: NamedExpr,
 			fields: []pythonProjectedField{{
 				kind:   Target,
 				form:   pythonChild,
-				source: "name",
+				source: pyFieldName,
 			}, {
 				kind:   FieldValue,
 				form:   pythonChild,
-				source: "value",
+				source: pyFieldValue,
 			}},
 		},
-		"interpolation": {
+		pyKindInterpolation: {
 			kind: formattedValue,
 			fields: []pythonProjectedField{{
 				kind:   FieldValue,
 				form:   pythonChild,
-				source: "expression",
+				source: pyFieldExpression,
 			}, {
 				kind:   formatSpec,
 				form:   pythonChild,
-				source: "format_specifier",
+				source: pyFieldFormatSpecifier,
 			}},
 		},
-		"list": {
+		pyKindList: {
 			kind: List,
 			fields: []pythonProjectedField{{
 				kind:   Elts,
@@ -117,7 +117,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"list_pattern": {
+		pyKindListPattern: {
 			kind: List,
 			fields: []pythonProjectedField{{
 				kind:   Elts,
@@ -125,7 +125,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"tuple": {
+		pyKindTuple: {
 			kind: Tuple,
 			fields: []pythonProjectedField{{
 				kind:   Elts,
@@ -133,7 +133,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"tuple_pattern": {
+		pyKindTuplePattern: {
 			kind: Tuple,
 			fields: []pythonProjectedField{{
 				kind:   Elts,
@@ -141,7 +141,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"pattern_list": {
+		pyKindPatternList: {
 			kind: Tuple,
 			fields: []pythonProjectedField{{
 				kind:   Elts,
@@ -149,7 +149,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"expression_list": {
+		pyKindExpressionList: {
 			kind: Tuple,
 			fields: []pythonProjectedField{{
 				kind:   Elts,
@@ -157,7 +157,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"set": {
+		pyKindSet: {
 			kind: Set,
 			fields: []pythonProjectedField{{
 				kind:   Elts,
@@ -165,20 +165,24 @@ func init() {
 				source: "",
 			}},
 		},
-		"binary_operator": {
+		pyKindBinaryOperator: {
 			kind: BinOp,
 			fields: []pythonProjectedField{{
 				kind:   Left,
 				form:   pythonChild,
-				source: "left",
+				source: pyFieldLeft,
 			}, {
 				kind:   Right,
 				form:   pythonChild,
-				source: "right",
+				source: pyFieldRight,
+			}, {
+				kind:   Op,
+				form:   pythonText,
+				source: pyFieldOperator,
 			}},
 		},
-		"comparison_operator": {kind: Compare, build: (*pythonNormalizer).comparisonNode},
-		"list_splat": {
+		pyKindComparisonOperator: {kind: Compare, build: (*pythonNormalizer).comparisonNode},
+		pyKindListSplat: {
 			kind: Starred,
 			fields: []pythonProjectedField{{
 				kind:   FieldValue,
@@ -186,7 +190,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"dictionary_splat": {
+		pyKindListSplatPattern: {
 			kind: Starred,
 			fields: []pythonProjectedField{{
 				kind:   FieldValue,
@@ -194,7 +198,15 @@ func init() {
 				source: "",
 			}},
 		},
-		"return_statement": {
+		pyKindDictionarySplat: {
+			kind: Starred,
+			fields: []pythonProjectedField{{
+				kind:   FieldValue,
+				form:   pythonFirst,
+				source: "",
+			}},
+		},
+		pyKindReturnStatement: {
 			kind: Return,
 			fields: []pythonProjectedField{{
 				kind:   FieldValue,
@@ -206,7 +218,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"raise_statement": {
+		pyKindRaiseStatement: {
 			kind: raise,
 			fields: []pythonProjectedField{{
 				kind:   FieldValue,
@@ -218,7 +230,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"assert_statement": {
+		pyKindAssertStatement: {
 			kind: assert,
 			fields: []pythonProjectedField{{
 				kind:   FieldValue,
@@ -230,7 +242,7 @@ func init() {
 				source: "",
 			}},
 		},
-		"delete_statement": {
+		pyKindDeleteStatement: {
 			kind: Delete,
 			fields: []pythonProjectedField{{
 				kind:   FieldValue,
@@ -242,47 +254,47 @@ func init() {
 				source: "",
 			}},
 		},
-		"pass_statement":           {kind: Pass},
-		"break_statement":          {kind: breakNode},
-		"continue_statement":       {kind: Continue},
-		"expression_statement":     {kind: Expr, build: (*pythonNormalizer).expressionStatement},
-		"import_statement":         {kind: Import, build: (*pythonNormalizer).importNode},
-		"import_from_statement":    {kind: ImportFrom, build: (*pythonNormalizer).importNode},
-		"future_import_statement":  {kind: ImportFrom, build: (*pythonNormalizer).importNode},
-		"call":                     {kind: Call, build: (*pythonNormalizer).callNode},
-		"assignment":               {kind: Assign, build: (*pythonNormalizer).assignmentNode},
-		"parenthesized_expression": {build: (*pythonNormalizer).unwrapNode},
-		"as_pattern_target":        {build: (*pythonNormalizer).unwrapNode},
-		"type":                     {build: (*pythonNormalizer).typeNode},
-		"integer":                  {kind: Constant, build: (*pythonNormalizer).nodeInteger},
-		"float":                    {kind: Constant, build: (*pythonNormalizer).nodeInteger},
-		"true":                     {kind: Constant, build: (*pythonNormalizer).nodeInteger},
-		"false":                    {kind: Constant, build: (*pythonNormalizer).nodeInteger},
-		"none":                     {kind: Constant, build: (*pythonNormalizer).nodeInteger},
-		"ellipsis":                 {kind: Constant, build: (*pythonNormalizer).nodeInteger},
-		"string":                   {build: (*pythonNormalizer).stringNode},
-		"concatenated_string":      {build: (*pythonNormalizer).concatenatedStringNode},
-		"dictionary":               {kind: Dict, build: (*pythonNormalizer).dictionaryNode},
-		"list_comprehension":       {kind: ListComp, build: (*pythonNormalizer).comprehensionNode},
-		"set_comprehension":        {kind: SetComp, build: (*pythonNormalizer).comprehensionNode},
-		"dictionary_comprehension": {kind: DictComp, build: (*pythonNormalizer).comprehensionNode},
-		"generator_expression":     {kind: GeneratorExp, build: (*pythonNormalizer).comprehensionNode},
-		"boolean_operator":         {kind: BoolOp, build: (*pythonNormalizer).booleanNode},
-		"conditional_expression":   {kind: IfExp, build: (*pythonNormalizer).conditionalNode},
-		"unary_operator":           {kind: UnaryOp, build: (*pythonNormalizer).unaryNode},
-		"not_operator":             {kind: UnaryOp, build: (*pythonNormalizer).unaryNode},
-		"function_definition":      {kind: FunctionDef, build: (*pythonNormalizer).nodeFunctionDefinition},
-		"class_definition":         {kind: ClassDef, build: (*pythonNormalizer).nodeFunctionDefinition},
-		"decorated_definition":     {build: (*pythonNormalizer).decoratedNode},
-		"lambda":                   {kind: Lambda, build: (*pythonNormalizer).lambdaNode},
-		"if_statement":             {kind: If, build: (*pythonNormalizer).ifNode},
-		"elif_clause":              {kind: If, build: (*pythonNormalizer).ifNode},
-		"for_statement":            {kind: For, build: (*pythonNormalizer).loopNode},
-		"while_statement":          {kind: While, build: (*pythonNormalizer).loopNode},
-		"with_statement":           {kind: With, build: (*pythonNormalizer).withNode},
-		"try_statement":            {kind: Try, build: (*pythonNormalizer).tryNode},
-		"global_statement":         {kind: Global, build: (*pythonNormalizer).nameDeclarationNode},
-		"nonlocal_statement":       {kind: Nonlocal, build: (*pythonNormalizer).nameDeclarationNode},
+		pyKindPassStatement:           {kind: Pass},
+		pyKindBreakStatement:          {kind: breakNode},
+		pyKindContinueStatement:       {kind: Continue},
+		pyKindExpressionStatement:     {kind: Expr, build: (*pythonNormalizer).expressionStatement},
+		pyKindImportStatement:         {kind: Import, build: (*pythonNormalizer).importNode},
+		pyKindImportFromStatement:     {kind: ImportFrom, build: (*pythonNormalizer).importNode},
+		pyKindFutureImportStatement:   {kind: ImportFrom, build: (*pythonNormalizer).importNode},
+		pyKindCall:                    {kind: Call, build: (*pythonNormalizer).callNode},
+		pyKindAssignment:              {kind: Assign, build: (*pythonNormalizer).assignmentNode},
+		pyKindParenthesizedExpression: {build: (*pythonNormalizer).unwrapNode},
+		pyKindAsPatternTarget:         {build: (*pythonNormalizer).unwrapNode},
+		pyKindType:                    {build: (*pythonNormalizer).typeNode},
+		pyKindInteger:                 {kind: Constant, build: (*pythonNormalizer).nodeInteger},
+		pyKindFloat:                   {kind: Constant, build: (*pythonNormalizer).nodeInteger},
+		pyKindTrue:                    {kind: Constant, build: (*pythonNormalizer).nodeInteger},
+		pyKindFalse:                   {kind: Constant, build: (*pythonNormalizer).nodeInteger},
+		pyKindNone:                    {kind: Constant, build: (*pythonNormalizer).nodeInteger},
+		pyKindEllipsis:                {kind: Constant, build: (*pythonNormalizer).nodeInteger},
+		pyKindString:                  {build: (*pythonNormalizer).stringNode},
+		pyKindConcatenatedString:      {build: (*pythonNormalizer).concatenatedStringNode},
+		pyKindDictionary:              {kind: Dict, build: (*pythonNormalizer).dictionaryNode},
+		pyKindListComprehension:       {kind: ListComp, build: (*pythonNormalizer).comprehensionNode},
+		pyKindSetComprehension:        {kind: SetComp, build: (*pythonNormalizer).comprehensionNode},
+		pyKindDictionaryComprehension: {kind: DictComp, build: (*pythonNormalizer).comprehensionNode},
+		pyKindGeneratorExpression:     {kind: GeneratorExp, build: (*pythonNormalizer).comprehensionNode},
+		pyKindBooleanOperator:         {kind: BoolOp, build: (*pythonNormalizer).booleanNode},
+		pyKindConditionalExpression:   {kind: IfExp, build: (*pythonNormalizer).conditionalNode},
+		pyKindUnaryOperator:           {kind: UnaryOp, build: (*pythonNormalizer).unaryNode},
+		pyKindNotOperator:             {kind: UnaryOp, build: (*pythonNormalizer).unaryNode},
+		pyKindFunctionDefinition:      {kind: FunctionDef, build: (*pythonNormalizer).nodeFunctionDefinition},
+		pyKindClassDefinition:         {kind: ClassDef, build: (*pythonNormalizer).nodeFunctionDefinition},
+		pyKindDecoratedDefinition:     {build: (*pythonNormalizer).decoratedNode},
+		pyKindLambda:                  {kind: Lambda, build: (*pythonNormalizer).lambdaNode},
+		pyKindIfStatement:             {kind: If, build: (*pythonNormalizer).ifNode},
+		pyKindElifClause:              {kind: If, build: (*pythonNormalizer).ifNode},
+		pyKindForStatement:            {kind: For, build: (*pythonNormalizer).loopNode},
+		pyKindWhileStatement:          {kind: While, build: (*pythonNormalizer).loopNode},
+		pyKindWithStatement:           {kind: With, build: (*pythonNormalizer).withNode},
+		pyKindTryStatement:            {kind: Try, build: (*pythonNormalizer).tryNode},
+		pyKindGlobalStatement:         {kind: Global, build: (*pythonNormalizer).nameDeclarationNode},
+		pyKindNonlocalStatement:       {kind: Nonlocal, build: (*pythonNormalizer).nameDeclarationNode},
 	}
 }
 

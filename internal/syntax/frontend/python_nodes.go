@@ -9,11 +9,11 @@ func (b *pythonNormalizer) importNode(n *pythonSyntax, _ int, typ NodeKind) *Nod
 	names := make([]*Node, 0)
 
 	for _, x := range n.named() {
-		if x.Field == "module_name" {
+		if x.Field == pyFieldModuleName {
 			continue
 		}
 
-		if x.Kind == "dotted_name" || x.Kind == "aliased_import" || x.Kind == "wildcard_import" {
+		if x.Kind == pyKindDottedName || x.Kind == pyKindAliasedImport || x.Kind == pyKindWildcardImport {
 			names = append(names, b.alias(x))
 		}
 	}
@@ -21,8 +21,8 @@ func (b *pythonNormalizer) importNode(n *pythonSyntax, _ int, typ NodeKind) *Nod
 	b.set(out, Names, nodesValue(names))
 
 	if typ == ImportFrom {
-		module := b.textOf(n.field("module_name"))
-		if n.Kind == "future_import_statement" {
+		module := b.textOf(n.field(pyFieldModuleName))
+		if n.Kind == pyKindFutureImportStatement {
 			module = "__future__"
 		}
 
@@ -36,18 +36,18 @@ func (b *pythonNormalizer) importNode(n *pythonSyntax, _ int, typ NodeKind) *Nod
 
 func (b *pythonNormalizer) callNode(n *pythonSyntax, depth int, kind NodeKind) *Node {
 	out := b.make(n, kind)
-	b.set(out, Func, childValue(b.node(n.field("function"), depth+1)))
+	b.set(out, Func, childValue(b.node(n.field(pyFieldFunction), depth+1)))
 
 	args, keywords := make([]*Node, 0), make([]*Node, 0)
 
-	for _, x := range n.field("arguments").named() {
+	for _, x := range n.field(pyFieldArguments).named() {
 		switch x.Kind {
-		case "keyword_argument":
+		case pyKindKeywordArgument:
 			k := b.make(x, Keyword)
-			b.set(k, FieldArg, StringValue(b.textOf(x.field("name"))))
-			b.set(k, FieldValue, childValue(b.node(x.field("value"), depth+1)))
+			b.set(k, FieldArg, StringValue(b.textOf(x.field(pyFieldName))))
+			b.set(k, FieldValue, childValue(b.node(x.field(pyFieldValue), depth+1)))
 			keywords = append(keywords, k)
-		case "dictionary_splat":
+		case pyKindDictionarySplat:
 			k := b.make(x, Keyword)
 			b.set(k, FieldArg, NullValue())
 			b.set(k, FieldValue, childValue(b.node(x.first(), depth+1)))

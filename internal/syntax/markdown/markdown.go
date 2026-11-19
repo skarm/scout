@@ -26,6 +26,11 @@ const (
 	maxOperations  = 1 << 20
 )
 
+const (
+	IndentedCode = "indented-code"
+	FencedCode   = "fenced-code"
+)
+
 type Block struct {
 	Kind, Info, Failure string
 	Span                source.Span
@@ -269,9 +274,9 @@ func (b *boundedParser) Close(node ast.Node, reader text.Reader, pc parser.Conte
 }
 
 func project(original string, offset int, buffer []byte, raw *rawBlock) Block {
-	block := Block{Kind: "indented-code", Span: blockSpan(raw)}
+	block := Block{Kind: IndentedCode, Span: blockSpan(raw)}
 	if fence, ok := raw.node.(*ast.FencedCodeBlock); ok {
-		block.Kind, block.Info, block.Unclosed = "fenced-code", string(fence.Language(buffer)), !raw.closed
+		block.Kind, block.Info, block.Unclosed = FencedCode, string(fence.Language(buffer)), !raw.closed
 	}
 
 	lines := raw.node.Lines()

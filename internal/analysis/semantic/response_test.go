@@ -86,18 +86,23 @@ func TestResponseContract(t *testing.T) {
 }
 
 func TestStrictResponseJSON(t *testing.T) {
-	for _, raw := range []string{
-		`{"schema_version":"5","request_id":"task","proposals":[],"assessments":[],"policy":"allow"}`,
-		`{"schema_version":"5","request_id":"other","request_id":"task","proposals":[],"assessments":[]}`,
-		`{"schema_version":"5","request_id":"other","request_\u0069d":"task","proposals":[],"assessments":[]}`,
-		`{"schema_version":"5","request_id":"task","proposals":null,"assessments":[]}`,
-		`{"schema_version":"5","request_id":"task","proposals":[],"assessments":[],"secret":"\ud800"}`,
-		`{"schema_version":"5","Request_ID":"task","proposals":[],"assessments":[]}`,
-		`{"schema_version":"5","request_id":"task","proposals":[],"assessments":[]} {}`,
-		"```json\n{}\n```", `[]`, `null`, `{}`, strings.Repeat("[", 100) + strings.Repeat("]", 100), string([]byte{'"', 255, '"'}),
+	for _, tc := range []struct{ name, raw string }{
+		{name: "unknown_field", raw: `{"schema_version":"5","request_id":"task","proposals":[],"assessments":[],"policy":"allow"}`},
+		{name: "duplicate_key", raw: `{"schema_version":"5","request_id":"other","request_id":"task","proposals":[],"assessments":[]}`},
+		{name: "escaped_duplicate_key", raw: `{"schema_version":"5","request_id":"other","request_\u0069d":"task","proposals":[],"assessments":[]}`},
+		{name: "null_proposals", raw: `{"schema_version":"5","request_id":"task","proposals":null,"assessments":[]}`},
+		{name: "unpaired_surrogate", raw: `{"schema_version":"5","request_id":"task","proposals":[],"assessments":[],"secret":"\ud800"}`},
+		{name: "incorrect_key_case", raw: `{"schema_version":"5","Request_ID":"task","proposals":[],"assessments":[]}`},
+		{name: "trailing_object", raw: `{"schema_version":"5","request_id":"task","proposals":[],"assessments":[]} {}`},
+		{name: "markdown_fence", raw: "```json\n{}\n```"},
+		{name: "array_root", raw: `[]`},
+		{name: "null_root", raw: `null`},
+		{name: "missing_required_fields", raw: `{}`},
+		{name: "nesting_limit", raw: strings.Repeat("[", 100) + strings.Repeat("]", 100)},
+		{name: "invalid_utf8", raw: string([]byte{'"', 255, '"'})},
 	} {
-		t.Run(raw[:min(35, len(raw))], func(t *testing.T) {
-			_, code := semantic.ValidateResponse(context.Background(), requestFixture(), []byte(raw), 65536)
+		t.Run(tc.name, func(t *testing.T) {
+			_, code := semantic.ValidateResponse(t.Context(), requestFixture(), []byte(tc.raw), 65536)
 			if code == "" {
 				t.Fatal("malformed response accepted")
 			}

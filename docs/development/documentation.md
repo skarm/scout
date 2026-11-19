@@ -29,7 +29,4 @@ contents blocks to Go source files. Preserve directives, quotations and legal te
 
 ## Verification
 
-Run `gofmt`, inspect `go doc`, and check links, anchors and EN/RU pairs.
-Documentation edits must preserve behavior, except changes needed to package the
-documentation itself. Editing Go files does not require refreshing historical
-measurement receipts; see [acceptance](validation.md#binary-and-recorded-evidence).
+Check links, anchors and English/Russian pairs. For GoDoc changes, run `gofmt` and inspect `go doc`.

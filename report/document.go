@@ -9,6 +9,10 @@ import (
 	"strconv"
 )
 
+const (
+	maxProblemCodeBytes = 128
+)
+
 // Format selects a report representation. Each format renders the same
 // validated document.
 type Format string
@@ -389,7 +393,7 @@ func failureText(out *bytes.Buffer, format Format, operation Operation, problem 
 }
 
 func problemCode(value string) bool {
-	if len(value) == 0 || len(value) > 128 {
+	if len(value) == 0 || len(value) > maxProblemCodeBytes {
 		return false
 	}
 

@@ -89,7 +89,7 @@ func addHookReferenceGaps(graph report.ComponentGraph, gaps map[string]bool) {
 	hooks := make(map[string]bool)
 
 	for _, component := range graph.Components {
-		if component.Kind == "hook" || component.Kind == "hook_config" {
+		if component.Kind == report.ComponentHook || component.Kind == report.ComponentHookConfig {
 			hooks[component.ID] = true
 		}
 	}

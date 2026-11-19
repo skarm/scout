@@ -69,7 +69,12 @@ type Failure struct{ Category string }
 
 type treeValidator struct{ size, count int }
 
-func DefaultOptions() Options { return Options{Timeout: 3 * time.Second} }
+const defaultTimeout = 3 * time.Second
+
+// MaxTimeout is the longest supported deadline for one parser invocation.
+const MaxTimeout = 10 * time.Second
+
+func DefaultOptions() Options { return Options{Timeout: defaultTimeout} }
 
 func Backends() []Backend {
 	return []Backend{BackendFor(language.Python), BackendFor(language.YAML), BackendFor(language.TOML)}
@@ -105,7 +110,7 @@ func Parse(ctx context.Context, o Options, format, text string) (Result, error) 
 }
 
 func (o Options) Validate() error {
-	if o.Timeout <= 0 || o.Timeout > 10*time.Second {
+	if o.Timeout <= 0 || o.Timeout > MaxTimeout {
 		return errors.New("invalid embedded parser timeout")
 	}
 

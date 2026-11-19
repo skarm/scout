@@ -1,8 +1,17 @@
 package golang_test
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/skarm/scout/internal/analysis/analysisbudget"
+	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/languages/golang"
+	"github.com/skarm/scout/internal/capture/artifact"
 )
 
 func TestGoLocalFlow(t *testing.T) {
@@ -32,6 +41,36 @@ func TestGoLocalFlow(t *testing.T) {
 			name: "composite-mutation",
 			body: `token:=os.Getenv("API_TOKEN");_=map[string]string{"key":mutate()};` + sink,
 			want: 0,
+		},
+		{
+			name: "struct-key-is-not-flow",
+			body: `token:=os.Getenv("API_TOKEN");body:=struct{token string}{token:"public"};http.Post("x","x",body)`,
+			want: 0,
+		},
+		{
+			name: "elided-struct-key-is-not-flow",
+			body: `token:=os.Getenv("API_TOKEN");body:=[]struct{token string}{{token:"public"}};http.Post("x","x",body)`,
+			want: 0,
+		},
+		{
+			name: "struct-key-preserves-state",
+			body: `token:=os.Getenv("API_TOKEN");_=struct{token string}{token:"public"};` + sink,
+			want: 1,
+		},
+		{
+			name: "elided-struct-value-mutation",
+			body: `token:=os.Getenv("API_TOKEN");mutate:=func() string {token="public";return "value"};_= []struct{token string}{{token:mutate()}};` + sink,
+			want: 0,
+		},
+		{
+			name: "composite-key-mutation",
+			body: `token:=os.Getenv("API_TOKEN");mutate:=func() string { token="public"; return "key" };_=map[string]string{mutate():"value"};` + sink,
+			want: 0,
+		},
+		{
+			name: "form-key-flow",
+			body: `token:=os.Getenv("API_TOKEN");http.PostForm("x",url.Values{token:{"value"}})`,
+			want: 1,
 		},
 		{name: "index-mutation", body: `token:=os.Getenv("API_TOKEN");_=token[mutate()];` + sink, want: 0},
 		{name: "slice-mutation", body: `token:=os.Getenv("API_TOKEN");_=token[0:mutate()];` + sink, want: 0},
@@ -129,4 +168,72 @@ func TestGoFlowLimits(t *testing.T) {
 	if !r.Truncated {
 		t.Fatal("trace work limit not surfaced")
 	}
+}
+
+func TestGoScopeCopiesSpendOperationQuota(t *testing.T) {
+	for _, ruleID := range []string{"GO004", "GO005"} {
+		t.Run(ruleID, func(t *testing.T) {
+			text := goScopeBudgetInput(ruleID)
+			doc := document.Prepare(t.Context(), artifact.NewFile("input.go", []byte(text), false))
+			for _, rule := range golang.Rules() {
+				if rule.Rule().ID != ruleID {
+					continue
+				}
+				limits := []uint64{128}
+				if ruleID == "GO004" {
+					// The larger quota admits both copies and stops at the merge.
+					limits = append(limits, 192)
+				}
+				for _, limit := range limits {
+					bounded := analysisbudget.WithLimit(t.Context(), limit)
+					partial, err := rule.Find(bounded, doc, 10)
+					if err != nil || !partial.Truncated || len(partial.Matches) != 1 || !analysisbudget.Exhausted(bounded) || analysisbudget.Used(bounded) > limit {
+						t.Fatalf("scope quota lost or earlier evidence discarded: used=%d result=%+v err=%v", analysisbudget.Used(bounded), partial, err)
+					}
+				}
+				cancelled, cancel := context.WithCancel(t.Context())
+				cancel()
+				if _, err := rule.Find(cancelled, doc, 10); !errors.Is(err, context.Canceled) {
+					t.Fatal("cancellation ignored", err)
+				}
+				full := analysisbudget.WithLimit(t.Context(), 4096)
+				complete, err := rule.Find(full, doc, 10)
+				if err != nil || complete.Truncated || len(complete.Matches) != 2 {
+					t.Fatalf("fresh quota failed to recover: %+v %v", complete, err)
+				}
+				used := analysisbudget.Used(full)
+				for _, limit := range []uint64{used - 1, used} {
+					ctx := analysisbudget.WithLimit(t.Context(), limit)
+					result, err := rule.Find(ctx, doc, 10)
+					limited := limit < used
+					if err != nil || analysisbudget.Used(ctx) > limit || result.Truncated != limited || analysisbudget.Exhausted(ctx) != limited || len(result.Matches) == 0 {
+						t.Fatalf("incorrect exact boundary: limit=%d used=%d result=%+v err=%v", limit, analysisbudget.Used(ctx), result, err)
+					}
+					if !limited && !reflect.DeepEqual(result, complete) {
+						t.Fatal("exact quota changed completed observations")
+					}
+				}
+				return
+			}
+			t.Fatal("rule not registered")
+		})
+	}
+}
+
+func goScopeBudgetInput(rule string) string {
+	var setup strings.Builder
+	if rule == "GO004" {
+		setup.WriteString(`package p; import("os";"net/http";"strings");func f(flag bool){token0:=os.Getenv("TOKEN");`)
+		for i := 1; i < 32; i++ {
+			fmt.Fprintf(&setup, "token%d:=token0;", i)
+		}
+		const sink = `http.Post("x","x",strings.NewReader(token0));`
+		return setup.String() + sink + `if flag{};` + sink + `}`
+	}
+	setup.WriteString(`package p;func f(name string){query:="SELECT "+name;`)
+	for i := 1; i < 32; i++ {
+		fmt.Fprintf(&setup, "local%d:=0;", i)
+	}
+	const sink = `db.Query(query);`
+	return setup.String() + sink + `_=func(){};` + sink + `}`
 }

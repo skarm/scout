@@ -9,6 +9,11 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxDNSNameBytes  = 253
+	maxDNSLabelBytes = 63
+)
+
 // DNS names are data, never URLs. Do not pass them through URL authority parsing.
 func canonicalDNSName(value string) string {
 	if value == "." {
@@ -20,12 +25,12 @@ func canonicalDNSName(value string) string {
 		return ip.String()
 	}
 
-	if name == "" || len(name) > 253 {
+	if name == "" || len(name) > maxDNSNameBytes {
 		return ""
 	}
 
 	for label := range strings.SplitSeq(name, ".") {
-		if label == "" || len(label) > 63 {
+		if label == "" || len(label) > maxDNSLabelBytes {
 			return ""
 		}
 

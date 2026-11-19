@@ -24,7 +24,11 @@ import (
 
 func TestCompiledKnowledgeCanBeInspectedWithoutScanning(t *testing.T) {
 	for _, mode := range []string{"", "discovery", "intent", "quality", "assessment", "proposal_assessment"} {
-		t.Run(mode, func(t *testing.T) {
+		name := mode
+		if name == "" {
+			name = "catalog"
+		}
+		t.Run(name, func(t *testing.T) {
 			var out, errs bytes.Buffer
 			args := []string{"knowledge"}
 			if mode != "" {
@@ -38,14 +42,23 @@ func TestCompiledKnowledgeCanBeInspectedWithoutScanning(t *testing.T) {
 				if json.Unmarshal(out.Bytes(), &r) != nil || r.Manifest.SHA256 != knowledge.Inventory().SHA256 || len(r.Guidance) < 100 || len(r.Topics) != 52 || len(r.Sources) != 14 {
 					t.Fatal("incomplete catalog")
 				}
-				want, _ := json.Marshal(knowledge.Export())
-				got, _ := json.Marshal(r)
+				want, err := json.Marshal(knowledge.Export())
+				if err != nil {
+					t.Fatalf("encode runtime catalog: %v", err)
+				}
+				got, err := json.Marshal(r)
+				if err != nil {
+					t.Fatalf("encode decoded CLI catalog: %v", err)
+				}
 				if !bytes.Equal(got, want) {
 					t.Fatal("CLI knowledge differs from the trusted runtime export")
 				}
 			} else {
-				p, _ := knowledge.Prompt(mode)
-				if out.String() != p {
+				prompt, err := knowledge.Prompt(mode)
+				if err != nil {
+					t.Fatalf("runtime prompt %q: %v", mode, err)
+				}
+				if out.String() != prompt {
 					t.Fatal("not exact runtime prompt")
 				}
 			}

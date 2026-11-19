@@ -123,13 +123,16 @@ func goCompositeOperands(literal *ast.CompositeLit, imports goScope) ([]ast.Expr
 	pkg, name := qualified(literal.Type, imports)
 	valid := literal.Type == nil || (pkg == "net/url" && name == "Values")
 
-	operands := make([]ast.Expr, len(literal.Elts))
-	for i, element := range literal.Elts {
+	operands := make([]ast.Expr, 0, len(literal.Elts))
+	for _, element := range literal.Elts {
 		if pair, ok := element.(*ast.KeyValueExpr); ok {
+			// Map keys can carry data or invoke an unknown mutator. Visit calls
+			// in lexical order; Go does not order every non-call operand read.
+			operands = append(operands, pair.Key)
 			element = pair.Value
 		}
 
-		operands[i] = element
+		operands = append(operands, element)
 	}
 
 	return operands, valid

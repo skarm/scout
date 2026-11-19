@@ -13,6 +13,12 @@ import (
 	"github.com/skarm/scout/internal/dev/evaluation"
 )
 
+const (
+	defaultCorpusTimeout  = 2 * time.Minute
+	maxCorpusTimeout      = 10 * time.Minute
+	corpusTemplateTimeout = 30 * time.Second
+)
+
 func corpusCommand(ctx context.Context, args []string, out, diag io.Writer) int {
 	if len(args) != 0 && args[0] == "review-template" {
 		return corpusReviewTemplate(ctx, args[1:], out, diag)
@@ -28,12 +34,12 @@ func corpusCommand(ctx context.Context, args []string, out, diag io.Writer) int 
 	destination := fs.String("output", "", "corpus destination outside source files; omitted writes JSON to stdout")
 	allowDownload := fs.Bool("allow-download", false, "authorize the manifest's pinned HTTPS file downloads")
 
-	timeout := fs.Duration("timeout", 2*time.Minute, "whole collection deadline; maximum 10m")
+	timeout := fs.Duration("timeout", defaultCorpusTimeout, "whole collection deadline; maximum 10m")
 	if err := fs.Parse(args[1:]); err != nil {
 		return failure(diag, err)
 	}
 
-	if fs.NArg() != 0 || *manifestPath == "" || *timeout <= 0 || *timeout > 10*time.Minute {
+	if fs.NArg() != 0 || *manifestPath == "" || *timeout <= 0 || *timeout > maxCorpusTimeout {
 		return failure(diag, errors.New("corpus collect requires --manifest and a bounded timeout"))
 	}
 
@@ -81,7 +87,7 @@ func corpusReviewTemplate(ctx context.Context, args []string, out, diag io.Write
 		return failure(diag, errors.New("corpus review-template requires --corpus"))
 	}
 
-	call, cancel := context.WithTimeout(ctx, 30*time.Second)
+	call, cancel := context.WithTimeout(ctx, corpusTemplateTimeout)
 	defer cancel()
 
 	data, err := readEvaluationFile(call, *source, evaluation.MaxCorpusBytes)

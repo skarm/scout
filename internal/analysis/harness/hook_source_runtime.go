@@ -17,19 +17,20 @@ func (w *hookSourceWalk) traceRuntimeLaunch(e *entry, view source.View, cmd *she
 		return false, false
 	}
 
-	words, lang, replaces := w.runtimeLaunchWords(cmd.Words, state)
-	if len(words) == 0 {
+	launch := w.runtimeLaunchWords(cmd, state)
+	if len(launch.operands) == 0 {
 		return false, false
 	}
 
-	value, known := w.runtimeFileOperand(e, view, cmd, words, state)
+	value, known := w.runtimeFileOperand(e, view, cmd, launch.operands, state)
 	if !known || !strings.HasPrefix(value, pluginRootMarker) && (state.cwd == "" || !strings.HasPrefix(value, "./")) {
 		return false, false
 	}
 
 	ext := path.Ext(value)
-	if lang == language.JavaScript && ext != ".js" && ext != ".cjs" && ext != ".mjs" ||
-		lang == language.Python && ext != ".py" {
+	if launch.language == language.JavaScript && ext != ".js" && ext != ".cjs" && ext != ".mjs" ||
+		launch.language == language.TypeScript && ext != ".ts" && ext != ".tsx" ||
+		launch.language == language.Python && ext != ".py" {
 		return false, false
 	}
 
@@ -62,21 +63,27 @@ func (w *hookSourceWalk) traceRuntimeLaunch(e *entry, view source.View, cmd *she
 	}
 
 	steps := append(slices.Clone(chain), *at)
-	w.recordRuntimeScript(target, rel, lang, w.nodeHookFirstArgument(words, state), steps)
+	w.recordRuntimeScript(target, rel, launch.language, w.nodeHookFirstArgument(launch.operands, state), launch.isolatedPythonArgs, steps)
 
-	return replaces, true
+	return launch.replaces, true
 }
 
-func (w *hookSourceWalk) recordRuntimeScript(target *entry, rel, lang string, firstArg hookSourceArgument, steps []report.SourceRef) {
+func (w *hookSourceWalk) recordRuntimeScript(target *entry, rel, lang string, firstArg hookSourceArgument, isolatedPythonArgs int, steps []report.SourceRef) {
 	b := w.plugin.b
 	b.hookSourcePaths = append(b.hookSourcePaths, HookSourcePath{Target: target.meta.Path, Event: w.event, Language: lang, Steps: steps})
 
 	at := steps[len(steps)-1]
-	if lang == language.JavaScript {
+
+	switch lang {
+	case language.JavaScript:
 		w.gap(at, "hook_source_node_scope_unverified", "Node module resolution and runtime execution remain unverified for the captured hook script.")
 		w.traceCommonJSHook(target, rel, firstArg, steps)
-	} else {
-		w.gap(at, "hook_source_python_scope_unverified", "Python import resolution and runtime execution remain unverified for the captured hook script.")
+	case language.TypeScript:
+		w.gap(at, "hook_source_bun_scope_unverified", "Bun module resolution and runtime execution remain unverified for the captured hook script.")
+	case language.Python:
+		if isolatedPythonArgs < 0 || !knownIsolatedPythonFile(target.doc.Units(), isolatedPythonArgs) {
+			w.gap(at, "hook_source_python_scope_unverified", "Python import resolution and runtime execution remain unverified for the captured hook script.")
+		}
 	}
 }
 
@@ -120,14 +127,32 @@ func (w *hookSourceWalk) nodeHookFirstArgument(words []*shellsyntax.Word, state 
 	return hookSourceArgument{}
 }
 
-func (w *hookSourceWalk) runtimeLaunchWords(words []*shellsyntax.Word, state hookSourceState) ([]*shellsyntax.Word, string, bool) {
-	words, name, replaces := w.runtimeCommand(words, state)
+type hookRuntimeLaunch struct {
+	operands           []*shellsyntax.Word
+	language           string
+	isolatedPythonArgs int // -1 unless Python's isolation, startup and argv can be verified
+	replaces           bool
+}
+
+func (w *hookSourceWalk) runtimeLaunchWords(cmd *shellsyntax.Command, state hookSourceState) hookRuntimeLaunch {
+	words, name, replaces := w.runtimeCommand(cmd.Words, state)
 	if len(words) < 2 {
-		return nil, "", false
+		return hookRuntimeLaunch{}
 	}
 
-	if lang := hookRuntime(name); lang != "" {
-		return hookSkipLiteral(words[1:], "--"), lang, replaces
+	launch := hookRuntimeLaunch{language: hookRuntime(name), replaces: replaces, isolatedPythonArgs: -1}
+	switch launch.language {
+	case language.Python:
+		launch.operands, launch.isolatedPythonArgs = pythonFileLaunchOperands(cmd, words[1:], name)
+		return launch
+	case language.JavaScript:
+		launch.operands = hookSkipLiteral(words[1:], "--")
+		return launch
+	}
+
+	if hookBun(name) {
+		launch.operands, launch.language = hookSkipLiteral(words[1:], "--"), language.TypeScript
+		return launch
 	}
 
 	if hookUV(name) && len(words) > 5 {
@@ -137,11 +162,38 @@ func (w *hookSourceWalk) runtimeLaunchWords(words []*shellsyntax.Word, state hoo
 		version, _ := words[4].Literal()
 
 		if run == "run" && project == "--no-project" && python == "--python" && hookPythonMinor(version) {
-			return words[5:], language.Python, replaces
+			launch.operands, launch.language = words[5:], language.Python
+			return launch
 		}
 	}
 
-	return nil, "", false
+	return hookRuntimeLaunch{}
+}
+
+func pythonFileLaunchOperands(cmd *shellsyntax.Command, words []*shellsyntax.Word, name string) ([]*shellsyntax.Word, int) {
+	var isolated, noSite bool
+
+	for len(words) != 0 {
+		option, _ := words[0].Literal()
+		switch option {
+		case "-I":
+			isolated = true
+		case "-S":
+			noSite = true
+		case "-B":
+		default:
+			words = hookSkipLiteral(words, "--")
+			if isolated && noSite && len(words) > 0 && hookProvenPythonLaunch(cmd, words[1:], name) {
+				return words, len(words) - 1
+			}
+
+			return words, -1
+		}
+
+		words = words[1:]
+	}
+
+	return nil, -1
 }
 
 // runtimeCommand removes modeled wrappers but preserves the interpreter's
@@ -168,11 +220,73 @@ func (w *hookSourceWalk) runtimeCommand(words []*shellsyntax.Word, state hookSou
 	}
 
 	name, _ = w.value(words[0], state, false)
+	if name == "" && hookKnownBunVariable(words[0], state) {
+		name = "bun"
+	}
+
 	if !external && state.hasFunction(name) {
 		return nil, "", false
 	}
 
 	return words, name, replaces
+}
+
+func hookBun(name string) bool {
+	switch name {
+	case "bun", "/usr/bin/bun", "/usr/local/bin/bun", "/opt/homebrew/bin/bun":
+		return true
+	default:
+		return false
+	}
+}
+
+func hookKnownBunVariable(word *shellsyntax.Word, state hookSourceState) bool {
+	if state.lookupUnknown || state.hasFunction("bun") || len(word.Parts) != 1 {
+		return false
+	}
+
+	name := word.Parts[0].Text
+
+	return quotedGlobVariable(word, name) && state.kinds[name].kind == hookBunExecutable
+}
+
+func hookBunAssignment(word *shellsyntax.Word, state hookSourceState) bool {
+	if word.Writes || word.Expands || state.lookupUnknown {
+		return false
+	}
+
+	if len(word.Parts) == 2 {
+		home, suffix := word.Parts[0], word.Parts[1]
+
+		return home.Kind == shellsyntax.PartParameter && home.PlainParameter && home.Quoted && home.Text == "HOME" &&
+			suffix.Kind == shellsyntax.PartLiteral && suffix.Quoted && suffix.Text == "/.bun/bin/bun"
+	}
+
+	if len(word.Parts) != 1 || word.Parts[0].Kind != shellsyntax.PartSubstitution || state.hasFunction("bun") {
+		return false
+	}
+
+	tree := word.Parts[0].Tree
+	if tree == nil || tree.OmittedExecution || len(tree.Statements) != 1 {
+		return false
+	}
+
+	stmt := tree.Statements[0]
+	if stmt.Negated || stmt.Background || stmt.Next == shellsyntax.Background || hookAndOrLink(stmt.Next) || len(stmt.Commands) != 1 {
+		return false
+	}
+
+	cmd := stmt.Commands[0]
+	if !hookCommandLookupProbe(cmd, state) || slices.ContainsFunc(cmd.Redirects, func(r *shellsyntax.Redirect) bool {
+		return r.FD != shellsyntax.StderrFD || r.Op != shellsyntax.RedirectOutput
+	}) {
+		return false
+	}
+
+	flag, _ := cmd.Words[1].Literal()
+	name, _ := cmd.Words[2].Literal()
+
+	return flag == "-v" && name == "bun"
 }
 
 func hookRuntime(name string) string {
@@ -225,7 +339,7 @@ func (w *hookSourceWalk) traceRuntimeInline(e *entry, view source.View, cmd *she
 	lang := hookRuntime(name)
 
 	if slices.ContainsFunc(cmd.Redirects, func(r *shellsyntax.Redirect) bool {
-		return !hookDiscardedOutput(r) && (lang != language.Python || r.Op != "<<<" || !hookStdinRedirect(r))
+		return !hookDiscardedOutput(r) && (lang != language.Python || r.Op != shellsyntax.RedirectHereString || !hookStdinRedirect(r))
 	}) {
 		return false, false
 	}
@@ -287,8 +401,8 @@ func hookProvenPythonLaunch(cmd *shellsyntax.Command, args []*shellsyntax.Word, 
 
 func hookUnverifiedPythonArgument(arg *shellsyntax.Word) bool {
 	return arg.Expands || arg.Writes || slices.ContainsFunc(arg.Parts, func(part shellsyntax.Part) bool {
-		return part.Kind != "literal" &&
-			(part.Kind != "parameter" || !part.PlainParameter || !part.Quoted || !hookVariableName(part.Text))
+		return part.Kind != shellsyntax.PartLiteral &&
+			(part.Kind != shellsyntax.PartParameter || !part.PlainParameter || !part.Quoted || !hookVariableName(part.Text))
 	})
 }
 
@@ -354,12 +468,17 @@ func (w *hookSourceWalk) projectRuntimeBody(e *entry, view source.View, command,
 	return isolatedArgs >= 0 && knownIsolatedPythonProgram(doc.Units(), scope, isolatedArgs)
 }
 
-func (w *hookSourceWalk) noteUnverifiedPythonLaunch(e *entry, view source.View, cmd *shellsyntax.Command, state hookSourceState, chain []report.SourceRef) {
+func (w *hookSourceWalk) noteUnverifiedRuntimeLaunch(e *entry, view source.View, cmd *shellsyntax.Command, state hookSourceState, chain []report.SourceRef) {
 	if state.lookupUnknown || len(cmd.Words) == 0 {
 		return
 	}
 
 	words, name, _ := w.runtimeCommand(cmd.Words, state)
+	if hookBun(name) {
+		w.commandGap(e, view, cmd.Span, "hook_source_bun_scope_unverified", "The Bun program or its module scope could not be verified.")
+		return
+	}
+
 	if len(words) == 0 || hookRuntime(name) != language.Python {
 		return
 	}
@@ -408,7 +527,7 @@ func hookQuotedRuntimeStdin(redirects []*shellsyntax.Redirect) *shellsyntax.Word
 			continue
 		}
 
-		if body != nil || r.Op != "<<" || r.FD != "" && r.FD != "0" || !r.QuotedDelimiter || !r.BodyVerified || r.Body == nil {
+		if body != nil || r.Op != shellsyntax.RedirectHereDoc || r.FD != "" && r.FD != shellsyntax.StdinFD || !r.QuotedDelimiter || !r.BodyVerified || r.Body == nil {
 			return nil
 		}
 
@@ -443,7 +562,7 @@ func runtimeEnvWords(words []*shellsyntax.Word) []*shellsyntax.Word {
 			return nil
 		}
 
-		if !hookFixedArgument(word) || len(word.Parts) == 0 || word.Parts[0].Kind != "literal" {
+		if !hookFixedArgument(word) || len(word.Parts) == 0 || word.Parts[0].Kind != shellsyntax.PartLiteral {
 			return nil
 		}
 

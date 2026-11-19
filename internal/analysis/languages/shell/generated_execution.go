@@ -8,6 +8,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/report"
@@ -42,20 +43,20 @@ func (generatedShellExecutionCheck) Find(ctx context.Context, doc document.File,
 		}
 
 		steps := []trace{
-			{Role: "source", Start: link.Write.Start, End: link.Write.End},
+			{Role: report.TraceSource, Start: link.Write.Start, End: link.Write.End},
 		}
 
 		if link.Body.End > link.Body.Start {
-			steps = append(steps, trace{Role: "transform", Start: link.Body.Start, End: link.Body.End})
+			steps = append(steps, trace{Role: report.TraceTransform, Start: link.Body.Start, End: link.Body.End})
 		}
 
 		for _, span := range link.Transforms {
 			if span.End > span.Start {
-				steps = append(steps, trace{Role: "transform", Start: span.Start, End: span.End})
+				steps = append(steps, trace{Role: report.TraceTransform, Start: span.Start, End: span.End})
 			}
 		}
 
-		steps = append(steps, trace{Role: "sink", Start: link.Use.Start, End: link.Use.End})
+		steps = append(steps, trace{Role: report.TraceSink, Start: link.Use.Start, End: link.Use.End})
 		finding := match{Start: link.Use.Start, End: link.Use.End, Trace: steps}
 
 		if link.HostEnvironment {
@@ -124,13 +125,13 @@ func (f *generatedShellFlow) invalidateBefore(c *shellsyntax.Command, vars map[s
 		}
 
 		switch r.Op {
-		case ">", ">|", ">>", "<>", "&>", "&>>":
+		case shellsyntax.RedirectOutput, shellsyntax.RedirectClobber, shellsyntax.RedirectAppend, shellsyntax.RedirectReadWrite, shellsyntax.RedirectBoth, shellsyntax.RedirectAppendBoth:
 			if target, ok := scriptPathWord(r.Target, vars); ok && target != "" {
 				delete(f.files, f.key(target))
 			} else {
 				clear(f.files)
 			}
-		case ">&":
+		case shellsyntax.RedirectDuplicateOutput:
 			// An unresolved descriptor or a filename can be an output write.
 			if value, ok := r.Target.Literal(); !ok || strings.Trim(value, "0123456789-") != "" {
 				clear(f.files)
@@ -223,7 +224,7 @@ func (s *generatedShellScan) storeGeneratedWrite(flow *generatedShellFlow, key s
 }
 
 func shellConsumerBit(name string) uint32 {
-	for i, candidate := range []string{"cd", "source", ".", "sh", "bash", "dash", "zsh", "ksh", "exec", "chmod", "echo", "printf", ":", "true", "false", "test", "[", "mv"} {
+	for i, candidate := range []string{"cd", "source", ".", language.ExecutableSh, language.ExecutableBash, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh, "exec", "chmod", "echo", "printf", ":", "true", "false", "test", "[", "mv"} {
 		if name == candidate {
 			return 1 << i
 		}
@@ -431,8 +432,8 @@ func generatedShellOperand(name string, words []*shellsyntax.Word, vars map[stri
 
 func isShellInterpreter(name string) bool {
 	switch name {
-	case "sh", "bash", "dash", "zsh", "ksh", "/bin/sh", "/bin/bash", "/bin/dash", "/bin/zsh", "/bin/ksh",
-		"/usr/bin/sh", "/usr/bin/bash", "/usr/bin/dash", "/usr/bin/zsh", "/usr/bin/ksh":
+	case language.ExecutableSh, language.ExecutableBash, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh, language.BinSh, language.BinBash, language.BinDash, language.BinZsh, language.BinKsh,
+		language.UserBinSh, language.UserBinBash, language.UserBinDash, language.UserBinZsh, language.UserBinKsh:
 		return true
 	}
 

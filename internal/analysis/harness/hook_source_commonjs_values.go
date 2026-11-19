@@ -1,11 +1,14 @@
 package harness
 
 import (
-	"maps"
 	"path"
 	"strings"
 
 	"github.com/skarm/scout/internal/syntax/scriptsyntax"
+)
+
+const (
+	maxCommonJSCallArguments = 8
 )
 
 func (w *nodeHookWalk) value(m nodeHookModule, n *scriptsyntax.Node, bindings nodeHookBindings, depth int) nodeHookValue {
@@ -14,28 +17,28 @@ func (w *nodeHookWalk) value(m nodeHookModule, n *scriptsyntax.Node, bindings no
 	}
 
 	switch n.Kind {
-	case "identifier":
+	case scriptsyntax.KindIdentifier:
 		name := m.text(n)
 
-		value, bound := bindings[name]
+		_, bound := bindings[name]
 		if !bound && name == "__dirname" {
 			return nodeHookValue{kind: nodeHookPath, text: path.Dir("/" + m.rel)}
 		}
 
-		return value
-	case "string":
+		return bindings.value(name)
+	case scriptsyntax.KindString:
 		raw := m.text(n)
 		if len(raw) >= 2 && !strings.ContainsRune(raw[1:len(raw)-1], '\\') {
 			return nodeHookValue{kind: nodeHookText, text: raw[1 : len(raw)-1]}
 		}
-	case "template_string":
+	case scriptsyntax.KindTemplateString:
 		return w.template(m, n, bindings, depth)
-	case "subscript_expression":
+	case scriptsyntax.KindSubscriptExpression:
 		_, shadowed := bindings["process"]
-		if !shadowed && w.firstArg.known && m.text(n.Child("object")) == "process.argv" && m.text(n.Child("index")) == "2" {
+		if !shadowed && w.firstArg.known && m.namedMember(n.Child(scriptsyntax.FieldObject), "process", "argv") && m.text(n.Child(scriptsyntax.FieldIndex)) == "2" {
 			return nodeHookValue{kind: nodeHookText, text: w.firstArg.value}
 		}
-	case "call_expression":
+	case scriptsyntax.KindCallExpression:
 		return w.callValue(m, n, bindings, depth)
 	}
 
@@ -47,10 +50,10 @@ func (w *nodeHookWalk) template(m nodeHookModule, n *scriptsyntax.Node, bindings
 
 	for _, child := range n.Children {
 		switch child.Kind {
-		case "`":
-		case "string_fragment":
+		case scriptsyntax.KindBacktick:
+		case scriptsyntax.KindStringFragment:
 			out.WriteString(m.text(child))
-		case "template_substitution":
+		case scriptsyntax.KindTemplateSubstitution:
 			if len(child.Children) != 3 {
 				return nodeHookValue{}
 			}
@@ -74,19 +77,21 @@ func (w *nodeHookWalk) template(m nodeHookModule, n *scriptsyntax.Node, bindings
 }
 
 func (w *nodeHookWalk) callValue(m nodeHookModule, n *scriptsyntax.Node, bindings nodeHookBindings, depth int) nodeHookValue {
-	fn := n.Child("function")
-	args := nodeHookChildren(n.Child("arguments"))
+	fn := n.Child(scriptsyntax.FieldFunction)
+	args := nodeHookChildren(n.Child(scriptsyntax.FieldArguments))
 
-	if fn == nil || len(args) == 0 || len(args) > 8 {
+	if fn == nil || len(args) == 0 || len(args) > maxCommonJSCallArguments {
 		return nodeHookValue{}
 	}
 
 	switch {
-	case fn.Kind == "identifier" && len(args) == 1:
+	case fn.Kind == scriptsyntax.KindIdentifier && len(args) == 1:
 		name := m.text(fn)
 		value := w.value(m, args[0], bindings, depth+1)
 
-		callee, bound := bindings[name]
+		_, bound := bindings[name]
+
+		callee := bindings.value(name)
 		if !bound && name == "require" {
 			return w.requireValue(m, value)
 		}
@@ -165,11 +170,11 @@ func nodeHookJoin(base, suffix string) string {
 }
 
 func (w *nodeHookWalk) moduleMember(m nodeHookModule, n *scriptsyntax.Node, bindings nodeHookBindings, module, name string) bool {
-	if !nodeHookKind(n, "member_expression") || m.text(n.Child("property")) != name {
+	if !nodeHookKind(n, scriptsyntax.KindMemberExpression) || m.text(n.Child(scriptsyntax.FieldProperty)) != name {
 		return false
 	}
 
-	binding := bindings[m.text(n.Child("object"))]
+	binding := bindings.value(m.text(n.Child(scriptsyntax.FieldObject)))
 
 	return binding.kind == nodeHookModuleValue && binding.export == "" && binding.text == module
 }
@@ -181,49 +186,56 @@ func (w *nodeHookWalk) pathReturn(m nodeHookModule, callee nodeHookValue, arg no
 		return nodeHookValue{}
 	}
 
-	parameters := nodeHookChildren(callee.fn.Child("parameters"))
+	parameters := nodeHookChildren(callee.fn.Child(scriptsyntax.FieldParameters))
 
-	body := callee.fn.Child("body")
-	if len(parameters) != 1 || !nodeHookKind(parameters[0], "identifier") || body == nil {
+	body := callee.fn.Child(scriptsyntax.FieldBody)
+	if len(parameters) != 1 || !nodeHookKind(parameters[0], scriptsyntax.KindIdentifier) || body == nil {
 		return nodeHookValue{}
 	}
 
-	bindings := maps.Clone(callee.scope)
-	bindings[m.text(parameters[0])] = arg
-	w.predeclare(m, body, bindings)
+	bindings, ok := w.cloneBindings(*callee.scope)
+	if !ok {
+		return nodeHookValue{}
+	}
+
+	bindings.bind(m.text(parameters[0]), arg)
+
+	if !w.predeclare(m, body, bindings) {
+		return nodeHookValue{}
+	}
 
 	for _, n := range nodeHookChildren(body) {
 		if !w.plugin.b.step() {
 			break
 		}
 
-		if n.Kind == "lexical_declaration" && m.text(n.Child("kind")) == "const" {
+		if n.Kind == scriptsyntax.KindLexicalDeclaration && m.text(n.Child(scriptsyntax.FieldKind)) == "const" {
 			w.declare(m, n, bindings, depth)
 			continue
 		}
 
-		condition := nodeHookOnly(n.Child("condition"))
-		consequence := n.Child("consequence")
+		condition := nodeHookOnly(n.Child(scriptsyntax.FieldCondition))
+		consequence := n.Child(scriptsyntax.FieldConsequence)
 
-		alternative := n.Child("alternative")
-		if n.Kind != "if_statement" || !nodeHookKind(condition, "call_expression") || alternative != nil ||
-			!w.moduleMember(m, condition.Child("function"), bindings, "fs", "existsSync") {
+		alternative := n.Child(scriptsyntax.FieldAlternative)
+		if n.Kind != scriptsyntax.KindIfStatement || !nodeHookKind(condition, scriptsyntax.KindCallExpression) || alternative != nil ||
+			!w.moduleMember(m, condition.Child(scriptsyntax.FieldFunction), bindings, "fs", "existsSync") {
 			break
 		}
 
-		if nodeHookKind(consequence, "statement_block") {
+		if nodeHookKind(consequence, scriptsyntax.KindStatementBlock) {
 			consequence = nodeHookOnly(consequence)
 		}
 
-		test := nodeHookOnly(condition.Child("arguments"))
+		test := nodeHookOnly(condition.Child(scriptsyntax.FieldArguments))
 
 		result := nodeHookOnly(consequence)
-		if !nodeHookKind(consequence, "return_statement") || !nodeHookKind(result, "identifier") ||
-			!nodeHookKind(test, "identifier") || m.text(test) != m.text(result) {
+		if !nodeHookKind(consequence, scriptsyntax.KindReturnStatement) || !nodeHookKind(result, scriptsyntax.KindIdentifier) ||
+			!nodeHookKind(test, scriptsyntax.KindIdentifier) || m.text(test) != m.text(result) {
 			break
 		}
 
-		resolved := bindings[m.text(result)]
+		resolved := bindings.value(m.text(result))
 		if resolved.kind != nodeHookPath {
 			break
 		}

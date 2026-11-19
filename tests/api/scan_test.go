@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +20,7 @@ import (
 	"github.com/skarm/scout/baseline"
 	"github.com/skarm/scout/internal/scantest"
 	"github.com/skarm/scout/internal/signatures"
+	"github.com/skarm/scout/osv"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
 	"github.com/skarm/scout/review"
@@ -125,6 +128,69 @@ func TestSharedReviewQuotaPreservesStaticEvidence(t *testing.T) {
 	}
 }
 
+func TestSharedServiceQuotaPreservesOfflineAdvisories(t *testing.T) {
+	for _, network := range []bool{false, true} {
+		t.Run(fmt.Sprintf("network=%t", network), func(t *testing.T) {
+			options := basicOptions()
+			options.Limits.MaxServiceRequests = 1
+			advisories := osv.DefaultOptions()
+			advisories.Enabled = true
+			advisories.Offline = advisoryQuotaCache(t)
+
+			if network {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					t.Error("advisory request exceeded target quota")
+					w.WriteHeader(http.StatusInternalServerError)
+				}))
+				t.Cleanup(server.Close)
+				advisories.AllowNetwork, advisories.AllowLoopback = true, true
+				advisories.Endpoint = server.URL
+			}
+
+			options.Vulnerabilities = &advisories
+			scanner := testScanner(t, options)
+			const lockfile = `{"lockfileVersion":3,"packages":{"node_modules/sample":{"version":"1.2.3"}}}`
+			run, err := scanner.ScanMany(t.Context(), []scout.Target{
+				scout.Reader("README.txt", strings.NewReader("sample project")),
+				scout.Reader("package-lock.json", strings.NewReader(lockfile)),
+			})
+			if len(run.Targets) != 2 || err != nil && !errors.Is(err, scout.ErrIncomplete) {
+				t.Fatalf("expected both scan targets, got %s (%v)", run.State, err)
+			}
+
+			if err := report.ValidateSealedRun(run); err != nil {
+				t.Fatal(err)
+			}
+
+			result := run.Targets[1].Analysis.Vulnerabilities
+			if result.Completeness != report.Complete || len(result.Queries) != 1 || result.Queries[0].Status != report.OutcomeCached ||
+				len(result.Matches) != 1 || result.Matches[0].ID != "GHSA-fixture-only" {
+				t.Fatalf("cached advisory was not preserved: %+v", result)
+			}
+		})
+	}
+}
+
+func advisoryQuotaCache(t *testing.T) []byte {
+	t.Helper()
+
+	data, err := json.Marshal(osv.Cache{
+		Version:   1,
+		QueriedAt: time.Now().UTC(),
+		Records: []osv.Record{{
+			Ecosystem:       "npm",
+			Name:            "sample",
+			Version:         "1.2.3",
+			Vulnerabilities: []osv.ID{{ID: "GHSA-fixture-only"}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return data
+}
+
 func TestTargetWorkersPreserveOrderWhenLaterReaderFinishesFirst(t *testing.T) {
 	o := basicOptions()
 	o.Concurrency.Targets = 2
@@ -174,6 +240,95 @@ func TestCompareRescansBothInputs(t *testing.T) {
 	r, err = s.Compare(context.Background(), scout.Path(before), scout.Path(after), scout.DefaultCompareOptions())
 	if err != nil || r.Comparison.SameSnapshot || len(r.Targets[1].Analysis.Findings) == 0 {
 		t.Fatalf("fresh candidate not inspected: %+v %v", r, err)
+	}
+}
+
+func TestSARIFComparisonIgnoresUTF8BOMInTextRegions(t *testing.T) {
+	const marker = "-----BEGIN PRIVATE KEY-----"
+	const bom = "\ufeff"
+	before, after := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(before, "sample.txt"), []byte("é"+marker), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(after, "sample.txt"), []byte(bom+"é"+marker), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scanner := testScanner(t, basicOptions())
+	run, err := scanner.Compare(t.Context(), scout.Path(before), scout.Path(after), scout.DefaultCompareOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gate, err := policy.New(policy.Options{FailAt: report.High})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	document := report.NewDocument(run, gate.Evaluate(run, time.Now()))
+	var encoded bytes.Buffer
+	if err := report.Write(&encoded, report.JSON, document); err != nil {
+		t.Fatal(err)
+	}
+	var replay report.Document
+	if err := json.Unmarshal(encoded.Bytes(), &replay); err != nil {
+		t.Fatal(err)
+	}
+
+	encoded.Reset()
+	if err := report.Write(&encoded, report.SARIF, replay); err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Runs []struct {
+			Results []struct {
+				Locations []struct {
+					PhysicalLocation struct {
+						Region map[string]int
+					}
+				}
+				Properties struct {
+					SourceLocation report.Location
+				}
+			}
+		}
+	}
+	if err := json.Unmarshal(encoded.Bytes(), &wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire.Runs) != 2 {
+		t.Fatalf("comparison emitted %d runs", len(wire.Runs))
+	}
+
+	for index, emitted := range wire.Runs {
+		start := len("é") + index*len(bom)
+		containsBOM, visible := false, false
+		for _, result := range emitted.Results {
+			original := result.Properties.SourceLocation
+			if len(result.Locations) != 1 {
+				t.Fatalf("target %d: want one finding location, got %v", index, result.Locations)
+			}
+			region := result.Locations[0].PhysicalLocation.Region
+			switch {
+			case index == 1 && original.ByteStart == 0 && original.ByteEnd > 0:
+				containsBOM = true
+				offset, hasOffset := region["byteOffset"]
+				if len(region) != 2 || !hasOffset || offset != 0 || region["byteLength"] != original.ByteEnd {
+					t.Errorf("BOM-inclusive evidence was not reported as bytes: %v", region)
+				}
+			case original.ByteStart == start && original.ByteEnd == start+len(marker):
+				visible = true
+				if original.StartColumn != 2+index || original.EndColumn != 2+index+len(marker) {
+					t.Errorf("target %d: Scout coordinates changed: %+v", index, original)
+				}
+				if region["startLine"] != 1 || region["endLine"] != 1 ||
+					region["startColumn"] != 2 || region["endColumn"] != 2+len(marker) {
+					t.Errorf("target %d: wrong SARIF text coordinates: %v", index, region)
+				}
+			}
+		}
+		if !visible || index == 1 && !containsBOM {
+			t.Fatalf("target %d: expected visible marker and (with BOM) a BOM finding: %+v", index, emitted)
+		}
 	}
 }
 
@@ -344,8 +499,18 @@ func TestRunApprovalsRemainWithTheirTarget(t *testing.T) {
 			if err := json.Unmarshal(out.Bytes(), &sarif); err != nil {
 				t.Fatal(err)
 			}
+			if len(sarif.Runs) != len(run.Targets) {
+				t.Fatalf("SARIF emitted %d targets, want %d", len(sarif.Runs), len(run.Targets))
+			}
 			for i, target := range sarif.Runs {
-				if got := len(target.Results[0].Suppressions); (got == 1) != (i == approved) {
+				if len(target.Results) != 1 {
+					t.Fatalf("target %d emitted %d findings, want 1", i, len(target.Results))
+				}
+				want := 0
+				if i == approved {
+					want = 1
+				}
+				if got := len(target.Results[0].Suppressions); got != want {
 					t.Fatalf("target %d has %d accepted suppressions; only target %d was approved", i, got, approved)
 				}
 			}

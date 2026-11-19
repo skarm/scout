@@ -8,6 +8,11 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+const (
+	markerPayloadLookbackBytes = 128
+	maxDeclaredMarkers         = 1024
+)
+
 // A selected, explicitly declared literal removal followed by a quoted command.
 // This creates an inspection view, never an instruction to execute that command.
 var (
@@ -18,8 +23,8 @@ var (
 func declaredMarkers(ctx context.Context, text string) ([]source.Replacement, bool) {
 	out := make([]source.Replacement, 0)
 
-	matches := markerDirective.FindAllStringSubmatchIndex(text, 1025)
-	if len(matches) > 1024 {
+	matches := markerDirective.FindAllStringSubmatchIndex(text, maxDeclaredMarkers+1)
+	if len(matches) > maxDeclaredMarkers {
 		return nil, true
 	}
 
@@ -45,7 +50,7 @@ func declaredMarkers(ctx context.Context, text string) ([]source.Replacement, bo
 }
 
 func markerPayload(text string, match []int) (string, string, bool) {
-	left := max(0, match[0]-128)
+	left := max(0, match[0]-markerPayloadLookbackBytes)
 	if at := strings.LastIndexAny(text[left:match[0]], "\r\n.!?;"); at >= 0 {
 		left += at + 1
 	}

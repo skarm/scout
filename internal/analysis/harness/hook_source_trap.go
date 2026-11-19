@@ -7,6 +7,10 @@ import (
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 )
 
+const (
+	maxHookTrapTextBytes = 512
+)
+
 type hookTrapCommands uint8
 
 const (
@@ -50,7 +54,7 @@ func (w *hookSourceWalk) applyHookTrap(args []*shellsyntax.Word, state *hookSour
 	action, literal := args[0].Literal()
 
 	signal, _ := args[1].Literal()
-	if !literal || len(action) > 512 || (signal != "ERR" && signal != "EXIT") || state.hasFunction("exit") {
+	if !literal || len(action) > maxHookTrapTextBytes || (signal != "ERR" && signal != "EXIT") || state.hasFunction("exit") {
 		return false
 	}
 
@@ -63,11 +67,8 @@ func (w *hookSourceWalk) applyHookTrap(args []*shellsyntax.Word, state *hookSour
 		return false
 	}
 
-	if signal == "EXIT" {
-		if commands := hookCleanupTrap(parsed, *state); commands != 0 {
-			state.trapCommands |= commands
-			return true
-		}
+	if signal == "EXIT" && w.registerCleanupTrap(parsed, action, state) {
+		return true
 	}
 
 	exit := hookTrapStatement(parsed.Statements[len(parsed.Statements)-1], "exit")
@@ -97,10 +98,96 @@ func (w *hookSourceWalk) applyHookTrap(args []*shellsyntax.Word, state *hookSour
 	return true
 }
 
+func (w *hookSourceWalk) registerCleanupTrap(tree *shellsyntax.File, action string, state *hookSourceState) bool {
+	if commands := hookCleanupTrap(tree, *state); commands != 0 {
+		state.trapCommands |= commands
+		return true
+	}
+
+	cmd, simple := simpleShellCommand(tree)
+	fn, known := state.singleFunction(action)
+
+	if !simple || !known || len(cmd.Words) != 1 || hookTrapStatement(tree.Statements[0], action) == nil || !state.explicitBash {
+		return false
+	}
+
+	body := cleanupFunctionBody(fn.body, pluginRootParameters[w.plugin.host])
+	if body == nil {
+		return false
+	}
+
+	commands := hookCleanupTrap(body, *state)
+	if commands == 0 {
+		return false
+	}
+
+	// The handler resolves its function name at exit. Protect both that
+	// definition and each builtin or command used by its cleanup body.
+	if state.trapFunctions == nil {
+		state.trapFunctions = make(map[string]bool)
+	}
+
+	state.trapFunctions[action] = true
+	state.trapCommands |= commands
+
+	return true
+}
+
+func cleanupFunctionBody(tree *shellsyntax.File, root string) *shellsyntax.File {
+	group := singleCleanupStatement(tree)
+	if group == nil || group.Group == nil || !hookPlainCompound(group) {
+		return nil
+	}
+
+	body := group.Group
+	loop := singleCleanupStatement(body)
+
+	if loop == nil || !loop.Loop {
+		return body
+	}
+
+	if !hookPlainIteration(loop, root) || !hookCleanupLoopArray(loop) {
+		return nil
+	}
+
+	return loop.Alternatives[0]
+}
+
+func singleCleanupStatement(tree *shellsyntax.File) *shellsyntax.Command {
+	if tree == nil || len(tree.Statements) != 1 {
+		return nil
+	}
+
+	stmt := tree.Statements[0]
+	if stmt.Negated || stmt.Background || stmt.Next == shellsyntax.Background || hookAndOrLink(stmt.Next) || len(stmt.Commands) != 1 {
+		return nil
+	}
+
+	return stmt.Commands[0]
+}
+
+func hookCleanupLoopArray(loop *shellsyntax.Command) bool {
+	if loop.ForArray != "" {
+		return true
+	}
+
+	if len(loop.ForWords) != 1 || len(loop.ForWords[0].Parts) != 1 {
+		return false
+	}
+
+	part := loop.ForWords[0].Parts[0]
+
+	return part.Quoted && part.Kind == shellsyntax.PartParameterArrayAllDefaultEmpty
+}
+
 // A fixed cleanup command runs during process exit.
 // Preserve the proof only while all of its command names remain unshadowed.
 func hookCleanupTrap(tree *shellsyntax.File, state hookSourceState) hookTrapCommands {
 	statements := tree.Statements
+	if len(statements) == 0 || len(statements) > 2 {
+		return 0
+	}
+
 	first := *statements[0]
 	link := first.Next
 	first.Next = ""
@@ -163,11 +250,11 @@ func hookCleanupOperand(word *shellsyntax.Word) bool {
 
 	part := word.Parts[0]
 
-	return part.Kind == "parameter_array_all" || part.Kind == "parameter_array_all_default_empty"
+	return part.Kind == shellsyntax.PartParameterArrayAll || part.Kind == shellsyntax.PartParameterArrayAllDefaultEmpty
 }
 
 func hookCleanupRedirect(r *shellsyntax.Redirect) bool {
-	return r.Op == ">" && r.FD == "2" && hookDiscardedOutput(r)
+	return r.Op == shellsyntax.RedirectOutput && r.FD == shellsyntax.StderrFD && hookDiscardedOutput(r)
 }
 
 func hookTrapStatement(stmt *shellsyntax.Statement, want string) *shellsyntax.Command {
@@ -197,7 +284,7 @@ func hookTrapPrint(stmt *shellsyntax.Statement) bool {
 	r := cmd.Redirects[0]
 
 	fd, _ := r.Target.Literal()
-	if r.Op != ">&" || (r.FD != "" && r.FD != "1") || fd != "2" {
+	if r.Op != shellsyntax.RedirectDuplicateOutput || (r.FD != "" && r.FD != shellsyntax.StdoutFD) || fd != "2" {
 		return false
 	}
 

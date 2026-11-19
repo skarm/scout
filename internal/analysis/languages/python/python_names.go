@@ -10,6 +10,10 @@ import (
 	"github.com/skarm/scout/internal/syntax/frontend"
 )
 
+const (
+	maxNestedSourceDepth = 32
+)
+
 //nolint:gochecknoglobals // Read-only Python semantic classification tables are shared by scans.
 var pyNamedConstructors = map[string]string{
 	"pathlib.Path":                  "pathlib.Path",
@@ -37,7 +41,7 @@ func dictionaryCall(n *frontend.Node) (*frontend.Node, *frontend.Node) {
 // nestedSource projects source shape using identities captured when those
 // exact call nodes were evaluated. It never resolves names or repeats effects.
 func (w *pyWalker) nestedSource(n *frontend.Node, depth int) bool {
-	if n == nil || depth > 32 || !w.charge(depth) {
+	if n == nil || depth > maxNestedSourceDepth || !w.charge(depth) {
 		return false
 	}
 

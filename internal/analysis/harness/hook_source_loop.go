@@ -68,7 +68,7 @@ func (w *hookSourceWalk) applyDirectoryRetry(e *entry, view source.View, cmd *sh
 	}
 
 	test := cmd.Prelude.Statements[0]
-	if test.Negated || test.Background || test.Next == "&" || hookAndOrLink(test.Next) || len(test.Commands) != 1 ||
+	if test.Negated || test.Background || test.Next == shellsyntax.Background || hookAndOrLink(test.Next) || len(test.Commands) != 1 ||
 		!hookDirectoryOperation(test.Commands[0], *state, "mkdir") {
 		return false
 	}
@@ -111,7 +111,7 @@ func (w *hookSourceWalk) guardedReadIteration(body *shellsyntax.File, state hook
 			state = state.clone()
 		}
 
-		w.refineDecimalGuard(test, &state, (test.Next == "||") != test.Negated)
+		w.refineDecimalGuard(test, &state, (test.Next == shellsyntax.OrElse) != test.Negated)
 	}
 
 	return state
@@ -157,7 +157,7 @@ func hookReadLoop(cmd *shellsyntax.Command, state hookSourceState, root string) 
 
 	names, known := hookReadDestinations(test.Commands[0], state, root)
 	if known && len(tests) == 2 {
-		known = test.Next == "||" && hookReadsFinalLine(tests[1], state, names)
+		known = test.Next == shellsyntax.OrElse && hookReadsFinalLine(tests[1], state, names)
 	}
 
 	return names, known
@@ -257,7 +257,7 @@ func hookReadLoopEnvironment(assignments []shellsyntax.Assignment, state hookSou
 		return true
 	}
 
-	if len(assignments) != 1 || assignments[0].Name != "IFS" {
+	if len(assignments) != 1 || assignments[0].Name != envIFS {
 		return false
 	}
 
@@ -272,7 +272,7 @@ func hookReadLoopEnvironment(assignments []shellsyntax.Assignment, state hookSou
 
 	// A quoted substitution of a constant printf supplies only the IFS
 	// value. The caller still traces the substitution in its child scope.
-	if len(value.Parts) != 1 || value.Parts[0].Kind != "substitution" || !value.Parts[0].Quoted || state.hasFunction("printf") {
+	if len(value.Parts) != 1 || value.Parts[0].Kind != shellsyntax.PartSubstitution || !value.Parts[0].Quoted || state.hasFunction("printf") {
 		return false
 	}
 
@@ -298,7 +298,7 @@ func hookLiteralAssignmentWord(word *shellsyntax.Word) bool {
 
 	// An ANSI-C quoted literal can change the delimiter, but it cannot
 	// change command lookup or run another expansion.
-	return literal || len(word.Parts) == 1 && word.Parts[0].Quoted && word.Parts[0].Kind == "literal"
+	return literal || len(word.Parts) == 1 && word.Parts[0].Quoted && word.Parts[0].Kind == shellsyntax.PartLiteral
 }
 
 func hookReadLoopInput(cmd *shellsyntax.Command) bool {
@@ -314,16 +314,16 @@ func hookReadLoopInput(cmd *shellsyntax.Command) bool {
 }
 
 func hookStdinRedirect(r *shellsyntax.Redirect) bool {
-	if r.FD != "" && r.FD != "0" {
+	if r.FD != "" && r.FD != shellsyntax.StdinFD {
 		return false
 	}
 
 	switch r.Op {
-	case "<<<":
+	case shellsyntax.RedirectHereString:
 		return true
-	case "<":
+	case shellsyntax.RedirectInput:
 		return hookSingleBracketWord(r.Target) || hookProcessInput(r.Target)
-	case "<<", "<<-":
+	case shellsyntax.RedirectHereDoc, shellsyntax.RedirectStripHereDoc:
 		return r.BodyVerified
 	default:
 		return false
@@ -331,7 +331,7 @@ func hookStdinRedirect(r *shellsyntax.Redirect) bool {
 }
 
 func hookProcessInput(word *shellsyntax.Word) bool {
-	return len(word.Parts) == 1 && word.Parts[0].Kind == "process_substitution" && word.Parts[0].Tree != nil
+	return len(word.Parts) == 1 && word.Parts[0].Kind == shellsyntax.PartProcessSubstitution && word.Parts[0].Tree != nil
 }
 
 type hookLoopEffects struct {
@@ -418,6 +418,10 @@ func (w *hookSourceWalk) hookReadLoopWrites(body *shellsyntax.File, effects *hoo
 	}
 
 	// Predicates must remain safe after any iteration.
+	if !w.plugin.b.spend(len(state.vars) + len(state.kinds)) {
+		return false
+	}
+
 	state.vars = maps.Clone(state.vars)
 	state.kinds = maps.Clone(state.kinds)
 
@@ -446,7 +450,7 @@ func (w *hookSourceWalk) hookReadLoopWrites(body *shellsyntax.File, effects *hoo
 
 func (w *hookSourceWalk) scanReadLoop(body *shellsyntax.File, effects *hookLoopEffects, state hookSourceState, root string) bool {
 	for _, stmt := range body.Statements {
-		if !w.plugin.b.step() || stmt.Background || stmt.Next == "&" {
+		if !w.plugin.b.step() || stmt.Background || stmt.Next == shellsyntax.Background {
 			return false
 		}
 
@@ -492,7 +496,7 @@ func (w *hookSourceWalk) scanLoopCommand(stmt *shellsyntax.Statement, effects *h
 			effects.writes = append(effects.writes, "BASH_REMATCH")
 		}
 	case w.loopReadOnly(stmt, state):
-	case !effects.statusOnly && hookLoopFileOperation(cmd, state):
+	case effects.allowsFileOperation(cmd, state):
 		effects.fileWrites = true
 	case w.collectLoopFunctionWrites(cmd, effects, state, root):
 	case hookPlainIteration(cmd, root):
@@ -515,8 +519,24 @@ func (w *hookSourceWalk) scanLoopCommand(stmt *shellsyntax.Statement, effects *h
 	case len(cmd.Assignments) > 0 && len(cmd.Words) == 0 && len(cmd.Redirects) == 0 && !hookCommandWritesDuringExpansion(cmd):
 		return w.recordLoopWrites(cmd, effects, state, root)
 	default:
+		return recordLoopRead(cmd, effects, state, root)
+	}
+
+	return true
+}
+
+func recordLoopRead(cmd *shellsyntax.Command, effects *hookLoopEffects, state hookSourceState, root string) bool {
+	if effects.statusOnly {
 		return false
 	}
+
+	names, known := hookReadDestinations(cmd, state, root)
+	if !known {
+		return false
+	}
+
+	// A read can replace a scalar or clear an array before writing its elements.
+	effects.writes = append(effects.writes, names...)
 
 	return true
 }
@@ -549,7 +569,7 @@ func hookLoopCounter(cmd *shellsyntax.Command, root string, explicitBash bool) s
 		}
 
 		kind := operand.Parts[0].Kind
-		if kind != "parameter" && kind != "arithmetic_variable" {
+		if kind != shellsyntax.PartParameter && kind != shellsyntax.PartArithmeticVariable {
 			return ""
 		}
 	}
@@ -564,7 +584,7 @@ func hookScalarCaseSelector(word *shellsyntax.Word) bool {
 
 	// The case selector does not undergo splitting or pathname expansion.
 	return !word.Expands && !word.Writes && len(word.Parts) == 1 &&
-		word.Parts[0].Kind == "parameter" && hookVariableName(word.Parts[0].Text)
+		word.Parts[0].Kind == shellsyntax.PartParameter && hookVariableName(word.Parts[0].Text)
 }
 
 func (w *hookSourceWalk) collectLoopFunctionWrites(cmd *shellsyntax.Command, effects *hookLoopEffects, state hookSourceState, root string) bool {
@@ -580,8 +600,8 @@ func (w *hookSourceWalk) collectLoopFunctionWrites(cmd *shellsyntax.Command, eff
 		return false
 	}
 
-	// A status helper can read paths and write ordinary variables. Reject
-	// substitutions in its body, which need their own execution contexts.
+	// A status helper can read paths, write ordinary variables, and append
+	// output. Substitutions in its body need their own execution contexts.
 	child := state.child()
 	child.canReturn = true
 	child.locals = map[string]hookSourceLocal{}
@@ -597,8 +617,24 @@ func (w *hookSourceWalk) collectLoopFunctionWrites(cmd *shellsyntax.Command, eff
 	effects.writes = append(effects.writes, helper.counters...)
 	effects.tests = append(effects.tests, helper.tests...)
 	effects.foldedExports = append(effects.foldedExports, helper.foldedExports...)
+	effects.fileWrites = effects.fileWrites || helper.fileWrites
 
 	return true
+}
+
+func (effects hookLoopEffects) allowsFileOperation(cmd *shellsyntax.Command, state hookSourceState) bool {
+	if !effects.statusOnly {
+		return hookLoopFileOperation(cmd, state)
+	}
+
+	if len(cmd.Words) == 0 || len(cmd.Redirects) != 1 || cmd.Redirects[0].Op != shellsyntax.RedirectAppend ||
+		!hookGroupFileOutput(cmd.Redirects[0]) || hookCommandWritesDuringExpansion(cmd) {
+		return false
+	}
+
+	name, _ := cmd.Words[0].Literal()
+
+	return name == "printf" && hookRedirectedIO(cmd, state)
 }
 
 func hookLoopFileOperation(cmd *shellsyntax.Command, state hookSourceState) bool {
@@ -710,8 +746,8 @@ func hookGuardedExport(selector *shellsyntax.Word, patterns []*shellsyntax.Word,
 	}
 
 	key, assignment, value := word.Parts[0], word.Parts[1], word.Parts[2]
-	if !quotedGlobVariable(selector, key.Text) || key.Kind != "parameter" || !key.Quoted ||
-		assignment.Kind != "literal" || assignment.Text != "=" || value.Kind != "parameter" || !value.Quoted ||
+	if !quotedGlobVariable(selector, key.Text) || key.Kind != shellsyntax.PartParameter || !key.Quoted ||
+		assignment.Kind != shellsyntax.PartLiteral || assignment.Text != "=" || value.Kind != shellsyntax.PartParameter || !value.Quoted ||
 		!hookVariableName(value.Text) {
 		return nil
 	}

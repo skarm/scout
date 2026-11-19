@@ -9,10 +9,17 @@ import (
 	"time"
 )
 
+const (
+	maxAdvisoryURLBytes = 2048
+	// MaxAdvisoryCoordinateBytes bounds each advisory package name and version.
+	MaxAdvisoryCoordinateBytes = 256
+	advisoryVulnerability      = "vulnerability"
+)
+
 // ValidateMetadata checks only the optional advisory classification and source.
 // Legacy unclassified vulnerability fields retain their existing semantics.
 func (v Vulnerability) ValidateMetadata() error {
-	if v.Kind != "" && v.Kind != "vulnerability" && v.Kind != AdvisoryMaliciousPackage {
+	if v.Kind != "" && v.Kind != advisoryVulnerability && v.Kind != AdvisoryMaliciousPackage {
 		return errors.New("invalid advisory kind")
 	}
 
@@ -31,7 +38,7 @@ func (v Vulnerability) ValidateMetadata() error {
 }
 
 func (s AdvisorySource) valid() bool {
-	if !advisoryToken(s.Name, 160, "._:-") || !advisoryToken(s.Revision, 256, "._:+/@-") || len(s.URL) > 2048 {
+	if !advisoryToken(s.Name, 160, "._:-") || !advisoryToken(s.Revision, 256, "._:+/@-") || len(s.URL) > maxAdvisoryURLBytes {
 		return false
 	}
 
@@ -121,7 +128,7 @@ func validateClassifiedCoverage(r VulnerabilityReport) (time.Time, map[string]bo
 
 		seen[q.DependencyID] = true
 		if q.Status == OutcomeCached {
-			if q.Ecosystem == "" || q.Name == "" || q.Version == "" || len(q.Name) > 256 || len(q.Version) > 256 {
+			if q.Ecosystem == "" || q.Name == "" || q.Version == "" || len(q.Name) > MaxAdvisoryCoordinateBytes || len(q.Version) > MaxAdvisoryCoordinateBytes {
 				return time.Time{}, nil, errors.New("classified cache coverage has an invalid cached coordinate")
 			}
 

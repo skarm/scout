@@ -2,13 +2,110 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestToolReportFallbackResponseLimit(t *testing.T) {
+	const (
+		summary = "Incomplete; no installation approval."
+		sample  = "Кавычки \"<>&\" и перенос\n"
+	)
+
+	for _, tc := range []struct {
+		name           string
+		budgetOffset   int
+		measureSummary bool
+		wantJSON       bool
+		wantError      bool
+	}{
+		{name: "exact fallback limit", wantJSON: true},
+		{name: "fallback one byte over", budgetOffset: 1},
+		{name: "exact summary limit", measureSummary: true},
+		{name: "summary one byte over", budgetOffset: 1, measureSummary: true, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id := json.RawMessage(`"report"`)
+			document := map[string]string{"value": sample}
+			result := toolResult{
+				IsError:           true,
+				Content:           [1]toolText{{Type: "text", Text: summary}},
+				StructuredContent: document,
+			}
+			marshalWire := func() ([]byte, []byte) {
+				t.Helper()
+				structured, err := json.Marshal(document)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wireResult := result
+				if !tc.measureSummary {
+					wireResult.Content[0].Text = string(structured)
+				}
+				wire, err := json.Marshal(response{JSONRPC: "2.0", ID: id, Result: wireResult})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return wire, structured
+			}
+			baseline, _ := marshalWire()
+			budget := MaxResponseBytes + tc.budgetOffset - len(baseline)
+			copies := 1
+			if !tc.measureSummary {
+				copies = 2
+				if budget%copies != 0 {
+					id = json.RawMessage(`"reportx"`)
+					budget--
+				}
+			}
+			document["value"] += strings.Repeat("x", budget/copies)
+			fixture, structured := marshalWire()
+			if len(fixture) != MaxResponseBytes+tc.budgetOffset {
+				t.Fatalf("bad size fixture: %d bytes", len(fixture))
+			}
+
+			wire := encodeResponse(&response{JSONRPC: "2.0", ID: id, Result: result})
+			if len(wire)-1 > MaxResponseBytes || bytes.IndexByte(wire, '\n') != len(wire)-1 {
+				t.Fatalf("bad size or framing: %d bytes", len(wire))
+			}
+			var decoded struct {
+				ID     json.RawMessage
+				Error  *rpcError
+				Result *struct {
+					IsError           bool
+					Content           []toolText
+					StructuredContent json.RawMessage
+				}
+			}
+			if err := json.Unmarshal(wire, &decoded); err != nil || !bytes.Equal(decoded.ID, id) {
+				t.Fatalf("invalid response envelope: %v, ID %s", err, decoded.ID)
+			}
+			if tc.wantError {
+				if decoded.Error == nil || decoded.Error.Code != -32000 || decoded.Result != nil {
+					t.Fatal("oversized report did not fail closed")
+				}
+				return
+			}
+			if decoded.Error != nil || decoded.Result == nil || !decoded.Result.IsError ||
+				!bytes.Equal(decoded.Result.StructuredContent, structured) || len(decoded.Result.Content) != 1 || decoded.Result.Content[0].Type != "text" {
+				t.Fatal("structured report or incomplete status changed")
+			}
+			wantText := summary
+			if tc.wantJSON {
+				wantText = string(structured)
+			}
+			if decoded.Result.Content[0].Text != wantText {
+				t.Fatal("wrong text fallback")
+			}
+		})
+	}
+}
 
 func TestExactRequestWireContract(t *testing.T) {
 	for _, id := range []string{`""`, `"request"`, `0`, `-9223372036854775808`, `9223372036854775807`, `"` + strings.Repeat("x", 96) + `"`, `"` + strings.Repeat(`\u0061`, 21) + `"`} {

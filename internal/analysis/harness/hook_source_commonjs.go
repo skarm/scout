@@ -24,7 +24,7 @@ type nodeHookValue struct {
 	text, export string
 	kind         nodeHookValueKind
 	fn           *scriptsyntax.Node
-	scope        nodeHookBindings
+	scope        *nodeHookBindings
 }
 
 type nodeHookValueKind uint8
@@ -37,7 +37,7 @@ const (
 	nodeHookFunction
 )
 
-type nodeHookBindings map[string]nodeHookValue
+type nodeHookBindings map[string]*nodeHookValue
 
 type nodeHookWalk struct {
 	*hookSourceWalk
@@ -80,7 +80,15 @@ func (m nodeHookModule) text(n *scriptsyntax.Node) string {
 		return ""
 	}
 
-	return m.unit.View.Text()[n.Start:n.End]
+	value, _ := scriptsyntax.IdentifierText(n.Kind, m.unit.View.Text()[n.Start:n.End])
+
+	return value
+}
+
+func (m nodeHookModule) namedMember(n *scriptsyntax.Node, object, property string) bool {
+	return nodeHookKind(n, scriptsyntax.KindMemberExpression) && len(n.Children) == 3 && n.Children[1].Kind == scriptsyntax.KindDot &&
+		nodeHookKind(n.Children[0], scriptsyntax.KindIdentifier) && m.text(n.Children[0]) == object &&
+		nodeHookKind(n.Children[2], scriptsyntax.KindPropertyIdentifier) && m.text(n.Children[2]) == property
 }
 
 func nodeHookChildren(n *scriptsyntax.Node) []*scriptsyntax.Node {
@@ -92,7 +100,7 @@ func nodeHookChildren(n *scriptsyntax.Node) []*scriptsyntax.Node {
 
 	for _, child := range n.Children {
 		switch child.Kind {
-		case "(", ")", "[", "]", "{", "}", ",", ";", "comment", "hash_bang_line", "return":
+		case scriptsyntax.KindOpenParen, scriptsyntax.KindCloseParen, scriptsyntax.KindOpenBracket, scriptsyntax.KindCloseBracket, scriptsyntax.KindOpenBrace, scriptsyntax.KindCloseBrace, scriptsyntax.KindComma, scriptsyntax.KindSemicolon, scriptsyntax.KindComment, scriptsyntax.KindHashBangLine, scriptsyntax.KindReturn:
 		default:
 			children = append(children, child)
 		}
@@ -119,17 +127,10 @@ func (w *nodeHookWalk) inspectBlock(m nodeHookModule, block *scriptsyntax.Node, 
 		return
 	}
 
-	parent := bindings
-	bindings = maps.Clone(parent)
-	locals := w.predeclare(m, block, bindings)
-
-	defer func() {
-		for name := range parent {
-			if _, shadowed := locals[name]; !shadowed && bindings[name].kind == nodeHookUnknown {
-				parent[name] = nodeHookValue{}
-			}
-		}
-	}()
+	bindings, ok := w.cloneBindings(bindings)
+	if !ok || !w.predeclare(m, block, bindings) {
+		return
+	}
 
 	for _, n := range nodeHookChildren(block) {
 		if !w.plugin.b.step() {
@@ -139,62 +140,71 @@ func (w *nodeHookWalk) inspectBlock(m nodeHookModule, block *scriptsyntax.Node, 
 		w.inspectNode(m, n, bindings, steps, depth)
 
 		switch n.Kind {
-		case "lexical_declaration":
+		case scriptsyntax.KindLexicalDeclaration:
 			w.declare(m, n, bindings, depth)
-		case "return_statement", "throw_statement", "with_statement", "variable_declaration":
+		case scriptsyntax.KindReturnStatement, scriptsyntax.KindThrowStatement, scriptsyntax.KindWithStatement, scriptsyntax.KindVariableDeclaration:
 			return
 		}
 	}
 }
 
-func (w *nodeHookWalk) predeclare(m nodeHookModule, block *scriptsyntax.Node, bindings nodeHookBindings) nodeHookBindings {
+func (w *nodeHookWalk) predeclare(m nodeHookModule, block *scriptsyntax.Node, bindings nodeHookBindings) bool {
 	locals := make(nodeHookBindings)
+	scope := &bindings
 
 	for _, n := range nodeHookChildren(block) {
-		switch n.Kind {
-		case "function_declaration", "generator_function_declaration", "class_declaration":
-			name := m.text(n.Child("name"))
-			locals[name] = nodeHookValue{}
+		if !w.plugin.b.step() {
+			return false
+		}
 
-			if n.Kind == "function_declaration" {
-				locals[name] = nodeHookValue{kind: nodeHookFunction, fn: n, scope: bindings}
+		switch n.Kind {
+		case scriptsyntax.KindFunctionDeclaration, scriptsyntax.KindGeneratorFunctionDeclaration, scriptsyntax.KindClassDeclaration:
+			name := m.text(n.Child(scriptsyntax.FieldName))
+			locals.bind(name, nodeHookValue{})
+
+			if n.Kind == scriptsyntax.KindFunctionDeclaration {
+				locals.bind(name, nodeHookValue{kind: nodeHookFunction, fn: n, scope: scope})
 			}
-		case "lexical_declaration", "variable_declaration":
+		case scriptsyntax.KindLexicalDeclaration, scriptsyntax.KindVariableDeclaration:
 			for _, declaration := range n.Children {
-				if nodeHookKind(declaration, "variable_declarator") {
-					w.bindPattern(m, declaration.Child("name"), nodeHookValue{}, locals)
+				if nodeHookKind(declaration, scriptsyntax.KindVariableDeclarator) {
+					w.bindPattern(m, declaration.Child(scriptsyntax.FieldName), nodeHookValue{}, locals)
 				}
 			}
 		}
 	}
 
+	if !w.plugin.b.spend(len(locals)) {
+		return false
+	}
+
 	maps.Copy(bindings, locals)
 
-	return locals
+	return true
 }
 
 func (w *nodeHookWalk) declare(m nodeHookModule, declaration *scriptsyntax.Node, bindings nodeHookBindings, depth int) {
-	if m.text(declaration.Child("kind")) != "const" {
+	if m.text(declaration.Child(scriptsyntax.FieldKind)) != "const" {
 		return
 	}
 
 	for _, n := range declaration.Children {
-		if nodeHookKind(n, "variable_declarator") {
-			value := w.value(m, n.Child("value"), bindings, depth+1)
-			w.bindPattern(m, n.Child("name"), value, bindings)
+		if nodeHookKind(n, scriptsyntax.KindVariableDeclarator) {
+			value := w.value(m, n.Child(scriptsyntax.FieldValue), bindings, depth+1)
+			w.bindPattern(m, n.Child(scriptsyntax.FieldName), value, bindings)
 		}
 	}
 }
 
 func (w *nodeHookWalk) bindPattern(m nodeHookModule, pattern *scriptsyntax.Node, value nodeHookValue, bindings nodeHookBindings) {
-	if pattern == nil || pattern.Invalid {
+	if pattern == nil || pattern.Invalid || !w.plugin.b.step() {
 		return
 	}
 
 	switch pattern.Kind {
-	case "identifier":
-		bindings[m.text(pattern)] = value
-	case "shorthand_property_identifier_pattern":
+	case scriptsyntax.KindIdentifier:
+		bindings.bind(m.text(pattern), value)
+	case scriptsyntax.KindShorthandPropertyIdentifierPattern:
 		name := m.text(pattern)
 		if value.kind == nodeHookModuleValue {
 			value.export = name
@@ -202,14 +212,17 @@ func (w *nodeHookWalk) bindPattern(m nodeHookModule, pattern *scriptsyntax.Node,
 			value = nodeHookValue{}
 		}
 
-		bindings[name] = value
-	case "object_pattern":
+		bindings.bind(name, value)
+	case scriptsyntax.KindObjectPattern:
 		for _, child := range pattern.Children {
 			w.bindPattern(m, child, value, bindings)
 		}
-	case "pair_pattern":
-		w.bindPattern(m, pattern.Child("value"), nodeHookValue{}, bindings)
-	case "rest_pattern", "assignment_pattern", "array_pattern":
+	case scriptsyntax.KindPairPattern:
+		w.bindPattern(m, pattern.Child(scriptsyntax.FieldValue), nodeHookValue{}, bindings)
+	case scriptsyntax.KindAssignmentPattern, scriptsyntax.KindObjectAssignmentPattern:
+		// Defaults reference values; only their left side declares names.
+		w.bindPattern(m, pattern.Child(scriptsyntax.FieldLeft), nodeHookValue{}, bindings)
+	case scriptsyntax.KindRestPattern, scriptsyntax.KindArrayPattern:
 		for _, child := range pattern.Children {
 			w.bindPattern(m, child, nodeHookValue{}, bindings)
 		}
@@ -222,40 +235,51 @@ func (w *nodeHookWalk) inspectNode(m nodeHookModule, n *scriptsyntax.Node, bindi
 	}
 
 	switch n.Kind {
-	case "function_declaration", "function_expression", "arrow_function", "generator_function", "generator_function_declaration", "method_definition", "class_declaration", "with_statement":
+	case scriptsyntax.KindFunctionDeclaration, scriptsyntax.KindFunctionExpression, scriptsyntax.KindArrowFunction, scriptsyntax.KindGeneratorFunction, scriptsyntax.KindGeneratorFunctionDeclaration, scriptsyntax.KindMethodDefinition, scriptsyntax.KindClassDeclaration, scriptsyntax.KindWithStatement:
 		return
-	case "statement_block":
+	case scriptsyntax.KindStatementBlock:
 		w.inspectBlock(m, n, bindings, steps, depth)
 		return
-	case "catch_clause":
-		child := maps.Clone(bindings)
-		w.bindPattern(m, n.Child("parameter"), nodeHookValue{}, child)
-		w.inspectBlock(m, n.Child("body"), child, steps, depth)
+	case scriptsyntax.KindCatchClause:
+		child, ok := w.cloneBindings(bindings)
+		if !ok {
+			return
+		}
+
+		w.bindPattern(m, n.Child(scriptsyntax.FieldParameter), nodeHookValue{}, child)
+		w.inspectBlock(m, n.Child(scriptsyntax.FieldBody), child, steps, depth)
 
 		return
-	case "if_statement":
-		condition := nodeHookOnly(n.Child("condition"))
+	case scriptsyntax.KindIfStatement:
+		condition := nodeHookOnly(n.Child(scriptsyntax.FieldCondition))
 		w.inspectConditional(m, n, condition, bindings, steps, depth)
 
 		return
-	case "ternary_expression":
-		w.inspectConditional(m, n, n.Child("condition"), bindings, steps, depth)
+	case scriptsyntax.KindTernaryExpression:
+		w.inspectConditional(m, n, n.Child(scriptsyntax.FieldCondition), bindings, steps, depth)
 
 		return
-	case "binary_expression":
+	case scriptsyntax.KindBinaryExpression:
 		w.inspectBinary(m, n, bindings, steps, depth)
 
 		return
-	case "assignment_expression", "augmented_assignment_expression":
-		w.inspectNode(m, n.Child("right"), bindings, steps, depth)
+	case scriptsyntax.KindAssignmentExpression, scriptsyntax.KindAugmentedAssignmentExpression:
+		w.inspectNode(m, n.Child(scriptsyntax.FieldRight), bindings, steps, depth)
 
-		if left := n.Child("left"); nodeHookKind(left, "identifier") {
-			bindings[m.text(left)] = nodeHookValue{}
+		if left := n.Child(scriptsyntax.FieldLeft); nodeHookKind(left, scriptsyntax.KindIdentifier) {
+			bindings.invalidate(m.text(left))
 		}
 
 		return
-	case "call_expression":
+	case scriptsyntax.KindUpdateExpression:
+		if argument := n.Child(scriptsyntax.FieldArgument); nodeHookKind(argument, scriptsyntax.KindIdentifier) {
+			bindings.invalidate(m.text(argument))
+		}
+
+		return
+	case scriptsyntax.KindCallExpression:
 		w.inspectCall(m, n, bindings, steps, depth)
+		return
 	}
 
 	for _, child := range n.Children {
@@ -266,7 +290,7 @@ func (w *nodeHookWalk) inspectNode(m nodeHookModule, n *scriptsyntax.Node, bindi
 func (w *nodeHookWalk) inspectConditional(m nodeHookModule, n, condition *scriptsyntax.Node, bindings nodeHookBindings, steps []report.SourceRef, depth int) {
 	w.inspectNode(m, condition, bindings, steps, depth)
 
-	consequence, alternative := n.Child("consequence"), n.Child("alternative")
+	consequence, alternative := n.Child(scriptsyntax.FieldConsequence), n.Child(scriptsyntax.FieldAlternative)
 
 	if truth, known := w.truth(m, condition, bindings, depth); known {
 		branch := alternative
@@ -279,34 +303,39 @@ func (w *nodeHookWalk) inspectConditional(m nodeHookModule, n, condition *script
 		return
 	}
 
-	left, right := maps.Clone(bindings), maps.Clone(bindings)
+	left, leftCells := w.forkBindings(bindings)
+	if w.plugin.b.stopped {
+		return
+	}
+
+	right, rightCells := w.forkBindings(bindings)
+	if w.plugin.b.stopped {
+		return
+	}
+
 	w.inspectNode(m, consequence, left, steps, depth)
 	w.inspectNode(m, alternative, right, steps, depth)
 
-	for name := range bindings {
-		if left[name].kind == nodeHookUnknown || right[name].kind == nodeHookUnknown {
-			bindings[name] = nodeHookValue{}
-		}
-	}
+	w.mergeCells(leftCells, rightCells)
 }
 
 func (w *nodeHookWalk) inspectBinary(m nodeHookModule, n *scriptsyntax.Node, bindings nodeHookBindings, steps []report.SourceRef, depth int) {
-	left := n.Child("left")
+	left := n.Child(scriptsyntax.FieldLeft)
 	w.inspectNode(m, left, bindings, steps, depth)
 
-	switch op := m.text(n.Child("operator")); op {
-	case "&&", "||":
+	switch op := m.text(n.Child(scriptsyntax.FieldOperator)); op {
+	case scriptsyntax.OpAnd, scriptsyntax.OpOr:
 		truth, known := w.truth(m, left, bindings, depth)
-		if known && truth == (op == "||") {
+		if known && truth == (op == scriptsyntax.OpOr) {
 			return
 		}
-	case "??":
-		if _, known := w.truth(m, left, bindings, depth); known && !nodeHookKind(left, "null") {
+	case scriptsyntax.OpNullish:
+		if _, known := w.truth(m, left, bindings, depth); known && !nodeHookKind(left, scriptsyntax.KindNull) {
 			return
 		}
 	}
 
-	w.inspectNode(m, n.Child("right"), bindings, steps, depth)
+	w.inspectNode(m, n.Child(scriptsyntax.FieldRight), bindings, steps, depth)
 }
 
 func (w *nodeHookWalk) truth(m nodeHookModule, n *scriptsyntax.Node, bindings nodeHookBindings, depth int) (bool, bool) {
@@ -315,17 +344,17 @@ func (w *nodeHookWalk) truth(m nodeHookModule, n *scriptsyntax.Node, bindings no
 	}
 
 	switch n.Kind {
-	case "true":
+	case scriptsyntax.KindTrue:
 		return true, true
-	case "false", "null":
+	case scriptsyntax.KindFalse, scriptsyntax.KindNull:
 		return false, true
-	case "unary_expression":
-		if m.text(n.Child("operator")) == "!" {
-			truth, known := w.truth(m, n.Child("argument"), bindings, depth+1)
+	case scriptsyntax.KindUnaryExpression:
+		if m.text(n.Child(scriptsyntax.FieldOperator)) == "!" {
+			truth, known := w.truth(m, n.Child(scriptsyntax.FieldArgument), bindings, depth+1)
 			return !truth, known
 		}
-	case "identifier":
-		value := bindings[m.text(n)]
+	case scriptsyntax.KindIdentifier:
+		value := bindings.value(m.text(n))
 		if value.kind == nodeHookText || value.kind == nodeHookPath {
 			return value.text != "", true
 		}
@@ -335,32 +364,42 @@ func (w *nodeHookWalk) truth(m nodeHookModule, n *scriptsyntax.Node, bindings no
 }
 
 func (w *nodeHookWalk) inspectCall(m nodeHookModule, call *scriptsyntax.Node, bindings nodeHookBindings, steps []report.SourceRef, depth int) {
-	fn := call.Child("function")
+	fn := call.Child(scriptsyntax.FieldFunction)
 	if fn == nil || depth >= maxHookSourceDepth-1 {
 		return
 	}
 
-	callee := bindings[m.text(fn)]
-	if fn.Kind == "member_expression" && nodeHookKind(fn.Child("object"), "identifier") {
-		callee = bindings[m.text(fn.Child("object"))]
+	w.inspectNode(m, fn, bindings, steps, depth)
+
+	callee := bindings.value(m.text(fn))
+	if fn.Kind == scriptsyntax.KindMemberExpression && nodeHookKind(fn.Child(scriptsyntax.FieldObject), scriptsyntax.KindIdentifier) {
+		callee = bindings.value(m.text(fn.Child(scriptsyntax.FieldObject)))
 		if callee.kind == nodeHookModuleValue && callee.export == "" {
-			callee.export = m.text(fn.Child("property"))
+			callee.export = m.text(fn.Child(scriptsyntax.FieldProperty))
 		} else {
-			return
+			callee = nodeHookValue{}
 		}
+	}
+
+	// JavaScript captures the callee before evaluating arguments, then runs the
+	// body. Keep each argument's value before a later argument can rebind it.
+	var args []nodeHookValue
+
+	for _, arg := range nodeHookChildren(call.Child(scriptsyntax.FieldArguments)) {
+		w.inspectNode(m, arg, bindings, steps, depth)
+		args = append(args, w.value(m, arg, bindings, depth+1))
 	}
 
 	switch callee.kind {
 	case nodeHookFunction:
-		args := nodeHookChildren(call.Child("arguments"))
-		w.inspectFunction(m, callee.fn, args, bindings, callee.scope, steps, depth)
+		w.inspectFunction(m, callee.fn, args, callee.scope, steps, depth)
 	case nodeHookModuleValue:
 		w.inspectExport(m, call, callee, steps, depth)
 	}
 }
 
-func (w *nodeHookWalk) inspectFunction(m nodeHookModule, fn *scriptsyntax.Node, args []*scriptsyntax.Node, bindings, scope nodeHookBindings, steps []report.SourceRef, depth int) {
-	if fn == nil || !nodeHookStableScope(m, fn.Child("body")) {
+func (w *nodeHookWalk) inspectFunction(m nodeHookModule, fn *scriptsyntax.Node, args []nodeHookValue, scope *nodeHookBindings, steps []report.SourceRef, depth int) {
+	if fn == nil || !nodeHookStableScope(m, fn.Child(scriptsyntax.FieldBody)) {
 		return
 	}
 
@@ -372,18 +411,21 @@ func (w *nodeHookWalk) inspectFunction(m nodeHookModule, fn *scriptsyntax.Node, 
 	w.active[key] = true
 	defer delete(w.active, key)
 
-	child := maps.Clone(scope)
+	child, ok := w.cloneBindings(*scope)
+	if !ok {
+		return
+	}
 
-	for i, param := range nodeHookChildren(fn.Child("parameters")) {
+	for i, param := range nodeHookChildren(fn.Child(scriptsyntax.FieldParameters)) {
 		value := nodeHookValue{}
 		if i < len(args) {
-			value = w.value(m, args[i], bindings, depth+1)
+			value = args[i]
 		}
 
 		w.bindPattern(m, param, value, child)
 	}
 
-	w.inspectBlock(m, fn.Child("body"), child, steps, depth+1)
+	w.inspectBlock(m, fn.Child(scriptsyntax.FieldBody), child, steps, depth+1)
 }
 
 func nodeHookStableScope(m nodeHookModule, n *scriptsyntax.Node) bool {
@@ -392,13 +434,17 @@ func nodeHookStableScope(m nodeHookModule, n *scriptsyntax.Node) bool {
 	}
 
 	switch n.Kind {
-	case "function_declaration", "function_expression", "arrow_function", "generator_function", "generator_function_declaration", "method_definition":
+	case scriptsyntax.KindFunctionDeclaration, scriptsyntax.KindFunctionExpression, scriptsyntax.KindArrowFunction, scriptsyntax.KindGeneratorFunction, scriptsyntax.KindGeneratorFunctionDeclaration, scriptsyntax.KindMethodDefinition:
 		return true
-	case "with_statement", "variable_declaration", "import_statement":
+	case scriptsyntax.KindWithStatement, scriptsyntax.KindVariableDeclaration, scriptsyntax.KindImportStatement:
 		return false
-	case "assignment_expression", "augmented_assignment_expression":
-		left := n.Child("left")
-		if !nodeHookKind(left, "identifier") {
+	case scriptsyntax.KindAssignmentExpression, scriptsyntax.KindAugmentedAssignmentExpression, scriptsyntax.KindUpdateExpression:
+		left := n.Child(scriptsyntax.FieldLeft)
+		if n.Kind == scriptsyntax.KindUpdateExpression {
+			left = n.Child(scriptsyntax.FieldArgument)
+		}
+
+		if !nodeHookKind(left, scriptsyntax.KindIdentifier) {
 			return false
 		}
 
@@ -406,8 +452,12 @@ func nodeHookStableScope(m nodeHookModule, n *scriptsyntax.Node) bool {
 		case "require", "module", "process", "__dirname":
 			return false
 		}
-	case "call_expression":
-		if m.text(n.Child("function")) == "eval" {
+	case scriptsyntax.KindUnaryExpression:
+		if m.text(n.Child(scriptsyntax.FieldOperator)) == "delete" {
+			return false
+		}
+	case scriptsyntax.KindCallExpression:
+		if m.text(n.Child(scriptsyntax.FieldFunction)) == "eval" {
 			return false
 		}
 	}
@@ -426,7 +476,7 @@ func (w *nodeHookWalk) inspectExport(from nodeHookModule, call *scriptsyntax.Nod
 	}
 
 	bindings, fn := w.moduleExports(target, callee.export, depth)
-	if fn == nil || w.active[nodeHookCall{path: target.rel, at: fn.Start}] || !nodeHookStableScope(target, fn.Child("body")) {
+	if fn == nil || w.active[nodeHookCall{path: target.rel, at: fn.Start}] || !nodeHookStableScope(target, fn.Child(scriptsyntax.FieldBody)) {
 		return
 	}
 
@@ -443,10 +493,10 @@ func (w *nodeHookWalk) inspectExport(from nodeHookModule, call *scriptsyntax.Nod
 	steps = append(slices.Clone(steps), at)
 	w.plugin.b.hookSourcePaths = append(w.plugin.b.hookSourcePaths, HookSourcePath{
 		Target: target.meta.Path, Event: w.event, Language: language.JavaScript,
-		Steps: steps, Scope: scope, Exclude: nodeHookNestedFunctions(target, fn.Child("body")),
+		Steps: steps, Scope: scope, Exclude: nodeHookNestedFunctions(target, fn.Child(scriptsyntax.FieldBody)),
 	})
 
-	w.inspectFunction(target, fn, nil, bindings, bindings, steps, depth)
+	w.inspectFunction(target, fn, nil, &bindings, steps, depth)
 }
 
 func nodeHookNestedFunctions(m nodeHookModule, root *scriptsyntax.Node) []source.Span {
@@ -456,7 +506,7 @@ func nodeHookNestedFunctions(m nodeHookModule, root *scriptsyntax.Node) []source
 
 	visit = func(n *scriptsyntax.Node) {
 		switch n.Kind {
-		case "function_declaration", "function_expression", "arrow_function", "generator_function", "generator_function_declaration", "method_definition":
+		case scriptsyntax.KindFunctionDeclaration, scriptsyntax.KindFunctionExpression, scriptsyntax.KindArrowFunction, scriptsyntax.KindGeneratorFunction, scriptsyntax.KindGeneratorFunctionDeclaration, scriptsyntax.KindMethodDefinition:
 			if span, err := m.unit.View.Original(source.Span{Start: n.Start, End: n.End}); err == nil {
 				spans = append(spans, span)
 			}
@@ -489,7 +539,9 @@ func nodeHookLocation(m nodeHookModule, n *scriptsyntax.Node) (report.SourceRef,
 
 func (w *nodeHookWalk) moduleExports(m nodeHookModule, name string, depth int) (nodeHookBindings, *scriptsyntax.Node) {
 	bindings := make(nodeHookBindings)
-	w.predeclare(m, m.root, bindings)
+	if !w.predeclare(m, m.root, bindings) {
+		return nil, nil
+	}
 
 	var exported *scriptsyntax.Node
 
@@ -500,21 +552,21 @@ func (w *nodeHookWalk) moduleExports(m nodeHookModule, name string, depth int) (
 		}
 
 		switch statement.Kind {
-		case "lexical_declaration":
+		case scriptsyntax.KindLexicalDeclaration:
 			w.declare(m, statement, bindings, depth)
-		case "function_declaration":
-		case "expression_statement":
+		case scriptsyntax.KindFunctionDeclaration:
+		case scriptsyntax.KindExpressionStatement:
 			expr := nodeHookOnly(statement)
-			if nodeHookKind(expr, "string") {
+			if nodeHookKind(expr, scriptsyntax.KindString) {
 				continue
 			}
 
-			if !nodeHookKind(expr, "assignment_expression") || m.text(expr.Child("left")) != "module.exports" {
+			if !nodeHookKind(expr, scriptsyntax.KindAssignmentExpression) || !m.namedMember(expr.Child(scriptsyntax.FieldLeft), "module", "exports") {
 				return nil, nil
 			}
 
-			object := expr.Child("right")
-			if i != len(statements)-1 || !nodeHookKind(object, "object") {
+			object := expr.Child(scriptsyntax.FieldRight)
+			if i != len(statements)-1 || !nodeHookKind(object, scriptsyntax.KindObject) {
 				return nil, nil
 			}
 
@@ -531,7 +583,7 @@ func (w *nodeHookWalk) moduleExports(m nodeHookModule, name string, depth int) (
 	var found *scriptsyntax.Node
 
 	for _, member := range nodeHookChildren(exported) {
-		if member.Kind != "shorthand_property_identifier" {
+		if member.Kind != scriptsyntax.KindShorthandPropertyIdentifier {
 			return nil, nil
 		}
 
@@ -540,7 +592,7 @@ func (w *nodeHookWalk) moduleExports(m nodeHookModule, name string, depth int) (
 				return nil, nil
 			}
 
-			value := bindings[name]
+			value := bindings.value(name)
 			if value.kind == nodeHookFunction {
 				found = value.fn
 			}

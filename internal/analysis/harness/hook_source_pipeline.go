@@ -10,6 +10,11 @@ import (
 
 // A nonblocking flock guard can skip a subshell body. Opening a dedicated
 // append-only lock descriptor leaves the shell's standard streams intact.
+const (
+	minHookAuxiliaryFD = 3
+	maxHookAuxiliaryFD = 1023
+)
+
 func hookAppendLockSubshell(cmd *shellsyntax.Command, state hookSourceState) bool {
 	if state.lookupUnknown || state.hasFunction("flock") || len(cmd.Redirects) != 1 || len(cmd.Subshell.Statements) < 2 {
 		return false
@@ -18,18 +23,18 @@ func hookAppendLockSubshell(cmd *shellsyntax.Command, state hookSourceState) boo
 	redirect := cmd.Redirects[0]
 	fd, err := strconv.Atoi(redirect.FD)
 
-	if redirect.Op != ">>" || err != nil || fd < 3 || fd > 1023 || redirect.Target == nil ||
+	if redirect.Op != shellsyntax.RedirectAppend || err != nil || fd < minHookAuxiliaryFD || fd > maxHookAuxiliaryFD || redirect.Target == nil ||
 		!redirect.Target.Quoted || !hookFixedArgument(redirect.Target) || len(redirect.Target.Parts) != 1 {
 		return false
 	}
 
 	part := redirect.Target.Parts[0]
-	if part.Kind != "literal" && (part.Kind != "parameter" || !part.PlainParameter || !hookVariableName(part.Text)) {
+	if part.Kind != shellsyntax.PartLiteral && (part.Kind != shellsyntax.PartParameter || !part.PlainParameter || !hookVariableName(part.Text)) {
 		return false
 	}
 
 	probe, skip := cmd.Subshell.Statements[0], cmd.Subshell.Statements[1]
-	if probe.Next != "||" || probe.Negated || probe.Background || len(probe.Commands) != 1 || !hookLockExit(skip, state) {
+	if probe.Next != shellsyntax.OrElse || probe.Negated || probe.Background || len(probe.Commands) != 1 || !hookLockExit(skip, state) {
 		return false
 	}
 
@@ -65,7 +70,7 @@ func hookLockExit(stmt *shellsyntax.Statement, state hookSourceState) bool {
 // isolated shell scopes. The final foreground stage may run in the caller
 // under Bash lastpipe, so it contributes a second possible continuation.
 func (w *hookSourceWalk) traceForkedStatement(e *entry, view source.View, stmt *shellsyntax.Statement, state *hookSourceState, chain []report.SourceRef, entrypoint bool) bool {
-	background := stmt.Background || stmt.Next == "&"
+	background := stmt.Background || stmt.Next == shellsyntax.Background
 	if !background && len(stmt.Commands) < 2 {
 		return false
 	}
@@ -107,7 +112,7 @@ func (w *hookSourceWalk) traceBackgroundList(e *entry, view source.View, stmts [
 		stmt := *original
 		stmt.Background = false
 
-		if stmt.Next == "&" {
+		if stmt.Next == shellsyntax.Background {
 			stmt.Next = ""
 		}
 
@@ -150,6 +155,6 @@ func (w *hookSourceWalk) traceRedirectedGroup(e *entry, view source.View, cmd *s
 func hookGroupFileOutput(r *shellsyntax.Redirect) bool {
 	// These redirects can fail or write a file but cannot assign a shell
 	// variable or change command lookup. Substitutions are traced by command.
-	return (r.Op == ">" || r.Op == ">>") && (r.FD == "" || r.FD == "1" || r.FD == "2") &&
+	return (r.Op == shellsyntax.RedirectOutput || r.Op == shellsyntax.RedirectAppend) && (r.FD == "" || r.FD == shellsyntax.StdoutFD || r.FD == shellsyntax.StderrFD) &&
 		hookSingleBracketWord(r.Target)
 }

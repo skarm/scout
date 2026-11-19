@@ -92,6 +92,37 @@ func TestInlineMarkupGrammarPreservesNonMarkupBoundaries(t *testing.T) {
 	}
 }
 
+func TestInlineEmphasisKeepsWhitespaceAtDelimiterEdgesLiteral(t *testing.T) {
+	for _, tc := range []struct {
+		input, delimiter string
+		strip            bool
+	}{
+		{"**note**", "**", true},
+		{"** note**", "**", false},
+		{"**\u1680note**", "**", false},
+		{"**note **", "**", false},
+		{"_note\u1680_", "_", false},
+		{"~~note ~~", "~~", false},
+		{"`note `", "`", true},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			views, limited := securitytext.Views(t.Context(), tc.input)
+			if limited {
+				t.Fatal("unexpected limit")
+			}
+			stripped := false
+			for _, view := range views {
+				if !strings.Contains(view.Text(), tc.delimiter) {
+					stripped = true
+				}
+			}
+			if stripped != tc.strip {
+				t.Fatalf("stripped delimiter = %v, want %v", stripped, tc.strip)
+			}
+		})
+	}
+}
+
 func TestReconstructionPrefilterPreservesRegexGrammar(t *testing.T) {
 	for _, word := range securitytext.ReconstructionWordsForTest() {
 		for _, separator := range []string{"", " ", "1", "_", "!", "\n", "        ", "         ", "\x00", "\u034f", "\u3164"} {

@@ -18,7 +18,7 @@ func (s *generatedShellScan) recoverDirectStdin(c *shellsyntax.Command, scope *s
 }
 
 func (s *generatedShellScan) recoverPipedStdin(stmt *shellsyntax.Statement, scope *scriptScope) bool {
-	if len(stmt.Commands) != 2 || len(stmt.Pipes) != 1 || stmt.Pipes[0] != "|" {
+	if len(stmt.Commands) != 2 || len(stmt.Pipes) != 1 || stmt.Pipes[0] != shellsyntax.Pipe {
 		return true
 	}
 
@@ -67,7 +67,7 @@ func generatedStdinRedirect(c *shellsyntax.Command) (*shellsyntax.Redirect, bool
 
 	for _, r := range c.Redirects {
 		if r.FD != "" && generatedFD(r.FD) == "0" || r.FD == "" && strings.HasPrefix(r.Op, "<") {
-			if input != nil || r.Op != "<<" && r.Op != "<<-" {
+			if input != nil || r.Op != shellsyntax.RedirectHereDoc && r.Op != shellsyntax.RedirectStripHereDoc {
 				return nil, false
 			}
 
@@ -76,7 +76,7 @@ func generatedStdinRedirect(c *shellsyntax.Command) (*shellsyntax.Redirect, bool
 			continue
 		}
 
-		if (r.Op != ">" && r.Op != ">>" && r.Op != ">|") || generatedRedirectRunsCode(r) {
+		if (r.Op != shellsyntax.RedirectOutput && r.Op != shellsyntax.RedirectAppend && r.Op != shellsyntax.RedirectClobber) || generatedRedirectRunsCode(r) {
 			return nil, false
 		}
 	}

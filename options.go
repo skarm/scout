@@ -195,14 +195,39 @@ type CompareOptions struct {
 	MaxChanges int
 }
 
+const (
+	defaultConcurrentTargets  = 1
+	defaultAnalysisWorkers    = 4
+	defaultExternalDepth      = 2
+	defaultExternalRequests   = 16
+	defaultExternalBytes      = 4 << 20
+	defaultAnalysisOperations = 16 << 20
+	defaultMatchesPerRule     = 1024
+
+	defaultServiceRequests = 64
+	defaultScanTimeout     = 2 * time.Minute
+
+	maxConcurrency = 32
+	// MaxScanTimeout is the maximum supported scan deadline.
+	MaxScanTimeout        = 10 * time.Minute
+	maxAnalysisOperations = 1 << 40
+	maxMatchesPerRule     = 100000
+	maxRunCaptureBytes    = 256 << 20
+	maxRunExtractedBytes  = 256 << 20
+	maxRunServiceRequests = 256
+)
+
+// MaxScanTargets bounds the number of inputs accepted in one scan run.
+const MaxScanTargets = 32
+
 // DefaultExternalOptions returns traversal limits and the default permitted
 // origins. Applying these options still requires explicit download permission.
 func DefaultExternalOptions() ExternalOptions {
 	return ExternalOptions{
 		AllowedOrigins: []string{"https://raw.githubusercontent.com", "https://github.com"},
-		MaxDepth:       2,
-		MaxRequests:    16,
-		MaxBytes:       4 << 20,
+		MaxDepth:       defaultExternalDepth,
+		MaxRequests:    defaultExternalRequests,
+		MaxBytes:       defaultExternalBytes,
 	}
 }
 
@@ -214,9 +239,9 @@ func DefaultOptions() Options {
 
 	return Options{
 		Profile:     Standard,
-		Concurrency: Concurrency{Targets: 1, Workers: 4},
+		Concurrency: Concurrency{Targets: defaultConcurrentTargets, Workers: defaultAnalysisWorkers},
 		Harness:     report.HarnessOptions{Host: report.HostAuto},
-		Signatures:  SignatureOptions{Timeout: 3 * time.Second},
+		Signatures:  SignatureOptions{Timeout: signatures.DefaultTimeout},
 		Limits: Limits{
 			Capture: CaptureLimits{
 				MaxEntries:      c.MaxEntries,
@@ -229,24 +254,26 @@ func DefaultOptions() Options {
 			},
 			Extraction: e,
 			Analysis: AnalysisLimits{
-				MaxOperations:     16 << 20,
-				MaxMatchesPerRule: 1024,
-				ParserTimeout:     3 * time.Second,
+				MaxOperations:     defaultAnalysisOperations,
+				MaxMatchesPerRule: defaultMatchesPerRule,
+				ParserTimeout:     frontend.DefaultOptions().Timeout,
 			},
 			Retention:          RetentionLimits{MaxFindings: c.MaxFindings},
 			MaxCaptureBytes:    c.MaxTotalBytes,
 			MaxExtractedBytes:  e.MaxTotalBytes,
 			MaxCaptureFiles:    c.MaxFiles,
 			MaxCaptureEntries:  c.MaxEntries,
-			MaxServiceRequests: 64,
-			Timeout:            2 * time.Minute,
+			MaxServiceRequests: defaultServiceRequests,
+			Timeout:            defaultScanTimeout,
 		},
 	}
 }
 
 // DefaultCompareOptions returns the standard ceiling for retained comparison
 // changes.
-func DefaultCompareOptions() CompareOptions { return CompareOptions{MaxChanges: 4096} }
+func DefaultCompareOptions() CompareOptions {
+	return CompareOptions{MaxChanges: report.DefaultUpdateOptions().MaxChanges}
+}
 
 func (o ExternalOptions) internal() external.Options {
 	return external.Options{
@@ -320,8 +347,8 @@ func (o Options) signatureOptions(c Checks) (signatures.Options, error) {
 	}
 
 	s.Timeout = o.Signatures.Timeout
-	s.MaxFiles = min(o.Limits.Capture.MaxFiles, 4096)
-	s.MaxFileBytes = int(min(o.Limits.Capture.MaxFileBytes, 4<<20))
+	s.MaxFiles = min(o.Limits.Capture.MaxFiles, signatures.MaxFiles)
+	s.MaxFileBytes = int(min(o.Limits.Capture.MaxFileBytes, signatures.MaxFileBytes))
 	s.MaxTotalBytes = int(max(int64(s.MaxFileBytes), o.Limits.MaxCaptureBytes))
 
 	return s, nil
@@ -427,7 +454,7 @@ func (o Options) validateReview() error {
 }
 
 func (c Concurrency) validate() error {
-	if c.Targets < 1 || c.Targets > 32 || c.Workers < 1 || c.Workers > 32 {
+	if c.Targets < 1 || c.Targets > maxConcurrency || c.Workers < 1 || c.Workers > maxConcurrency {
 		return errors.New("concurrency must be in 1..32")
 	}
 
@@ -435,7 +462,9 @@ func (c Concurrency) validate() error {
 }
 
 func (l Limits) validateAnalysisBudget() error {
-	if l.Timeout <= 0 || l.Timeout > 10*time.Minute || l.Analysis.MaxOperations < 1 || l.Analysis.MaxOperations > 1<<40 || l.Analysis.MaxMatchesPerRule < 1 || l.Analysis.MaxMatchesPerRule > 100000 {
+	if l.Timeout <= 0 || l.Timeout > MaxScanTimeout ||
+		l.Analysis.MaxOperations < 1 || l.Analysis.MaxOperations > maxAnalysisOperations ||
+		l.Analysis.MaxMatchesPerRule < 1 || l.Analysis.MaxMatchesPerRule > maxMatchesPerRule {
 		return errors.New("invalid analysis budget")
 	}
 
@@ -443,7 +472,7 @@ func (l Limits) validateAnalysisBudget() error {
 }
 
 func (l Limits) validateAggregateBudget() error {
-	if l.MaxCaptureBytes < 1 || l.MaxCaptureBytes > 256<<20 || l.MaxExtractedBytes < 1 || l.MaxExtractedBytes > 256<<20 {
+	if l.MaxCaptureBytes < 1 || l.MaxCaptureBytes > maxRunCaptureBytes || l.MaxExtractedBytes < 1 || l.MaxExtractedBytes > maxRunExtractedBytes {
 		return errors.New("invalid aggregate budget")
 	}
 
@@ -451,7 +480,9 @@ func (l Limits) validateAggregateBudget() error {
 }
 
 func (l Limits) validateAggregateCounts() error {
-	if l.MaxCaptureFiles < 1 || l.MaxCaptureFiles > 100000 || l.MaxCaptureEntries < l.MaxCaptureFiles || l.MaxCaptureEntries > 100000 || l.MaxServiceRequests < 1 || l.MaxServiceRequests > 256 {
+	if l.MaxCaptureFiles < 1 || l.MaxCaptureFiles > report.MaxArtifactEntries ||
+		l.MaxCaptureEntries < l.MaxCaptureFiles || l.MaxCaptureEntries > report.MaxArtifactEntries ||
+		l.MaxServiceRequests < 1 || l.MaxServiceRequests > maxRunServiceRequests {
 		return errors.New("invalid aggregate budget")
 	}
 

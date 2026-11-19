@@ -381,7 +381,7 @@ func (o *operation) publish(name string, data []byte, executable bool, region *r
 		base = "content.bin"
 	}
 
-	virtual := (&url.URL{Scheme: "scout-object", Host: id, Path: "/" + base}).String()
+	virtual := (&url.URL{Scheme: report.ObjectScheme, Host: id, Path: "/" + base}).String()
 	file := artifact.NewFile(virtual, data, executable)
 	// JSON token labels are not filename claims. Preserve this fact through
 	// decoding, but restore actual member names when opening an archive.
@@ -397,7 +397,7 @@ func (o *operation) publish(name string, data []byte, executable bool, region *r
 		ExtractorID: descriptor.ExtractorID, ExtractorVersion: descriptor.Version, Depth: o.parent.depth + 1,
 		Ordinal: ordinal, MemberName: name, ParentRange: region, CoordinateSpace: "derived-bytes",
 	})
-	if path.Base(name) == "SKILL.md" {
+	if path.Base(name) == artifact.SkillManifest {
 		o.b.result.Report.Skills = append(o.b.result.Report.Skills, virtual)
 	}
 
@@ -446,7 +446,7 @@ func (r contextReader) Read(p []byte) (int, error) {
 // inheritedName preserves useful language suffixes without trusting directory
 // components. Gzip file names are data, never extraction destinations.
 func inheritedName(parent, suffix string) string {
-	if u, err := url.Parse(parent); err == nil && u.Scheme == "scout-object" {
+	if u, err := url.Parse(parent); err == nil && u.Scheme == report.ObjectScheme {
 		parent = u.Path
 	}
 

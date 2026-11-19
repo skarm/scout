@@ -60,8 +60,8 @@ func advisoryRule(v report.Vulnerability) report.Rule {
 	return vulnerabilityRule
 }
 
-func applyVulnerabilities(ctx context.Context, r *report.Analysis, docs []document.File, o osv.Options, collector *findingCollector) {
-	v, err := osv.Check(ctx, r.Dependencies, o, time.Now())
+func applyVulnerabilities(ctx context.Context, r *report.Analysis, docs []document.File, o osv.Options, requestLimit int, collector *findingCollector) {
+	v, err := osv.CheckWithin(ctx, r.Dependencies, o, time.Now(), requestLimit)
 
 	r.Vulnerabilities = v
 	if err != nil {

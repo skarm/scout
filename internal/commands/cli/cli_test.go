@@ -510,7 +510,11 @@ func TestClassifiedDependencyCacheCLI(t *testing.T) {
 				t.Fatal(err)
 			}
 			v := decoded.Run.Targets[0].Analysis.Vulnerabilities
-			if !v.ClassifiedCache || (len(v.Matches) == 1) != (tc.name == "malicious") || tc.name == "malicious" && !bytes.Contains(out.Bytes(), []byte(`"rule_id": "MAL001"`)) {
+			wantMatches := 0
+			if tc.name == "malicious" {
+				wantMatches = 1
+			}
+			if !v.ClassifiedCache || len(v.Matches) != wantMatches || tc.name == "malicious" && !bytes.Contains(out.Bytes(), []byte(`"rule_id": "MAL001"`)) {
 				t.Fatalf("cache classification not preserved in CLI output: %s", &out)
 			}
 		})

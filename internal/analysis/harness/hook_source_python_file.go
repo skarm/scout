@@ -8,6 +8,11 @@ import (
 	"github.com/skarm/scout/internal/syntax/frontend"
 )
 
+const (
+	maxPythonHookFileBytes = 1 << 20
+	maxPythonHookFileDepth = 8
+)
+
 // Track a read-only text file through a bounded read, an optional truncation
 // suffix, and JSON output. File contents and paths stay data in this model.
 func pythonFileJSONFilter(body []*frontend.Node, program string, argc int) bool {
@@ -106,7 +111,7 @@ func pythonBoundedRead(call *frontend.Node, stream, program string) bool {
 	literal, decimal := pythonDecimalLiteral(args[0], program)
 	count, err := strconv.Atoi(literal)
 
-	return decimal && err == nil && count > 0 && count <= 1<<20
+	return decimal && err == nil && count > 0 && count <= maxPythonHookFileBytes
 }
 
 func pythonFileTruncation(stmt *frontend.Node, stream, text, program string) bool {
@@ -123,7 +128,7 @@ func pythonFileTruncation(stmt *frontend.Node, stream, text, program string) boo
 }
 
 func pythonFileText(value *frontend.Node, text string, depth int) bool {
-	if depth >= 8 {
+	if depth >= maxPythonHookFileDepth {
 		return false
 	}
 

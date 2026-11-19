@@ -12,20 +12,28 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxPythonHookJSONDepth = 8
+)
+
 // The caller has already proved that a standard Python interpreter received
 // -I and -S. Each accepted form evaluates only known standard-library values.
 func knownIsolatedPythonProgram(units []document.Unit, span source.Span, argc int) bool {
-	for _, unit := range units {
-		if unit.Origin != document.OriginHookInlineRuntime || unit.Span != span || unit.Status != report.UnitParsedLimited {
-			continue
-		}
+	return slices.ContainsFunc(units, func(unit document.Unit) bool {
+		return unit.Origin == document.OriginHookInlineRuntime && unit.Span == span && knownIsolatedPythonUnit(unit, argc)
+	})
+}
 
-		if tree, ok := unit.Tree.(parse.PythonTree); ok && knownIsolatedPythonTree(tree.Root, unit.View.Text(), argc) {
-			return true
-		}
-	}
+func knownIsolatedPythonFile(units []document.Unit, argc int) bool {
+	return slices.ContainsFunc(units, func(unit document.Unit) bool {
+		return unit.Origin == "file" && knownIsolatedPythonUnit(unit, argc)
+	})
+}
 
-	return false
+func knownIsolatedPythonUnit(unit document.Unit, argc int) bool {
+	tree, parsed := unit.Tree.(parse.PythonTree)
+
+	return parsed && unit.Status == report.UnitParsedLimited && knownIsolatedPythonTree(tree.Root, unit.View.Text(), argc)
 }
 
 func knownIsolatedPythonTree(root *frontend.Node, program string, argc int) bool {
@@ -80,7 +88,7 @@ func pythonJSONDump(call *frontend.Node, acceptsLeaf func(*frontend.Node) bool) 
 }
 
 func pythonJSONObject(node *frontend.Node, acceptsLeaf func(*frontend.Node) bool, depth int) bool {
-	if depth >= 8 {
+	if depth >= maxPythonHookJSONDepth {
 		return false
 	}
 
@@ -232,7 +240,7 @@ func pythonJSONLocal(node *frontend.Node, bindings []string) bool {
 }
 
 func pythonJSONField(node *frontend.Node, bindings []string, depth int) bool {
-	if depth >= 8 {
+	if depth >= maxPythonHookJSONDepth {
 		return false
 	}
 

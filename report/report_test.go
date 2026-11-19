@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/report"
@@ -107,6 +108,64 @@ func TestTraceFormats(t *testing.T) {
 	}
 }
 
+func TestSARIFBOMInDerivedTraceAndDiagnostics(t *testing.T) {
+	analysis := sample()
+	const virtual = "scout-object://example/member.txt"
+	analysis.Extraction.Objects = []report.DerivedObject{{
+		File: report.File{Path: virtual, Kind: "text", UTF8BOM: true},
+	}}
+	analysis.Findings[0].Trace = []report.TraceStep{
+		{Role: "source", Location: report.Location{
+			Path: virtual, ByteStart: 3, ByteEnd: 7,
+			StartLine: 1, StartColumn: 2, EndLine: 2, EndColumn: 2,
+		}},
+		{Role: "sink", Location: report.Location{
+			Path: virtual, ByteStart: 6, ByteEnd: 7,
+			StartLine: 2, StartColumn: 1, EndLine: 2, EndColumn: 2,
+		}},
+	}
+	analysis.Diagnostics = []report.Diagnostic{
+		{Path: virtual, Line: 1, Column: 2},
+		{Path: virtual, Line: 1, Column: 1},
+	}
+
+	var out bytes.Buffer
+	if err := writeFixture(&out, "sarif", analysis); err != nil {
+		t.Fatal(err)
+	}
+	var log map[string]any
+	if err := json.Unmarshal(out.Bytes(), &log); err != nil {
+		t.Fatal(err)
+	}
+	run := log["runs"].([]any)[0].(map[string]any)
+	result := run["results"].([]any)[0].(map[string]any)
+	flows := result["codeFlows"].([]any)[0].(map[string]any)["threadFlows"].([]any)
+	steps := flows[0].(map[string]any)["locations"].([]any)
+	invocation := run["invocations"].([]any)[0].(map[string]any)
+	notes := invocation["toolExecutionNotifications"].([]any)
+
+	assertSARIFRegion(t, steps[0].(map[string]any)["location"], map[string]any{
+		"startLine": float64(1), "startColumn": float64(1), "endLine": float64(2), "endColumn": float64(2),
+	})
+	assertSARIFRegion(t, steps[1].(map[string]any)["location"], map[string]any{
+		"startLine": float64(2), "startColumn": float64(1), "endLine": float64(2), "endColumn": float64(2),
+	})
+	assertSARIFRegion(t, notes[0].(map[string]any)["locations"].([]any)[0], map[string]any{
+		"startLine": float64(1), "startColumn": float64(1),
+	})
+	assertSARIFRegion(t, notes[1].(map[string]any)["locations"].([]any)[0], map[string]any{
+		"byteOffset": float64(0), "byteLength": float64(3),
+	})
+}
+
+func assertSARIFRegion(t *testing.T, location any, want map[string]any) {
+	t.Helper()
+	got := location.(map[string]any)["physicalLocation"].(map[string]any)["region"]
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SARIF region = %v, want %v", got, want)
+	}
+}
+
 func TestBinaryByteLocations(t *testing.T) {
 	r := sample()
 	r.Artifact.Files[0].Kind = "binary"
@@ -123,7 +182,11 @@ func TestBinaryByteLocations(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	result := parsed["runs"].([]any)[0].(map[string]any)["results"].([]any)[0].(map[string]any)
+	run := parsed["runs"].([]any)[0].(map[string]any)
+	if _, exists := run["columnKind"]; exists {
+		t.Error("a binary-only run must omit columnKind")
+	}
+	result := run["results"].([]any)[0].(map[string]any)
 	reg := result["locations"].([]any)[0].(map[string]any)["physicalLocation"].(map[string]any)["region"].(map[string]any)
 	if reg["byteOffset"] != float64(4) || reg["byteLength"] != float64(16) {
 		t.Fatalf("bad byte range: %+v", reg)
@@ -227,5 +290,60 @@ func TestSARIFMessagesEscapeLiteralBraces(t *testing.T) {
 	}
 	if got := run.Invocations[0].ToolExecutionNotifications[0].Message.Text; !bytes.HasSuffix([]byte(got), []byte(want)) {
 		t.Fatalf("notification message = %q, want suffix %q", got, want)
+	}
+}
+
+func TestHumanApprovalSummaryKeepsTargetAndFindingSeparate(t *testing.T) {
+	run := runFixture()
+	run.Targets[0].ID = "a\x00b"
+	run.Targets[0].Analysis.Findings = run.Targets[0].Analysis.Findings[:1]
+	run.Targets[0].Analysis.Findings[0].ID = "c"
+	other := runFixture().Targets[0]
+	other.ID, other.Index = "a", 1
+	other.Analysis.Findings = other.Analysis.Findings[:1]
+	other.Analysis.Findings[0].ID = "b\x00c"
+	run.Targets = append(run.Targets, other)
+	sealed, err := report.SealRun(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := report.NewDocument(sealed, report.Evaluation{
+		Decision: report.Block, RunDigest: sealed.Digest,
+		Suppressed: []report.Suppression{{TargetID: "a\x00b", FindingID: "c"}},
+	})
+	for _, format := range []report.Format{report.Text, report.Markdown} {
+		var out bytes.Buffer
+		if err := report.Write(&out, format, document); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), "Operator-approved occurrences: 1;") || strings.Count(out.String(), "Operator approved") != 1 {
+			t.Fatalf("%s attributed an approval to another target: %s", format, &out)
+		}
+	}
+}
+
+func TestEnvironmentEvidenceKeepsTargetAndPathSeparate(t *testing.T) {
+	firstHash, secondHash := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	run := runFixture()
+	run.Targets[0].ID = "a\x00b"
+	run.Targets[0].Analysis.Artifact.Files = []report.File{{Path: "c", Size: 1, SHA256: firstHash, Status: report.CaptureCaptured}}
+	other := runFixture().Targets[0]
+	other.ID, other.Index = "a", 1
+	other.Analysis.Artifact.Files = []report.File{{Path: "b\x00c", Size: 1, SHA256: secondHash, Status: report.CaptureCaptured}}
+	run.Targets = append(run.Targets, other)
+	run.Environment = &report.EnvironmentReport{
+		Schema: "scout.environment-analysis/v1", Completeness: report.Complete, MaxObservations: 1, MaxOperations: 1,
+		Observations: []report.EnvironmentObservation{{ID: "collision", Kind: "mcp_name_collision", Evidence: []report.EnvironmentEvidence{
+			{TargetID: "a\x00b", Role: "mcp_identifier", Source: report.SourceRef{Path: "c", SHA256: firstHash, ByteEnd: 1, SpanSHA256: firstHash}},
+			{TargetID: "a", Role: "mcp_identifier", Source: report.SourceRef{Path: "b\x00c", SHA256: secondHash, ByteEnd: 1, SpanSHA256: secondHash}},
+		}}},
+	}
+	if _, err := report.SealRun(run); err != nil {
+		t.Errorf("distinct qualified files collided: %v", err)
+	}
+	// The first reference must not borrow the second target's captured hash.
+	run.Environment.Observations[0].Evidence[0].Source.SHA256 = secondHash
+	if _, err := report.SealRun(run); err == nil {
+		t.Error("evidence from another target's file passed the qualified inventory check")
 	}
 }

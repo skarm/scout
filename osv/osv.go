@@ -21,10 +21,42 @@ import (
 )
 
 const (
+	fieldResults         = "results"
+	fieldError           = "error"
+	fieldVulns           = "vulns"
+	fieldNextPageToken   = "next_page_token"
+	fieldID              = "id"
+	fieldModified        = "modified"
+	fieldVersion         = "version"
+	fieldQueriedAt       = "queried_at"
+	fieldRecords         = "records"
+	fieldEcosystem       = "ecosystem"
+	fieldName            = "name"
+	fieldVulnerabilities = "vulnerabilities"
+	fieldKind            = "kind"
+	fieldSource          = "source"
+	fieldURL             = "url"
+	fieldRevision        = "revision"
+)
+
+const (
+	maxOSVTimeout        = 2 * time.Minute
+	minCacheAge          = time.Minute
+	maxCacheAge          = 365 * 24 * time.Hour
+	maxAdvisoryIDBytes   = 160
+	maxModifiedTimeBytes = 128
 	maxResponse          = 256 << 10
 	maxCoordinateResults = 4096
 	maxPageResults       = 1024
 	maxCacheRecords      = 4096
+	maxQueries           = 8192
+	maxRequests          = 256
+	defaultTimeout       = 20 * time.Second
+	defaultMaxQueries    = 4096
+	defaultMaxRequests   = 128
+	defaultCacheAge      = 7 * 24 * time.Hour
+	queryBatchSize       = 64
+	maxPageTokenBytes    = 4096
 )
 
 // Options configures explicit offline-cache or network advisory lookup.
@@ -132,10 +164,10 @@ type queryPayload struct {
 func DefaultOptions() Options {
 	return Options{
 		Endpoint:    "https://api.osv.dev/v1/querybatch",
-		Timeout:     20 * time.Second,
-		MaxQueries:  4096,
-		MaxRequests: 128,
-		MaxCacheAge: 7 * 24 * time.Hour,
+		Timeout:     defaultTimeout,
+		MaxQueries:  defaultMaxQueries,
+		MaxRequests: defaultMaxRequests,
+		MaxCacheAge: defaultCacheAge,
 	}
 }
 
@@ -171,6 +203,12 @@ func ParseCache(data []byte) (Cache, error) {
 // Check preserves every selected dependency and every query outcome in its report.
 // Incomplete pages never become a clean answer; prior positive matches survive.
 func Check(ctx context.Context, deps report.DependencyReport, o Options, now time.Time) (report.VulnerabilityReport, error) {
+	return CheckWithin(ctx, deps, o, now, o.MaxRequests)
+}
+
+// CheckWithin applies an additional network request limit without limiting cache
+// lookups. A nonpositive limit permits cache lookups only.
+func CheckWithin(ctx context.Context, deps report.DependencyReport, o Options, now time.Time, requestLimit int) (report.VulnerabilityReport, error) {
 	r := report.VulnerabilityReport{
 		Enabled:      o.Enabled,
 		Source:       "disabled",
@@ -182,6 +220,8 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 	if err := o.Validate(); err != nil {
 		return r, err
 	}
+
+	o.MaxRequests = min(o.MaxRequests, max(0, requestLimit))
 
 	if !o.Enabled {
 		return r, nil
@@ -233,8 +273,8 @@ func Check(ctx context.Context, deps report.DependencyReport, o Options, now tim
 	}
 
 	requests := 0
-	for start := 0; start < len(groups); start += 64 {
-		queryBatch(ctx, groups[start:min(start+64, len(groups))], o, &requests, set, fallback)
+	for start := 0; start < len(groups); start += queryBatchSize {
+		queryBatch(ctx, groups[start:min(start+queryBatchSize, len(groups))], o, &requests, set, fallback)
 	}
 
 	collectMatches(groups, &r)
@@ -316,18 +356,18 @@ func (o Options) Validate() error {
 
 func (o Options) validateLimits() error {
 	for _, bound := range []struct{ value, minimum, maximum int64 }{
-		{value: int64(o.Timeout), minimum: 1, maximum: int64(2 * time.Minute)}, {
+		{value: int64(o.Timeout), minimum: 1, maximum: int64(maxOSVTimeout)}, {
 			value:   int64(o.MaxQueries),
 			minimum: 1,
-			maximum: 8192,
+			maximum: maxQueries,
 		}, {
 			value:   int64(o.MaxRequests),
 			minimum: 1,
-			maximum: 256,
+			maximum: maxRequests,
 		}, {
 			value:   int64(o.MaxCacheAge),
-			minimum: int64(time.Minute),
-			maximum: int64(365 * 24 * time.Hour),
+			minimum: int64(minCacheAge),
+			maximum: int64(maxCacheAge),
 		},
 	} {
 		if bound.value < bound.minimum || bound.value > bound.maximum {
@@ -359,7 +399,9 @@ func (g *queryGroup) appendResults(values []ID) bool {
 	return n == len(values)
 }
 
-func safeID(s string) bool { return textmatch.Token(s, 160, "._:-") && textmatch.Alnum(s[0]) }
+func safeID(s string) bool {
+	return textmatch.Token(s, maxAdvisoryIDBytes, "._:-") && textmatch.Alnum(s[0])
+}
 
 func validateCacheRecords(cache Cache) error {
 	if len(cache.Records) > maxCacheRecords {
@@ -403,7 +445,7 @@ func validateCacheRecords(cache Cache) error {
 }
 
 func cacheRecordValid(r Record) bool {
-	return r.Ecosystem != "" && r.Name != "" && r.Version != "" && len(r.Name) <= 256 && len(r.Version) <= 256 && r.Vulnerabilities != nil && len(r.Vulnerabilities) <= maxCoordinateResults
+	return r.Ecosystem != "" && r.Name != "" && r.Version != "" && len(r.Name) <= report.MaxAdvisoryCoordinateBytes && len(r.Version) <= report.MaxAdvisoryCoordinateBytes && r.Vulnerabilities != nil && len(r.Vulnerabilities) <= maxCoordinateResults
 }
 
 func prepareCache(o Options, now time.Time, r *report.VulnerabilityReport) (map[coordinateKey]Record, time.Time) {
@@ -589,12 +631,12 @@ func validQueryResults(out response) bool {
 	valid := true
 
 	for _, res := range out.Results {
-		if len(res.Next) > 4096 || len(res.Vulns) > maxPageResults {
+		if len(res.Next) > maxPageTokenBytes || len(res.Vulns) > maxPageResults {
 			valid = false
 		}
 
 		for _, v := range res.Vulns {
-			if !safeID(v.ID) || len(v.Modified) > 128 {
+			if !safeID(v.ID) || len(v.Modified) > maxModifiedTimeBytes {
 				valid = false
 			}
 		}
@@ -721,11 +763,11 @@ type coordinateKey struct {
 func key(e, n, v string) coordinateKey { return coordinateKey{e, n, v} }
 
 func validateResponseShape(root *jsonconfig.Node, count int) error {
-	if root == nil || root.Kind != jsonconfig.KindObject || fieldAliases(root, "results") {
+	if root == nil || root.Kind != jsonconfig.KindObject || fieldAliases(root, fieldResults) {
 		return errors.New("invalid response")
 	}
 
-	results := root.Get("results")
+	results := root.Get(fieldResults)
 	if results == nil || results.Kind != jsonconfig.KindArray || len(results.Elements) != count {
 		return errors.New("invalid results")
 	}
@@ -740,15 +782,15 @@ func validateResponseShape(root *jsonconfig.Node, count int) error {
 }
 
 func validateResultShape(item *jsonconfig.Node) error {
-	if item == nil || item.Kind != jsonconfig.KindObject || item.Get("error") != nil || fieldAliases(item, "vulns", "next_page_token", "error") {
+	if item == nil || item.Kind != jsonconfig.KindObject || item.Get(fieldError) != nil || fieldAliases(item, fieldVulns, fieldNextPageToken, fieldError) {
 		return errors.New("invalid result")
 	}
 
-	if n := item.Get("next_page_token"); n != nil && n.Kind != jsonconfig.KindString {
+	if n := item.Get(fieldNextPageToken); n != nil && n.Kind != jsonconfig.KindString {
 		return errors.New("invalid token")
 	}
 
-	return validateVulnerabilityShapes(item.Get("vulns"))
+	return validateVulnerabilityShapes(item.Get(fieldVulns))
 }
 
 func validateVulnerabilityShapes(n *jsonconfig.Node) error {
@@ -768,16 +810,16 @@ func validateVulnerabilityShapes(n *jsonconfig.Node) error {
 }
 
 func validateVulnerabilityShape(v *jsonconfig.Node) error {
-	if v.Kind != jsonconfig.KindObject || fieldAliases(v, "id", "modified") {
+	if v.Kind != jsonconfig.KindObject || fieldAliases(v, fieldID, fieldModified) {
 		return errors.New("invalid vulnerability")
 	}
 
-	id, ok := v.Get("id").Text()
+	id, ok := v.Get(fieldID).Text()
 	if !ok || !safeID(id) {
 		return errors.New("invalid vulnerability id")
 	}
 
-	if m := v.Get("modified"); m != nil && m.Kind != jsonconfig.KindString {
+	if m := v.Get(fieldModified); m != nil && m.Kind != jsonconfig.KindString {
 		return errors.New("invalid timestamp")
 	}
 
@@ -803,19 +845,19 @@ func fieldAliases(n *jsonconfig.Node, fields ...string) bool {
 }
 
 func cacheAliases(root *jsonconfig.Node) bool {
-	if fieldAliases(root, "version", "queried_at", "records") {
+	if fieldAliases(root, fieldVersion, fieldQueriedAt, fieldRecords) {
 		return true
 	}
 
-	if records := root.Get("records"); records != nil {
+	if records := root.Get(fieldRecords); records != nil {
 		for _, record := range records.Elements {
-			if fieldAliases(record, "ecosystem", "name", "version", "vulnerabilities") {
+			if fieldAliases(record, fieldEcosystem, fieldName, fieldVersion, fieldVulnerabilities) {
 				return true
 			}
 
-			if vulnerabilities := record.Get("vulnerabilities"); vulnerabilities != nil {
+			if vulnerabilities := record.Get(fieldVulnerabilities); vulnerabilities != nil {
 				for _, vulnerability := range vulnerabilities.Elements {
-					if fieldAliases(vulnerability, "id", "modified", "kind", "source") || fieldAliases(vulnerability.Get("source"), "name", "url", "revision") {
+					if fieldAliases(vulnerability, fieldID, fieldModified, fieldKind, fieldSource) || fieldAliases(vulnerability.Get(fieldSource), fieldName, fieldURL, fieldRevision) {
 						return true
 					}
 				}

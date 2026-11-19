@@ -18,6 +18,12 @@ import (
 )
 
 const (
+	maxGoConstantDepth  = 16
+	maxGoJoinArguments  = 32
+	maxGoSensitiveDepth = 24
+)
+
+const (
 	goShell goKind = iota
 	goSensitiveRead
 	goDirectHTTP
@@ -115,8 +121,8 @@ func appendGoMatch(unit document.GoUnit, call *ast.CallExpr, origin ast.Expr, bu
 
 	if origin != nil {
 		if src, valid := nodeSpan(unit, origin); valid {
-			m.Trace = []trace{{Role: "source", Start: src.Start, End: src.End}, {
-				Role:  "sink",
+			m.Trace = []trace{{Role: report.TraceSource, Start: src.Start, End: src.End}, {
+				Role:  report.TraceSink,
 				Start: span.Start,
 				End:   span.End,
 			}}
@@ -202,7 +208,7 @@ func constantString(e ast.Expr, imports goScope) (string, bool) {
 }
 
 func evalString(e ast.Expr, imports goScope, depth int, remaining *int) (string, bool) {
-	if depth > 16 || *remaining <= 0 {
+	if depth > maxGoConstantDepth || *remaining <= 0 {
 		return "", false
 	}
 
@@ -282,7 +288,7 @@ func evalStringCall(call *ast.CallExpr, imports goScope, depth int, remaining *i
 }
 
 func constantGoJoin(args []ast.Expr, imports goScope, depth int, remaining *int) (string, bool) {
-	if len(args) == 0 || len(args) > 32 {
+	if len(args) == 0 || len(args) > maxGoJoinArguments {
 		return "", false
 	}
 
@@ -310,7 +316,7 @@ func constantGoJoin(args []ast.Expr, imports goScope, depth int, remaining *int)
 // It does not treat arbitrary function calls as taint propagation and never
 // reads environment variables or files. Recursion has an independent ceiling.
 func sensitiveExpression(expr ast.Expr, imports goScope, depth int) ast.Expr {
-	if depth > 24 {
+	if depth > maxGoSensitiveDepth {
 		return nil
 	}
 

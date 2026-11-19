@@ -50,7 +50,7 @@ func (f *filePreparation) publishMarkdown(ctx context.Context, result markdown.R
 		}
 
 		lang := fenceLanguage(block.Info)
-		if block.Kind == "indented-code" {
+		if block.Kind == markdown.IndentedCode {
 			lang = indentedLanguage(block.View.Text())
 		}
 

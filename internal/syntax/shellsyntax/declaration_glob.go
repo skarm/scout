@@ -7,6 +7,10 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+const (
+	maxForArgumentItems = 8
+)
+
 func (p *declarationProjection) projectForList(c *Command, loop *syntax.WordIter, depth int) {
 	if len(loop.Items) == 1 {
 		c.ForArraySlice = p.forArraySlice(loop.Items[0], depth+1)
@@ -36,7 +40,7 @@ func (p *declarationProjection) forArguments(c *Command, loop *syntax.WordIter, 
 			return ""
 		}
 
-		if len(loop.Items) <= 8 {
+		if len(loop.Items) <= maxForArgumentItems {
 			list = append(list, word)
 		}
 
@@ -45,7 +49,7 @@ func (p *declarationProjection) forArguments(c *Command, loop *syntax.WordIter, 
 		}
 
 		if len(loop.Items) == 1 && len(word.Parts) == 1 &&
-			word.Parts[0].Kind == "parameter_array_all" && word.Parts[0].Quoted {
+			word.Parts[0].Kind == PartParameterArrayAll && word.Parts[0].Quoted {
 			c.ForArray = word.Parts[0].Text
 		}
 	}
@@ -116,7 +120,7 @@ func (p *declarationProjection) forFileGlob(loop *syntax.WordIter, depth int) *F
 	}
 
 	root, suffix := word.Parts[0], word.Parts[1]
-	if root.Kind != "parameter" || !root.Quoted || suffix.Kind != "literal" || suffix.Quoted {
+	if root.Kind != PartParameter || !root.Quoted || suffix.Kind != PartLiteral || suffix.Quoted {
 		return nil
 	}
 

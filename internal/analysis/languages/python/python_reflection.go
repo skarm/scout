@@ -10,6 +10,13 @@ import (
 	"github.com/skarm/scout/internal/syntax/frontend"
 )
 
+const (
+	maxReflectionDepth              = 16
+	maxReflectiveJoinParts          = 32
+	maxReflectiveJoinSeparatorBytes = 10
+	maxReflectiveJoinRepeat         = 10
+)
+
 func moduleDictionarySymbol(name string) string {
 	for _, base := range []string{"os", "builtins"} {
 		if name == base+".__dict__" || base == "builtins" && name == "__dict__" {
@@ -43,7 +50,7 @@ func reflectionKey(value pyValue, syntax *frontend.Node) (string, bool) {
 }
 
 func pyReflectiveString(n *frontend.Node, depth int) (string, bool) {
-	if n == nil || depth > 16 {
+	if n == nil || depth > maxReflectionDepth {
 		return "", false
 	}
 
@@ -65,7 +72,7 @@ func pyReflectiveJoin(arg *frontend.Node, separator string, depth int) (string, 
 	}
 
 	nodes := arg.List(frontend.Elts)
-	if len(nodes) > 32 {
+	if len(nodes) > maxReflectiveJoinParts {
 		return "", false
 	}
 
@@ -83,7 +90,7 @@ func pyReflectiveJoin(arg *frontend.Node, separator string, depth int) (string, 
 			size += len(separator)
 		}
 
-		if size > 10 {
+		if size > maxReflectiveJoinRepeat {
 			return "", false
 		}
 
@@ -104,7 +111,7 @@ func pyJoinSeparator(n *frontend.Node) (string, bool) {
 	}
 
 	separator, ok := nodeLiteral(fn.Child(frontend.FieldValue))
-	if !ok || len(separator) > 10 {
+	if !ok || len(separator) > maxReflectiveJoinSeparatorBytes {
 		return "", false
 	}
 

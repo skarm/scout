@@ -11,6 +11,7 @@ package analyzer
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"sort"
 	"strings"
@@ -23,6 +24,11 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/knowledge"
 	"github.com/skarm/scout/report"
+)
+
+const (
+	harmfulSubstanceCheckInterval = 1024
+	maxHarmfulSubstanceMatches    = 65536
 )
 
 //nolint:gochecknoglobals // Immutable lookup data shared by concurrent scans; initialized once to avoid rebuilding it per input.
@@ -614,23 +620,24 @@ func (a familyAnalyzer) inspectSecurityViews(ctx context.Context, d document.Fil
 func (a familyAnalyzer) inspectTransformedViews(ctx context.Context, d document.File, views []source.View, collected *boundedMatches) (bool, error) {
 	budget, out := collected.budget, collected.out
 	for _, v := range views {
-		result, e := a.findTextWhere(ctx, a.patternInput(v.Text()), budget+1, func(start, end int) bool {
+		result, scanErr := a.findTextWhere(ctx, a.patternInput(v.Text()), budget+1, func(start, end int) bool {
 			return a.acceptsSecurityMatch(d, v, start, end)
 		})
-		if e != nil {
-			return false, e
-		}
 
 		out.Truncated = out.Truncated || result.Truncated
 		for _, m := range result.Matches {
 			at, e := v.Original(source.Span{Start: m.Start, End: m.End})
 			if e != nil {
-				return false, e
+				return false, errors.Join(scanErr, e)
 			}
 
 			if !collected.span(at.Start, at.End) {
-				return true, nil
+				return true, scanErr
 			}
+		}
+
+		if scanErr != nil {
+			return false, scanErr
 		}
 	}
 
@@ -654,20 +661,16 @@ func (a familyAnalyzer) inspectScalars(ctx context.Context, d document.File, u t
 		// Existential decoded-scalar check uses the SAME Unicode/SC7 guards.
 		// Scalar provenance can be enclosing (not an invented decoded offset).
 		scalar, e := a.findText(ctx, n.String, 1)
+		if len(scalar.Matches) > 0 {
+			if !collected.span(at.Start, at.End) {
+				return true, e
+			}
+		} else if scalar.Truncated {
+			out.Truncated = true
+		}
+
 		if e != nil {
 			return false, e
-		}
-
-		if len(scalar.Matches) == 0 {
-			if scalar.Truncated {
-				out.Truncated = true
-			}
-
-			continue
-		}
-
-		if !collected.span(at.Start, at.End) {
-			return true, nil
 		}
 	}
 
@@ -694,7 +697,7 @@ func (a familyAnalyzer) findTextWhere(ctx context.Context, input patternInput, b
 		appendMatch := emit
 		emit = func(start, end int) bool { return !accepts(start, end) || appendMatch(start, end) }
 		// Rejected candidates are work, not findings. Bound their scan independently.
-		a.candidateLimit = max(a.candidateLimit, 65536)
+		a.candidateLimit = max(a.candidateLimit, maxDensePatternCandidates)
 	}
 
 	if !a.findPatternMatches(ctx, input, budget, emit, &result) {
@@ -820,10 +823,10 @@ func scalarCovered(at source.Span, matches []Match) bool {
 }
 
 func harmfulSubstanceMatches(ctx context.Context, text string, emit func(int, int) bool, result *Result) bool {
-	matches := harmfulSubstances.FindAllStringIndex(text, 65537)
-	if len(matches) > 65536 {
+	matches := harmfulSubstances.FindAllStringIndex(text, maxHarmfulSubstanceMatches+1)
+	if len(matches) > maxHarmfulSubstanceMatches {
 		result.Truncated = true
-		matches = matches[:65536]
+		matches = matches[:maxHarmfulSubstanceMatches]
 	}
 
 	for _, m := range matches {
@@ -843,7 +846,7 @@ func harmfulSubstanceMatches(ctx context.Context, text string, emit func(int, in
 
 func invisibleTagMatches(ctx context.Context, text string, emit func(int, int) bool) bool {
 	for i := 0; i < len(text); {
-		if i%1024 == 0 {
+		if i%harmfulSubstanceCheckInterval == 0 {
 			if e := ctx.Err(); e != nil {
 				return false
 			}

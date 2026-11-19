@@ -167,6 +167,12 @@ func TestGoASTRules(t *testing.T) {
 			count: 1,
 		},
 		{
+			name:  "post-form-key",
+			rule:  "GO003",
+			text:  `package p; import("net/http";"net/url";"os"); func f(){http.PostForm("x",url.Values{os.Getenv("API_TOKEN"):{"value"}})}`,
+			count: 1,
+		},
+		{
 			name:  "ordinary-env",
 			rule:  "GO003",
 			text:  `package p; import("net/http";"os";"strings"); func f(){http.Post("x","x",strings.NewReader(os.Getenv("LANG")))}`,

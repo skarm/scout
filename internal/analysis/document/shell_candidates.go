@@ -4,11 +4,14 @@ import (
 	"context"
 	"strings"
 
-	"github.com/skarm/scout/internal/syntax/language"
-
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
+)
+
+const (
+	maxShellCandidateBytes = 8192
 )
 
 // A retry keeps the first accepted projection of each grammar. A declaration
@@ -163,7 +166,7 @@ func (r *shellCandidateRetry) complete() bool {
 }
 
 func (r *shellCandidateRetry) advance(text string) bool {
-	if r.span.End == len(text) || r.span.End-r.span.Start > 8192 {
+	if r.span.End == len(text) || r.span.End-r.span.Start > maxShellCandidateBytes {
 		return false
 	}
 

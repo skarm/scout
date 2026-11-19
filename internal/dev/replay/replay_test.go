@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -207,18 +208,36 @@ func TestIOErrorsKeepValidPrefixAndStopWorkers(t *testing.T) {
 	if !errors.Is(err, broken) || summary.Inputs != 1 || len(rows(t, out.Bytes())) != 1 {
 		t.Fatalf("input failure lost prefix: %+v %v", summary, err)
 	}
-	for _, writer := range []io.Writer{brokenWriter{err: broken}, brokenWriter{short: true}} {
-		s := scanner(t, options())
-		if _, err := replay.Run(context.Background(), s, strings.NewReader(input), writer, runOptions()); err == nil {
-			t.Fatal("output failure ignored")
-		}
-		closed := make(chan struct{})
-		go func() { _ = s.Close(); close(closed) }()
-		select {
-		case <-closed:
-		case <-time.After(time.Second):
-			t.Fatal("replay workers leaked after writer failure")
-		}
+	for _, tc := range []struct {
+		name   string
+		writer io.Writer
+		want   error
+	}{
+		{name: "writer_error", writer: brokenWriter{err: broken}, want: broken},
+		{name: "short_write", writer: brokenWriter{short: true}, want: io.ErrShortWrite},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			instance, err := scout.New(t.Context(), options())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				closed := make(chan error, 1)
+				go func() { closed <- instance.Close() }()
+				select {
+				case err := <-closed:
+					if err != nil {
+						t.Errorf("Close after writer failure: %v", err)
+					}
+				case <-time.After(time.Second):
+					t.Error("scanner did not close after writer failure")
+				}
+			})
+			summary, err := replay.Run(t.Context(), instance, strings.NewReader(input), tc.writer, runOptions())
+			if want := (replay.Summary{Inputs: 1}); !errors.Is(err, tc.want) || summary != want {
+				t.Errorf("Run = %+v, %v; want %+v, %v", summary, err, want, tc.want)
+			}
+		})
 	}
 }
 
@@ -482,4 +501,24 @@ func (r cancelAtEOFReader) Read(data []byte) (int, error) {
 		r.cancel()
 	}
 	return n, err
+}
+
+func TestReplayPreservesCapturedExecutableMetadataOrReportsFailure(t *testing.T) {
+	for _, executable := range []bool{false, true} {
+		input := record(t, 1, capturedFile{Name: "handler.txt", Data: []byte("ordinary captured text"), Executable: executable})
+		var output bytes.Buffer
+		summary, err := replay.Run(t.Context(), scanner(t, options()), strings.NewReader(input), &output, runOptions())
+		observed := rows(t, output.Bytes())
+		if err != nil || summary.Inputs != 1 || len(observed) != 1 {
+			t.Fatalf("replay accounting: %+v, %v, %d rows", summary, err, len(observed))
+		}
+		outcome := observed[0]
+		if executable && runtime.GOOS == "windows" {
+			if summary.Failed != 1 || summary.RuntimeErrors != 1 || outcome.Error != "replay_capture_error" || outcome.State != report.RunFailed || outcome.Decision != report.Review || outcome.RunDigest != "" {
+				t.Fatalf("unsupported executable metadata reached the scanner: %+v, %+v", summary, outcome)
+			}
+		} else if outcome.Error != "" || summary.RuntimeErrors != 0 || outcome.RunDigest == "" {
+			t.Fatalf("faithful capture failed: %+v, %+v", summary, outcome)
+		}
+	}
 }

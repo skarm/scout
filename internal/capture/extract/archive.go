@@ -13,6 +13,13 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	tarBlockBytes      = 512
+	tarBlockPadding    = tarBlockBytes - 1
+	maxMemberPathBytes = 1024
+	maxMemberPathDepth = 32
+)
+
 // contextByteReader preserves exact gzip member boundaries while making reads
 // cooperative. It is deliberately not a shell, filesystem or network adapter.
 type contextByteReader struct {
@@ -38,7 +45,7 @@ func extractZIP(o *operation) error {
 	o.role = "archive_member"
 	remaining := o.b.limits.MaxEntries - o.b.result.Report.EntriesVisited
 
-	zr, err := archiveutil.OpenZIPWithBudget(o.b.ctx, []byte(o.parent.file.Content()), remaining, 1024, 32, o.entry)
+	zr, err := archiveutil.OpenZIPWithBudget(o.b.ctx, []byte(o.parent.file.Content()), remaining, maxMemberPathBytes, maxMemberPathDepth, o.entry)
 	if err != nil {
 		return err
 	}
@@ -208,7 +215,7 @@ func gzipMemberName(o *operation, gz *gzip.Reader) string {
 	}
 
 	if gz.Name != "" {
-		if err := archiveutil.ValidatePath(gz.Name, 1024, 32); err != nil {
+		if err := archiveutil.ValidatePath(gz.Name, maxMemberPathBytes, maxMemberPathDepth); err != nil {
 			o.issue("gzip_name_untrusted", "Gzip filename is unsafe or ambiguous; a synthetic name was used.")
 		} else {
 			name = gz.Name
@@ -274,7 +281,7 @@ func extractTARMember(o *operation, names *archiveutil.Namespace, data string, a
 	}
 
 	name := strings.TrimSuffix(hdr.Name, "/")
-	if err := archiveutil.ValidatePath(name, 1024, 32); err != nil {
+	if err := archiveutil.ValidatePath(name, maxMemberPathBytes, maxMemberPathDepth); err != nil {
 		return at, false, err
 	}
 
@@ -283,7 +290,7 @@ func extractTARMember(o *operation, names *archiveutil.Namespace, data string, a
 		return at, false, err
 	}
 
-	padded, err := tarPayloadLayout(hdr, directory, len(data)-at-512)
+	padded, err := tarPayloadLayout(hdr, directory, len(data)-at-tarBlockBytes)
 	if err != nil {
 		return at, false, err
 	}
@@ -292,19 +299,19 @@ func extractTARMember(o *operation, names *archiveutil.Namespace, data string, a
 		return at, false, err
 	}
 
-	return at + 512 + int(padded), false, nil
+	return at + tarBlockBytes + int(padded), false, nil
 }
 
 func tarEndMarker(data string, at int) (bool, error) {
-	if len(data)-at < 512 {
+	if len(data)-at < tarBlockBytes {
 		return false, errFormat
 	}
 
-	if strings.Trim(data[at:at+512], "\x00") != "" {
+	if strings.Trim(data[at:at+tarBlockBytes], "\x00") != "" {
 		return false, nil
 	}
 
-	if len(data)-at < 1024 || strings.Trim(data[at:], "\x00") != "" {
+	if len(data)-at < 2*tarBlockBytes || strings.Trim(data[at:], "\x00") != "" {
 		return false, errFormat
 	}
 
@@ -344,7 +351,7 @@ func tarPayloadLayout(hdr *tar.Header, directory bool, available int) (int64, er
 		return 0, errFormat
 	}
 
-	padded := (hdr.Size + 511) / 512 * 512
+	padded := (hdr.Size + tarBlockPadding) / tarBlockBytes * tarBlockBytes
 	if padded > int64(available) {
 		return 0, errFormat
 	}
@@ -366,7 +373,7 @@ func emitTARMember(o *operation, tr *tar.Reader, hdr *tar.Header, name string, a
 	}
 
 	return o.emit(name, tr, hdr.Size, hdr.Mode&0o111 != 0, &report.ByteRange{
-		Start: at + 512,
-		End:   at + 512 + int(hdr.Size),
+		Start: at + tarBlockBytes,
+		End:   at + tarBlockBytes + int(hdr.Size),
 	})
 }

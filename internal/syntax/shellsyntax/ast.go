@@ -10,6 +10,41 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+// Standard shell file descriptors.
+const (
+	StderrFD = "2"
+	StdinFD  = "0"
+	StdoutFD = "1"
+)
+
+// Shell operators and internal lexer tokens.
+const (
+	AndThen                 = "&&"
+	Background              = "&"
+	OrElse                  = "||"
+	Pipe                    = "|"
+	PipeWithStderr          = "|&"
+	RedirectAppend          = ">>"
+	RedirectAppendBoth      = "&>>"
+	RedirectBoth            = "&>"
+	RedirectClobber         = ">|"
+	RedirectDuplicateInput  = "<&"
+	RedirectDuplicateOutput = ">&"
+	RedirectHereDoc         = "<<"
+	RedirectHereString      = "<<<"
+	RedirectInput           = "<"
+	RedirectOutput          = ">"
+	RedirectReadWrite       = "<>"
+	RedirectStripHereDoc    = "<<-"
+	sequence                = ";"
+	tokenCloseParen         = ")"
+	tokenEOF                = "eof"
+	tokenEndCase            = ";;"
+	tokenNewline            = "newline"
+	tokenOpenParen          = "("
+	tokenWord               = "word"
+)
+
 const (
 	MaxBytes = 128 << 10
 	MaxDepth = 32
@@ -192,12 +227,12 @@ func (w *Word) HasQuotedPluginRootPrefix(name string) bool {
 	}
 
 	for i, part := range w.Parts {
-		if part.Kind == "literal" && part.Text == "" {
+		if part.Kind == PartLiteral && part.Text == "" {
 			continue
 		}
 
-		return (part.Kind == "parameter" || part.Kind == "parameter_default_dot") && part.Quoted && part.Text == name &&
-			i+1 < len(w.Parts) && w.Parts[i+1].Kind == "literal" && strings.HasPrefix(w.Parts[i+1].Text, "/")
+		return (part.Kind == PartParameter || part.Kind == PartParameterDefaultDot) && part.Quoted && part.Text == name &&
+			i+1 < len(w.Parts) && w.Parts[i+1].Kind == PartLiteral && strings.HasPrefix(w.Parts[i+1].Text, "/")
 	}
 
 	return false
@@ -211,12 +246,12 @@ func (w *Word) HasUnquotedPluginRootPath(name string) bool {
 	}
 
 	root, suffix := w.Parts[0], w.Parts[1]
-	if root.Kind != "parameter" || root.Quoted || root.Text != name || !strings.HasPrefix(suffix.Text, "/") {
+	if root.Kind != PartParameter || root.Quoted || root.Text != name || !strings.HasPrefix(suffix.Text, "/") {
 		return false
 	}
 
 	for _, part := range w.Parts[1:] {
-		if part.Kind != "literal" {
+		if part.Kind != PartLiteral {
 			return false
 		}
 	}
@@ -234,7 +269,7 @@ func (w *Word) Literal() (string, bool) {
 	n := 0
 
 	for _, p := range w.Parts {
-		if p.Kind != "literal" {
+		if p.Kind != PartLiteral {
 			return "", false
 		}
 

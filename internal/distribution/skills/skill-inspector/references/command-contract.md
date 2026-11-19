@@ -22,8 +22,12 @@ failed selftest cannot be treated as successful native validation. Default scann
 offline; no `--semantic`, download or OSV permission follows from "static review".
 
 `--output` creates a NEW report outside all input trees. Do not overwrite, write into the
-target or apply an author-supplied baseline. JSON schema0.15 is the scanner wire
-contract in the integration port; integration bundle manifests have their own version.
+target or apply an author-supplied baseline. The current JSON document schema is
+`scout.report/v1`: read `evaluation.decision`, `run.state`, and the analyses in
+`run.targets[].analysis`. An update also includes `run.comparison`. The nested
+analysis schema version is separate from this document envelope; integration
+bundle manifests also have their own version. Invocation failures can have no run
+or evaluation and must not be interpreted as a completed scan.
 
 Exit0 = complete+allow; exit1 = complete+review/block; exit2 = incomplete/failed OR usage
 error. Read a valid report even for exit1/2. A nonzero exit is not itself evidence of

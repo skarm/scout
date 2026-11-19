@@ -12,9 +12,14 @@ import (
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/baseline"
 	"github.com/skarm/scout/fetch"
+	"github.com/skarm/scout/internal/signatures"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
 	"github.com/skarm/scout/rulepack"
+)
+
+const (
+	maxOfflineCacheFileBytes = 8 << 20
 )
 
 func scanCommand(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -66,7 +71,7 @@ func (r *request) scanTargets(stdin io.Reader) ([]scout.Target, error) {
 		return []scout.Target{target}, nil
 	}
 
-	if r.name != "" || len(r.targets) == 0 || len(r.targets) > 32 {
+	if r.name != "" || len(r.targets) == 0 || len(r.targets) > scout.MaxScanTargets {
 		return nil, errors.New("scan requires 1..32 targets")
 	}
 
@@ -98,11 +103,15 @@ func (r *request) localInputs() []string {
 	return inputs
 }
 
+const (
+	reportPublicationTimeout = 10 * time.Second
+)
+
 func (r *request) loadTrusted() error {
 	inputs := r.localInputs()
 	// Recheck the config boundary after all targets have been parsed.
 	if r.configPath != "" {
-		if _, err := readTrusted(r.configPath, inputs, 256<<10); err != nil {
+		if _, err := readTrusted(r.configPath, inputs, maxConfigBytes); err != nil {
 			return errors.New("config must be outside every input")
 		}
 	}
@@ -147,7 +156,7 @@ func (r *request) loadTrustedServices(inputs []string) error {
 	}
 
 	if r.settings.ExtraRulesPath != "" {
-		data, err := readTrusted(r.settings.ExtraRulesPath, inputs, 256<<10)
+		data, err := readTrusted(r.settings.ExtraRulesPath, inputs, signatures.MaxExtraRuleBytes)
 		if err != nil {
 			return errors.New("cannot read extra rules")
 		}
@@ -156,7 +165,7 @@ func (r *request) loadTrustedServices(inputs []string) error {
 	}
 
 	if r.settings.OSVCachePath != "" {
-		data, err := readTrusted(r.settings.OSVCachePath, inputs, 8<<20)
+		data, err := readTrusted(r.settings.OSVCachePath, inputs, maxOfflineCacheFileBytes)
 		if err != nil {
 			return errors.New("cannot read vulnerability cache")
 		}
@@ -186,7 +195,7 @@ func (r *request) publishRun(ctx context.Context, outputs []destination, operati
 	}
 	// A cancelled scan still publishes its partial evidence under a separate,
 	// bounded publication context. It does not resume analysis or service calls.
-	publish, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	publish, cancel := context.WithTimeout(context.WithoutCancel(ctx), reportPublicationTimeout)
 	defer cancel()
 
 	if err = r.publish(publish, outputs, prepared, stdout); err != nil {
@@ -198,7 +207,7 @@ func (r *request) publishRun(ctx context.Context, outputs []destination, operati
 }
 
 func (r *request) publishProblem(ctx context.Context, outputs []destination, operation report.Operation, problem report.Problem, stdout, stderr io.Writer) {
-	publish, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	publish, cancel := context.WithTimeout(context.WithoutCancel(ctx), reportPublicationTimeout)
 	defer cancel()
 
 	if err := r.publishFailure(publish, outputs, operation, problem, stdout); err != nil {

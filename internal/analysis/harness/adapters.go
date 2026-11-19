@@ -6,9 +6,15 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
+)
+
+const (
+	maxManifestNameBytes = 128
+	componentLSPConfig   = "lsp_config"
 )
 
 //nolint:gochecknoglobals // Read-only manifest and launcher grammar shared by harness captures.
@@ -25,8 +31,8 @@ var manifestFieldKinds = map[string]string{
 
 func (p *plugin) discover() {
 	if p.projectSettings {
-		p.discoverHostConfig(".claude/settings.json")
-		p.discoverHostConfig(".claude/settings.local.json")
+		p.discoverHostConfig(artifact.ClaudeProjectSettings)
+		p.discoverHostConfig(artifact.ClaudeProjectLocalSettings)
 
 		return
 	}
@@ -53,7 +59,7 @@ func (p *plugin) discover() {
 	// Defaults remain candidates even after malformed manifests. No inference
 	// that an invalid declaration makes the rest of a package harmless.
 	p.issue("plugin_loader_semantics_limited", p.manifestPath(), report.OutcomePartial)
-	p.directory("skills", "skills", root, "skill", false)
+	p.directory("skills", "skills", root, report.ComponentSkill, false)
 
 	if p.host == report.HostClaudeCode {
 		p.directory("commands", "commands", root, "command", true)
@@ -64,11 +70,11 @@ func (p *plugin) discover() {
 
 	p.rootSkill(root)
 
-	p.configs("hooks", "hooks/hooks.json", "hook_config", root)
-	p.configs("mcpServers", ".mcp.json", "mcp_config", root)
+	p.configs("hooks", "hooks/hooks.json", report.ComponentHookConfig, root)
+	p.configs("mcpServers", ".mcp.json", report.ComponentMCPConfig, root)
 
 	if p.host == report.HostClaudeCode {
-		p.configs("lspServers", ".lsp.json", "lsp_config", root)
+		p.configs("lspServers", ".lsp.json", componentLSPConfig, root)
 	}
 
 	if p.host == report.HostCodex {
@@ -80,18 +86,18 @@ func (p *plugin) discover() {
 }
 
 func (p *plugin) rootSkill(root *jsonconfig.Node) {
-	if e := p.entry("SKILL.md"); e != nil {
+	if e := p.entry(artifact.SkillManifest); e != nil {
 		act := p.activation
 		if root.Get("skills") != nil || p.hasDirectory("skills") {
 			act = "inactive_for_profile"
 		}
 
-		p.component("skill", e, act, "host_default", whole(e), "root-skill")
+		p.component(report.ComponentSkill, e, act, "host_default", whole(e), "root-skill")
 	}
 }
 
 func (p *plugin) discoverHostConfigs() {
-	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "settings.json", ".claude/settings.json", ".claude/settings.local.json", ".codex/config.toml", "agents/openai.yaml"} {
+	for _, name := range []string{"AGENTS.md", "CLAUDE.md", artifact.ClaudeSettings, artifact.ClaudeProjectSettings, artifact.ClaudeProjectLocalSettings, ".codex/config.toml", "agents/openai.yaml"} {
 		p.discoverHostConfig(name)
 	}
 }
@@ -103,7 +109,7 @@ func (p *plugin) discoverHostConfig(name string) {
 	}
 
 	id := p.component("host_config", e, "unknown", "package_inventory", whole(e), name)
-	if name == "settings.json" || strings.HasSuffix(name, "/settings.json") || strings.HasSuffix(name, "/settings.local.json") {
+	if name == artifact.ClaudeSettings || strings.HasSuffix(name, "/settings.json") || strings.HasSuffix(name, "/settings.local.json") {
 		if settings := p.object(e); settings != nil {
 			p.settings(e, settings, id)
 		}
@@ -294,8 +300,8 @@ func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.Sour
 
 func componentFileMatches(kind, key string) bool {
 	switch kind {
-	case "skill":
-		return path.Base(key) == "SKILL.md"
+	case report.ComponentSkill:
+		return path.Base(key) == artifact.SkillManifest
 	case "workflow":
 		return true
 	default:
@@ -324,7 +330,7 @@ func (p *plugin) selectedFile(key, name, kind, activation, basis string, s *repo
 		p.issue("plugin_input_unavailable", e.meta.Path, report.OutcomePartial)
 	}
 
-	if kind == "skill" || kind == "agent" {
+	if kind == report.ComponentSkill || kind == "agent" {
 		p.issue("component_frontmatter_unverified", e.meta.Path, report.OutcomePartial)
 	}
 }
@@ -336,7 +342,7 @@ func nestedComponent(kind, key, name string) bool {
 	}
 
 	depth := strings.Count(rest, "/")
-	if kind == "skill" {
+	if kind == report.ComponentSkill {
 		return depth > 1
 	}
 
@@ -387,7 +393,7 @@ func (p *plugin) declaredConfigFile(raw, kind string, s *report.SourceRef) {
 		return
 	}
 
-	if p.b.prepareHooks && kind == "hook_config" && e.doc != nil {
+	if p.b.prepareHooks && kind == report.ComponentHookConfig && e.doc != nil {
 		*e.doc = e.doc.WithDeclaredHookShell(p.b.ctx)
 	}
 
@@ -401,7 +407,7 @@ func (p *plugin) declaredConfigFile(raw, kind string, s *report.SourceRef) {
 
 func (p *plugin) defaultConfigActivation(def *entry, n *jsonconfig.Node, kind string) string {
 	activation := p.activation
-	if p.host == report.HostCodex && n == nil && kind != "hook_config" {
+	if p.host == report.HostCodex && n == nil && kind != report.ComponentHookConfig {
 		activation = "unknown"
 
 		p.issue("plugin_default_config_activation_unverified", def.meta.Path, report.OutcomePartial)
@@ -447,9 +453,9 @@ func (p *plugin) configFile(e *entry, kind, activation, basis string, s *report.
 
 func (p *plugin) inspectConfig(e *entry, n *jsonconfig.Node, kind, parent, activation string) {
 	switch kind {
-	case "hook_config":
+	case report.ComponentHookConfig:
 		p.hooks(e, n, parent, activation)
-	case "mcp_config", "lsp_config":
+	case report.ComponentMCPConfig, componentLSPConfig:
 		p.servers(e, n, kind, parent, activation)
 	default:
 		p.issue("plugin_app_mapping_unverified", e.meta.Path, report.OutcomePartial)
@@ -500,7 +506,7 @@ func (p *plugin) reference(component, kind, status, reason, target string, s *re
 	}
 }
 
-func validName(s string) bool { return textmatch.Slug(s, 128) }
+func validName(s string) bool { return textmatch.Slug(s, maxManifestNameBytes) }
 
 func pathValues(n *jsonconfig.Node) []*jsonconfig.Node {
 	if n == nil {

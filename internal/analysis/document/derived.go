@@ -125,6 +125,7 @@ func (f File) WithGeneratedShellExecutions(executions []GeneratedShellExecution,
 
 // WithGeneratedShell adds source-mapped units before preparation is frozen.
 func (f File) WithGeneratedShell(ctx context.Context, views []source.View, gaps GeneratedShellGaps, issues ...GeneratedShellIssue) File {
+	f.diagnostics = slices.Clone(f.diagnostics)
 	if len(views) > 0 {
 		f.units = append([]Unit(nil), f.units...)
 	}
@@ -237,6 +238,8 @@ func (f File) WithDerivedInputs(ctx context.Context, inputs []DerivedInput, limi
 		return f
 	}
 
+	f.diagnostics = slices.Clone(f.diagnostics)
+
 	f.derivedReady = true
 
 	f.derivedGap = limited
@@ -251,13 +254,13 @@ func (f File) WithDerivedInputs(ctx context.Context, inputs []DerivedInput, limi
 	seen := make(map[DerivedInput]bool)
 
 	for _, input := range inputs {
+		if seen[input] {
+			continue
+		}
+
 		if len(f.derived) >= MaxRegions {
 			f.derivedGap = true
 			break
-		}
-
-		if seen[input] {
-			continue
 		}
 
 		seen[input] = true

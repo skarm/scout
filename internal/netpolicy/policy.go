@@ -15,6 +15,25 @@ import (
 	"time"
 )
 
+const (
+	HeaderContentType     = "Content-Type"
+	HeaderAccept          = "Accept"
+	HeaderAcceptEncoding  = "Accept-Encoding"
+	HeaderAuthorization   = "Authorization"
+	IdentityEncoding      = "identity"
+	BearerScheme          = "Bearer"
+	headerContentEncoding = "Content-Encoding"
+)
+
+const (
+	defaultKeepAlive       = 30 * time.Second
+	maxResponseHeaderBytes = 16 << 10
+	maxResolvedIPs         = 64
+)
+
+// JSONMediaType is the media type used by Scout's JSON HTTP clients and servers.
+const JSONMediaType = "application/json"
+
 //nolint:gochecknoglobals // Read-only denied network prefixes shared by every network boundary.
 var deniedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"), netip.MustParsePrefix("100.64.0.0/10"), netip.MustParsePrefix("192.0.0.0/24"),
@@ -85,14 +104,14 @@ func Transport(timeout time.Duration, allowLoopback bool, roots *x509.CertPool) 
 		tlsConfig.RootCAs = roots.Clone()
 	}
 
-	d := dialer{dialer: &net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}, allowLoopback: allowLoopback}
+	d := dialer{dialer: &net.Dialer{Timeout: timeout, KeepAlive: defaultKeepAlive}, allowLoopback: allowLoopback}
 
 	return &http.Transport{
 		Proxy:                  nil,
 		TLSClientConfig:        tlsConfig,
 		DisableCompression:     true,
 		DisableKeepAlives:      true,
-		MaxResponseHeaderBytes: 16 << 10,
+		MaxResponseHeaderBytes: maxResponseHeaderBytes,
 		ResponseHeaderTimeout:  timeout,
 		TLSHandshakeTimeout:    timeout,
 		ForceAttemptHTTP2:      false,
@@ -102,10 +121,10 @@ func Transport(timeout time.Duration, allowLoopback bool, roots *x509.CertPool) 
 
 // IdentityContentEncoding reports whether the response needs no decoding.
 func IdentityContentEncoding(header http.Header) bool {
-	for _, line := range header.Values("Content-Encoding") {
+	for _, line := range header.Values(headerContentEncoding) {
 		for value := range strings.SplitSeq(line, ",") {
 			value = strings.Trim(value, " \t")
-			if value != "" && !strings.EqualFold(value, "identity") {
+			if value != "" && !strings.EqualFold(value, IdentityEncoding) {
 				return false
 			}
 		}
@@ -190,7 +209,7 @@ func resolvedAddresses(ctx context.Context, host string) ([]netip.Addr, error) {
 	}
 
 	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
-	if err != nil || len(ips) == 0 || len(ips) > 64 {
+	if err != nil || len(ips) == 0 || len(ips) > maxResolvedIPs {
 		return nil, fail("dns_failed")
 	}
 

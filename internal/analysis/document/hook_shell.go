@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/hookevent"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/language"
@@ -47,19 +48,20 @@ func (f *filePreparation) claudeProjectSettings() bool {
 	name := f.file.Metadata().Path
 	base := path.Base(name)
 
-	return (base == "settings.json" || base == "settings.local.json") && path.Base(path.Dir(name)) == ".claude"
+	return (base == artifact.ClaudeSettings || base == artifact.ClaudeLocalSettings) && path.Base(path.Dir(name)) == ".claude"
 }
 
 // WithDeclaredHookShell prepares a captured file that a plugin manifest
 // explicitly identifies as hook configuration. It uses the current run's
 // parser registry and byte budget, regardless of filename or language hints.
 func (f File) WithDeclaredHookShell(ctx context.Context) File {
-	if f.hookShellReady || f.budget == nil || f.file.Metadata().Kind != "text" || ctx.Err() != nil {
+	if f.hookShellReady || f.budget == nil || f.file.Metadata().Kind != report.FileKindText || ctx.Err() != nil {
 		return f
 	}
 
 	f.units = slices.Clone(f.units)
 	f.diagnostics = slices.Clone(f.diagnostics)
+
 	preparation := (*filePreparation)(&f)
 	preparation.prepareHookShell(ctx)
 
@@ -68,7 +70,7 @@ func (f File) WithDeclaredHookShell(ctx context.Context) File {
 
 // WithGeminiHookShell adds extension-only events to the existing hook units.
 func (f File) WithGeminiHookShell(ctx context.Context) File {
-	if f.geminiHookShellReady || f.budget == nil || f.file.Metadata().Kind != "text" || ctx.Err() != nil {
+	if f.geminiHookShellReady || f.budget == nil || f.file.Metadata().Kind != report.FileKindText || ctx.Err() != nil {
 		return f
 	}
 
@@ -99,7 +101,7 @@ func (f File) WithGeminiHookShell(ctx context.Context) File {
 // WithHookSourceShell prepares an explicit local shell input identified by a
 // captured hook or source command, including files without a shell suffix.
 func (f File) WithHookSourceShell(ctx context.Context) File {
-	if f.budget == nil || f.file.Metadata().Kind != "text" || ctx.Err() != nil {
+	if f.budget == nil || f.file.Metadata().Kind != report.FileKindText || ctx.Err() != nil {
 		return f
 	}
 
@@ -117,6 +119,12 @@ func (f File) WithHookSourceShell(ctx context.Context) File {
 	f.units = slices.Clone(f.units)
 	f.diagnostics = slices.Clone(f.diagnostics)
 	preparation := (*filePreparation)(&f)
+
+	if len(f.units)+len(f.shellUnits) >= MaxRegions {
+		preparation.issue("analysis_unit_limit", "Analysis unit budget exhausted; remaining units are unverified.")
+		return f
+	}
+
 	span := source.Span{End: len(f.file.Content())}
 
 	view, err := source.NewView(f.file.Content(), []source.Span{span})
@@ -159,7 +167,7 @@ func (f *filePreparation) prepareHookShell(ctx context.Context) {
 		return
 	}
 
-	if len(f.units) >= MaxRegions {
+	if len(f.units)+len(f.shellUnits) >= MaxRegions {
 		f.issue("analysis_unit_limit", "Analysis unit budget exhausted; remaining units are unverified.")
 		return
 	}
@@ -210,7 +218,7 @@ func (f *filePreparation) projectHookHandler(ctx context.Context, parent source.
 		return true
 	}
 
-	if shell := handler.Get("shell"); shell != nil && shell.String != "bash" && shell.String != "sh" {
+	if shell := handler.Get("shell"); shell != nil && shell.String != language.ExecutableBash && shell.String != language.ExecutableSh {
 		return true
 	}
 
@@ -274,7 +282,7 @@ func (f *filePreparation) projectHookString(ctx context.Context, parent source.V
 		return true
 	}
 
-	if len(f.units) >= MaxRegions {
+	if len(f.units)+len(f.shellUnits) >= MaxRegions {
 		f.issue("analysis_unit_limit", "Analysis unit budget exhausted; remaining units are unverified.")
 		return false
 	}
@@ -329,8 +337,8 @@ func (f *filePreparation) hookShellGap(at int) {
 
 func hookShellInterpreter(name string) bool {
 	switch name {
-	case "sh", "bash", "dash", "zsh", "ksh", "/bin/sh", "/bin/bash", "/bin/dash", "/bin/zsh", "/bin/ksh",
-		"/usr/bin/sh", "/usr/bin/bash", "/usr/bin/dash", "/usr/bin/zsh", "/usr/bin/ksh":
+	case language.ExecutableSh, language.ExecutableBash, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh, language.BinSh, language.BinBash, language.BinDash, language.BinZsh, language.BinKsh,
+		language.UserBinSh, language.UserBinBash, language.UserBinDash, language.UserBinZsh, language.UserBinKsh:
 		return true
 	}
 
@@ -485,7 +493,7 @@ func (f *filePreparation) projectHookScript(ctx context.Context, parent source.V
 		return
 	}
 
-	if len(f.units) >= MaxRegions {
+	if len(f.units)+len(f.shellUnits) >= MaxRegions {
 		f.issue("analysis_unit_limit", "Analysis unit budget exhausted; remaining units are unverified.")
 		return
 	}

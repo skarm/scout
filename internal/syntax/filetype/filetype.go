@@ -12,6 +12,14 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	riffSignature = "RIFF"
+	webpSignature = "WEBP"
+	webpTagOffset = 8
+	tarSignature  = "ustar"
+	tarTagOffset  = 257
+)
+
 //nolint:gochecknoglobals // Read-only format equivalence metadata shared by detectors.
 var formatEquivalents = map[string][]string{
 	"jpg":      {"jpeg"},
@@ -156,11 +164,11 @@ func magic(s string) (string, string) {
 		}
 	}
 
-	if len(s) >= 12 && s[:4] == "RIFF" && s[8:12] == "WEBP" {
+	if len(s) >= webpTagOffset+len(webpSignature) && strings.HasPrefix(s, riffSignature) && s[webpTagOffset:webpTagOffset+len(webpSignature)] == webpSignature {
 		return "webp", "image"
 	}
 
-	if len(s) >= 262 && s[257:262] == "ustar" {
+	if len(s) >= tarTagOffset+len(tarSignature) && s[tarTagOffset:tarTagOffset+len(tarSignature)] == tarSignature {
 		return "tar", "archive"
 	}
 

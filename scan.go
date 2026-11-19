@@ -100,7 +100,7 @@ func (s *Scanner) validateTargets(ctx context.Context, targets []Target) error {
 		return ErrClosed
 	}
 
-	if ctx == nil || len(targets) == 0 || len(targets) > 32 {
+	if ctx == nil || len(targets) == 0 || len(targets) > MaxScanTargets {
 		return &Error{Code: "invalid_request", Cause: ErrInvalidInput}
 	}
 
@@ -419,7 +419,8 @@ func (o *targetSettings) allocateServices(quota targetQuota) {
 		services++
 	}
 
-	if o.Vulnerabilities != nil {
+	advisoryNetwork := o.Vulnerabilities != nil && o.Vulnerabilities.AllowNetwork
+	if advisoryNetwork {
 		services++
 	}
 
@@ -439,7 +440,7 @@ func (o *targetSettings) allocateServices(quota targetQuota) {
 		}
 	}
 
-	if o.Vulnerabilities != nil {
+	if advisoryNetwork {
 		v := min(o.Vulnerabilities.MaxRequests, requests)
 		o.vulnerabilityQuota = &v
 	}

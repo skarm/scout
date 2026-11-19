@@ -8,6 +8,10 @@ import (
 )
 
 const (
+	pythonAliasContextBytes = 4096
+)
+
+const (
 	pythonSocketPattern       = "$py_sock"
 	pythonShellAliasPattern   = "$py_shell_alias"
 	pythonSocketStreamPattern = "$py_redir_object"
@@ -24,7 +28,7 @@ var (
 
 func (s nativeSource) pythonShellAlias(span Span) bool {
 	receiver, _, _ := strings.Cut(s.text[span.Start:span.End], ".")
-	window := s.text[max(0, span.Start-4096):span.Start]
+	window := s.text[max(0, span.Start-pythonAliasContextBytes):span.Start]
 
 	if strings.HasSuffix(strings.TrimRight(window, " \t\r\n"), ".") {
 		return false
@@ -44,7 +48,7 @@ func (s nativeSource) pythonShellAlias(span Span) bool {
 func (s nativeSource) pythonSocketStream(span Span) bool {
 	_, value, _ := strings.Cut(s.text[span.Start:span.End], "=")
 	name := strings.TrimSpace(strings.TrimRight(value, ",)"))
-	window := s.text[max(0, span.Start-4096):span.Start]
+	window := s.text[max(0, span.Start-pythonAliasContextBytes):span.Start]
 	assigned := lastPythonAssignment(window, name)
 
 	for _, binding := range pythonSocketBinding.FindAllStringSubmatchIndex(window, -1) {

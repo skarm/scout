@@ -146,7 +146,7 @@ source "${CLAUDE_PLUGIN_ROOT}/helper"
 }
 
 func TestHookExecRecordsUnverifiedRuntimeWithCapturedOperand(t *testing.T) {
-	const handler = `runner=$(command -v bun 2>/dev/null)
+	const handler = `runner=$(command -v other-runtime 2>/dev/null)
 dir="$(cd "$(dirname "$0")" && pwd)"
 exec "$runner" "$dir/main.ts"
 `
@@ -960,7 +960,13 @@ func TestHookSourceFlow(t *testing.T) {
 		{name: "cleanup trap with multiple scalar paths", install: "trap 'rm -f -- \"$first\" \"$second\" 2>/dev/null' EXIT\nsource ./lib.sh\n", want: "p/lib.sh"},
 		{name: "cleanup trap with quoted paths from an array", install: "trap 'rm -f -- \"${paths[@]:-}\" 2>/dev/null || true' EXIT\nsource ./lib.sh\n", want: "p/lib.sh"},
 		{name: "cleanup trap keeps an array option boundary", install: "trap 'rm -f \"${paths[@]:-}\" 2>/dev/null || true' EXIT\n", code: "hook_source_command_unverified", line: 1},
+		{name: "exit trap calls a cleanup function with an array loop", install: "cleanup() { for item in \"${paths[@]:-}\"; do rm -f \"$item\" 2>/dev/null || true; done; }\ntrap cleanup EXIT\nsource ./lib.sh\n", want: "p/lib.sh"},
+		{name: "exit trap rejects a function with other commands", install: "cleanup() { for item in \"${paths[@]:-}\"; do source \"$item\"; done; }\ntrap cleanup EXIT\n", code: "hook_source_command_unverified", line: 2},
+		{name: "exit trap catches a later definition on either branch", install: "cleanup() { rm -f -- \"$item\"; }\nif [ -f ./paths.sh ]; then trap cleanup EXIT; fi\ncleanup() { :; }\n", code: "hook_source_command_unverified", line: 3},
+		{name: "exit trap catches a shadowed command in the cleanup function", install: "cleanup() { rm -f -- \"$item\"; }\ntrap cleanup EXIT\nrm() { :; }\n", code: "hook_source_command_unverified", line: 3},
 		{name: "read loop preserves unrelated binding", install: "helper=./lib.sh\ncount=$(printf '%s\\n' \"$lines\" | wc -l)\nwhile IFS= read -r line; do [[ -z \"$line\" ]] && continue; if [[ $count -gt 1 ]]; then result=\"$line\"; fi; done <<<\"$lines\"\nsource \"$helper\"\n", want: "p/lib.sh"},
+		{name: "read array inside a loop preserves unrelated bindings", install: "helper=./lib.sh\nwhile IFS= read -r row; do read -ra words <<< \"$row\"; for word in \"${words[@]}\"; do seen=\"$word\"; done; done <<< \"$rows\"\nsource \"$helper\"\n", want: "p/lib.sh"},
+		{name: "read inside a loop invalidates the destination", install: "helper=./lib.sh\nwhile IFS= read -r row; do read -r helper <<< \"$row\"; done <<< \"$rows\"\nsource \"$helper\"\n", code: "hook_source_dynamic", line: 3},
 		{name: "read loop cannot reuse a numeric binding written by the body", install: "count=2\nwhile IFS= read -r line; do if [[ $count -gt 1 ]]; then count=\"$line\"; fi; done <<<\"$lines\"\n", code: "hook_source_control_unverified", line: 2},
 		{name: "read loop does not trust shadowed line counter", install: "wc() { echo text; }\ncount=$(printf '%s\\n' \"$lines\" | wc -l)\nwhile IFS= read -r line; do if [[ $count -gt 1 ]]; then result=\"$line\"; fi; done <<<\"$lines\"\n", code: "hook_source_control_unverified", line: 3},
 		{name: "read loop traverses sources in substitutions", install: "while IFS= read -r line; do result=$(source ./lib.sh); done <<<\"$lines\"\n", want: "p/lib.sh"},
@@ -1083,6 +1089,9 @@ func TestHookSourceFlow(t *testing.T) {
 		{name: "local word operands remain unverified", install: "prepare() {\n  local \"helper=$@\"\n}\nprepare ./lib.sh other\n", code: "hook_source_command_unverified", line: 2, column: 3},
 		{name: "function arguments stop after dynamic expansion", install: "source ./paths.sh\nprepare $unknown ./lib.sh\nsource \"$helper\"\n", pathsScript: "prepare() { helper=\"$2\"; }\n", code: "hook_source_dynamic", line: 3},
 		{name: "function with stderr discarded retains a path for its body", install: "prepare() { source ./lib.sh; }\nprepare 2>/dev/null\n", want: "p/lib.sh"},
+		{name: "function with redirected file input retains a path for its body", install: "prepare() { source ./lib.sh; }\nprepare < \"$input\" 2>/dev/null\n", want: "p/lib.sh"},
+		{name: "input redirection can fail before a function mutates its caller", install: "helper=./other.sh\nprepare() { helper=./lib.sh; }\nprepare < \"$input\"\nsource \"$helper\"\n", code: "hook_source_dynamic", line: 4},
+		{name: "quoted join of array values does not change bindings", install: "helper=./lib.sh\necho \"Items: ${items[*]}\" >&2\nsource \"$helper\"\n", want: "p/lib.sh"},
 		{name: "redirection failure can leave the caller binding unchanged", install: "helper=./other.sh\nprepare() { helper=./lib.sh; }\nprepare 2>/dev/null\nsource \"$helper\"\n", code: "hook_source_dynamic", line: 4},
 		{name: "same function survives branches", install: "source ./paths.sh\nif test a = b; then true; else false; fi\nprepare\n", pathsScript: "prepare() { source ./lib.sh; }\n", want: "p/lib.sh"},
 		{name: "source return stops body", install: "source ./paths.sh\nsource \"$helper\"\n", pathsScript: "helper=./lib.sh\nreturn\nhelper=./other.sh\n", want: "p/lib.sh"},
@@ -1206,7 +1215,35 @@ func TestHookSourceFunctionRecursion(t *testing.T) {
 	}
 }
 
-func analyzeHookSourceFlow(t *testing.T, install, pathsScript string) harness.HookSources {
+func TestHookSourceBun(t *testing.T) {
+	for _, tc := range []struct {
+		name, script string
+		linked       bool
+	}{
+		{name: "literal executable", script: `bun "$PLUGIN_ROOT/relay.ts"`, linked: true},
+		{name: "lookup with a home-directory fallback", script: `runtime="$(command -v bun 2>/dev/null)"
+[ -z "$runtime" ] && [ -x "$HOME/.bun/bin/bun" ] && runtime="$HOME/.bun/bin/bun"
+[ -z "$runtime" ] && exit 0
+exec "$runtime" "$PLUGIN_ROOT/relay.ts"`, linked: true},
+		{name: "variable overwritten", script: "runtime=\"$(command -v bun)\"\nruntime=\"$other\"\nexec \"$runtime\" \"$PLUGIN_ROOT/relay.ts\""},
+		{name: "shadowed lookup", script: "command() { printf other; }\nruntime=\"$(command -v bun)\"\nexec \"$runtime\" \"$PLUGIN_ROOT/relay.ts\""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hooks := analyzeHookSourceFlow(t, tc.script, "", artifact.NewFile("p/relay.ts", []byte("console.log(1)\n"), false))
+			linked := slices.ContainsFunc(hooks.Paths, func(p harness.HookSourcePath) bool {
+				return p.Target == "p/relay.ts" && p.Language == "typescript"
+			})
+			gap := slices.ContainsFunc(hooks.Diagnostics, func(d report.Diagnostic) bool {
+				return d.Code == "hook_source_bun_scope_unverified" && d.AffectsScope
+			})
+			if linked != tc.linked || gap != tc.linked {
+				t.Fatalf("Bun target linked = %v and scope gap = %v, want both %v; %+v", linked, gap, tc.linked, hooks)
+			}
+		})
+	}
+}
+
+func analyzeHookSourceFlow(t *testing.T, install, pathsScript string, extra ...artifact.File) harness.HookSources {
 	t.Helper()
 	files := []artifact.File{
 		artifact.NewFile("p/.codex-plugin/plugin.json", []byte(`{"name":"example"}`), false),
@@ -1219,6 +1256,7 @@ func analyzeHookSourceFlow(t *testing.T, install, pathsScript string) harness.Ho
 		artifact.NewFile("p/other.sh", []byte("printf other\n"), false),
 		artifact.NewFile("p/sub/lib.sh", []byte("printf sub\n"), false),
 	}
+	files = slices.Concat(files, extra)
 	inventory := make([]report.File, 0, len(files))
 	for _, file := range files {
 		inventory = append(inventory, file.Metadata())

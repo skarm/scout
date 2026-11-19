@@ -10,6 +10,37 @@ import (
 	"github.com/skarm/scout/internal/netpolicy"
 )
 
+const (
+	fieldModel             = "model"
+	fieldSystemFingerprint = "system_fingerprint"
+	fieldError             = "error"
+	fieldChoices           = "choices"
+	fieldUsage             = "usage"
+	fieldIndex             = "index"
+	fieldFinishReason      = "finish_reason"
+	fieldMessage           = "message"
+	fieldRole              = "role"
+	fieldContent           = "content"
+	fieldRefusal           = "refusal"
+	fieldToolCalls         = "tool_calls"
+	fieldFunctionCall      = "function_call"
+	fieldPromptTokens      = "prompt_tokens"
+	fieldCompletionTokens  = "completion_tokens"
+	fieldType              = "type"
+	fieldStopReason        = "stop_reason"
+	fieldText              = "text"
+	fieldInputTokens       = "input_tokens"
+	fieldOutputTokens      = "output_tokens"
+)
+
+func reviewJSONError(parseErr, fallback error) error {
+	if errors.Is(parseErr, context.Canceled) || errors.Is(parseErr, context.DeadlineExceeded) {
+		return parseErr
+	}
+
+	return fallback
+}
+
 // readResponse owns the transport contract for every provider protocol. Provider
 // decoders only receive a bounded, uncompressed JSON response with status 200.
 func (p *HTTPProvider) readResponse(ctx context.Context, req *http.Request) ([]byte, error) {
@@ -70,8 +101,8 @@ func validateResponseHeaders(resp *http.Response, maxBytes int) error {
 		return &TransportError{Code: "http_status", Status: resp.StatusCode}
 	}
 
-	media, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
+	media, _, err := mime.ParseMediaType(resp.Header.Get(netpolicy.HeaderContentType))
+	if err != nil || media != netpolicy.JSONMediaType {
 		return transportError("content_type")
 	}
 

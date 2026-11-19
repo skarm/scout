@@ -4,13 +4,21 @@ package literals
 import (
 	"path"
 	"strings"
+
+	"github.com/skarm/scout/internal/syntax/language"
 )
 
 const MaxStaticStringBytes = 4096
 
+const (
+	executableFish   = "fish"
+	executableCMD    = "cmd"
+	executableCMDExe = "cmd.exe"
+)
+
 func IsShell(s string) bool {
 	switch path.Base(strings.ReplaceAll(s, "\\", "/")) {
-	case "sh", "bash", "dash", "zsh", "ksh", "fish", "cmd", "cmd.exe", "powershell", "powershell.exe", "pwsh", "pwsh.exe":
+	case language.ExecutableSh, language.ExecutableBash, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh, executableFish, executableCMD, executableCMDExe, language.ExecutablePowerShell, language.ExecutablePowerShellExe, language.ExecutablePowerShellCore, language.ExecutablePowerShellCoreExe:
 		return true
 	}
 

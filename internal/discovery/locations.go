@@ -9,7 +9,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+)
+
+const (
+	maxDiscoveryAncestorDepth = 64
 )
 
 func (b *builder) user() {
@@ -52,7 +57,7 @@ func (t *tree) codex(base string) {
 }
 
 func (t *tree) claude(base string) {
-	t.settings(path.Join(base, "settings.json"))
+	t.settings(path.Join(base, artifact.ClaudeSettings))
 	t.skills(path.Join(base, "skills"))
 	t.commands(path.Join(base, "commands"))
 
@@ -140,7 +145,7 @@ func (b *builder) projects() {
 }
 
 func (b *builder) ancestors(dir string) {
-	for depth := 0; depth < 64 && !b.stopped && b.ctx.Err() == nil; depth++ {
+	for depth := 0; depth < maxDiscoveryAncestorDepth && !b.stopped && b.ctx.Err() == nil; depth++ {
 		for _, agent := range []string{"codex", "claude-code"} {
 			if b.selects(agent) {
 				b.open(dir, agent, "project", true, func(t *tree) { t.projectFiles() })
@@ -172,8 +177,8 @@ func (t *tree) projectFiles() {
 		t.skills(".agents/skills")
 	} else {
 		t.mcpFile(".mcp.json")
-		t.settings(".claude/settings.json")
-		t.settings(".claude/settings.local.json")
+		t.settings(artifact.ClaudeProjectSettings)
+		t.settings(artifact.ClaudeProjectLocalSettings)
 		t.skills(".claude/skills")
 		t.commands(".claude/commands")
 	}

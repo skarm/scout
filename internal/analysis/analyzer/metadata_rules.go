@@ -21,6 +21,11 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxMetadataOperations = 32768
+	maxMetadataDepth      = 32
+)
+
 var (
 	hiddenMetadata  = regexp.MustCompile(`(?is)<\\?!-{2}.*?-{2}>|\[//\]:\s*#\s*\([^\r\n]*\)|data:text/[^;,\s]{1,80};base64,`)
 	base64Metadata  = regexp.MustCompile(`[A-Za-z0-9+/]{50,}={0,2}`)
@@ -35,7 +40,7 @@ var metadataTextPolicies = map[string]func(string, bool, bool) bool{
 	ruleNVTP1: func(value string, _, _ bool) bool { return hiddenText(value) },
 	ruleNVTP2: func(value string, identifier, _ bool) bool { return identifier && confusingIdentifier(value) },
 	ruleNVTP3: func(value string, _, parameter bool) bool {
-		return parameter && (poisonParameter.MatchString(value) || len([]rune(value)) > 500)
+		return parameter && (poisonParameter.MatchString(value) || len([]rune(value)) > maxParameterDescriptionRunes)
 	},
 }
 
@@ -49,6 +54,8 @@ var invisibleMetadataRunes = &unicode.RangeTable{R16: []unicode.Range16{
 }}
 
 type pluginCheck struct{ id string }
+
+const maxParameterDescriptionRunes = 500
 
 func MetadataRules() []Analyzer {
 	return []Analyzer{pluginCheck{id: ruleNVTP1}, pluginCheck{id: ruleNVTP2}, pluginCheck{id: ruleNVTP3}}
@@ -95,7 +102,7 @@ func (a pluginCheck) Find(ctx context.Context, f document.File, budget int) (Res
 		a.walkMetadata(ctx, t.Root, 0, &ops, &out, check, emit)
 	}
 
-	if ops >= 32768 {
+	if ops >= maxMetadataOperations {
 		return out, errors.New("metadata operation limit")
 	}
 
@@ -140,13 +147,13 @@ func (a pluginCheck) pluginTextCheck(emit func(*jsonconfig.Node)) func(*jsonconf
 
 func (a pluginCheck) walkMetadata(ctx context.Context, n *jsonconfig.Node, depth int, ops *int, out *Result, check func(*jsonconfig.Node, bool, bool), emit func(*jsonconfig.Node)) {
 	for entry := range configurationNodes(ctx, n, 32-depth, configurationForward) {
-		if out.Truncated || *ops >= 32768 {
+		if out.Truncated || *ops >= maxMetadataOperations {
 			return
 		}
 
 		*ops++
 
-		if entry.depth+depth > 32 || entry.node.Kind != jsonconfig.KindObject {
+		if entry.depth+depth > maxMetadataDepth || entry.node.Kind != jsonconfig.KindObject {
 			continue
 		}
 

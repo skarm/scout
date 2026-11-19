@@ -20,6 +20,14 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxSourceWalkDepth  = 32
+	maxSourceOperations = 8192
+	maxSourceVariables  = 256
+	maxSourceWrappers   = 16
+	maxSourceWordBytes  = 8192
+)
+
 var shellConfigVariable = regexp.MustCompile(`\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)`)
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
@@ -189,7 +197,7 @@ func (w *shellSourceWalker) walk(tree *shellsyntax.File, depth int) {
 		return
 	}
 
-	if depth > 32 {
+	if depth > maxSourceWalkDepth {
 		w.truncated = true
 		return
 	}
@@ -209,9 +217,15 @@ func (w *shellSourceWalker) walk(tree *shellsyntax.File, depth int) {
 	}
 }
 
-func (w *shellSourceWalker) step() bool {
-	w.operations++
-	if w.operations > 8192 || !analysisbudget.Consume(w.ctx, 1) {
+func (w *shellSourceWalker) step() bool { return w.charge(1) }
+
+func (w *shellSourceWalker) charge(units int) bool {
+	if w.truncated {
+		return false
+	}
+
+	w.operations += units
+	if units < 0 || w.operations > maxSourceOperations || !analysisbudget.Consume(w.ctx, uint64(units)) {
 		w.truncated = true
 	}
 
@@ -224,6 +238,15 @@ func (w *shellSourceWalker) command(command *shellsyntax.Command, depth int) {
 		if at, e := u.View.Original(span); e == nil {
 			emit(at)
 		}
+	}
+
+	for _, word := range command.ExpansionWords {
+		w.sourceSubstitutions(word, depth)
+	}
+
+	for _, redirect := range command.Redirects {
+		w.sourceSubstitutions(redirect.Target, depth)
+		w.sourceSubstitutions(redirect.Body, depth)
 	}
 
 	if command.FunctionName != "" {
@@ -262,6 +285,10 @@ func (w *shellSourceWalker) command(command *shellsyntax.Command, depth int) {
 
 func (w *shellSourceWalker) isolated(tree *shellsyntax.File, depth int) {
 	saved, savedFunctions := w.variables, w.functions
+	if !w.charge(1 + len(saved) + len(savedFunctions)) {
+		return
+	}
+
 	w.variables, w.functions = maps.Clone(saved), maps.Clone(savedFunctions)
 	w.walk(tree, depth)
 	w.variables, w.functions = saved, savedFunctions
@@ -277,30 +304,46 @@ func (w *shellSourceWalker) alternatives(branches []*shellsyntax.File, depth int
 	)
 
 	for _, branch := range branches {
+		if !w.charge(1 + len(before) + len(beforeFunctions)) {
+			break
+		}
+
 		w.variables = maps.Clone(before)
 		w.functions = maps.Clone(beforeFunctions)
 		w.walk(branch, depth+1)
 
 		if merged == nil {
+			if !w.charge(1 + len(w.variables) + len(w.functions)) {
+				break
+			}
+
 			merged = maps.Clone(w.variables)
 			mergedFunctions = maps.Clone(w.functions)
 		} else {
-			for key, value := range merged {
-				if other, ok := w.variables[key]; !ok || other != value {
-					delete(merged, key)
-				}
+			if !w.charge(len(merged) + len(mergedFunctions)) {
+				break
 			}
 
-			for key, body := range mergedFunctions {
-				if w.functions[key] != body {
-					delete(mergedFunctions, key)
-				}
-			}
+			intersectSourceBindings(merged, w.variables)
+			intersectSourceBindings(mergedFunctions, w.functions)
 		}
+	}
+
+	if w.truncated {
+		w.variables, w.functions = before, beforeFunctions
+		return
 	}
 
 	w.variables = merged
 	w.functions = mergedFunctions
+}
+
+func intersectSourceBindings[T comparable](merged, branch map[string]T) {
+	for key, value := range merged {
+		if other, ok := branch[key]; !ok || other != value {
+			delete(merged, key)
+		}
+	}
 }
 
 func (w *shellSourceWalker) simpleCommand(command *shellsyntax.Command, depth int, mark func(source.Span)) {
@@ -308,13 +351,7 @@ func (w *shellSourceWalker) simpleCommand(command *shellsyntax.Command, depth in
 	assignment := func(key, value string, known bool, span source.Span) {
 		observeSourceAssignment(key, value, known, span, mark)
 	}
-	w.sourceAssignments(command, assignment)
-
-	for _, word := range command.ExpansionWords {
-		for tree := range word.Substitutions() {
-			w.isolated(tree, depth+1)
-		}
-	}
+	w.sourceAssignments(command, depth, assignment)
 
 	words, known := w.sourceWords(command, depth)
 
@@ -348,12 +385,13 @@ func observeSourceAssignment(key, value string, known bool, span source.Span, ma
 	}
 }
 
-func (w *shellSourceWalker) sourceAssignments(command *shellsyntax.Command, observe func(string, string, bool, source.Span)) {
+func (w *shellSourceWalker) sourceAssignments(command *shellsyntax.Command, depth int, observe func(string, string, bool, source.Span)) {
 	for _, assignment := range command.Assignments {
+		w.sourceSubstitutions(assignment.Value, depth)
 		value, known := sourceWord(assignment.Value, w.variables)
 		observe(assignment.Name, value, known, assignment.Span)
 
-		if known && len(command.Words) == 0 && len(w.variables) < 256 {
+		if known && len(command.Words) == 0 && len(w.variables) < maxSourceVariables {
 			w.variables[assignment.Name] = value
 		} else {
 			delete(w.variables, assignment.Name)
@@ -369,12 +407,16 @@ func (w *shellSourceWalker) sourceWords(command *shellsyntax.Command, depth int)
 		value, literal := sourceWord(word, w.variables)
 		words, known = append(words, value), append(known, literal)
 
-		for tree := range word.Substitutions() {
-			w.isolated(tree, depth+1)
-		}
+		w.sourceSubstitutions(word, depth)
 	}
 
 	return words, known
+}
+
+func (w *shellSourceWalker) sourceSubstitutions(word *shellsyntax.Word, depth int) {
+	for tree := range word.Substitutions() {
+		w.isolated(tree, depth+1)
+	}
 }
 
 func (w *shellSourceWalker) prepareGeneratedSources(command *shellsyntax.Command) bool {
@@ -425,7 +467,7 @@ func bindSourceArguments(command *shellsyntax.Command, words []string, known []b
 
 func sourceWrapperOffset(command *shellsyntax.Command, words []string, binding func(int)) int {
 	at := 0
-	for steps := 0; at < len(words) && steps < 16; steps++ {
+	for steps := 0; at < len(words) && steps < maxSourceWrappers; steps++ {
 		head := words[at]
 		if head != "env" && head != "command" && head != "sudo" {
 			break
@@ -578,7 +620,7 @@ func sourceConfigOutputName(output *shellsyntax.Redirect) string {
 	var name strings.Builder
 
 	for _, part := range output.Target.Parts {
-		if part.Kind == "literal" {
+		if part.Kind == shellsyntax.PartLiteral {
 			name.WriteString(part.Text)
 		} else {
 			name.WriteByte('$')
@@ -758,9 +800,9 @@ func sourceWord(word *shellsyntax.Word, variables map[string]string) (string, bo
 
 	for _, p := range word.Parts {
 		switch p.Kind {
-		case "literal":
+		case shellsyntax.PartLiteral:
 			b.WriteString(p.Text)
-		case "parameter":
+		case shellsyntax.PartParameter:
 			value, ok := variables[p.Text]
 			if !ok {
 				return "", false
@@ -771,7 +813,7 @@ func sourceWord(word *shellsyntax.Word, variables map[string]string) (string, bo
 			return "", false
 		}
 
-		if b.Len() > 8192 {
+		if b.Len() > maxSourceWordBytes {
 			return "", false
 		}
 	}

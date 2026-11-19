@@ -4,7 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+
+	"github.com/skarm/scout/internal/netpolicy"
 )
+
+// MaxPageCursorBytes bounds the pagination cursor in a registry request.
+const MaxPageCursorBytes = 2048
 
 // GetPage requests a bounded JSON API page. The endpoint is operator-owned;
 // the only server-controlled query value is an encoded pagination cursor.
@@ -22,7 +27,7 @@ func GetPage(ctx context.Context, endpoint, cursor string, o Options) ([]byte, e
 		return nil, err
 	}
 
-	if len(cursor) > 2048 {
+	if len(cursor) > MaxPageCursorBytes {
 		return nil, fail("cursor_limit")
 	}
 
@@ -40,8 +45,8 @@ func GetPage(ctx context.Context, endpoint, cursor string, o Options) ([]byte, e
 		return nil, fail("invalid_request")
 	}
 
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set(netpolicy.HeaderAccept, netpolicy.JSONMediaType)
+	req.Header.Set(netpolicy.HeaderAcceptEncoding, netpolicy.IdentityEncoding)
 
 	return downloadResponse(ctx, req, o)
 }

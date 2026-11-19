@@ -11,6 +11,11 @@ import (
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 )
 
+const (
+	maxCanonicalNumberBytes = 256
+	maxCanonicalExponent    = 4096
+)
+
 // Discard token positions but retain values and types, including numbers.
 // Parser depth/node budgets bound this traversal. Object member order is not
 // a semantic parameter change; array order remains meaningful by default.
@@ -48,12 +53,12 @@ func canonicalHash(n *jsonconfig.Node) string {
 }
 
 func canonicalNumber(kind, value string) string {
-	if kind == "number" && len(value) <= 256 {
+	if kind == jsonconfig.KindNumber && len(value) <= maxCanonicalNumberBytes {
 		bounded := true
 
 		if at := strings.IndexAny(value, "eE"); at >= 0 {
 			exponent, e := strconv.ParseInt(value[at+1:], 10, 32)
-			bounded = e == nil && exponent >= -4096 && exponent <= 4096
+			bounded = e == nil && exponent >= -maxCanonicalExponent && exponent <= maxCanonicalExponent
 		}
 
 		if bounded {

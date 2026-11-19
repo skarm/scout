@@ -145,17 +145,11 @@ subdirectories are not recursively searched for components.
 Cancellation during finalization also marks the inventory incomplete and returns
 exit code 2; publishing a partial result cannot clear the discovery error.
 
-The initial surface excludes cloud and MDM configuration, profile overlays,
+Discovery excludes cloud and MDM configuration, profile overlays,
 runtime/CLI overrides, in-place plugins outside known caches, plugin seed/cache
 environment overrides, enterprise Claude skills, linked skills, MCP bundles and
 remote plugin references. An inventory marked complete does not establish coverage
 of those locations or compatibility with every host version. No tool descriptions
 are fetched from running servers. Snapshot comparison is not part of this command.
 
-Locations and layouts were checked against the [Codex skills guide](https://developers.openai.com/codex/skills),
-[OpenAI plugin packaging](https://developers.openai.com/plugins/build/plugins),
-[Claude MCP scopes](https://code.claude.com/docs/en/mcp),
-[Claude skills](https://code.claude.com/docs/en/skills) and
-[Claude plugin manifests](https://code.claude.com/docs/en/plugins-reference),
-on 2026-10-30. Discovery is an original Scout implementation; Snyk's client and
-analysis service are not dependencies.
+[Codex skills](https://developers.openai.com/codex/skills) · [Codex plugin packaging](https://developers.openai.com/plugins/build/plugins) · [Claude MCP scopes](https://code.claude.com/docs/en/mcp) · [Claude skills](https://code.claude.com/docs/en/skills) · [Claude plugin manifests](https://code.claude.com/docs/en/plugins-reference)

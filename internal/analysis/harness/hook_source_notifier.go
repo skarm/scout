@@ -18,7 +18,7 @@ func hookNotifierLookup(tree *shellsyntax.File, state hookSourceState) bool {
 	}
 
 	probe, fallback := tree.Statements[0], tree.Statements[1]
-	if probe.Next != "||" || hookAndOrLink(fallback.Next) || probe.Background || fallback.Background ||
+	if probe.Next != shellsyntax.OrElse || hookAndOrLink(fallback.Next) || probe.Background || fallback.Background ||
 		probe.Negated || fallback.Negated || len(probe.Commands) != 1 || len(fallback.Commands) != 1 {
 		return false
 	}
@@ -64,7 +64,7 @@ func hookNotifierCommandWord(word *shellsyntax.Word) bool {
 	}
 
 	for _, part := range word.Parts {
-		if part.Kind == "literal" && strings.TrimSpace(part.Text) != "" {
+		if part.Kind == shellsyntax.PartLiteral && strings.TrimSpace(part.Text) != "" {
 			return true
 		}
 	}
@@ -140,7 +140,7 @@ func (w *hookSourceWalk) hookNotifierArguments(words []*shellsyntax.Word, state 
 			continue
 		}
 
-		if !state.explicitBash || len(flag.Parts) != 1 || flag.Parts[0].Kind != "parameter_array_all" ||
+		if !state.explicitBash || len(flag.Parts) != 1 || flag.Parts[0].Kind != shellsyntax.PartParameterArrayAll ||
 			!flag.Parts[0].Quoted || !state.kinds[flag.Parts[0].Text].notifierAction {
 			return false
 		}

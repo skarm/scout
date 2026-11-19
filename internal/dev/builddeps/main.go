@@ -13,6 +13,12 @@ import (
 	"strings"
 )
 
+const (
+	envPkgConfigPath = "PKG_CONFIG_PATH"
+	envCGOLDFlags    = "CGO_LDFLAGS"
+	envNativeCache   = "SCOUT_NATIVE_CACHE"
+)
+
 const version = "1.22.0"
 
 func main() {
@@ -42,8 +48,8 @@ func run(ctx context.Context, args []string) error {
 	flags, err := libraryFlags(ctx, env)
 	// Default builds always use the pinned artifact. An explicit pkg-config path
 	// permits a developer-provided installation of the same C API version.
-	if os.Getenv("PKG_CONFIG_PATH") == "" || err != nil {
-		base := os.Getenv("SCOUT_NATIVE_CACHE")
+	if os.Getenv(envPkgConfigPath) == "" || err != nil {
+		base := os.Getenv(envNativeCache)
 		if base == "" {
 			base, err = os.UserCacheDir()
 			if err != nil {
@@ -64,11 +70,11 @@ func run(ctx context.Context, args []string) error {
 		}
 
 		pc := filepath.Join(prefix, "lib", "pkgconfig")
-		if previous := os.Getenv("PKG_CONFIG_PATH"); previous != "" {
+		if previous := os.Getenv(envPkgConfigPath); previous != "" {
 			pc += string(os.PathListSeparator) + previous
 		}
 
-		env = withEnv(env, "PKG_CONFIG_PATH", pc)
+		env = withEnv(env, envPkgConfigPath, pc)
 
 		flags, err = libraryFlags(ctx, env)
 		if err != nil {
@@ -81,11 +87,11 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	}
 	// Explicit linker flags also separate CGO cache entries for different installations.
-	if extra := os.Getenv("CGO_LDFLAGS"); extra != "" {
+	if extra := os.Getenv(envCGOLDFlags); extra != "" {
 		flags += " " + extra
 	}
 
-	env = withEnv(env, "CGO_LDFLAGS", flags)
+	env = withEnv(env, envCGOLDFlags, flags)
 	env = withEnv(env, "CGO_ENABLED", "1")
 	//nolint:gosec // G204: forwards the developer-selected build command, never scanned input.
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)

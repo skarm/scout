@@ -8,6 +8,12 @@ import (
 
 const Schema = "1"
 
+// Status values shared with the native self-test runner.
+const (
+	StatusPassed      = "passed"
+	StatusUnavailable = "unavailable"
+)
+
 type Check struct {
 	ID      string `json:"id"`
 	Backend string `json:"backend"`
@@ -42,7 +48,7 @@ func Validate(r Report) error {
 	}
 
 	for i, c := range r.Checks {
-		if c.ID != ids[i] || c.Status != "passed" || c.Reason != "" || c.Backend != expectedBackend(c.ID) {
+		if c.ID != ids[i] || c.Status != StatusPassed || c.Reason != "" || c.Backend != expectedBackend(c.ID) {
 			return errors.New("selftest did not pass")
 		}
 	}

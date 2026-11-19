@@ -3,6 +3,7 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -56,6 +57,32 @@ func TestRegistryPaginationSelectionAndHistory(t *testing.T) {
 	}
 }
 
+func TestRegistryLatestRequiresAnExplicitAssertion(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if _, err := writer.Write([]byte(`{"servers":[
+			{"server":{"name":"example/selected","version":"1"},"_meta":{"io.modelcontextprotocol.registry/official":{"isLatest":true}}},
+			{"server":{"name":"example/historical","version":"1"},"_meta":{"io.modelcontextprotocol.registry/official":{"isLatest":false}}},
+			{"server":{"name":"example/unknown","version":"1"}}
+		]}`)); err != nil {
+			t.Error(err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	options := registry.DefaultOptions()
+	options.Endpoint = server.URL
+	options.Download.Enabled = true
+	options.Download.AllowLoopback = true
+	options.LatestOnly = true
+
+	snapshot, err := registry.Fetch(t.Context(), options)
+	if err != nil || !snapshot.Complete || len(snapshot.Servers) != 1 || !strings.Contains(string(snapshot.Servers[0]), "example/selected") {
+		t.Fatalf("expected one registry-asserted record, got %+v (%v)", snapshot, err)
+	}
+}
+
 func TestRegistryBoundsAndMalformedPages(t *testing.T) {
 	for _, body := range []string{`{"servers":[],"metadata":{"nextCursor":"same"}}`, `{"servers":[],"servers":[]}`, `{"servers":[{"server":{"name":42}}]}`} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -95,5 +122,94 @@ func TestComparisonRejectsEmptyServerIdentity(t *testing.T) {
 	}
 	if _, err := registry.Compare(t.Context(), snapshot, snapshot); err == nil {
 		t.Fatal("an invalid server identity was certified as an unchanged registry")
+	}
+}
+
+func TestComparisonRejectsNULInServerIdentity(t *testing.T) {
+	before := registry.Snapshot{
+		Schema:   registry.Schema,
+		Complete: true,
+		Servers:  []json.RawMessage{json.RawMessage(`{"server":{"name":"x","version":"z"}}`)},
+	}
+	for _, record := range []string{
+		`{"server":{"name":"x\u0000y","version":"z"}}`,
+		`{"server":{"name":"x","version":"y\u0000z"}}`,
+	} {
+		after := before
+		after.Servers = []json.RawMessage{json.RawMessage(record)}
+		if _, err := registry.Compare(t.Context(), before, after); err == nil {
+			t.Fatal("ambiguous server identity accepted")
+		}
+		if _, err := registry.Compare(t.Context(), after, before); err == nil {
+			t.Fatal("ambiguous prior identity accepted")
+		}
+	}
+	before.Servers = []json.RawMessage{json.RawMessage(`{"server":{"name":"x/y","version":"z"}}`)}
+	after := before
+	after.Servers = []json.RawMessage{json.RawMessage(`{"server":{"name":"x","version":"y/z"}}`)}
+	result, err := registry.Compare(t.Context(), before, after)
+	if err != nil || len(result.Changes) != 2 {
+		t.Fatalf("ordinary distinct identities should be removed and added: %+v, %v", result, err)
+	}
+}
+
+func TestRegistryRejectsMalformedPaginationMetadata(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := `{"servers":[{"server":{"name":"example/first","version":"1"}}],"metadata":{"nextCursor":"next"}}`
+		if r.URL.Query().Get("cursor") == "next" {
+			body = `{"servers":[{"server":{"name":"example/second","version":"1"}}],"metadata":[]}`
+		}
+
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Error(err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	options := registry.DefaultOptions()
+	options.Endpoint = server.URL
+	options.Download.Enabled = true
+	options.Download.AllowLoopback = true
+
+	snapshot, err := registry.Fetch(t.Context(), options)
+	if err == nil || snapshot.Complete || len(snapshot.Pages) != 1 || len(snapshot.Servers) != 1 ||
+		!strings.Contains(string(snapshot.Servers[0]), "example/first") {
+		t.Fatalf("expected only the first valid page in an incomplete snapshot, got %+v (%v)", snapshot, err)
+	}
+}
+
+func TestRegistryComparisonHonorsCancellationWithoutRecords(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	snapshot := registry.Snapshot{Schema: registry.Schema, Complete: true}
+	if _, err := registry.Compare(ctx, snapshot, snapshot); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected canceled comparison, got %v", err)
+	}
+}
+
+func TestRegistryRetainsPageReceiptAtRecordLimit(t *testing.T) {
+	t.Parallel()
+
+	const body = `{"servers":[{"server":{"name":"example/first","version":"1"}},{"server":{"name":"example/second","version":"1"}}]}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Error(err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	options := registry.DefaultOptions()
+	options.Endpoint = server.URL
+	options.MaxRecords = 1
+	options.Download.Enabled = true
+	options.Download.AllowLoopback = true
+
+	snapshot, err := registry.Fetch(t.Context(), options)
+	if err == nil || snapshot.Complete || len(snapshot.Servers) != 1 || len(snapshot.Pages) != 1 || snapshot.Pages[0].Bytes != len(body) {
+		t.Fatalf("expected a partial snapshot retaining both the first record and its page receipt, got %+v (%v)", snapshot, err)
 	}
 }

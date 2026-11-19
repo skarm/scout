@@ -125,3 +125,24 @@ func TestPaddingFindBudgetAndCancellationKeepEvidence(t *testing.T) {
 		t.Fatalf("cancellation discarded accepted padding: %+v, %v", got, err)
 	}
 }
+
+func TestPaddingZeroBudgetDistinguishesCleanInput(t *testing.T) {
+	a := patternAnalyzerForTest(t, "NV-P9")
+	for _, tc := range []struct {
+		name, text string
+		omitted    bool
+	}{{"empty.txt", "", false}, {"ordinary.txt", "Reviewed documentation.", false}, {"vendor.min.js", strings.Repeat("x", 512), false}, {"padded.txt", strings.Repeat("x", 512), true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := document.Prepare(t.Context(), artifact.NewFile(tc.name, []byte(tc.text), false))
+			result, err := a.Find(t.Context(), doc, 0)
+			if err != nil || len(result.Matches) != 0 || result.Truncated != tc.omitted {
+				t.Fatalf("zero-budget result: %+v %v, omitted=%v", result, err, tc.omitted)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			if _, err := a.Find(ctx, doc, 0); !errors.Is(err, context.Canceled) {
+				t.Fatalf("zero-budget cancellation was lost: %v", err)
+			}
+		})
+	}
+}

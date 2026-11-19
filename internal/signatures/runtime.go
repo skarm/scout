@@ -9,6 +9,10 @@ import (
 	scanreport "github.com/skarm/scout/report"
 )
 
+const (
+	maxSignatureWorkers = 32
+)
+
 // ErrClosed means a native runtime no longer accepts new checks.
 var errClosed = errors.New("YARA-X runtime is closed")
 
@@ -266,7 +270,7 @@ func validateRuntime(ctx context.Context, options Options, workers int) error {
 		return errors.New("YARA-X runtime requires enabled signatures")
 	}
 
-	if workers < 1 || workers > 32 {
+	if workers < 1 || workers > maxSignatureWorkers {
 		return errors.New("YARA-X runtime workers must be in 1..32")
 	}
 

@@ -13,7 +13,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-const reasonInterpreterArgumentsUnverified = "interpreter_arguments_unverified"
+const (
+	maxHookFindingContexts               = 32
+	reasonInterpreterArgumentsUnverified = "interpreter_arguments_unverified"
+)
 
 //nolint:gochecknoglobals // Read-only manifest and launcher grammar shared by harness captures.
 var commandLaunchers = map[string]struct {
@@ -87,7 +90,7 @@ func ApplyConfigScopes(docs []document.File, g report.ComponentGraph) []document
 	seen := map[string]bool{}
 
 	for _, n := range g.Components {
-		if n.Source == nil || (n.Kind != "mcp_config" && n.Kind != "hook_config") {
+		if n.Source == nil || (n.Kind != report.ComponentMCPConfig && n.Kind != report.ComponentHookConfig) {
 			continue
 		}
 
@@ -182,7 +185,7 @@ func findingContextAdder(f *report.Finding, truncated *bool) func(report.Compone
 
 		seen[key] = true
 
-		if len(f.Contexts) >= 32 {
+		if len(f.Contexts) >= maxHookFindingContexts {
 			*truncated = true
 			return
 		}
@@ -260,7 +263,7 @@ func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation
 
 func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, event, matcher string, eventIndex, gi, hi int) {
 	s := ref(e, h.Span)
-	id := p.component("hook", e, activation, "configuration", s, fmt.Sprintf("hook:%d:%d:%d", eventIndex, gi, hi))
+	id := p.component(report.ComponentHook, e, activation, "configuration", s, fmt.Sprintf("hook:%d:%d:%d", eventIndex, gi, hi))
 	p.b.edge(parent, id, "registers", "configuration", activation, s)
 	// Event/matcher values may be arbitrary or hostile strings. They
 	// remain available by source reference, never copied into diagnostics.
@@ -390,7 +393,7 @@ func guardedShellLaunch(tree *shellsyntax.File, host string) bool {
 	}
 
 	guard, launch := tree.Statements[0], tree.Statements[1]
-	if guard.Next != "&&" || guard.Background || launch.Background || launch.Negated ||
+	if guard.Next != shellsyntax.AndThen || guard.Background || launch.Background || launch.Negated ||
 		!simpleHookCommand(guard, "cd") || len(launch.Commands) != 1 {
 		return false
 	}
@@ -507,11 +510,11 @@ func (p *plugin) servers(e *entry, n *jsonconfig.Node, kind, parent, activation 
 func (p *plugin) serverMap(e *entry, n *jsonconfig.Node, kind string) *jsonconfig.Node {
 	servers := n
 
-	if kind == "mcp_config" {
+	if kind == report.ComponentMCPConfig {
 		return p.mcpServerMap(e, n)
 	}
 
-	if kind == "lsp_config" && n.Get("lspServers") != nil {
+	if kind == componentLSPConfig && n.Get("lspServers") != nil {
 		servers = n.Get("lspServers")
 	}
 
@@ -546,7 +549,7 @@ func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activat
 	s := ref(e, n.Span)
 
 	role := "mcp_server"
-	if kind == "lsp_config" {
+	if kind == componentLSPConfig {
 		role = "lsp_server"
 	}
 
@@ -752,9 +755,9 @@ func symbolicWord(w *shellsyntax.Word, host string, hook bool) (string, bool) {
 
 	for _, part := range w.Parts {
 		switch part.Kind {
-		case "literal":
+		case shellsyntax.PartLiteral:
 			b.WriteString(part.Text)
-		case "parameter", "parameter_default_dot":
+		case shellsyntax.PartParameter, shellsyntax.PartParameterDefaultDot:
 			if rootParameter(host, part.Text, hook) {
 				b.WriteString("\x00scout-plugin-root")
 			} else {

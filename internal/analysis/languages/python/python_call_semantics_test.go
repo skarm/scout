@@ -229,3 +229,65 @@ func assertCallFacts(t *testing.T, w *pyWalker, limited bool) {
 		}
 	}
 }
+
+func TestFunctionDefaultsRemainEquivalentAfterFork(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		original    map[string]pyValue
+		override    map[string]pyValue
+		hasOverride bool
+		want        string
+	}{
+		{name: "nil defaults"},
+		{name: "registered nil defaults", hasOverride: true},
+		{name: "empty defaults", original: map[string]pyValue{}},
+		{name: "registered empty defaults", original: map[string]pyValue{}, override: map[string]pyValue{}, hasOverride: true},
+		{name: "original defaults", original: map[string]pyValue{"config": namedValue("original")}, want: "original"},
+		{name: "selected override", original: map[string]pyValue{"config": namedValue("original")}, override: map[string]pyValue{"config": namedValue("selected")}, hasOverride: true, want: "selected"},
+		{name: "explicit empty override", original: map[string]pyValue{"config": namedValue("original")}, override: map[string]pyValue{}, hasOverride: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := newPyState()
+			function := &pyFunction{lexical: state, defaults: tc.original}
+			state.set("function", functionValue(function))
+			state.set("alias", functionValue(function))
+			if tc.hasOverride {
+				state.objects.defaults[function] = tc.override
+			}
+			child := state.fork()
+			grandchild := child.fork()
+			merged := mergePy(child, grandchild, map[pyValuePair]pyValue{})
+			for _, candidate := range []*pyState{state, child, grandchild, merged} {
+				selected := candidate.defaultsFor(function)
+				if tc.want == "" {
+					if len(selected) != 0 {
+						t.Fatalf("empty default selection became populated: %+v", selected)
+					}
+				} else if len(selected) != 1 || selected["config"].symbol() != tc.want {
+					t.Fatalf("default selection changed: got %+v, want %q", selected, tc.want)
+				}
+				if candidate.names["function"].function() != function || candidate.names["alias"].function() != function {
+					t.Fatal("fork changed function identity or its alias")
+				}
+			}
+		})
+	}
+}
+
+func TestFunctionDefaultMappingAliasesStayInsideFork(t *testing.T) {
+	state := newPyState()
+	mapping := &pyMapping{entries: map[string]pyValue{"value": namedValue("original")}}
+	function := &pyFunction{lexical: state, defaults: map[string]pyValue{"config": {meaning: mapping}}}
+	state.set("function", functionValue(function))
+	state.set("config", pyValue{meaning: mapping})
+	state.objects.defaults[function] = function.defaults
+	child := state.fork()
+	selected := child.defaultsFor(function)["config"].mapping()
+	if selected == nil || selected == mapping || selected != child.names["config"].mapping() {
+		t.Fatal("fork detached a default from its alias or retained shared mutable storage")
+	}
+	selected.entries["value"] = namedValue("changed")
+	if child.names["config"].mapping().entries["value"].symbol() != "changed" || state.defaultsFor(function)["config"].mapping().entries["value"].symbol() != "original" {
+		t.Fatal("default mutation escaped its fork or lost its alias")
+	}
+}

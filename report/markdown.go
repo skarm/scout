@@ -123,7 +123,7 @@ func writeMarkdownFindings(b *strings.Builder, r Analysis, evaluation Evaluation
 		_, _ = fmt.Fprintf(b, "Severity: **%s**; method: %s.\n\n", mdCode(string(f.Severity)), mdCode(f.Method))
 		_, _ = fmt.Fprintf(b, "Location: %s, bytes %d–%d", mdCode(f.Location.Path), f.Location.ByteStart, f.Location.ByteEnd)
 
-		if f.Location.Coordinates == "text" {
+		if f.Location.Coordinates == CoordinatesText {
 			_, _ = fmt.Fprintf(b, ", line %d, column %d", f.Location.StartLine, f.Location.StartColumn)
 		}
 

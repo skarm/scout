@@ -1,10 +1,28 @@
 package shellsyntax
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/skarm/scout/internal/syntax/language"
+)
+
+const (
+	powerShellNoLogoOption          = "-nologo"
+	powerShellNoProfileOption       = "-noprofile"
+	powerShellNonInteractiveOption  = "-noninteractive"
+	powerShellNoExitOption          = "-noexit"
+	powerShellSTAOption             = "-sta"
+	powerShellMTAOption             = "-mta"
+	powerShellExecutionPolicyOption = "-executionpolicy"
+	powerShellInputFormatOption     = "-inputformat"
+	powerShellOutputFormatOption    = "-outputformat"
+	powerShellWindowStyleOption     = "-windowstyle"
+	powerShellCommandOption         = "-command"
+)
 
 func IsPowerShell(name string) bool {
 	switch strings.ToLower(name) {
-	case "powershell", "powershell.exe", "pwsh", "pwsh.exe":
+	case language.ExecutablePowerShell, language.ExecutablePowerShellExe, language.ExecutablePowerShellCore, language.ExecutablePowerShellCoreExe:
 		return true
 	default:
 		return false
@@ -21,8 +39,8 @@ func PowerShellCommandIndex(length int, argument func(int) (string, bool)) int {
 		}
 
 		switch strings.ToLower(option) {
-		case "-nologo", "-noprofile", "-noninteractive", "-noexit", "-sta", "-mta":
-		case "-executionpolicy", "-inputformat", "-outputformat", "-windowstyle":
+		case powerShellNoLogoOption, powerShellNoProfileOption, powerShellNonInteractiveOption, powerShellNoExitOption, powerShellSTAOption, powerShellMTAOption:
+		case powerShellExecutionPolicyOption, powerShellInputFormatOption, powerShellOutputFormatOption, powerShellWindowStyleOption:
 			i++
 			if i >= length {
 				return -1
@@ -32,7 +50,7 @@ func PowerShellCommandIndex(length int, argument func(int) (string, bool)) int {
 			if !known || value == "" || strings.HasPrefix(value, "-") {
 				return -1
 			}
-		case "-command":
+		case powerShellCommandOption:
 			if i+1 < length {
 				value, known := argument(i + 1)
 				if !known || value != "-" && value != "" {

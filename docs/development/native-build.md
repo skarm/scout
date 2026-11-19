@@ -117,30 +117,17 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-Tags matching `v*` with a numeric major, minor and patch version trigger automatic
-publication. Tags such as `v1.2.3-rc.1` produce prereleases. The workflow runs native
-tests, race checks and binary linkage/selftest verification. The existing
-recorded-evidence integrity check on macOS/Linux must also pass. Source edits do
-not require replacing historical receipts. Packaging reuses those exact checked binaries.
-All three archives are uploaded to a draft release before it becomes public.
-The standalone Go command `internal/dev/releasepack` creates the archives and
-checksums using only Go's standard library.
-A failed upload can be retried while the release is still a draft; published
-assets are never replaced by this workflow. If the release is already public,
-the workflow first compares existing assets byte for byte with the build artifacts,
-then uploads only missing files. A mismatch stops publication and requires a new
-version tag. An already published release keeps its title, notes and prerelease status.
+Tags with a numeric major, minor and patch version trigger publication. A tag such as `v1.2.3-rc.1` produces a prerelease. The workflow runs native and race tests, verifies binaries and checks recorded evidence before packaging. It uploads all archives to a draft before publication.
+
+Retry a failed upload while the release is a draft. For published releases, the workflow verifies existing files byte for byte and uploads missing files. A mismatch requires a new tag.
 
 Use **Actions → Scout release → Run workflow** for a trial build. Manual runs
 save `release-assets` for 14 days and never publish a GitHub Release. Publication
 uses the built-in `GITHUB_TOKEN` with `contents: write` only in the publish job;
 no personal access token is required, subject to repository/organization policies.
-Before the first product version is chosen, use a manual run on a branch: the
-commit SHA identifies the binaries and archives without assigning a product version.
 
 The Windows job builds YARA-X 1.22.0 from pinned upstream commit
 `e27597f2c05e13fe1c2bb459781aef8899afc485`, with Rust 1.95.0, its `Cargo.lock`
 and the UCRT64 GNU Windows toolchain used by CGO. The release verifier rejects external
 YARA-X and compiler-runtime DLLs and runs native selftests in a private environment.
-Automatic local dependency preparation via Make remains limited to macOS/Linux;
-Windows builds use the PowerShell scripts under `.github/scripts/`.
+Use the PowerShell scripts in `.github/scripts/` to build on Windows.

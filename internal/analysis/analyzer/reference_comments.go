@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+const (
+	referenceCommentWindowBytes = 2048
+	maxReferenceCommentOpeners  = 65536
+)
+
 var (
 	referenceOpener          = regexp.MustCompile(`(?m)(?:^|[\r\n])[\t ]{0,3}\[//\]:`)
 	referenceKeyword         = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])(?:system|instructions?|ignore|post|get|send|transmit|upload|execute|override)(?:$|[^A-Za-z0-9])`)
@@ -33,8 +38,8 @@ func referenceHasKeyword(text string) bool {
 // Inspect only the destination and optional title of this comment convention.
 // A bounded continuation may cross one logical line, never a blank paragraph.
 func referenceCommentSignals(ctx context.Context, text string, emit func(int, int) bool) bool {
-	openers := referenceOpener.FindAllStringIndex(text, 65537)
-	if len(openers) > 65536 {
+	openers := referenceOpener.FindAllStringIndex(text, maxReferenceCommentOpeners+1)
+	if len(openers) > maxReferenceCommentOpeners {
 		return true
 	}
 
@@ -54,7 +59,7 @@ func referenceCommentSignals(ctx context.Context, text string, emit func(int, in
 func inspectReferenceComment(text string, start, cursor int, emit func(int, int) bool) bool {
 	start += len(text[start:]) - len(strings.TrimLeft(text[start:], "\r\n"))
 
-	bound := min(len(text), cursor+2048)
+	bound := min(len(text), cursor+referenceCommentWindowBytes)
 
 	cursor = skipReferenceSpace(text, cursor, bound)
 	if cursor >= bound || text[cursor] != '#' {

@@ -18,6 +18,16 @@ import (
 )
 
 const (
+	minReviewRequestBytes  = 2048
+	minReviewResponseBytes = 512
+	minReviewChunkBytes    = 256
+)
+
+const (
+	maxIdentityBytes = 128
+)
+
+const (
 	// ProtocolVersion identifies the supported semantic request and response
 	// protocol.
 	ProtocolVersion = "5"
@@ -319,12 +329,29 @@ type optionRange struct {
 	message         string
 }
 
+const (
+	defaultReviewRequests      = 64
+	defaultReviewInputBytes    = 2 << 20
+	defaultReviewRequestBytes  = 32 << 10
+	defaultReviewResponseBytes = 64 << 10
+	defaultReviewProposals     = 128
+	defaultReviewChunkBytes    = 8 << 10
+	defaultReviewTimeout       = 30 * time.Second
+	maxReviewRequests          = 256
+	maxReviewInputBytes        = 8 << 20
+	maxReviewResponseBytes     = 128 << 10
+	maxReviewProposals         = 1024
+	maxReviewChunkBytes        = 16 << 10
+	// MaxReviewTimeout is the maximum supported review deadline.
+	MaxReviewTimeout = 2 * time.Minute
+)
+
 // DefaultOptions returns review budgets with semantic review and source upload
 // disabled.
 func DefaultOptions() Options {
 	return Options{
-		MaxRequests: 64, MaxInputBytes: 2 << 20, MaxRequestBytes: 32 << 10,
-		MaxResponseBytes: 64 << 10, MaxProposals: 128, ChunkBytes: 8 << 10, Timeout: 30 * time.Second,
+		MaxRequests: defaultReviewRequests, MaxInputBytes: defaultReviewInputBytes, MaxRequestBytes: defaultReviewRequestBytes,
+		MaxResponseBytes: defaultReviewResponseBytes, MaxProposals: defaultReviewProposals, ChunkBytes: defaultReviewChunkBytes, Timeout: defaultReviewTimeout,
 	}
 }
 
@@ -355,36 +382,36 @@ func (o Options) Validate() error {
 	}
 
 	return validateRanges([]optionRange{
-		{value: int64(o.MaxRequests), min: 1, max: 256, message: "semantic requests must be in 1..256"},
+		{value: int64(o.MaxRequests), min: 1, max: maxReviewRequests, message: "semantic requests must be in 1..256"},
 		{
 			value:   int64(o.MaxRequestBytes),
-			min:     2048,
+			min:     minReviewRequestBytes,
 			max:     MaxRequestBytes,
 			message: "invalid semantic request or aggregate input budget",
 		},
 		{
 			value:   int64(o.MaxInputBytes),
 			min:     int64(o.MaxRequestBytes),
-			max:     8 << 20,
+			max:     maxReviewInputBytes,
 			message: "invalid semantic request or aggregate input budget",
 		},
 		{
 			value:   int64(o.MaxResponseBytes),
-			min:     512,
-			max:     128 << 10,
+			min:     minReviewResponseBytes,
+			max:     maxReviewResponseBytes,
 			message: "invalid semantic response or proposal budget",
 		},
-		{value: int64(o.MaxProposals), min: 1, max: 1024, message: "invalid semantic response or proposal budget"},
+		{value: int64(o.MaxProposals), min: 1, max: maxReviewProposals, message: "invalid semantic response or proposal budget"},
 		{
 			value:   int64(o.ChunkBytes),
-			min:     256,
-			max:     int64(min(16<<10, o.MaxRequestBytes/2)),
+			min:     minReviewChunkBytes,
+			max:     int64(min(maxReviewChunkBytes, o.MaxRequestBytes/2)),
 			message: "semantic chunk size must be 256..16384 and at most half the request budget",
 		},
 		{
 			value:   int64(o.Timeout),
 			min:     1,
-			max:     int64(2 * time.Minute),
+			max:     int64(MaxReviewTimeout),
 			message: "semantic request timeout must be positive and at most 2m",
 		},
 	})
@@ -394,11 +421,11 @@ func (o Options) Validate() error {
 // syntax.
 func (i Identity) Validate() error {
 	for _, s := range []string{i.Provider, i.Model} {
-		if len(s) == 0 || len(s) > 128 {
+		if len(s) == 0 || len(s) > maxIdentityBytes {
 			return errors.New("provider and requested model must contain 1..128 identifier bytes")
 		}
 
-		if !textmatch.Token(s, 128, "_.:/@-") {
+		if !textmatch.Token(s, maxIdentityBytes, "_.:/@-") {
 			return errors.New("invalid provider/model identifier")
 		}
 	}

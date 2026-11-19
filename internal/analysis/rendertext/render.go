@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/check"
@@ -20,14 +19,20 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxTemplateURLMatches    = 128
+	maxRenderTagBytes        = 8192
+	maxMarkdownURLCandidates = 4096
+	maxHTMLTags              = 4096
+	maxHTMLNesting           = 64
+)
+
 var (
 	hiddenStyle         = regexp.MustCompile(`(?i)(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0*)?|font-size\s*:\s*0(?:px|em|rem|pt|%)?)\s*(?:!important\s*)?(?:;|$)`)
 	hiddenDirective     = regexp.MustCompile(`(?i)\b(?:ignore|disregard|override)\b.{0,100}\b(?:instructions?|rules?|system|previous)\b|\b(?:send|upload|transmit|reveal|collect)\b.{0,160}\b(?:api[ _-]?keys?|credentials?|secrets?|tokens?|private|conversation)\b|\b(?:execute|run|install|eval|exec)\b.{0,160}\b(?:curl|wget|bash|shell|script|command|payload)\b|\b(?:curl|wget)\b.{0,256}\|\s*(?:ba)?sh\b`)
 	markdownDestination = regexp.MustCompile(`!?\[[^\]\r\n]{0,512}\]\([\t ]*(https?://[^\t\r\n )]+)`)
 	templateValue       = regexp.MustCompile(`\$\{([^}]{1,256})\}|\{\{([^}]{1,256})\}\}`)
 )
-
-var frontmatterBoundary = regexp.MustCompile(`(?m)^---[\t ]*\r?$`)
 
 type (
 	match  = check.Match
@@ -68,15 +73,34 @@ func Visible(ctx context.Context, text string) (string, error) {
 		}
 	}
 
-	if strings.HasPrefix(text, "---\n") || strings.HasPrefix(text, "---\r\n") {
-		if loc := frontmatterBoundary.FindAllStringIndex(text, 3); len(loc) > 1 {
-			for i := 0; i < loc[1][1]; i++ {
-				masked[i] = ' '
-			}
-		}
+	for i := range frontmatterEnd(text) {
+		masked[i] = ' '
 	}
 
 	return string(masked), err
+}
+
+// Match document preparation's optional BOM and exact LF/CRLF delimiters.
+// Unterminated metadata remains uncertain and is not a declaration exemption.
+func frontmatterEnd(text string) int {
+	trim := strings.TrimPrefix(text, "\ufeff")
+	if !strings.HasPrefix(trim, "---\n") && !strings.HasPrefix(trim, "---\r\n") {
+		return 0
+	}
+
+	at := len(text) - len(trim) + strings.IndexByte(trim, '\n') + 1
+	for line := range strings.SplitAfterSeq(text[at:], "\n") {
+		withoutNewline := strings.TrimSuffix(line, "\n")
+		delimiter := strings.TrimSuffix(withoutNewline, "\r")
+
+		if delimiter == "---" || delimiter == "..." {
+			return at + len(withoutNewline)
+		}
+
+		at += len(line)
+	}
+
+	return 0
 }
 
 func (a renderCheck) Rule() report.Rule {
@@ -173,7 +197,7 @@ func inspectHTMLURLs(tags []renderTag, out *renderCollector) {
 
 func inspectMarkdownURLs(ctx context.Context, text string, out *renderCollector) error {
 	for candidate, loc := range markdownDestination.FindAllStringSubmatchIndex(text, -1) {
-		if candidate >= 4096 {
+		if candidate >= maxMarkdownURLCandidates {
 			return errors.New("render destination candidate limit")
 		}
 
@@ -203,7 +227,7 @@ func sensitiveTemplateURL(value string) bool {
 		return false
 	}
 
-	for _, m := range templateValue.FindAllStringSubmatch(v, 128) {
+	for _, m := range templateValue.FindAllStringSubmatch(v, maxTemplateURLMatches) {
 		name := m[1] + m[2]
 		if literals.SensitiveName(name) || strings.Contains(strings.ToLower(name), "conversation") || strings.Contains(strings.ToLower(name), "private") {
 			return true
@@ -265,7 +289,7 @@ func renderRegions(ctx context.Context, text string) ([]renderTag, []source.Span
 		}
 
 		tags = append(tags, t)
-		if len(tags) > 4096 {
+		if len(tags) > maxHTMLTags {
 			return tags, hidden, errors.New("render tag limit")
 		}
 
@@ -275,7 +299,7 @@ func renderRegions(ctx context.Context, text string) ([]renderTag, []source.Span
 			stack, regions = closeRenderStack(stack, t.name, end)
 			hidden = append(hidden, regions...)
 		} else if !strings.HasSuffix(strings.TrimSpace(text[t.span.Start:t.span.End-1]), "/") && !voidRenderTag(t.name) {
-			if len(stack) >= 64 {
+			if len(stack) >= maxHTMLNesting {
 				return tags, hidden, errors.New("render nesting limit")
 			}
 
@@ -299,7 +323,7 @@ func voidRenderTag(name string) bool {
 func renderTagEnd(text string, start int) int {
 	quote := byte(0)
 
-	for at := start + 1; at < min(len(text), start+8192); at++ {
+	for at := start + 1; at < min(len(text), start+maxRenderTagBytes); at++ {
 		c := text[at]
 		if quote != 0 {
 			if c == quote {
@@ -342,12 +366,12 @@ func parseRenderTag(text string, start, end int) renderTag {
 	}
 
 	for i < end-1 {
-		for i < end-1 && (unicode.IsSpace(rune(text[i])) || text[i] == '/') {
+		for i < end-1 && (renderSpace(text[i]) || text[i] == '/') {
 			i++
 		}
 
 		begin = i
-		for i < end-1 && !unicode.IsSpace(rune(text[i])) && !strings.ContainsRune("=/>\"'", rune(text[i])) {
+		for i < end-1 && !renderSpace(text[i]) && !strings.ContainsRune("=/>\"'", rune(text[i])) {
 			i++
 		}
 
@@ -361,8 +385,10 @@ func parseRenderTag(text string, start, end int) renderTag {
 		var value string
 
 		value, i = renderAttributeValue(text, i, end)
+		decoded := html.UnescapeString(value)
 		// Duplicate hidden attributes cannot cancel an earlier hidden value.
-		if key == "hidden" || key == "aria-hidden" && strings.EqualFold(value, "true") || key == "style" && hiddenStyle.MatchString(value) {
+		// Keep the stored attribute raw: URL inspection decodes its own carrier.
+		if key == "hidden" || key == "aria-hidden" && strings.EqualFold(decoded, "true") || key == "style" && hiddenStyle.MatchString(decoded) {
 			t.hidden = true
 		}
 
@@ -371,7 +397,7 @@ func parseRenderTag(text string, start, end int) renderTag {
 			begin = previous.span.Start
 		}
 
-		t.attrs[key] = renderAttr{value: html.UnescapeString(value), span: source.Span{Start: begin, End: i}}
+		t.attrs[key] = renderAttr{value: value, span: source.Span{Start: begin, End: i}}
 	}
 
 	return t
@@ -422,7 +448,7 @@ func renderAttributeValue(text string, at, end int) (string, int) {
 		return value, at
 	}
 
-	for at < end-1 && !unicode.IsSpace(rune(text[at])) {
+	for at < end-1 && !renderSpace(text[at]) {
 		at++
 	}
 
@@ -430,9 +456,14 @@ func renderAttributeValue(text string, at, end int) (string, int) {
 }
 
 func renderSpaceEnd(text string, at, end int) int {
-	for at < end-1 && unicode.IsSpace(rune(text[at])) {
+	for at < end-1 && renderSpace(text[at]) {
 		at++
 	}
 
 	return at
+}
+
+// HTML token boundaries use ASCII whitespace, including CR before normalization.
+func renderSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'
 }

@@ -15,7 +15,7 @@ func hookDecimalOutput(tree *shellsyntax.File, state hookSourceState) bool {
 	}
 
 	for i, stmt := range tree.Statements {
-		if stmt.Background || stmt.Negated || stmt.Next == "&" || (i+1 < len(tree.Statements) && stmt.Next != "||") ||
+		if stmt.Background || stmt.Negated || stmt.Next == shellsyntax.Background || (i+1 < len(tree.Statements) && stmt.Next != shellsyntax.OrElse) ||
 			!hookDecimalStage(stmt, state, i != 0) {
 			return false
 		}
@@ -71,7 +71,7 @@ func hookOnlyDecimalCompound(body *shellsyntax.File) *shellsyntax.Command {
 	}
 
 	stmt := body.Statements[0]
-	if stmt.Negated || stmt.Background || len(stmt.Commands) != 1 || stmt.Next == "&" || hookAndOrLink(stmt.Next) ||
+	if stmt.Negated || stmt.Background || len(stmt.Commands) != 1 || stmt.Next == shellsyntax.Background || hookAndOrLink(stmt.Next) ||
 		!hookPlainCompound(stmt.Commands[0]) {
 		return nil
 	}
@@ -89,7 +89,7 @@ func hookPrintDecimalArgument(tree *shellsyntax.File, name string) bool {
 	format, _ := cmd.Words[1].Literal()
 	arg := cmd.Words[2]
 
-	return exe == "printf" && format == "%s" && len(arg.Parts) == 1 && arg.Parts[0].Kind == "parameter" &&
+	return exe == "printf" && format == "%s" && len(arg.Parts) == 1 && arg.Parts[0].Kind == shellsyntax.PartParameter &&
 		arg.Parts[0].Quoted && arg.Parts[0].PlainParameter && arg.Parts[0].Text == name
 }
 
@@ -207,9 +207,9 @@ func hookKnownFileOperand(word *shellsyntax.Word, state hookSourceState) bool {
 
 	part := word.Parts[0]
 	switch part.Kind {
-	case "literal":
+	case shellsyntax.PartLiteral:
 		return part.Text != "" && !strings.HasPrefix(part.Text, "-")
-	case "parameter":
+	case shellsyntax.PartParameter:
 		value, known := state.vars[part.Text]
 		return part.Quoted && known && value != "" && !strings.HasPrefix(value, "-")
 	default:
@@ -232,8 +232,8 @@ func hookDigitFilter(cmd *shellsyntax.Command, state hookSourceState) bool {
 func hookDecimalRedirects(cmd *shellsyntax.Command, input bool) bool {
 	for _, r := range cmd.Redirects {
 		switch {
-		case r.Op == ">" && r.FD == "2" && hookDiscardedOutput(r):
-		case input && r.Op == "<" && (r.FD == "" || r.FD == "0") && hookSingleBracketWord(r.Target):
+		case r.Op == shellsyntax.RedirectOutput && r.FD == shellsyntax.StderrFD && hookDiscardedOutput(r):
+		case input && r.Op == shellsyntax.RedirectInput && (r.FD == "" || r.FD == shellsyntax.StdinFD) && hookSingleBracketWord(r.Target):
 		default:
 			return false
 		}

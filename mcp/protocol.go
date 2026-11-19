@@ -10,10 +10,44 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxProtocolVersionBytes = 64
+)
+
 type toolCall struct {
 	id        json.RawMessage
 	name      string
 	arguments json.RawMessage
+}
+
+const (
+	jsonRPCVersion    = "2.0"
+	methodInitialize  = "initialize"
+	methodCallTool    = "tools/call"
+	toolScanSkill     = "scan_skill"
+	toolCompareSkills = "compare_skills"
+	rpcParseError     = -32700
+	rpcInvalidRequest = -32600
+	rpcMethodNotFound = -32601
+	rpcInvalidParams  = -32602
+	rpcServerError    = -32000
+	rpcNotInitialized = -32002
+)
+
+const (
+	methodPing      = "ping"
+	methodListTools = "tools/list"
+)
+
+type toolResult struct {
+	IsError           bool        `json:"isError"`
+	Content           [1]toolText `json:"content"`
+	StructuredContent any         `json:"structuredContent,omitempty"`
+}
+
+type toolText struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 func (s *Server) dispatch(ctx context.Context, sess *session, r request) *response {
@@ -23,20 +57,20 @@ func (s *Server) dispatch(ctx context.Context, sess *session, r request) *respon
 	}
 
 	switch r.Method {
-	case "initialize":
+	case methodInitialize:
 		return s.initialize(sess, r)
-	case "ping":
-		return &response{JSONRPC: "2.0", ID: r.ID, Result: map[string]any{}}
+	case methodPing:
+		return &response{JSONRPC: jsonRPCVersion, ID: r.ID, Result: map[string]any{}}
 	}
 
 	if !sessionReady(sess) {
-		return rpcFailure(r.ID, -32002, "Initialization must complete before tool operations")
+		return rpcFailure(r.ID, rpcNotInitialized, "Initialization must complete before tool operations")
 	}
 
 	switch r.Method {
-	case "tools/list":
+	case methodListTools:
 		return s.listTools(r)
-	case "tools/call":
+	case methodCallTool:
 		call, callCtx, cleanup, rejected := s.prepareCall(ctx, sess, r)
 		if rejected != nil {
 			return rejected
@@ -45,7 +79,7 @@ func (s *Server) dispatch(ctx context.Context, sess *session, r request) *respon
 
 		return s.executeToolCall(callCtx, call)
 	default:
-		return rpcFailure(r.ID, -32601, "Method not supported")
+		return rpcFailure(r.ID, rpcMethodNotFound, "Method not supported")
 	}
 }
 
@@ -57,22 +91,22 @@ func (s *Server) initialize(sess *session, r request) *response {
 		Meta            json.RawMessage `json:"_meta,omitempty"`
 	}
 
-	if strictParams(r.Params, &params, "protocolVersion", "capabilities", "clientInfo", "_meta") != nil || params.ProtocolVersion == "" || len(params.ProtocolVersion) > 64 || !validClientInfo(params.Capabilities, params.ClientInfo) {
-		return rpcFailure(r.ID, -32602, "Invalid initialization parameters")
+	if strictParams(r.Params, &params, "protocolVersion", "capabilities", "clientInfo", fieldMeta) != nil || params.ProtocolVersion == "" || len(params.ProtocolVersion) > maxProtocolVersionBytes || !validClientInfo(params.Capabilities, params.ClientInfo) {
+		return rpcFailure(r.ID, rpcInvalidParams, "Invalid initialization parameters")
 	}
 
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 
 	if sess.initialized || sess.closed {
-		return rpcFailure(r.ID, -32600, "Already initialized")
+		return rpcFailure(r.ID, rpcInvalidRequest, "Already initialized")
 	}
 
 	sess.initialized = true
 	sess.protocol = ProtocolVersion
 
 	return &response{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRPCVersion,
 		ID:      r.ID,
 		Result: map[string]any{
 			"protocolVersion": ProtocolVersion,
@@ -88,7 +122,7 @@ func (s *Server) initialize(sess *session, r request) *response {
 
 func (s *Server) prepareCall(ctx context.Context, sess *session, r request) (toolCall, context.Context, func(), *response) {
 	if !sessionReady(sess) {
-		return toolCall{}, nil, nil, rpcFailure(r.ID, -32002, "Initialization must complete before tool operations")
+		return toolCall{}, nil, nil, rpcFailure(r.ID, rpcNotInitialized, "Initialization must complete before tool operations")
 	}
 
 	var params struct {
@@ -96,12 +130,12 @@ func (s *Server) prepareCall(ctx context.Context, sess *session, r request) (too
 		Arguments json.RawMessage `json:"arguments"`
 		Meta      json.RawMessage `json:"_meta,omitempty"`
 	}
-	if strictParams(r.Params, &params, "name", "arguments", "_meta") != nil {
-		return toolCall{}, nil, nil, rpcFailure(r.ID, -32602, "Invalid tool call")
+	if strictParams(r.Params, &params, fieldName, "arguments", fieldMeta) != nil {
+		return toolCall{}, nil, nil, rpcFailure(r.ID, rpcInvalidParams, "Invalid tool call")
 	}
 
-	if params.Name != "scan_skill" && params.Name != "compare_skills" {
-		return toolCall{}, nil, nil, rpcFailure(r.ID, -32602, "Unknown tool")
+	if params.Name != toolScanSkill && params.Name != toolCompareSkills {
+		return toolCall{}, nil, nil, rpcFailure(r.ID, rpcInvalidParams, "Unknown tool")
 	}
 
 	callCtx, cleanup, rejected := s.accept(ctx, sess, r)
@@ -115,7 +149,7 @@ func (s *Server) executeToolCall(ctx context.Context, call toolCall) *response {
 		err   error
 	)
 
-	if call.name == "scan_skill" {
+	if call.name == toolScanSkill {
 		value, err = s.scan(ctx, call.arguments)
 	} else {
 		value, err = s.compare(ctx, call.arguments)
@@ -123,14 +157,11 @@ func (s *Server) executeToolCall(ctx context.Context, call toolCall) *response {
 
 	if err != nil {
 		return &response{
-			JSONRPC: "2.0",
+			JSONRPC: jsonRPCVersion,
 			ID:      call.id,
-			Result: map[string]any{
-				"isError": true,
-				"content": []any{map[string]any{
-					"type": "text",
-					"text": "Scan request failed or input was not authorized. No installation approval.",
-				}},
+			Result: toolResult{
+				IsError: true,
+				Content: [1]toolText{{Type: "text", Text: "Scan request failed or input was not authorized. No installation approval."}},
 			},
 		}
 	}
@@ -143,15 +174,12 @@ func (s *Server) executeToolCall(ctx context.Context, call toolCall) *response {
 	}
 
 	return &response{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRPCVersion,
 		ID:      call.id,
-		Result: map[string]any{
-			"isError": incomplete,
-			"content": []any{map[string]any{
-				"type": "text",
-				"text": message,
-			}},
-			"structuredContent": value.Snapshot(),
+		Result: toolResult{
+			IsError:           incomplete,
+			Content:           [1]toolText{{Type: "text", Text: message}},
+			StructuredContent: value.Snapshot(),
 		},
 	}
 }
@@ -162,11 +190,11 @@ func (s *Server) listTools(r request) *response {
 		Meta   json.RawMessage `json:"_meta,omitempty"`
 	}
 
-	if strictParams(r.Params, &params, "cursor", "_meta") != nil || params.Cursor != "" {
-		return rpcFailure(r.ID, -32602, "Invalid cursor")
+	if strictParams(r.Params, &params, "cursor", fieldMeta) != nil || params.Cursor != "" {
+		return rpcFailure(r.ID, rpcInvalidParams, "Invalid cursor")
 	}
 
-	return &response{JSONRPC: "2.0", ID: r.ID, Result: map[string]any{"tools": s.tools()}}
+	return &response{JSONRPC: jsonRPCVersion, ID: r.ID, Result: map[string]any{"tools": s.tools()}}
 }
 
 func sessionReady(sess *session) bool {
@@ -196,7 +224,7 @@ func handleNotification(sess *session, r request) {
 			return
 		}
 
-		_, key, err := requestID(params.Get("requestId"), r.Params)
+		_, key, err := requestID(params.Get(fieldRequestID), r.Params)
 		if err == nil {
 			sess.mu.Lock()
 			cancel := sess.pending[key]

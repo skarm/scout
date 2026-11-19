@@ -37,8 +37,10 @@ scout registry compare --output /ci/registry-delta.json \
 scout scan --format json /ci/registry-current.json
 ```
 
-Fetch creates a bounded data snapshot. `--latest` uses the registry's `isLatest`
-assertion. Comparison matches name/version identities and rejects incomplete snapshots.
+Fetch creates a bounded data snapshot. `--latest` keeps only records explicitly
+marked `isLatest: true` by the registry; use the unfiltered mode for version history
+or records without that assertion. Comparison matches name/version identities and
+rejects incomplete snapshots.
 A registry record is not an installation approval.
 
 ## DSSE/in-toto verification

@@ -7,6 +7,22 @@ import (
 	"strings"
 )
 
+const (
+	// MaxEnvironmentObservations limits the number of observations in an environment report.
+	MaxEnvironmentObservations = 4096
+	// MaxEnvironmentOperations limits the work used to construct an environment report.
+	MaxEnvironmentOperations = 100000
+)
+
+const (
+	EnvironmentCapabilityCombination = "capability_combination"
+	EnvironmentToolNameCollision     = "tool_name_collision"
+	EnvironmentMCPNameCollision      = "mcp_name_collision"
+	EnvironmentSkillReference        = "skill_reference"
+	EnvironmentToolIdentifier        = "tool_identifier"
+	EnvironmentMCPIdentifier         = "mcp_identifier"
+)
+
 // EnvironmentReport relates only roots explicitly selected as one environment.
 // Observations are review candidates, never proof of activation or data flow.
 type EnvironmentReport struct {
@@ -35,6 +51,8 @@ type EnvironmentEvidence struct {
 	Source   SourceRef `json:"source"`
 }
 
+type environmentFileKey struct{ target, path string }
+
 func validateEnvironment(run Run) error {
 	e := run.Environment
 	if e == nil {
@@ -43,7 +61,7 @@ func validateEnvironment(run Run) error {
 
 	if run.Operation != ScanOperation || e.Schema != "scout.environment-analysis/v1" ||
 		!slices.Contains([]Completeness{Complete, Partial}, e.Completeness) ||
-		e.MaxObservations < 1 || e.MaxObservations > 4096 || len(e.Observations) > e.MaxObservations || e.MaxOperations > 100000 {
+		e.MaxObservations < 1 || e.MaxObservations > MaxEnvironmentObservations || len(e.Observations) > e.MaxObservations || e.MaxOperations > MaxEnvironmentOperations {
 		return errors.New("invalid environment analysis")
 	}
 
@@ -52,11 +70,11 @@ func validateEnvironment(run Run) error {
 		return errors.New("complete run requires complete environment analysis")
 	}
 
-	files := map[string]File{}
+	files := map[environmentFileKey]File{}
 
 	for _, target := range run.Targets {
 		for _, file := range target.Analysis.Artifact.Files {
-			files[target.ID+"\x00"+file.Path] = file
+			files[environmentFileKey{target.ID, file.Path}] = file
 		}
 	}
 
@@ -75,9 +93,9 @@ func validateEnvironment(run Run) error {
 	return nil
 }
 
-func validateEnvironmentObservation(o EnvironmentObservation, files map[string]File) error {
+func validateEnvironmentObservation(o EnvironmentObservation, files map[environmentFileKey]File) error {
 	a, c := environmentRoles(o.Kind)
-	if o.Kind == "capability_combination" && len(o.Evidence) == 2 && EnvironmentCapabilityPair(o.Evidence[0].Role, o.Evidence[1].Role) {
+	if o.Kind == EnvironmentCapabilityCombination && len(o.Evidence) == 2 && EnvironmentCapabilityPair(o.Evidence[0].Role, o.Evidence[1].Role) {
 		a, c = o.Evidence[0].Role, o.Evidence[1].Role
 	}
 
@@ -91,7 +109,7 @@ func validateEnvironmentObservation(o EnvironmentObservation, files map[string]F
 	}
 
 	for _, ref := range o.Evidence {
-		file, ok := files[ref.TargetID+"\x00"+ref.Source.Path]
+		file, ok := files[environmentFileKey{ref.TargetID, ref.Source.Path}]
 		if !ok || file.SHA256 != ref.Source.SHA256 || file.Status != CaptureCaptured ||
 			ref.Source.ByteStart < 0 || ref.Source.ByteEnd <= ref.Source.ByteStart || int64(ref.Source.ByteEnd) > file.Size || !environmentSpanHash(ref.Source.SpanSHA256) {
 			return errors.New("environment evidence is not bound to a captured target")
@@ -108,12 +126,12 @@ func environmentSpanHash(hash string) bool {
 
 func environmentRoles(kind string) (string, string) {
 	switch kind {
-	case "tool_name_collision":
-		return "tool_identifier", "tool_identifier"
-	case "mcp_name_collision":
-		return "mcp_identifier", "mcp_identifier"
-	case "skill_reference":
-		return "skill_reference", "skill"
+	case EnvironmentToolNameCollision:
+		return EnvironmentToolIdentifier, EnvironmentToolIdentifier
+	case EnvironmentMCPNameCollision:
+		return EnvironmentMCPIdentifier, EnvironmentMCPIdentifier
+	case EnvironmentSkillReference:
+		return EnvironmentSkillReference, "skill"
 	default:
 		return "", ""
 	}

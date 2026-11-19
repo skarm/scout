@@ -34,7 +34,7 @@ func (w *hookSourceWalk) numericCaseContinuation(e *entry, view source.View, stm
 
 	operands := arithmeticOperands(arith.Assignments[0].Value)
 	if !slices.ContainsFunc(operands, func(operand *shellsyntax.Word) bool {
-		return len(operand.Parts) == 1 && operand.Parts[0].Kind == "arithmetic_variable" && operand.Parts[0].Text == name
+		return len(operand.Parts) == 1 && operand.Parts[0].Kind == shellsyntax.PartArithmeticVariable && operand.Parts[0].Text == name
 	}) || !hookStaticCasePatterns(cmd.Case) || !numericCaseFallback(cmd, name) {
 		return state, false
 	}
@@ -63,12 +63,12 @@ func (w *hookSourceWalk) numericCaseContinuation(e *entry, view source.View, stm
 }
 
 func hookNumericCaseStatement(stmt *shellsyntax.Statement) bool {
-	return !stmt.Background && !stmt.Negated && stmt.Next != "&" && len(stmt.Commands) == 1
+	return !stmt.Background && !stmt.Negated && stmt.Next != shellsyntax.Background && len(stmt.Commands) == 1
 }
 
 func numericCaseFallback(cmd *shellsyntax.Command, name string) bool {
 	body := cmd.Alternatives[0].Statements
-	if len(body) != 1 || body[0].Background || body[0].Negated || body[0].Next == "&" ||
+	if len(body) != 1 || body[0].Background || body[0].Negated || body[0].Next == shellsyntax.Background ||
 		hookAndOrLink(body[0].Next) || len(body[0].Commands) != 1 {
 		return false
 	}

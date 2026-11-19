@@ -9,10 +9,37 @@ import (
 	"unicode/utf8"
 )
 
+// Kinds emitted by the SQL lexer.
 const (
-	MaxBytes  = 256 << 10
-	MaxTokens = 32768
-	MaxDepth  = 64
+	KindIdentifier  = "identifier"
+	KindPunctuation = "punctuation"
+	KindString      = "string"
+	KindWord        = "word"
+	kindBody        = "body"
+)
+
+const (
+	MaxBytes          = 256 << 10
+	MaxTokens         = 32768
+	MaxDepth          = 64
+	maxKeywordBytes   = 128
+	maxDollarTagBytes = 64
+)
+
+const (
+	KeywordUpdate   = "UPDATE"
+	KeywordDelete   = "DELETE"
+	KeywordWith     = "WITH"
+	KeywordDrop     = "DROP"
+	KeywordAlter    = "ALTER"
+	KeywordCreate   = "CREATE"
+	KeywordTruncate = "TRUNCATE"
+	KeywordExec     = "EXEC"
+	KeywordExecute  = "EXECUTE"
+	keywordSelect   = "SELECT"
+	keywordInsert   = "INSERT"
+	keywordDo       = "DO"
+	keywordCall     = "CALL"
 )
 
 type Token struct {
@@ -59,8 +86,8 @@ func Parse(ctx context.Context, text string) (Tree, error) {
 // checks. It is an applicability hint, never SQL validity or database execution.
 func QueryPrefix(text string) bool {
 	text = strings.TrimSpace(text)
-	if len(text) > 128 {
-		text = text[:128]
+	if len(text) > maxKeywordBytes {
+		text = text[:maxKeywordBytes]
 	}
 
 	fields := strings.Fields(strings.ToUpper(text))
@@ -69,7 +96,7 @@ func QueryPrefix(text string) bool {
 	}
 
 	switch fields[0] {
-	case "SELECT", "INSERT", "UPDATE", "DELETE", "WITH", "DROP", "ALTER", "CREATE", "TRUNCATE", "EXEC", "EXECUTE":
+	case keywordSelect, keywordInsert, KeywordUpdate, KeywordDelete, KeywordWith, KeywordDrop, KeywordAlter, KeywordCreate, KeywordTruncate, KeywordExec, KeywordExecute:
 		return true
 	}
 
@@ -85,7 +112,7 @@ func (l *lexer) parse() (Tree, error) {
 	finish := func() {
 		if len(current) > 0 {
 			command := current[0].Text
-			if command == "EXECUTE" || command == "EXEC" || command == "DO" || command == "CALL" {
+			if command == KeywordExecute || command == KeywordExec || command == keywordDo || command == keywordCall {
 				out.Limited = true
 			}
 
@@ -120,13 +147,13 @@ func (l *lexer) parse() (Tree, error) {
 			return out, errors.New("SQL token limit")
 		}
 
-		if t.Text == ";" && t.Kind == "punctuation" && l.depth == 0 {
+		if t.Text == ";" && t.Kind == KindPunctuation && l.depth == 0 {
 			finish()
 			continue
 		}
 
 		current = append(current, t)
-		if t.Kind == "body" {
+		if t.Kind == kindBody {
 			out.Limited = true
 		}
 	}
@@ -147,13 +174,13 @@ func (l *lexer) next() (Token, error) {
 	start := l.at
 	c := s[l.at]
 
-	if strings.ContainsRune(" \t\r\n\f", rune(c)) {
+	if strings.ContainsRune(" \t\r\n\f\v", rune(c)) {
 		l.at++
 		return Token{}, nil
 	}
 
 	if strings.HasPrefix(s[l.at:], "--") {
-		for l.at < len(s) && s[l.at] != '\n' {
+		for l.at < len(s) && s[l.at] != '\n' && s[l.at] != '\r' {
 			l.at++
 		}
 
@@ -180,7 +207,7 @@ func (l *lexer) next() (Token, error) {
 
 			l.at = end + closing + len(delim)
 
-			return Token{Kind: "body", Text: s[end : end+closing], Start: start, End: l.at}, nil
+			return Token{Kind: kindBody, Text: s[end : end+closing], Start: start, End: l.at}, nil
 		}
 	}
 
@@ -189,7 +216,7 @@ func (l *lexer) next() (Token, error) {
 			l.at++
 		}
 
-		return Token{Kind: "word", Text: strings.ToUpper(s[start:l.at]), Start: start, End: l.at}, nil
+		return Token{Kind: KindWord, Text: strings.ToUpper(s[start:l.at]), Start: start, End: l.at}, nil
 	}
 
 	l.at++
@@ -207,7 +234,7 @@ func (l *lexer) next() (Token, error) {
 		}
 	}
 
-	return Token{Kind: "punctuation", Text: string(c), Start: start, End: l.at}, nil
+	return Token{Kind: KindPunctuation, Text: string(c), Start: start, End: l.at}, nil
 }
 
 func (l *lexer) comment() error {
@@ -284,7 +311,7 @@ func (l *lexer) quoted(open byte) (Token, error) {
 }
 
 func dollarDelimiter(s string, at int) int {
-	for i := at + 1; i < len(s) && i-at <= 64; i++ {
+	for i := at + 1; i < len(s) && i-at <= maxDollarTagBytes; i++ {
 		if s[i] == '$' {
 			return i + 1
 		}
@@ -298,5 +325,5 @@ func dollarDelimiter(s string, at int) int {
 }
 
 func wordByte(c byte) bool {
-	return c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c >= 128
+	return c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c >= utf8.RuneSelf
 }

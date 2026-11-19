@@ -14,6 +14,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxGoQueryDepth = 32
+)
+
 type (
 	goDatabaseCheck struct{}
 	goTLSCheck      struct{}
@@ -174,9 +178,7 @@ func (w *goQueryWalk) visit(n ast.Node) bool {
 		return false
 	}
 
-	*w.remaining--
-	if *w.remaining < 0 || !analysisbudget.Consume(w.ctx, 1) {
-		w.out.Truncated = true
+	if !chargeGoWork(w.ctx, w.remaining, w.out, 1) {
 		return false
 	}
 
@@ -191,6 +193,10 @@ func (w *goQueryWalk) visit(n ast.Node) bool {
 
 		return false
 	case *ast.FuncLit:
+		if !chargeGoWork(w.ctx, w.remaining, w.out, len(w.values)) {
+			return false
+		}
+
 		local := *w
 		local.values = maps.Clone(w.values)
 		ast.Inspect(x.Body, local.visit)
@@ -275,7 +281,7 @@ func goQueryArgument(call *ast.CallExpr) int {
 }
 
 func goQueryExpression(e ast.Expr, imports goScope, values goQueryBindings, depth int) goQueryValue {
-	if e == nil || depth > 32 {
+	if e == nil || depth > maxGoQueryDepth {
 		return goQueryValue{}
 	}
 

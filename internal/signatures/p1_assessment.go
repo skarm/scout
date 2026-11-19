@@ -3,22 +3,37 @@ package signatures
 import "github.com/skarm/scout/report"
 
 const (
-	ransomwareRule        = "ransomware_behavior"
-	contextPaymentPattern = "$context_then_payment"
-	multilineShellRule    = "reverse_shell_multiline"
-	c2FrameworkRule       = "c2_framework_indicators"
+	ransomwareRule               = "ransomware_behavior"
+	contextPaymentPattern        = "$context_then_payment"
+	multilineShellRule           = "reverse_shell_multiline"
+	c2FrameworkRule              = "c2_framework_indicators"
+	reverseShellRule             = "reverse_shell"
+	networkReconRule             = "network_reconnaissance"
+	phishingKitRule              = "phishing_kit"
+	backdoorPersistenceRule      = "backdoor_persistence"
+	keyloggerRule                = "keylogger_indicators"
+	infoStealerRule              = "info_stealer"
+	offensiveToolsRule           = "offensive_tool_references"
+	privilegeEscalationRule      = "privilege_escalation_tools"
+	exploitFrameworkRule         = "exploit_framework"
+	cryptoStratumRule            = "crypto_stratum_protocol"
+	cryptoMiningPoolsRule        = "crypto_mining_pools"
+	cryptoMinerRule              = "crypto_miner_software"
+	cryptoCoinjackingRule        = "crypto_coinjacking"
+	paymentThenContextPattern    = "$payment_then_context"
+	explicitRansomPaymentPattern = "$explicit_ransom_payment"
 )
 
 func p1BaseSeverity(rule string) report.Severity {
 	switch rule {
-	case "reverse_shell", multilineShellRule:
+	case reverseShellRule, multilineShellRule:
 		return report.High
-	case "network_reconnaissance", "phishing_kit":
+	case networkReconRule, phishingKitRule:
 		return report.Medium
-	case "backdoor_persistence", "keylogger_indicators", ransomwareRule,
-		c2FrameworkRule, "info_stealer", "offensive_tool_references",
-		"privilege_escalation_tools", "exploit_framework", "crypto_stratum_protocol",
-		"crypto_mining_pools", "crypto_miner_software", "crypto_coinjacking":
+	case backdoorPersistenceRule, keyloggerRule, ransomwareRule,
+		c2FrameworkRule, infoStealerRule, offensiveToolsRule,
+		privilegeEscalationRule, exploitFrameworkRule, cryptoStratumRule,
+		cryptoMiningPoolsRule, cryptoMinerRule, cryptoCoinjackingRule:
 		return report.Low
 	default:
 		return ""
@@ -29,23 +44,23 @@ func p1Description(match Match) string {
 	var subject string
 
 	switch match.Rule {
-	case "reverse_shell", multilineShellRule:
+	case reverseShellRule, multilineShellRule:
 		return "Socket, shell or stream-redirection chain signature; execution is unverified"
-	case "backdoor_persistence":
+	case backdoorPersistenceRule:
 		subject = "Persistence"
-	case "keylogger_indicators":
+	case keyloggerRule:
 		subject = "Keyboard capture"
 	case ransomwareRule:
 		subject = "Encryption, overwrite or ransom"
 	case c2FrameworkRule:
 		subject = "C2 framework"
-	case "info_stealer":
+	case infoStealerRule:
 		subject = "Sensitive artifact or credential dumping"
-	case "offensive_tool_references", "network_reconnaissance", "privilege_escalation_tools", "exploit_framework":
+	case offensiveToolsRule, networkReconRule, privilegeEscalationRule, exploitFrameworkRule:
 		subject = "Security tool or exploit"
-	case "phishing_kit":
+	case phishingKitRule:
 		subject = "Credential collection"
-	case "crypto_stratum_protocol", "crypto_mining_pools", "crypto_miner_software", "crypto_coinjacking":
+	case cryptoStratumRule, cryptoMiningPoolsRule, cryptoMinerRule, cryptoCoinjackingRule:
 		subject = "Cryptocurrency mining"
 	default:
 		return ""

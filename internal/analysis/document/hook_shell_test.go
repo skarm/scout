@@ -144,3 +144,53 @@ func TestHookShellRequiresCommandHandlerAndStaticPayload(t *testing.T) {
 		})
 	}
 }
+
+func TestHookSourceShellHonorsSharedUnitLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		count     int
+		auxiliary bool
+	}{
+		{name: "exact ordinary limit", count: document.MaxRegions - 1},
+		{name: "ordinary limit exhausted", count: document.MaxRegions},
+		{name: "exact auxiliary limit", count: document.MaxRegions - 1, auxiliary: true},
+		{name: "auxiliary limit exhausted", count: document.MaxRegions, auxiliary: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := strings.Repeat("```text\nx\n```\n", tc.count)
+			if tc.auxiliary {
+				text = "echo ready\n"
+			}
+			original := document.Prepare(t.Context(), artifact.NewFile("hooks/payload", []byte(text), false))
+			if tc.auxiliary {
+				spans := make([]source.Span, tc.count)
+				for i := range spans {
+					spans[i].End = len(text)
+				}
+				original = original.WithShellCandidates(t.Context(), spans, false)
+			}
+			candidates, limited := original.ShellCandidates()
+			if limited || len(original.Units())+len(candidates) != tc.count {
+				t.Fatal("fixture did not fill the expected units")
+			}
+			prepared := original.WithHookSourceShell(t.Context())
+			units := prepared.Units()
+			candidates, limited = prepared.ShellCandidates()
+			wantAdded := tc.count < document.MaxRegions
+			want := tc.count
+			if wantAdded {
+				want++
+			}
+			if limited || len(units)+len(candidates) != want || has(prepared, "analysis_unit_limit") == wantAdded {
+				t.Fatalf("hook admission: units=%d candidates=%d diagnostics=%+v", len(units), len(candidates), prepared.Diagnostics())
+			}
+			hookSource := false
+			for _, u := range units {
+				hookSource = hookSource || u.HookSource && u.Language == "shell" && u.Origin == "file"
+			}
+			if hookSource != wantAdded || has(original, "analysis_unit_limit") {
+				t.Fatal("hook source admission or original snapshot changed")
+			}
+		})
+	}
+}

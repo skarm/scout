@@ -9,6 +9,9 @@
 #include <time.h>
 #endif
 
+static const uint64_t nanoseconds_per_second = 1000000000ULL;
+static const uint32_t input_chunk_bytes = 4096;
+
 struct ScoutParser {
   TSParser *parser;
   atomic_bool cancelled;
@@ -26,12 +29,12 @@ static bool monotonic_ns(uint64_t *result) {
       frequency.QuadPart <= 0 || count.QuadPart < 0) return false;
   uint64_t ticks = (uint64_t)count.QuadPart;
   uint64_t hz = (uint64_t)frequency.QuadPart;
-  *result = (ticks / hz) * 1000000000ULL +
-            (uint64_t)((long double)(ticks % hz) * 1000000000ULL / hz);
+  *result = (ticks / hz) * nanoseconds_per_second +
+            (uint64_t)((long double)(ticks % hz) * nanoseconds_per_second / hz);
 #else
   struct timespec now;
   if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return false;
-  *result = (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
+  *result = (uint64_t)now.tv_sec * nanoseconds_per_second + (uint64_t)now.tv_nsec;
 #endif
   return true;
 }
@@ -53,7 +56,7 @@ static const char *read_input(void *payload, uint32_t offset, TSPoint point,
   *bytes_read = 0;
   if (interrupted(parser) || offset >= parser->length) return NULL;
   uint32_t remaining = parser->length - offset;
-  *bytes_read = remaining < 4096 ? remaining : 4096;
+  *bytes_read = remaining < input_chunk_bytes ? remaining : input_chunk_bytes;
   return parser->text + offset;
 }
 

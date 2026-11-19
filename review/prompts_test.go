@@ -3,6 +3,7 @@ package review_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"maps"
 	"net/http"
@@ -183,8 +184,8 @@ func TestPromptBoundaryRequiresAllExactIdentityFields(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := review.PromptForRequest(ctx, encode(valid)); err == nil {
-		t.Fatal("cancelled prompt request accepted")
+	if _, err := review.PromptForRequest(ctx, encode(valid)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("lost prompt request cancellation: %v", err)
 	}
 }
 

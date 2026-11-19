@@ -8,6 +8,10 @@ import (
 	"sync"
 )
 
+const (
+	initialStdioBufferBytes = 4096
+)
+
 // A stream has one serialized writer and owns all accepted call lifetimes.
 // Lifecycle notifications are processed in input order while calls can finish
 // concurrently, allowing cancellation notifications to interrupt them.
@@ -49,7 +53,7 @@ func (s *Server) Serve(ctx context.Context, input io.ReadCloser, output io.Write
 	stream := stdioStream{server: s, session: newSession(), output: output, stop: cancel}
 	scanner := bufio.NewScanner(input)
 	// Reserve delimiter space so framing does not reduce the payload limit.
-	scanner.Buffer(make([]byte, 4096), MaxMessageBytes+2)
+	scanner.Buffer(make([]byte, initialStdioBufferBytes), MaxMessageBytes+2)
 	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
 		advance, message, err := bufio.ScanLines(data, atEOF)
 		if len(message) > MaxMessageBytes {
@@ -110,7 +114,7 @@ func (s *stdioStream) receive(ctx context.Context, data []byte) {
 		return
 	}
 
-	if r.Method != "tools/call" || len(r.ID) == 0 {
+	if r.Method != methodCallTool || len(r.ID) == 0 {
 		s.send(s.server.dispatch(ctx, s.session, r))
 		return
 	}

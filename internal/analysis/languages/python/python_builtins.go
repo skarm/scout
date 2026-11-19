@@ -204,7 +204,10 @@ func (w *pyWalker) callResult(call pyCall) pyValue {
 	case "urllib.request.build_opener", "urllib.request.OpenerDirector":
 		v := joinPy(vals...)
 		for _, arg := range vals {
-			v = joinPy(v, pyHandlerOrigins(arg, 0, map[*pyInstance]bool{}))
+			v = joinPy(v, w.handlerOrigins(arg))
+			if !w.stateReady() {
+				return pyValue{}
+			}
 		}
 
 		v.meaning = pySymbol("urllib.request.OpenerDirector")

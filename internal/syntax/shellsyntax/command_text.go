@@ -2,6 +2,21 @@ package shellsyntax
 
 import "strings"
 
+const (
+	shellOptionAllExport = "allexport"
+	shellOptionErrExit   = "errexit"
+	shellOptionNoExec    = "noexec"
+	shellOptionNoGlob    = "noglob"
+	shellOptionNoUnset   = "nounset"
+	shellOptionPipeFail  = "pipefail"
+	shellOptionVerbose   = "verbose"
+	shellOptionXTrace    = "xtrace"
+	shellOptionNoProfile = "--noprofile"
+	shellOptionNoRC      = "--norc"
+	shellOptionLogin     = "--login"
+	shellOptionPOSIX     = "--posix"
+)
+
 // CommandTextIndex recognizes bounded shell options followed by code for -c.
 // The second result flags a command that could not be projected exactly.
 func CommandTextIndex(length int, operand func(int) (string, bool), allowDynamic bool) (int, bool) {
@@ -37,7 +52,7 @@ func CommandTextIndex(length int, operand func(int) (string, bool), allowDynamic
 				return -1, true
 			}
 
-			if option == "noexec" {
+			if option == shellOptionNoExec {
 				noexec = value[0] == '-'
 			}
 
@@ -81,7 +96,7 @@ func namedShellOption(index, length int, operand func(int) (string, bool)) (stri
 	}
 
 	switch value {
-	case "allexport", "errexit", "noexec", "noglob", "nounset", "pipefail", "verbose", "xtrace":
+	case shellOptionAllExport, shellOptionErrExit, shellOptionNoExec, shellOptionNoGlob, shellOptionNoUnset, shellOptionPipeFail, shellOptionVerbose, shellOptionXTrace:
 		return value, true
 	default:
 		return "", false
@@ -90,7 +105,7 @@ func namedShellOption(index, length int, operand func(int) (string, bool)) (stri
 
 func longShellOption(value string) bool {
 	switch value {
-	case "--noprofile", "--norc", "--login", "--posix":
+	case shellOptionNoProfile, shellOptionNoRC, shellOptionLogin, shellOptionPOSIX:
 		return true
 	default:
 		return false
@@ -124,7 +139,7 @@ func FileArgumentIndex(length int, operand func(int) (string, bool)) int {
 			}
 
 			return -1
-		case !shortOptions && (value == "--noprofile" || value == "--norc"):
+		case !shortOptions && (value == shellOptionNoProfile || value == shellOptionNoRC):
 		case value == "-o":
 			shortOptions = true
 			i++
@@ -133,7 +148,7 @@ func FileArgumentIndex(length int, operand func(int) (string, bool)) int {
 				return -1
 			}
 
-			if option, ok := operand(i); !ok || option != "pipefail" {
+			if option, ok := operand(i); !ok || option != shellOptionPipeFail {
 				return -1
 			}
 		case strings.HasPrefix(value, "-"):

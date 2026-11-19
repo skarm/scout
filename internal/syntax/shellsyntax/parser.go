@@ -30,6 +30,31 @@ type token struct {
 type listKind uint8
 
 const (
+	keywordIf       = "if"
+	keywordThen     = "then"
+	keywordElif     = "elif"
+	keywordElse     = "else"
+	keywordFi       = "fi"
+	keywordFor      = "for"
+	keywordWhile    = "while"
+	keywordUntil    = "until"
+	keywordDo       = "do"
+	keywordDone     = "done"
+	keywordCase     = "case"
+	keywordEsac     = "esac"
+	keywordIn       = "in"
+	keywordSelect   = "select"
+	keywordFunction = "function"
+	keywordCoproc   = "coproc"
+	keywordTime     = "time"
+	tokenNegation   = "!"
+	tokenOpenBrace  = "{"
+	tokenCloseBrace = "}"
+	tokenOpenTest   = "[["
+	tokenCloseTest  = "]]"
+)
+
+const (
 	topLevelList listKind = iota
 	parenthesizedList
 	caseArmList
@@ -123,7 +148,7 @@ func (p *parser) list(kind listKind) (*File, error) {
 			return out, nil
 		}
 
-		if t.kind == "eof" || t.kind == ")" {
+		if t.kind == tokenEOF || t.kind == tokenCloseParen {
 			return out, p.listEnd(t.kind, kind)
 		}
 
@@ -137,7 +162,7 @@ func (p *parser) list(kind listKind) (*File, error) {
 		}
 
 		out.Statements = append(out.Statements, s)
-		if s.Next == "&&" || s.Next == "||" {
+		if s.Next == AndThen || s.Next == OrElse {
 			if err := p.conditionalContinuation(kind); err != nil {
 				return out, err
 			}
@@ -146,7 +171,7 @@ func (p *parser) list(kind listKind) (*File, error) {
 }
 
 func (p *parser) listEnd(end string, kind listKind) error {
-	if end == "eof" {
+	if end == tokenEOF {
 		if len(p.pending) > 0 {
 			return p.fail("missing_heredoc")
 		}
@@ -175,7 +200,7 @@ func (p *parser) skipNewlines() (token, error) {
 			return t, err
 		}
 
-		if t.kind != "newline" {
+		if t.kind != tokenNewline {
 			return t, nil
 		}
 
@@ -193,19 +218,19 @@ func (p *parser) statementSeparator(s *Statement, kind listKind) error {
 	}
 
 	switch t.kind {
-	case "newline", ";", "&&", "||", "&":
+	case tokenNewline, sequence, AndThen, OrElse, Background:
 		_, _ = p.take()
 
 		s.Next = t.kind
-		if t.kind == "newline" {
+		if t.kind == tokenNewline {
 			return p.hereBodies()
 		}
-	case ";;":
+	case tokenEndCase:
 		if kind != caseArmList {
 			// Preserve the classification of this operator outside a case.
 			return &Error{Code: "unsupported_operator", Offset: t.span.Start}
 		}
-	case "eof", ")":
+	case tokenEOF, tokenCloseParen:
 	default:
 		return p.fail("expected_separator")
 	}
@@ -219,7 +244,7 @@ func (p *parser) conditionalContinuation(kind listKind) error {
 		return err
 	}
 
-	if t.kind == "eof" || t.kind == ")" || p.caseArmEnd(t, kind) {
+	if t.kind == tokenEOF || t.kind == tokenCloseParen || p.caseArmEnd(t, kind) {
 		return p.fail("missing_conditional_command")
 	}
 
@@ -244,7 +269,7 @@ func (p *parser) statement() (*Statement, error) {
 			return nil, err
 		}
 
-		if t.kind != "|" && t.kind != "|&" {
+		if t.kind != Pipe && t.kind != PipeWithStderr {
 			break
 		}
 
@@ -280,11 +305,11 @@ func (p *parser) command() (*Command, error) {
 
 	c := &Command{Span: source.Span{Start: t.span.Start, End: t.span.End}}
 	switch {
-	case t.kind == "(":
+	case t.kind == tokenOpenParen:
 		if err := p.commandGroup(c); err != nil {
 			return nil, err
 		}
-	case p.keyword(t, "case"):
+	case p.keyword(t, keywordCase):
 		if err := p.commandCase(c); err != nil {
 			return nil, err
 		}
@@ -311,7 +336,7 @@ func (p *parser) commandGroup(c *Command) error {
 	}
 
 	closing, err := q.take()
-	if err != nil || closing.kind != ")" {
+	if err != nil || closing.kind != tokenCloseParen {
 		return p.fail("unclosed_group")
 	}
 
@@ -337,16 +362,16 @@ func (p *parser) commandWords(c *Command) (*Command, error) {
 
 			c.Redirects = append(c.Redirects, r)
 			c.Span.End = r.Span.End
-		case t.kind == "word":
+		case t.kind == tokenWord:
 			if err := p.commandToken(c, t.word); err != nil {
 				return nil, err
 			}
 		default:
-			if t.kind == "(" && p.functionHead(c, t) {
+			if t.kind == tokenOpenParen && p.functionHead(c, t) {
 				return nil, &Error{Code: "unsupported_function_declaration", Offset: c.Span.Start}
 			}
 
-			if t.kind == "(" && p.arrayAssignmentHead(c, t) {
+			if t.kind == tokenOpenParen && p.arrayAssignmentHead(c, t) {
 				return nil, &Error{Code: "unsupported_array_assignment", Offset: t.span.Start}
 			}
 
@@ -382,7 +407,7 @@ func (p *parser) functionHead(c *Command, open token) bool {
 	tail := strings.TrimLeft(p.text[open.span.End:p.end], " \t")
 	rest, closed := strings.CutPrefix(tail, ")")
 
-	return closed && strings.HasPrefix(strings.TrimLeft(rest, " \t\r\n"), "{")
+	return closed && strings.HasPrefix(strings.TrimLeft(rest, " \t\r\n"), tokenOpenBrace)
 }
 
 func (p *parser) commandToken(c *Command, w *Word) error {
@@ -439,7 +464,7 @@ func (p *parser) redirect(fd string) (*Redirect, error) {
 	}
 
 	var t token
-	if op.kind == "<<" || op.kind == "<<-" {
+	if op.kind == RedirectHereDoc || op.kind == RedirectStripHereDoc {
 		t, err = p.heredocWord()
 	} else {
 		t, err = p.take()
@@ -449,12 +474,12 @@ func (p *parser) redirect(fd string) (*Redirect, error) {
 		return nil, err
 	}
 
-	if t.kind != "word" {
+	if t.kind != tokenWord {
 		return nil, p.fail("missing_redirect_target")
 	}
 
 	r := &Redirect{Span: source.Span{Start: op.span.Start, End: t.span.End}, Op: op.kind, FD: fd, Target: t.word}
-	if op.kind == "<<" || op.kind == "<<-" {
+	if op.kind == RedirectHereDoc || op.kind == RedirectStripHereDoc {
 		if err := p.heredocRedirect(r, t); err != nil {
 			return nil, err
 		}
@@ -481,13 +506,13 @@ func (p *parser) heredocWord() (token, error) {
 	span := source.Span{Start: start, End: p.at}
 
 	return token{
-		kind: "word",
+		kind: tokenWord,
 		span: span,
 		word: &Word{
 			Span:   span,
 			Quoted: quoted,
 			Parts: []Part{{
-				Kind:   "literal",
+				Kind:   PartLiteral,
 				Text:   delim,
 				Span:   span,
 				Quoted: quoted,
@@ -498,7 +523,7 @@ func (p *parser) heredocWord() (token, error) {
 
 func redirection(s string) bool {
 	switch s {
-	case "<", ">", ">>", "<>", ">|", "<&", ">&", "<<", "<<-", "<<<", "&>", "&>>":
+	case RedirectInput, RedirectOutput, RedirectAppend, RedirectReadWrite, RedirectClobber, RedirectDuplicateInput, RedirectDuplicateOutput, RedirectHereDoc, RedirectStripHereDoc, RedirectHereString, RedirectBoth, RedirectAppendBoth:
 		return true
 	}
 
@@ -513,7 +538,7 @@ func assignment(text string, w *Word) (Assignment, bool) {
 		i++
 	}
 
-	if i == 0 || i >= len(s) || s[i] != '=' || len(w.Parts) == 0 || w.Parts[0].Kind != "literal" || !strings.HasPrefix(w.Parts[0].Text, s[:i+1]) {
+	if i == 0 || i >= len(s) || s[i] != '=' || len(w.Parts) == 0 || w.Parts[0].Kind != PartLiteral || !strings.HasPrefix(w.Parts[0].Text, s[:i+1]) {
 		return Assignment{}, false
 	}
 
@@ -529,7 +554,7 @@ func assignment(text string, w *Word) (Assignment, bool) {
 
 func reserved(s string) bool {
 	switch s {
-	case "if", "then", "elif", "else", "fi", "for", "while", "until", "do", "done", "case", "esac", "in", "select", "function", "coproc", "time", "!", "{", "}", "[[", "]]":
+	case keywordIf, keywordThen, keywordElif, keywordElse, keywordFi, keywordFor, keywordWhile, keywordUntil, keywordDo, keywordDone, keywordCase, keywordEsac, keywordIn, keywordSelect, keywordFunction, keywordCoproc, keywordTime, tokenNegation, tokenOpenBrace, tokenCloseBrace, tokenOpenTest, tokenCloseTest:
 		return true
 	}
 
@@ -648,7 +673,7 @@ func (p *parser) heredocRedirect(r *Redirect, t token) error {
 			Span:   t.span,
 			Quoted: quoted,
 			Parts: []Part{{
-				Kind:   "literal",
+				Kind:   PartLiteral,
 				Text:   delim,
 				Span:   t.span,
 				Quoted: quoted,

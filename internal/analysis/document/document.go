@@ -7,6 +7,7 @@ import (
 	"context"
 	"go/ast"
 	"go/token"
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/securitytext"
@@ -202,8 +203,7 @@ func (f File) Diagnostics() []report.Diagnostic {
 }
 
 func (f File) Context(s source.Span) (kind, lang string) {
-	for i := len(f.units) - 1; i >= 0; i-- {
-		u := f.units[i]
+	for _, u := range slices.Backward(f.units) {
 		if u.Origin != OriginGeneratedShell && u.Origin != OriginHookInlineRuntime {
 			break
 		}
@@ -492,7 +492,7 @@ func prepare(ctx context.Context, file artifact.File, budget *parseBudget, regis
 
 	out.foldedASCII, out.isASCII = textmatch.FoldASCII(file.Content())
 
-	if file.Metadata().Kind != "text" {
+	if file.Metadata().Kind != report.FileKindText {
 		return out
 	}
 

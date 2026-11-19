@@ -147,7 +147,7 @@ scout discover --agent codex --kind skill \
 Отмена при финализации также делает инвентарь неполным с кодом 2; публикация
 частичного результата не сбрасывает ошибку обнаружения.
 
-Начальная область не включает cloud- и MDM-конфигурации, профильные overlays,
+Обнаружение не охватывает cloud- и MDM-конфигурации, профильные overlays,
 настройки времени выполнения/CLI, плагины вне известных кешей, дополнительные
 кеши и seed-каталоги из переменных окружения плагинов, корпоративные навыки Claude,
 навыки по ссылкам, MCP bundles и удалённые ссылки плагинов. Полный инвентарь не
@@ -155,10 +155,4 @@ scout discover --agent codex --kind skill \
 Описания инструментов у работающих серверов не запрашиваются. Сравнение снимков
 в эту команду не входит.
 
-Расположения и форматы сверены с [руководством навыков Codex](https://developers.openai.com/codex/skills),
-[упаковкой плагинов OpenAI](https://developers.openai.com/plugins/build/plugins),
-[областями MCP Claude](https://code.claude.com/docs/en/mcp),
-[навыками Claude](https://code.claude.com/docs/en/skills) и
-[манифестами плагинов Claude](https://code.claude.com/docs/en/plugins-reference)
-на 2026-10-30. Реализация написана для Scout; клиент Snyk и его сервис анализа
-не являются зависимостями.
+[Навыки Codex](https://developers.openai.com/codex/skills) · [Упаковка плагинов Codex](https://developers.openai.com/plugins/build/plugins) · [Области MCP в Claude](https://code.claude.com/docs/en/mcp) · [Навыки Claude](https://code.claude.com/docs/en/skills) · [Манифесты плагинов Claude](https://code.claude.com/docs/en/plugins-reference)

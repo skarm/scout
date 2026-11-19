@@ -55,3 +55,46 @@ func TestSQLProceduralBodyRemainsUnverified(t *testing.T) {
 		t.Fatalf("opaque executable body certified: %+v %v", tree, err)
 	}
 }
+
+func TestLineCommentsEndAtSQLNewlines(t *testing.T) {
+	const comment = "-- DROP TABLE commented;"
+	const command = "DROP TABLE accounts"
+	for _, tc := range []struct{ name, newline string }{
+		{name: "LF", newline: "\n"},
+		{name: "CRLF", newline: "\r\n"},
+		{name: "CR", newline: "\r"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := comment + tc.newline + command + ";"
+			tree, err := sqlsyntax.Parse(t.Context(), text)
+			if err != nil || tree.Limited || len(tree.Statements) != 1 {
+				t.Fatalf("statement after comment lost: %+v, %v", tree, err)
+			}
+			statement := tree.Statements[0]
+			if statement.Start != len(comment)+len(tc.newline) || text[statement.Start:statement.End] != command ||
+				len(statement.Tokens) != 3 || statement.Tokens[0].Kind != "word" || statement.Tokens[0].Text != "DROP" {
+				t.Fatalf("incorrect statement or physical source span: %+v", statement)
+			}
+		})
+	}
+	tree, err := sqlsyntax.Parse(t.Context(), comment)
+	if err != nil || len(tree.Statements) != 0 {
+		t.Fatalf("comment at EOF became a statement: %+v, %v", tree, err)
+	}
+}
+
+func TestSQLWhitespacePreservesStatements(t *testing.T) {
+	const command = "DROP TABLE accounts"
+	for _, whitespace := range []string{" ", "\t", "\n", "\r", "\f", "\v"} {
+		text := whitespace + command + ";"
+		tree, err := sqlsyntax.Parse(t.Context(), text)
+		if err != nil || len(tree.Statements) != 1 {
+			t.Fatalf("whitespace %q: %+v, %v", whitespace, tree, err)
+		}
+		statement := tree.Statements[0]
+		if statement.Start != len(whitespace) || text[statement.Start:statement.End] != command ||
+			len(statement.Tokens) != 3 || statement.Tokens[0].Text != "DROP" {
+			t.Fatalf("whitespace %q changed statement tokens or span: %+v", whitespace, statement)
+		}
+	}
+}

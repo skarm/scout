@@ -85,7 +85,7 @@ func classifyCoverage(r *report.Analysis, fc *report.FileCoverage, doc document.
 	}
 
 	m := f.Metadata()
-	if m.Kind == "text" {
+	if m.Kind == report.FileKindText {
 		r.Coverage.TextFiles++
 	}
 
@@ -151,7 +151,7 @@ func containerCoverageGap(category string, extracted bool) coverageGap {
 
 func contentCoverageGap(c filetype.Description, kind string, parsed bool) coverageGap {
 	switch {
-	case kind == "binary" || c.Executable:
+	case kind == report.FileKindBinary || c.Executable:
 		return coverageGap{
 			code:    "opaque_content",
 			message: "Raw byte patterns were checked, but encoded contents, embedded objects and behavior remain unverified.",

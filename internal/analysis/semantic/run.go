@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/knowledge"
 	"github.com/skarm/scout/report"
@@ -45,10 +46,12 @@ func Run(ctx context.Context, files []artifact.File, graph report.ComponentGraph
 }
 
 func runWithExtraction(ctx context.Context, files []artifact.File, graph report.ComponentGraph, findings []report.Finding, snapshot string, o review.Options, provider review.Provider, extraction report.ExtractionReport) report.SemanticReport {
-	return RunWithin(ctx, files, graph, findings, snapshot, o, provider, extraction, nil)
+	return RunWithin(ctx, files, nil, graph, findings, snapshot, o, provider, extraction, nil)
 }
 
-func RunWithin(ctx context.Context, files []artifact.File, graph report.ComponentGraph, findings []report.Finding, snapshot string, o review.Options, provider review.Provider, extraction report.ExtractionReport, quota *Quota) report.SemanticReport {
+// RunWithin reuses documents prepared under the caller's selected parsers;
+// nil docs retain the lexical declaration subset used by standalone Run.
+func RunWithin(ctx context.Context, files []artifact.File, docs []document.File, graph report.ComponentGraph, findings []report.Finding, snapshot string, o review.Options, provider review.Provider, extraction report.ExtractionReport, quota *Quota) report.SemanticReport {
 	pack := knowledge.Inventory()
 
 	r := report.SemanticReport{
@@ -97,7 +100,7 @@ func RunWithin(ctx context.Context, files []artifact.File, graph report.Componen
 		r.Options.MaxInputBytes = o.MaxInputBytes
 	}
 
-	p := build(ctx, files, graph, findings, snapshot, o, extraction)
+	p := build(ctx, files, docs, graph, findings, snapshot, o, extraction)
 	r.Gaps = p.gaps
 
 	r.OmittedGaps = p.omittedGaps

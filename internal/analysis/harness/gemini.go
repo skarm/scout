@@ -26,7 +26,7 @@ func (p *plugin) discoverGeminiExtension() {
 			*e.doc = e.doc.WithGeminiHookShell(p.b.ctx)
 		}
 
-		p.configFile(e, "hook_config", p.activation, "host_default", whole(e))
+		p.configFile(e, report.ComponentHookConfig, p.activation, "host_default", whole(e))
 	}
 }
 

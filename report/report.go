@@ -174,8 +174,8 @@ func terminal(w io.Writer, r Analysis, evaluation Evaluation) error {
 
 func toSARIF(r Analysis, evaluation Evaluation) sarif {
 	rules := sarifRules(r)
-	kinds := artifactKinds(r)
-	results := sarifFindings(r, evaluation, kinds)
+	files := sarifFiles(r)
+	results := sarifFindings(r, evaluation, files)
 
 	if len(r.Semantic.Proposals) > 0 {
 		rules = append(rules, rule{
@@ -191,7 +191,7 @@ func toSARIF(r Analysis, evaluation Evaluation) sarif {
 
 	results = append(results, sarifProposals(r.Semantic)...)
 
-	notes := sarifDiagnostics(r.Diagnostics)
+	notes := sarifDiagnostics(r.Diagnostics, files)
 
 	return sarif{
 		Schema:  "https://json.schemastore.org/sarif-2.1.0.json",
@@ -202,7 +202,7 @@ func toSARIF(r Analysis, evaluation Evaluation) sarif {
 				Version: r.EngineVersion,
 				Rules:   rules,
 			}},
-			ColumnKind:       "unicodeCodePoints",
+			ColumnKind:       sarifColumnKind(files),
 			NewlineSequences: []string{"\r\n", "\n", "\r"},
 			Results:          &results,
 			Invocations: []invocation{{
@@ -253,7 +253,7 @@ func writeInspectionChecks(b *strings.Builder, checks []InspectionCheck, markdow
 	}
 }
 
-func sarifCodeFlows(trace []TraceStep, kinds map[string]string) []codeFlow {
+func sarifCodeFlows(trace []TraceStep, files map[string]File) []codeFlow {
 	if len(trace) == 0 {
 		return nil
 	}
@@ -262,14 +262,9 @@ func sarifCodeFlows(trace []TraceStep, kinds map[string]string) []codeFlow {
 	for _, step := range trace {
 		l := step.Location
 
-		loc := physical{ArtifactLocation: artifactLocation{URI: sourceURI(l.Path)}}
-		if kinds[l.Path] == "text" && l.ByteEnd > l.ByteStart {
-			loc.Region = &region{
-				StartLine:   l.StartLine,
-				StartColumn: l.StartColumn,
-				EndLine:     l.EndLine,
-				EndColumn:   l.EndColumn,
-			}
+		loc := physical{
+			ArtifactLocation: artifactLocation{URI: sourceURI(l.Path)},
+			Region:           sarifRegion(l, files[l.Path]),
 		}
 
 		steps = append(steps, threadLocation{
@@ -284,7 +279,7 @@ func sarifCodeFlows(trace []TraceStep, kinds map[string]string) []codeFlow {
 
 // Derived URIs name virtual objects; they must not be rewritten as local paths.
 func sourceURI(path string) string {
-	if strings.HasPrefix(path, "scout-object://") {
+	if strings.HasPrefix(path, ObjectPathPrefix) {
 		return path
 	}
 
@@ -341,7 +336,7 @@ func writeTerminalFindings(b *strings.Builder, r Analysis, evaluation Evaluation
 			_, _ = fmt.Fprintf(b, "\nDerived object %s via %s from %s (offsets below refer to decoded bytes)\n", strconv.QuoteToASCII(object.MemberName), object.ExtractorID, strconv.QuoteToASCII(object.ParentPath))
 		}
 
-		if f.Location.Coordinates == "bytes" {
+		if f.Location.Coordinates == CoordinatesBytes {
 			_, _ = fmt.Fprintf(b, "\n[%s] %s %s bytes[%d:%d] (%s)\n  %s\n", f.Severity, f.RuleID, strconv.QuoteToASCII(f.Location.Path), f.Location.ByteStart, f.Location.ByteEnd, f.Location.Context, f.Message)
 		} else {
 			_, _ = fmt.Fprintf(b, "\n[%s] %s %s:%d:%d (%s)\n  %s\n", f.Severity, f.RuleID, strconv.QuoteToASCII(f.Location.Path), f.Location.StartLine, f.Location.StartColumn, f.Location.Context, f.Message)
@@ -369,7 +364,11 @@ func writeTerminalFindings(b *strings.Builder, r Analysis, evaluation Evaluation
 		}
 
 		for _, step := range f.Trace {
-			_, _ = fmt.Fprintf(b, "  %s: %s:%d:%d\n", step.Role, strconv.QuoteToASCII(step.Location.Path), step.Location.StartLine, step.Location.StartColumn)
+			if step.Location.Coordinates == CoordinatesBytes {
+				_, _ = fmt.Fprintf(b, "  %s: %s bytes[%d:%d]\n", step.Role, strconv.QuoteToASCII(step.Location.Path), step.Location.ByteStart, step.Location.ByteEnd)
+			} else {
+				_, _ = fmt.Fprintf(b, "  %s: %s:%d:%d\n", step.Role, strconv.QuoteToASCII(step.Location.Path), step.Location.StartLine, step.Location.StartColumn)
+			}
 		}
 	}
 }
@@ -404,20 +403,59 @@ func sarifRules(r Analysis) []rule {
 	return rules
 }
 
-func artifactKinds(r Analysis) map[string]string {
-	kinds := make(map[string]string, len(r.Artifact.Files))
+func sarifFiles(r Analysis) map[string]File {
+	files := make(map[string]File, len(r.Artifact.Files)+len(r.Extraction.Objects))
 	for _, f := range r.Artifact.Files {
-		kinds[f.Path] = f.Kind
+		files[f.Path] = f
 	}
 
 	for _, object := range r.Extraction.Objects {
-		kinds[object.File.Path] = object.File.Kind
+		files[object.File.Path] = object.File
 	}
 
-	return kinds
+	return files
 }
 
-func sarifFindings(r Analysis, evaluation Evaluation, kinds map[string]string) []result {
+func sarifColumnKind(files map[string]File) string {
+	for _, file := range files {
+		if file.Kind == FileKindText {
+			return "unicodeCodePoints"
+		}
+	}
+
+	return ""
+}
+
+func sarifRegion(loc Location, file File) *region {
+	if loc.ByteEnd <= loc.ByteStart {
+		return nil
+	}
+
+	if file.Kind != FileKindText || (file.UTF8BOM && loc.ByteStart < len("\ufeff")) {
+		return sarifByteRegion(loc.ByteStart, loc.ByteEnd-loc.ByteStart)
+	}
+
+	return &region{
+		StartLine:   loc.StartLine,
+		StartColumn: sarifColumn(file, loc.StartLine, loc.StartColumn),
+		EndLine:     loc.EndLine,
+		EndColumn:   sarifColumn(file, loc.EndLine, loc.EndColumn),
+	}
+}
+
+func sarifByteRegion(offset, length int) *region {
+	return &region{ByteOffset: &offset, ByteLength: &length}
+}
+
+func sarifColumn(file File, line, column int) int {
+	if file.Kind == FileKindText && file.UTF8BOM && line == 1 && column > 1 {
+		return column - 1
+	}
+
+	return column
+}
+
+func sarifFindings(r Analysis, evaluation Evaluation, files map[string]File) []result {
 	suppressed := map[string]bool{}
 	for _, a := range evaluation.Suppressed {
 		suppressed[a.FindingID] = true
@@ -432,17 +470,9 @@ func sarifFindings(r Analysis, evaluation Evaluation, kinds map[string]string) [
 			level = "note"
 		}
 
-		p := physical{ArtifactLocation: artifactLocation{URI: sourceURI(f.Location.Path)}}
-		if kinds[f.Location.Path] == "text" && f.Location.ByteEnd > f.Location.ByteStart {
-			p.Region = &region{
-				StartLine:   f.Location.StartLine,
-				StartColumn: f.Location.StartColumn,
-				EndLine:     f.Location.EndLine,
-				EndColumn:   f.Location.EndColumn,
-			}
-		} else if f.Location.ByteEnd > f.Location.ByteStart {
-			start, length := f.Location.ByteStart, f.Location.ByteEnd-f.Location.ByteStart
-			p.Region = &region{ByteOffset: &start, ByteLength: &length}
+		p := physical{
+			ArtifactLocation: artifactLocation{URI: sourceURI(f.Location.Path)},
+			Region:           sarifRegion(f.Location, files[f.Location.Path]),
 		}
 
 		item := result{
@@ -474,7 +504,7 @@ func sarifFindings(r Analysis, evaluation Evaluation, kinds map[string]string) [
 		}
 
 		item.Properties["signatureNames"] = f.SignatureNames
-		item.CodeFlows = sarifCodeFlows(f.Trace, kinds)
+		item.CodeFlows = sarifCodeFlows(f.Trace, files)
 
 		results = append(results, item)
 	}
@@ -518,7 +548,7 @@ func sarifProposals(semantic SemanticReport) []result {
 	return results
 }
 
-func sarifDiagnostics(diagnostics []Diagnostic) []notification {
+func sarifDiagnostics(diagnostics []Diagnostic, files map[string]File) []notification {
 	notes := make([]notification, 0, len(diagnostics))
 	for _, d := range diagnostics {
 		at := strconv.QuoteToASCII(d.Path)
@@ -526,10 +556,18 @@ func sarifDiagnostics(diagnostics []Diagnostic) []notification {
 		var locations []location
 
 		if d.Path != "" && d.Line > 0 && d.Column > 0 {
-			at += ":" + strconv.Itoa(d.Line) + ":" + strconv.Itoa(d.Column)
+			file := files[d.Path]
+			column := sarifColumn(file, d.Line, d.Column)
+			at += ":" + strconv.Itoa(d.Line) + ":" + strconv.Itoa(column)
+
+			reg := &region{StartLine: d.Line, StartColumn: column}
+			if file.Kind == FileKindText && file.UTF8BOM && d.Line == 1 && d.Column == 1 {
+				reg = sarifByteRegion(0, len("\ufeff"))
+			}
+
 			locations = []location{{PhysicalLocation: physical{
 				ArtifactLocation: artifactLocation{URI: sourceURI(d.Path)},
-				Region:           &region{StartLine: d.Line, StartColumn: d.Column},
+				Region:           reg,
 			}}}
 		}
 

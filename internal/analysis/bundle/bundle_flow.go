@@ -2,7 +2,6 @@ package bundle
 
 import (
 	"errors"
-	"maps"
 	"path"
 	"slices"
 	"sort"
@@ -11,6 +10,15 @@ import (
 	"github.com/skarm/scout/internal/analysis/languages/literals"
 	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/report"
+)
+
+const (
+	maxBundleEvalDepth   = 64
+	maxBundleCallDepth   = 48
+	maxActiveBundleCalls = 8
+	maxBundleRelatedRefs = 6
+	maxBundleParameters  = 1024
+	maxBundleConcatBytes = 4096
 )
 
 type bundleValue struct {
@@ -151,30 +159,7 @@ func (b *bundleAnalysis) name(p *bundleProgram, name string, env map[string]bund
 	}
 
 	if imp, ok := p.imports[name]; ok {
-		if imp.module == "" {
-			b.gap = errors.New("imported module binding is unresolved")
-			return bundleValue{}
-		}
-
-		if target := b.localModule(p, imp); target != nil {
-			if imp.symbol != "" {
-				return b.exportValue(target, imp.symbol)
-			}
-
-			return bundleValue{module: target}
-		}
-
-		if strings.HasPrefix(imp.module, ".") {
-			b.gap = errors.New("local module reference is unresolved")
-			return bundleValue{}
-		}
-
-		v := bundleValue{name: imp.module}
-		if imp.symbol != "" {
-			v.name += "." + imp.symbol
-		}
-
-		return v
+		return b.importValue(p, imp)
 	}
 
 	if p.declared[name] {
@@ -196,9 +181,41 @@ func (b *bundleAnalysis) name(p *bundleProgram, name string, env map[string]bund
 	return bundleValue{name: name}
 }
 
+func (b *bundleAnalysis) importValue(p *bundleProgram, imp bundleImport) bundleValue {
+	if imp.module == "" {
+		b.gap = errors.New("imported module binding is unresolved")
+		return bundleValue{}
+	}
+
+	if target := b.localModule(p, imp); target != nil {
+		if imp.symbol != "" {
+			return b.exportValue(target, imp.symbol)
+		}
+
+		return bundleValue{module: target}
+	}
+
+	if strings.HasPrefix(imp.module, ".") {
+		b.gap = errors.New("local module reference is unresolved")
+		return bundleValue{}
+	}
+
+	v := bundleValue{name: imp.module}
+	if imp.symbol != "" {
+		v.name += "." + imp.symbol
+	}
+
+	return v
+}
+
 func (b *bundleAnalysis) exportValue(p *bundleProgram, name string) bundleValue {
-	if p.language == language.JavaScript || p.language == language.TypeScript {
-		if binding, ok := p.exports[name]; ok && !p.initializing {
+	if p.language == language.Python || p.language == language.JavaScript || p.language == language.TypeScript {
+		binding, ok := name, p.language == language.Python
+		if !ok {
+			binding, ok = p.exports[name]
+		}
+
+		if ok && !p.initializing {
 			b.initializeProgram(p)
 
 			if p.failed {
@@ -251,7 +268,7 @@ func mergeBundleValue(a, c bundleValue) bundleValue {
 			seen = seen || r == ref
 		}
 
-		if !seen && len(a.refs) < 6 {
+		if !seen && len(a.refs) < maxBundleRelatedRefs {
 			if !cloned {
 				a.refs = slices.Clone(a.refs)
 				cloned = true
@@ -271,6 +288,10 @@ func (b *bundleAnalysis) evalBlock(p *bundleProgram, nodes []*bundleNode, env ma
 		}
 
 		v := b.eval(p, n, env, depth+1)
+		if b.err != nil {
+			return bundleValue{}
+		}
+
 		if v.returned {
 			return v
 		}
@@ -284,7 +305,7 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 		return bundleValue{}
 	}
 
-	if depth > 64 {
+	if depth > maxBundleEvalDepth {
 		b.err = errors.New("bundle expression depth limit")
 		return bundleValue{}
 	}
@@ -304,6 +325,8 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 		return b.literalValue(p, n)
 	case nodeFunction:
 		return bundleValue{function: n.function}
+	case nodeImport:
+		return b.assignValue(p, n, env, b.importValue(p, n.imported))
 	case nodeAssign, nodeDeclare, nodeMutate:
 		return b.evalAssignment(p, n, env, depth)
 	case nodeAssignGroup:
@@ -323,11 +346,15 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 		}
 
 		return v
+	case nodeScalar:
+		return b.evalScalar(p, n, env, depth)
+	case nodePythonCompare:
+		return b.evalPythonComparison(p, n, env, depth)
 	case nodeConcat:
 		a, c := child(0), child(1)
 		v := mergeBundleValue(a, c)
 
-		v.known = a.known && c.known && len(a.text)+len(c.text) <= 4096
+		v.known = a.known && c.known && len(a.text)+len(c.text) <= maxBundleConcatBytes
 		if v.known {
 			v.text = a.text + c.text
 		}
@@ -353,6 +380,46 @@ func (b *bundleAnalysis) eval(p *bundleProgram, n *bundleNode, env map[string]bu
 	default:
 		return b.evalAggregate(p, n, env, depth)
 	}
+}
+
+// Equality of two known built-in strings yields a boolean, not either input
+// string. Rich comparison on unknown Python objects may return arbitrary data;
+// retain its possible origins while recording that result as unresolved.
+func (b *bundleAnalysis) evalPythonComparison(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
+	var result bundleValue
+
+	stringsOnly := len(n.children) == 2
+	for _, operand := range n.children {
+		value := b.eval(p, operand, env, depth+1)
+		stringsOnly = stringsOnly && value.known && !value.hasCallableIdentity()
+		result = mergeBundleValue(result, value)
+	}
+
+	if !stringsOnly {
+		b.gap = errors.New("python rich comparison result is unresolved")
+		return result
+	}
+
+	return bundleValue{secret: result.secret, refs: result.refs}
+}
+
+// Evaluate each operand once. A primitive may depend on the original data,
+// but it no longer represents the original text, response object or callable.
+func (b *bundleAnalysis) evalScalar(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
+	var result bundleValue
+
+	for _, operand := range n.children {
+		v := b.eval(p, operand, env, depth+1)
+		if v.hasCallableIdentity() {
+			b.gap = errors.New("compound bundle callable or module value is unresolved")
+		}
+
+		if v.secret != nil && result.secret == nil {
+			result = bundleValue{secret: v.secret, refs: v.refs}
+		}
+	}
+
+	return result
 }
 
 func (b *bundleAnalysis) evalValueNode(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
@@ -517,13 +584,32 @@ func (b *bundleAnalysis) conditionalAssignment(previous, v bundleValue, exists b
 
 func (b *bundleAnalysis) evalScope(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
 	local := map[string]bundleValue{}
-	maps.Copy(local, env)
+	if !copyBundleEntries(b, local, env) {
+		return bundleValue{}
+	}
 
 	for name := range n.locals {
+		if !b.step() {
+			return bundleValue{}
+		}
+
 		b.bindValue(local, name, bundleValue{})
 	}
 
 	v := b.evalBlock(p, n.children, local, depth+1)
+	if !b.stateReady() {
+		return bundleValue{}
+	}
+
+	if n.isolated {
+		return v
+	}
+
+	// Reserve the whole bounded join before publishing any binding.
+	if !b.spend(len(local)) {
+		return bundleValue{}
+	}
+
 	for name, value := range local {
 		if !n.locals[name] {
 			env[name] = value
@@ -535,7 +621,9 @@ func (b *bundleAnalysis) evalScope(p *bundleProgram, n *bundleNode, env map[stri
 
 func (b *bundleAnalysis) evalBranch(p *bundleProgram, n *bundleNode, env map[string]bundleValue, depth int) bundleValue {
 	local := map[string]bundleValue{}
-	maps.Copy(local, env)
+	if !copyBundleEntries(b, local, env) {
+		return bundleValue{}
+	}
 	// This source-inaccessible key marks writes in conditional blocks.
 	// Function alternatives cannot be represented by one function pointer.
 	local["*conditional*"] = bundleValue{known: true}
@@ -544,6 +632,10 @@ func (b *bundleAnalysis) evalBranch(p *bundleProgram, n *bundleNode, env map[str
 
 	for _, c := range n.children {
 		x := b.eval(p, c, local, depth+1)
+		if b.err != nil {
+			return bundleValue{}
+		}
+
 		if x.returned {
 			b.gap = errors.New("conditional bundle returns are unresolved")
 			local["*conditional-return*"] = bundleValue{known: true}
@@ -560,6 +652,11 @@ func (b *bundleAnalysis) evalBranch(p *bundleProgram, n *bundleNode, env map[str
 	}
 	// Join the observed state with the entry bindings. Unsupported provenance
 	// erasures within flattened alternatives already leave an explicit gap.
+	// Reserve the whole bounded join before publishing any binding.
+	if !b.spend(len(local)) {
+		return bundleValue{}
+	}
+
 	for name, value := range local {
 		switch name {
 		case "*conditional-return*":
@@ -578,7 +675,7 @@ func (b *bundleAnalysis) callFunction(fn *bundleFunction, args []bundleValue, de
 		return bundleValue{}
 	}
 
-	if b.active[fn] || len(b.active) >= 8 || depth > 48 {
+	if b.active[fn] || len(b.active) >= maxActiveBundleCalls || depth > maxBundleCallDepth {
 		b.gap = errors.New("bundle call graph depth or recursion limit")
 		return bundleValue{}
 	}
@@ -595,9 +692,15 @@ func (b *bundleAnalysis) callFunction(fn *bundleFunction, args []bundleValue, de
 		return bundleValue{}
 	}
 
-	maps.Copy(env, fn.program.globals)
+	if !copyBundleEntries(b, env, fn.program.globals) {
+		return bundleValue{}
+	}
 
 	for name := range fn.locals {
+		if !b.step() {
+			return bundleValue{}
+		}
+
 		b.bindValue(env, name, bundleValue{uncertainFunction: fn.python != nil})
 	}
 
@@ -606,6 +709,10 @@ func (b *bundleAnalysis) callFunction(fn *bundleFunction, args []bundleValue, de
 	}
 
 	for i, name := range fn.params {
+		if !b.step() {
+			return bundleValue{}
+		}
+
 		if i < len(args) {
 			b.bindValue(env, name, args[i])
 		} else {
@@ -628,7 +735,7 @@ func (b *bundleAnalysis) bindValue(env map[string]bundleValue, name string, valu
 		return
 	}
 
-	if _, exists := env[name]; !exists && len(env) >= 1024 {
+	if _, exists := env[name]; !exists && len(env) >= maxBundleBindings {
 		// Continuing with a rejected shadow/overwrite could resolve a stale
 		// function or import instead. Keep earlier observations and stop work.
 		b.err = errors.New("bundle binding limit")
@@ -665,7 +772,7 @@ func (b *bundleAnalysis) evalCall(p *bundleProgram, n *bundleNode, env map[strin
 			return bundleValue{}
 		}
 
-		if (v.secret != nil || v.remote != nil) && len(v.refs) < 6 {
+		if (v.secret != nil || v.remote != nil) && len(v.refs) < maxBundleRelatedRefs {
 			v.refs = append(slices.Clone(v.refs), ref)
 		}
 
@@ -726,7 +833,7 @@ func (b *bundleAnalysis) functionArguments(fn *bundleFunction, names []string, a
 		return args, true
 	}
 
-	if len(fn.params) > 1024 {
+	if len(fn.params) > maxBundleParameters {
 		b.err = errors.New("bundle function parameter budget exceeded")
 		return nil, false
 	}

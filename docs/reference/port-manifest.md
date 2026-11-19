@@ -3,7 +3,7 @@
 English · [Русский](port-manifest.ru.md)
 
 Scout adapts selected materials for its own analyzers and review workflow.
-Rule names alone do not establish behavioral equivalence with upstream.
+Scout evaluates the adapted rules with its own bounds, evidence and policy.
 
 ## NVIDIA SkillSpector
 
@@ -11,11 +11,7 @@ Adaptations include selected patterns, detector concepts, 27 YARA rules, review
 prompts, guidance and the Skill Inspector workflow. Attribution is preserved in
 [NOTICE](../../NOTICE) and the [Apache-2.0 license](../../licenses/SkillSpector-Apache-2.0.txt).
 
-Detailed provenance lives in `knowledge/sources/skillspector.md`, guidance source
-references and `internal/distribution/integrations/sources/transfer-manifest.json`.
-Historical adaptations include cached/main views and are not all bound to one
-upstream commit. The pinned comparison inventory is in
-`testdata/provenance/upstream-inventory.json`.
+See the [source notes](../../knowledge/sources/skillspector.md), [transfer manifest](../../internal/distribution/integrations/sources/transfer-manifest.json) and [comparison inventory](../../testdata/provenance/upstream-inventory.json) for provenance. Pinned entries identify specific upstream revisions.
 
 ## Cisco
 

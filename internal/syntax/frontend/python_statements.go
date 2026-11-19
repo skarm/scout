@@ -6,22 +6,22 @@ import (
 )
 
 func (b *pythonNormalizer) assignmentNode(n *pythonSyntax, depth int, _ NodeKind) *Node {
-	if n.field("type") != nil {
+	if n.field(pyFieldType) != nil {
 		out := b.make(n, AnnAssign)
-		b.set(out, Target, childValue(b.node(n.field("left"), depth+1)))
-		b.set(out, Annotation, childValue(b.node(n.field("type"), depth+1)))
-		b.set(out, FieldValue, childValue(b.node(n.field("right"), depth+1)))
+		b.set(out, Target, childValue(b.node(n.field(pyFieldLeft), depth+1)))
+		b.set(out, Annotation, childValue(b.node(n.field(pyFieldType), depth+1)))
+		b.set(out, FieldValue, childValue(b.node(n.field(pyFieldRight), depth+1)))
 
 		return out
 	}
 
 	out := b.make(n, Assign)
-	targets := []*Node{b.node(n.field("left"), depth+1)}
+	targets := []*Node{b.node(n.field(pyFieldLeft), depth+1)}
 
-	rhs := n.field("right")
-	for rhs != nil && rhs.Kind == "assignment" {
-		targets = append(targets, b.node(rhs.field("left"), depth+1))
-		rhs = rhs.field("right")
+	rhs := n.field(pyFieldRight)
+	for rhs != nil && rhs.Kind == pyKindAssignment {
+		targets = append(targets, b.node(rhs.field(pyFieldLeft), depth+1))
+		rhs = rhs.field(pyFieldRight)
 	}
 
 	b.set(out, Targets, nodesValue(targets))
@@ -32,21 +32,21 @@ func (b *pythonNormalizer) assignmentNode(n *pythonSyntax, depth int, _ NodeKind
 
 func (b *pythonNormalizer) ifNode(n *pythonSyntax, depth int, kind NodeKind) *Node {
 	out := b.make(n, kind)
-	b.set(out, Test, childValue(b.node(n.field("condition"), depth+1)))
-	b.set(out, Body, nodesValue(b.list(n.field("consequence"), depth)))
+	b.set(out, Test, childValue(b.node(n.field(pyFieldCondition), depth+1)))
+	b.set(out, Body, nodesValue(b.list(n.field(pyFieldConsequence), depth)))
 
 	tail := make([]*Node, 0)
 	alternatives := make([]*pythonSyntax, 0)
 
 	for _, child := range n.named() {
-		if child.Field == "alternative" {
+		if child.Field == pyFieldAlternative {
 			alternatives = append(alternatives, child)
 		}
 	}
 
 	for _, alternative := range slices.Backward(alternatives) {
-		if alternative.Kind == "else_clause" {
-			tail = b.list(alternative.field("body"), depth)
+		if alternative.Kind == pyKindElseClause {
+			tail = b.list(alternative.field(pyFieldBody), depth)
 		} else {
 			next := b.node(alternative, depth+1)
 			b.set(next, Orelse, nodesValue(tail))
@@ -61,11 +61,11 @@ func (b *pythonNormalizer) ifNode(n *pythonSyntax, depth int, kind NodeKind) *No
 
 func (b *pythonNormalizer) loopNode(n *pythonSyntax, depth int, kind NodeKind) *Node {
 	out := b.make(n, kind)
-	b.set(out, Target, childValue(b.node(n.field("left"), depth+1)))
-	b.set(out, Iter, childValue(b.node(n.field("right"), depth+1)))
-	b.set(out, Test, childValue(b.node(n.field("condition"), depth+1)))
-	b.set(out, Body, nodesValue(b.list(n.field("body"), depth)))
-	b.set(out, Orelse, nodesValue(b.list(n.field("alternative").field("body"), depth)))
+	b.set(out, Target, childValue(b.node(n.field(pyFieldLeft), depth+1)))
+	b.set(out, Iter, childValue(b.node(n.field(pyFieldRight), depth+1)))
+	b.set(out, Test, childValue(b.node(n.field(pyFieldCondition), depth+1)))
+	b.set(out, Body, nodesValue(b.list(n.field(pyFieldBody), depth)))
+	b.set(out, Orelse, nodesValue(b.list(n.field(pyFieldAlternative).field(pyFieldBody), depth)))
 
 	return out
 }
@@ -73,28 +73,28 @@ func (b *pythonNormalizer) loopNode(n *pythonSyntax, depth int, kind NodeKind) *
 func (b *pythonNormalizer) tryNode(n *pythonSyntax, depth int, kind NodeKind) *Node {
 	clauses := n.named()
 	for _, clause := range clauses {
-		if clause.Kind == "except_clause" && !plainPythonExcept(clause) {
+		if clause.Kind == pyKindExceptClause && !plainPythonExcept(clause) {
 			return b.unsupportedNode(n, depth)
 		}
 	}
 
 	out := b.make(n, kind)
-	b.set(out, Body, nodesValue(b.list(n.field("body"), depth)))
+	b.set(out, Body, nodesValue(b.list(n.field(pyFieldBody), depth)))
 
 	var handlers, otherwise, final []*Node
 
 	for _, clause := range clauses {
 		switch clause.Kind {
-		case "except_clause":
+		case pyKindExceptClause:
 			h := b.make(clause, ExceptHandler)
 			test, alias := pythonExceptBinding(clause)
 			b.set(h, Test, childValue(b.node(test, depth+1)))
 			b.set(h, FieldName, StringValue(b.textOf(alias)))
 			b.set(h, Body, nodesValue(b.list(pythonClauseBlock(clause), depth+1)))
 			handlers = append(handlers, h)
-		case "else_clause":
-			otherwise = b.list(clause.field("body"), depth)
-		case "finally_clause":
+		case pyKindElseClause:
+			otherwise = b.list(clause.field(pyFieldBody), depth)
+		case pyKindFinallyClause:
 			final = b.list(pythonClauseBlock(clause), depth)
 		}
 	}
@@ -108,27 +108,27 @@ func (b *pythonNormalizer) tryNode(n *pythonSyntax, depth int, kind NodeKind) *N
 
 func plainPythonExcept(clause *pythonSyntax) bool {
 	_, alias := pythonExceptBinding(clause)
-	if alias != nil && alias.Kind != "identifier" {
+	if alias != nil && alias.Kind != pyKindIdentifier {
 		return false
 	}
 
 	value := false
 
 	for _, child := range clause.Children {
-		if child.Kind == "*" || child.Field == "value" && value {
+		if child.Kind == pyKindAsterisk || child.Field == pyFieldValue && value {
 			return false
 		}
 
-		value = value || child.Field == "value"
+		value = value || child.Field == pyFieldValue
 	}
 
 	return true
 }
 
 func pythonExceptBinding(clause *pythonSyntax) (test, alias *pythonSyntax) {
-	test, alias = clause.field("value"), clause.field("alias")
-	if test != nil && test.Kind == "as_pattern" {
-		return test.first(), test.field("alias").first()
+	test, alias = clause.field(pyFieldValue), clause.field(pyFieldAlias)
+	if test != nil && test.Kind == pyKindAsPattern {
+		return test.first(), test.field(pyFieldAlias).first()
 	}
 
 	return test, alias
@@ -136,7 +136,7 @@ func pythonExceptBinding(clause *pythonSyntax) (test, alias *pythonSyntax) {
 
 func pythonClauseBlock(clause *pythonSyntax) *pythonSyntax {
 	for _, child := range clause.Children {
-		if child.Kind == "block" {
+		if child.Kind == pyKindBlock {
 			return child
 		}
 	}
@@ -165,7 +165,7 @@ func (b *pythonNormalizer) unsupportedNode(n *pythonSyntax, depth int) *Node {
 	b.partial = true
 
 	typ := UnsupportedExpression
-	if strings.HasSuffix(n.Kind, "statement") || strings.HasSuffix(n.Kind, "definition") || n.Kind == "match_statement" {
+	if strings.HasSuffix(n.Kind, "statement") || strings.HasSuffix(n.Kind, "definition") || n.Kind == pyKindMatchStatement {
 		typ = UnsupportedStatement
 	}
 
@@ -177,7 +177,7 @@ func (b *pythonNormalizer) unsupportedNode(n *pythonSyntax, depth int) *Node {
 
 func (b *pythonNormalizer) expressionStatement(n *pythonSyntax, depth int, kind NodeKind) *Node {
 	xs := n.named()
-	if len(xs) == 1 && (xs[0].Kind == "assignment" || xs[0].Kind == "augmented_assignment") {
+	if len(xs) == 1 && (xs[0].Kind == pyKindAssignment || xs[0].Kind == pyKindAugmentedAssignment) {
 		return b.node(xs[0], depth+1)
 	}
 
@@ -198,14 +198,14 @@ func (b *pythonNormalizer) withNode(n *pythonSyntax, depth int, kind NodeKind) *
 	items := make([]*Node, 0)
 
 	for _, x := range n.named() {
-		if x.Kind == "with_clause" {
+		if x.Kind == pyKindWithClause {
 			for _, item := range x.named() {
-				value := item.field("value")
+				value := item.field(pyFieldValue)
 
 				wi := b.make(item, WithItem)
-				if value != nil && value.Kind == "as_pattern" {
+				if value != nil && value.Kind == pyKindAsPattern {
 					b.set(wi, ContextExpr, childValue(b.node(value.first(), depth+1)))
-					b.set(wi, OptionalVars, childValue(b.node(value.field("alias"), depth+1)))
+					b.set(wi, OptionalVars, childValue(b.node(value.field(pyFieldAlias), depth+1)))
 				} else {
 					b.set(wi, ContextExpr, childValue(b.node(value, depth+1)))
 				}
@@ -216,7 +216,7 @@ func (b *pythonNormalizer) withNode(n *pythonSyntax, depth int, kind NodeKind) *
 	}
 
 	b.set(out, Items, nodesValue(items))
-	b.set(out, Body, nodesValue(b.list(n.field("body"), depth)))
+	b.set(out, Body, nodesValue(b.list(n.field(pyFieldBody), depth)))
 
 	return out
 }

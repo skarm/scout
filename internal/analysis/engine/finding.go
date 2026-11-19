@@ -8,15 +8,18 @@ import (
 	"unicode/utf8"
 
 	"github.com/skarm/scout/internal/analysis/check"
+	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/filetype"
-
-	"github.com/skarm/scout/internal/analysis/document"
-
 	"github.com/skarm/scout/internal/syntax/source"
-
 	"github.com/skarm/scout/knowledge"
 	"github.com/skarm/scout/report"
+)
+
+const (
+	maxRelatedLocations = 8
+	maxTraceSteps       = 8
+	maxContextSignals   = 8
 )
 
 func makeFinding(rule report.Rule, doc document.File, m check.Match) (report.Finding, error) {
@@ -74,9 +77,9 @@ func location(doc document.File, span source.Span) (report.Location, error) {
 
 	line, column, endLine, endColumn := 0, 0, 0, 0
 
-	coordinates := "bytes"
-	if meta.Kind == "text" {
-		coordinates = "text"
+	coordinates := report.CoordinatesBytes
+	if meta.Kind == report.FileKindText {
+		coordinates = report.CoordinatesText
 
 		var err error
 
@@ -94,7 +97,7 @@ func location(doc document.File, span source.Span) (report.Location, error) {
 	kind, language := doc.Context(span)
 
 	return report.Location{
-		Derived:     strings.HasPrefix(meta.Path, "scout-object://"),
+		Derived:     strings.HasPrefix(meta.Path, report.ObjectPathPrefix),
 		Path:        meta.Path,
 		Coordinates: coordinates,
 		ByteStart:   span.Start,
@@ -113,7 +116,7 @@ func location(doc document.File, span source.Span) (report.Location, error) {
 // Validate every cross-object reference against captured bytes. It is related
 // evidence, not fabricated interprocedural taint or runtime execution.
 func attachRelated(f *report.Finding, refs []report.SourceRef, docs map[string]document.File) error {
-	if len(refs) > 8 {
+	if len(refs) > maxRelatedLocations {
 		return errors.New("related evidence budget")
 	}
 
@@ -170,13 +173,13 @@ func findingTrace(doc document.File, steps []check.Trace) ([]report.TraceStep, e
 	s := f.Content()
 	meta := f.Metadata()
 
-	if len(steps) > 8 {
+	if len(steps) > maxTraceSteps {
 		return nil, errors.New("trace budget exceeded")
 	}
 
 	trace := make([]report.TraceStep, 0, len(steps))
 	for _, step := range steps {
-		if step.Role != "source" && step.Role != "sink" && step.Role != "transform" {
+		if step.Role != report.TraceSource && step.Role != report.TraceSink && step.Role != report.TraceTransform {
 			return nil, errors.New("invalid trace role")
 		}
 
@@ -202,13 +205,13 @@ func findingContext(doc document.File, m check.Match) ([]string, error) {
 	s := doc.Artifact().Content()
 
 	signals := knowledge.ContextSignals(s, m.Start, m.End)
-	if len(m.ContextSignals) > 8 {
+	if len(m.ContextSignals) > maxContextSignals {
 		return nil, errors.New("context signal budget exceeded")
 	}
 
 	for _, signal := range m.ContextSignals {
 		switch signal {
-		case "registry_assertion", "evidence_unavailable", check.ShellEval, check.ShellCommandText, check.ShellHostEnvironment, check.ShellPackageScript, check.ShellHostUpdatedInput:
+		case check.RegistryAssertion, check.EvidenceUnavailable, check.ShellEval, check.ShellCommandText, check.ShellHostEnvironment, check.ShellPackageScript, check.ShellHostUpdatedInput:
 			signals = append(signals, signal)
 		default:
 			return nil, errors.New("invalid analyzer context signal")
@@ -231,7 +234,7 @@ func validateLocationSpan(doc document.File, span source.Span) error {
 		return errors.New("invalid span")
 	}
 
-	if meta.Kind == "text" && (!runeBoundary(s, span.Start) || !runeBoundary(s, span.End)) {
+	if meta.Kind == report.FileKindText && (!runeBoundary(s, span.Start) || !runeBoundary(s, span.End)) {
 		return errors.New("span bisects UTF-8")
 	}
 

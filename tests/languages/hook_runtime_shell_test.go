@@ -55,7 +55,12 @@ func TestClaudeHookBashInputRewrite(t *testing.T) {
 					t.Fatalf("incorrect Bash rewrite evidence: %+v", f)
 				}
 			}
-			if (count == 1) != tc.want {
+			wantCount := 0
+			if tc.want {
+				wantCount = 1
+			}
+
+			if count != wantCount {
 				t.Fatalf("observed %d Bash rewrites, want presence %v", count, tc.want)
 			}
 		})
@@ -97,7 +102,12 @@ func TestShellHookTerminalNotifierAction(t *testing.T) {
 					}
 				}
 			}
-			if (count == 1) != tc.want {
+			wantCount := 0
+			if tc.want {
+				wantCount = 1
+			}
+
+			if count != wantCount {
 				t.Fatalf("observed %d notification actions, want presence %v", count, tc.want)
 			}
 		})

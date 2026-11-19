@@ -9,7 +9,7 @@ func plainIndexedParameter(n *syntax.ParamExp) bool {
 
 func arithmeticUpdate(expr syntax.ArithmExpr) string {
 	update, ok := expr.(*syntax.UnaryArithm)
-	if !ok || (update.Op.String() != "++" && update.Op.String() != "--") {
+	if !ok || (update.Op != syntax.Inc && update.Op != syntax.Dec) {
 		return ""
 	}
 
@@ -58,12 +58,12 @@ func (p *declarationProjection) simpleArithmeticIndex(expr syntax.ArithmExpr, de
 
 func (p *declarationProjection) decimalGuard(expr syntax.TestExpr, depth int) *DecimalGuard {
 	negated := false
-	if unary, ok := expr.(*syntax.UnaryTest); ok && unary.Op.String() == "!" {
+	if unary, ok := expr.(*syntax.UnaryTest); ok && unary.Op == syntax.TsNot {
 		expr, negated = unary.X, true
 	}
 
 	match, ok := expr.(*syntax.BinaryTest)
-	if !ok || match.Op.String() != "=~" {
+	if !ok || match.Op != syntax.TsReMatch {
 		return nil
 	}
 
@@ -89,7 +89,7 @@ func (p *declarationProjection) decimalGuard(expr syntax.TestExpr, depth int) *D
 	}
 
 	part := word.Parts[0]
-	if part.Kind != "parameter" || !shellIdentifier(part.Text) {
+	if part.Kind != PartParameter || !shellIdentifier(part.Text) {
 		return nil
 	}
 
@@ -105,18 +105,18 @@ func (p *declarationProjection) arithmeticPredicate(c *Command, expr syntax.Arit
 
 	switch n := expr.(type) {
 	case *syntax.BinaryArithm:
-		switch n.Op.String() {
-		case "+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "&&", "||":
+		switch n.Op {
+		case syntax.Add, syntax.Sub, syntax.Mul, syntax.Quo, syntax.Rem, syntax.Lss, syntax.Leq, syntax.Gtr, syntax.Geq, syntax.Eql, syntax.Neq, syntax.AndArit, syntax.OrArit:
 			return p.arithmeticPredicate(c, n.X, depth+1) && p.arithmeticPredicate(c, n.Y, depth+1)
-		case "?":
+		case syntax.TernQuest:
 			arms, ok := n.Y.(*syntax.BinaryArithm)
 
-			return ok && arms.Op.String() == ":" && p.arithmeticPredicate(c, n.X, depth+1) &&
+			return ok && arms.Op == syntax.TernColon && p.arithmeticPredicate(c, n.X, depth+1) &&
 				p.arithmeticPredicate(c, arms.X, depth+1) && p.arithmeticPredicate(c, arms.Y, depth+1)
 		}
 	case *syntax.UnaryArithm:
-		switch n.Op.String() {
-		case "+", "-", "!":
+		switch n.Op {
+		case syntax.Plus, syntax.Minus, syntax.Not:
 			return p.arithmeticPredicate(c, n.X, depth+1)
 		}
 	case *syntax.ParenArithm:
@@ -131,7 +131,7 @@ func (p *declarationProjection) arithmeticPredicate(c *Command, expr syntax.Arit
 func (p *declarationProjection) arithmeticOperand(c *Command, n *syntax.Word, depth int) bool {
 	if name := p.decimalArithmeticDefault(n); name != "" {
 		c.NumericTest = append(c.NumericTest, &Word{
-			Span: declarationSpan(n), Parts: []Part{{Kind: "parameter", Text: name}},
+			Span: declarationSpan(n), Parts: []Part{{Kind: PartParameter, Text: name}},
 		})
 
 		return true
@@ -142,14 +142,14 @@ func (p *declarationProjection) arithmeticOperand(c *Command, n *syntax.Word, de
 		return true
 	}
 
-	if len(value.Parts) == 1 && !value.Writes && value.Parts[0].Kind == "parameter_length" &&
+	if len(value.Parts) == 1 && !value.Writes && value.Parts[0].Kind == PartParameterLength &&
 		p.text[value.Span.Start:value.Span.End] == "${#"+value.Parts[0].Text+"[@]}" {
 		c.NumericTest = append(c.NumericTest, value)
 		return true
 	}
 
-	if !value.Writes && len(value.Parts) == 2 && value.Parts[0].Kind == "literal" && value.Parts[0].Text == "10#" &&
-		value.Parts[1].Kind == "substitution" && value.Parts[1].Tree != nil {
+	if !value.Writes && len(value.Parts) == 2 && value.Parts[0].Kind == PartLiteral && value.Parts[0].Text == "10#" &&
+		value.Parts[1].Kind == PartSubstitution && value.Parts[1].Tree != nil {
 		c.NumericTest = append(c.NumericTest, value)
 		return true
 	}
@@ -159,17 +159,17 @@ func (p *declarationProjection) arithmeticOperand(c *Command, n *syntax.Word, de
 	}
 
 	part := &value.Parts[0]
-	if part.Kind == "substitution" && part.Tree != nil {
+	if part.Kind == PartSubstitution && part.Tree != nil {
 		c.NumericTest = append(c.NumericTest, value)
 		return true
 	}
 
-	if (part.Kind != "literal" && part.Kind != "parameter") || !shellIdentifier(part.Text) {
+	if (part.Kind != PartLiteral && part.Kind != PartParameter) || !shellIdentifier(part.Text) {
 		return false
 	}
 
-	if part.Kind == "literal" {
-		part.Kind = "arithmetic_variable"
+	if part.Kind == PartLiteral {
+		part.Kind = PartArithmeticVariable
 	}
 
 	c.NumericTest = append(c.NumericTest, value)

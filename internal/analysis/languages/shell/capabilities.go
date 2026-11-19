@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/languages/literals"
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
 )
@@ -41,7 +42,7 @@ func (a *shellWalk) commandCapabilities(c *shellsyntax.Command, name string, arg
 		if shellExecCommand(args) {
 			a.capability("command_execution", c.Span)
 		}
-	case "sh", "bash", "dash", "zsh", "ksh":
+	case language.ExecutableSh, language.ExecutableBash, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh:
 		code, stdin := shellExecution(args)
 		if code >= 0 || stdin || shellScriptFile(args).known {
 			a.capability("command_execution", c.Span)
@@ -145,9 +146,9 @@ func shellReadStdin(args []shellValue) bool {
 func shellFixedInputRedirect(redirect *shellsyntax.Redirect) bool {
 	word := redirect.Target
 	switch redirect.Op {
-	case "<<", "<<-":
+	case shellsyntax.RedirectHereDoc, shellsyntax.RedirectStripHereDoc:
 		word = redirect.Body
-	case "<<<":
+	case shellsyntax.RedirectHereString:
 	default:
 		return false
 	}
@@ -157,7 +158,7 @@ func shellFixedInputRedirect(redirect *shellsyntax.Redirect) bool {
 	}
 
 	for _, part := range word.Parts {
-		if part.Kind != "literal" {
+		if part.Kind != shellsyntax.PartLiteral {
 			return false
 		}
 	}

@@ -9,6 +9,10 @@ import (
 	"github.com/skarm/scout/internal/textmatch"
 )
 
+const (
+	maxRequiredLiteralGroups = 16
+)
+
 // A prefilter is a necessary condition, never evidence. Every accepted input
 // still goes through the original RE2 expression, guards and source mapping.
 // Nil means that no useful mandatory literal could be proven.
@@ -49,7 +53,7 @@ func requiredLiteralGroups(tree *syntax.Regexp) patternLiteralFilter {
 		var groups patternLiteralFilter
 		for _, child := range tree.Sub {
 			groups = append(groups, requiredLiteralGroups(child)...)
-			if len(groups) >= 16 {
+			if len(groups) >= maxRequiredLiteralGroups {
 				return groups[:16]
 			}
 		}

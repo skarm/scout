@@ -242,7 +242,7 @@ func TestNativePythonProjectionContract(t *testing.T) {
 			name:     "operators",
 			source:   "a = left and right or fallback\nb = one if flag else two\nc = left + right\nd = not flag\ne = -3\nf = ~1\n",
 			category: "",
-			digest:   "44d97dd94f882fc8165c79711c5f01cb65c967742fff78e62c59247d72228db7",
+			digest:   "e8ac68f27423930b48bdf2fd6ae8d4f63b8c7ee3617bf88f203a670d6fb9afd9",
 		},
 		{
 			name:     "containers",
@@ -325,6 +325,35 @@ func TestNativePythonProjectionContract(t *testing.T) {
 			actual := hex.EncodeToString(digest[:])
 			if actual != tc.digest {
 				t.Fatalf("projection digest=%s, want %s", actual, tc.digest)
+			}
+		})
+	}
+}
+
+func TestPythonBinaryOperatorIdentity(t *testing.T) {
+	for _, op := range []string{"+", "-", "*", "/", "//", "%", "**", "@", "|", "&", "^", "<<", ">>"} {
+		t.Run(op, func(t *testing.T) {
+			options := frontend.DefaultOptions()
+			options.Python = true
+			text := "left " + op + " right"
+			result, err := frontend.Parse(t.Context(), options, "python", text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := result.AST.List(frontend.Body)
+			if len(body) != 1 {
+				t.Fatal("missing expression")
+			}
+			expression := body[0].Child(frontend.FieldValue)
+			if expression.Kind() != frontend.BinOp || expression.String(frontend.Op) != op {
+				t.Fatalf("operator identity: %s %q", expression.Kind(), expression.String(frontend.Op))
+			}
+			children := expression.Children()
+			if len(children) != 2 || children[0].String(frontend.ID) != "left" || children[1].String(frontend.ID) != "right" {
+				t.Fatal("scalar operator changed evaluated children")
+			}
+			if expression.Start != 0 || expression.End != len(text) {
+				t.Fatal("physical span changed")
 			}
 		})
 	}

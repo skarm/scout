@@ -5,6 +5,10 @@ import (
 	"path"
 )
 
+const (
+	maxShellHookRootPathBytes = 4096
+)
+
 // HarnessOptions is trusted caller configuration, never read from the artifact.
 // Host selects an interpretation, not a whitelist of files to scan.
 type HarnessOptions struct {
@@ -34,7 +38,7 @@ func (r ShellHookRoot) Validate() error {
 		return errors.New("shell hook locale must be C or POSIX")
 	}
 
-	if len(r.Path) < 2 || len(r.Path) > 4096 || r.Path[0] != '/' || path.Clean(r.Path) != r.Path {
+	if len(r.Path) < 2 || len(r.Path) > maxShellHookRootPathBytes || r.Path[0] != '/' || path.Clean(r.Path) != r.Path {
 		return errors.New("shell hook root must be a normalized absolute plugin path")
 	}
 
@@ -107,6 +111,13 @@ type PluginInterpretation struct {
 	// operator.
 	Assumptions []string `json:"assumptions"`
 }
+
+const (
+	ComponentHook       = "hook"
+	ComponentHookConfig = "hook_config"
+	ComponentMCPConfig  = "mcp_config"
+	ComponentSkill      = "skill"
+)
 
 // Component records a source-bound plugin declaration and its inferred
 // activation context.

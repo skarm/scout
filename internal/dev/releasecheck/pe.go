@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+const (
+	peImportRecordBytes       = 20
+	maxPEImportDirectoryBytes = 64 << 10
+)
+
 func inspectPE(f *os.File, r *Report) error {
 	file, err := pe.NewFile(f)
 	if err != nil {
@@ -53,7 +58,7 @@ func peImports(file *pe.File, directory pe.DataDirectory) ([]string, error) {
 		return libraries, nil
 	}
 
-	if directory.VirtualAddress == 0 || directory.Size < 20 || directory.Size > 64<<10 {
+	if directory.VirtualAddress == 0 || directory.Size < peImportRecordBytes || directory.Size > maxPEImportDirectoryBytes {
 		return nil, errors.New("invalid PE import directory")
 	}
 
@@ -62,11 +67,11 @@ func peImports(file *pe.File, directory pe.DataDirectory) ([]string, error) {
 		return nil, err
 	}
 
-	for len(data) >= 20 {
-		descriptor := data[:20]
-		data = data[20:]
+	for len(data) >= peImportRecordBytes {
+		descriptor := data[:peImportRecordBytes]
+		data = data[peImportRecordBytes:]
 
-		if bytes.Equal(descriptor, make([]byte, 20)) {
+		if bytes.Equal(descriptor, make([]byte, peImportRecordBytes)) {
 			return libraries, nil
 		}
 

@@ -11,8 +11,36 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
+
+func TestNewOutputAdmitsOnePublisher(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "new", "reports")
+	const writers = 32
+	start := make(chan struct{})
+	results := make(chan error, writers)
+	var ready sync.WaitGroup
+	ready.Add(writers)
+	for range writers {
+		go func() {
+			ready.Done()
+			<-start
+			results <- newOutput(output)
+		}()
+	}
+	ready.Wait()
+	close(start)
+	var successful int
+	for range writers {
+		if <-results == nil {
+			successful++
+		}
+	}
+	if successful != 1 {
+		t.Fatalf("%d publishers admitted to a single output directory", successful)
+	}
+}
 
 func TestMaintenanceDispatchRequiresEveryExplicitInput(t *testing.T) {
 	for _, command := range []string{"verify-knowledge-sources", "check-knowledge-runtime", "unknown"} {

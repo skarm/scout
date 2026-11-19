@@ -2,28 +2,28 @@ package bundle
 
 import (
 	"errors"
-	"maps"
+	"strings"
 
 	"github.com/skarm/scout/internal/syntax/scriptsyntax"
 )
 
 func (b *bundleAnalysis) scriptExport(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
-	if n.Child("source") != nil {
+	if n.Child(scriptsyntax.FieldSource) != nil {
 		b.gap = errors.New("script bundle re-exports are unresolved")
 		return nil
 	}
 
 	defaultExport := false
 	for _, c := range n.Children {
-		defaultExport = defaultExport || c.Kind == "default"
-		if c.Kind == "export_clause" {
+		defaultExport = defaultExport || c.Kind == scriptsyntax.KindDefault
+		if c.Kind == scriptsyntax.KindExportClause {
 			for _, spec := range c.Children {
-				if spec.Kind != "export_specifier" {
+				if spec.Kind != scriptsyntax.KindExportSpecifier {
 					continue
 				}
 
-				name := scriptText(p, spec.Child("name"))
-				alias := scriptText(p, spec.Child("alias"))
+				name := scriptText(p, spec.Child(scriptsyntax.FieldName))
+				alias := scriptText(p, spec.Child(scriptsyntax.FieldAlias))
 
 				if alias == "" {
 					alias = name
@@ -36,12 +36,12 @@ func (b *bundleAnalysis) scriptExport(p *bundleProgram, n *scriptsyntax.Node, ou
 		}
 	}
 
-	if decl := n.Child("declaration"); decl != nil {
+	if decl := n.Child(scriptsyntax.FieldDeclaration); decl != nil {
 		if !defaultExport {
 			return b.scriptNode(p, decl, depth+1, true)
 		}
 
-		if decl.Kind == "function_declaration" {
+		if decl.Kind == scriptsyntax.KindFunctionDeclaration {
 			if fn := b.scriptFunction(p, decl, depth+1); fn != nil {
 				p.exports["default"] = fn.name
 			}
@@ -50,7 +50,7 @@ func (b *bundleAnalysis) scriptExport(p *bundleProgram, n *scriptsyntax.Node, ou
 		}
 	}
 
-	if value := n.Child("value"); defaultExport && value != nil {
+	if value := n.Child(scriptsyntax.FieldValue); defaultExport && value != nil {
 		// An export-default expression snapshots its value here; an export
 		// clause or named default declaration instead refers to a live binding.
 		const binding = "*default*"
@@ -68,7 +68,7 @@ func (b *bundleAnalysis) scriptExport(p *bundleProgram, n *scriptsyntax.Node, ou
 }
 
 func (b *bundleAnalysis) scriptExportBinding(p *bundleProgram, name *scriptsyntax.Node) {
-	if name != nil && name.Kind == "identifier" {
+	if name != nil && name.Kind == scriptsyntax.KindIdentifier {
 		binding := scriptText(p, name)
 		p.exports[binding] = binding
 	} else {
@@ -79,7 +79,7 @@ func (b *bundleAnalysis) scriptExportBinding(p *bundleProgram, name *scriptsynta
 func (b *bundleAnalysis) scriptValue(p *bundleProgram, n *scriptsyntax.Node, depth int) *bundleNode {
 	for _, c := range n.Children {
 		switch c.Kind {
-		case "(", ")", "await", "return", ";", "comment", "as", "satisfies", "!", "type_arguments":
+		case scriptsyntax.KindOpenParen, scriptsyntax.KindCloseParen, scriptsyntax.KindAwait, scriptsyntax.KindReturn, scriptsyntax.KindSemicolon, scriptsyntax.KindComment, scriptsyntax.KindAs, scriptsyntax.KindSatisfies, scriptsyntax.KindBang, scriptsyntax.KindTypeArguments:
 			continue
 		default:
 			return b.scriptNode(p, c, depth+1, false)
@@ -90,23 +90,23 @@ func (b *bundleAnalysis) scriptValue(p *bundleProgram, n *scriptsyntax.Node, dep
 }
 
 func (b *bundleAnalysis) scriptCallChildren(p *bundleProgram, n *scriptsyntax.Node, depth int) []*bundleNode {
-	callee := n.Child("function")
+	callee := n.Child(scriptsyntax.FieldFunction)
 	if callee == nil {
-		callee = n.Child("constructor")
+		callee = n.Child(scriptsyntax.FieldConstructor)
 	}
 
 	out := []*bundleNode{b.scriptNode(p, callee, depth+1, false)}
 
-	if args := n.Child("arguments"); args != nil {
+	if args := n.Child(scriptsyntax.FieldArguments); args != nil {
 		for _, c := range args.Children {
-			if c.Kind == "spread_element" {
+			if c.Kind == scriptsyntax.KindSpreadElement {
 				b.gap = errors.New("spread script bundle arguments are unresolved")
 				// Preserve observations in argument expressions, but do not bind
 				// an unknown argument sequence to fixed parameter positions.
 				out[0] = nil
 			}
 
-			if c.Kind != "(" && c.Kind != ")" && c.Kind != "," && c.Kind != "comment" {
+			if c.Kind != scriptsyntax.KindOpenParen && c.Kind != scriptsyntax.KindCloseParen && c.Kind != scriptsyntax.KindComma && c.Kind != scriptsyntax.KindComment {
 				out = append(out, b.scriptNode(p, c, depth+1, false))
 			}
 		}
@@ -124,7 +124,7 @@ func (b *bundleAnalysis) scriptDeclarations(p *bundleProgram, n *scriptsyntax.No
 			continue
 		}
 
-		if n.Kind == "variable_declaration" && c.Kind == "variable_declarator" && c.Child("value") == nil {
+		if n.Kind == scriptsyntax.KindVariableDeclaration && c.Kind == scriptsyntax.KindVariableDeclarator && c.Child(scriptsyntax.FieldValue) == nil {
 			v.kind = nodeDeclare
 		}
 
@@ -136,9 +136,9 @@ func (b *bundleAnalysis) scriptDeclarations(p *bundleProgram, n *scriptsyntax.No
 
 func (b *bundleAnalysis) scriptScope(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
 	out.kind, out.locals = nodeScope, map[string]bool{}
-	b.scriptBindingNames(p, n.Child("parameter"), out.locals, 0)
+	b.scriptBindingNames(p, n.Child(scriptsyntax.FieldParameter), out.locals, 0)
 
-	if n.Kind == "for_in_statement" {
+	if n.Kind == scriptsyntax.KindForInStatement {
 		b.scriptIteratorBinding(p, n, out.locals, false)
 	}
 
@@ -148,14 +148,14 @@ func (b *bundleAnalysis) scriptScope(p *bundleProgram, n *scriptsyntax.Node, out
 	out.children = b.scriptNodes(p, n.Children, depth+1)
 	p.scriptScopes = p.scriptScopes[:len(p.scriptScopes)-1]
 
-	if n.Kind == "for_statement" || n.Kind == "for_in_statement" {
+	if n.Kind == scriptsyntax.KindForStatement || n.Kind == scriptsyntax.KindForInStatement {
 		out.children = []*bundleNode{{kind: nodeBranch, span: out.span, children: out.children}}
 
-		if n.Kind == "for_in_statement" {
+		if n.Kind == scriptsyntax.KindForInStatement {
 			b.gap = errors.New("script iterator binding values are unresolved")
 			// Do not reuse an outer value as the iterator's assigned value.
 			binding := &bundleNode{span: out.span}
-			b.scriptBindingWrite(p, n.Child("left"), nil, binding, depth)
+			b.scriptBindingWrite(p, n.Child(scriptsyntax.FieldLeft), nil, binding, depth)
 			out.children = append([]*bundleNode{binding}, out.children...)
 		}
 	}
@@ -164,7 +164,7 @@ func (b *bundleAnalysis) scriptScope(p *bundleProgram, n *scriptsyntax.Node, out
 }
 
 func (b *bundleAnalysis) scriptScopeBindings(p *bundleProgram, nodes []*scriptsyntax.Node, names map[string]bool, depth int) {
-	if depth > 64 {
+	if depth > maxBundleProjectionDepth {
 		b.err = errors.New("script block binding depth limit")
 		return
 	}
@@ -175,15 +175,15 @@ func (b *bundleAnalysis) scriptScopeBindings(p *bundleProgram, nodes []*scriptsy
 		}
 
 		switch decl.Kind {
-		case "lexical_declaration":
+		case scriptsyntax.KindLexicalDeclaration:
 			for _, c := range decl.Children {
-				if c.Kind == "variable_declarator" {
-					b.scriptBindingNames(p, c.Child("name"), names, 0)
+				if c.Kind == scriptsyntax.KindVariableDeclarator {
+					b.scriptBindingNames(p, c.Child(scriptsyntax.FieldName), names, 0)
 				}
 			}
-		case "function_declaration", "generator_function_declaration", "class_declaration":
-			b.scriptBindingNames(p, decl.Child("name"), names, 0)
-		case "switch_case", "switch_default":
+		case scriptsyntax.KindFunctionDeclaration, scriptsyntax.KindGeneratorFunctionDeclaration, scriptsyntax.KindClassDeclaration:
+			b.scriptBindingNames(p, decl.Child(scriptsyntax.FieldName), names, 0)
+		case scriptsyntax.KindSwitchCase, scriptsyntax.KindSwitchDefault:
 			b.scriptScopeBindings(p, decl.Children, names, depth+1)
 		}
 	}
@@ -194,19 +194,19 @@ func (b *bundleAnalysis) scriptBindingNames(p *bundleProgram, n *scriptsyntax.No
 		return
 	}
 
-	if depth > 64 {
+	if depth > maxBundleProjectionDepth {
 		b.err = errors.New("script binding pattern depth limit")
 		return
 	}
 
 	switch n.Kind {
-	case "identifier", "shorthand_property_identifier_pattern":
+	case scriptsyntax.KindIdentifier, scriptsyntax.KindShorthandPropertyIdentifierPattern:
 		names[scriptText(p, n)] = true
-	case "pair_pattern":
-		b.scriptBindingNames(p, n.Child("value"), names, depth+1)
-	case "assignment_pattern", "object_assignment_pattern":
-		b.scriptBindingNames(p, n.Child("left"), names, depth+1)
-	case "object_pattern", "array_pattern", "rest_pattern":
+	case scriptsyntax.KindPairPattern:
+		b.scriptBindingNames(p, n.Child(scriptsyntax.FieldValue), names, depth+1)
+	case scriptsyntax.KindAssignmentPattern, scriptsyntax.KindObjectAssignmentPattern:
+		b.scriptBindingNames(p, n.Child(scriptsyntax.FieldLeft), names, depth+1)
+	case scriptsyntax.KindObjectPattern, scriptsyntax.KindArrayPattern, scriptsyntax.KindRestPattern:
 		b.gap = errors.New("destructured script block bindings are unresolved")
 		for _, c := range n.Children {
 			b.scriptBindingNames(p, c, names, depth+1)
@@ -219,7 +219,7 @@ func (b *bundleAnalysis) scriptCaptures(p *bundleProgram, nodes []*bundleNode, l
 		return false
 	}
 
-	if depth > 64 {
+	if depth > maxBundleProjectionDepth {
 		return true
 	}
 
@@ -249,7 +249,7 @@ func (b *bundleAnalysis) scriptCaptures(p *bundleProgram, nodes []*bundleNode, l
 }
 
 func (b *bundleAnalysis) scriptFunctionLocals(p *bundleProgram, nodes []*scriptsyntax.Node, names map[string]bool, direct bool, depth int) {
-	if depth > 64 {
+	if depth > maxBundleProjectionDepth {
 		b.err = errors.New("script function binding depth limit")
 		return
 	}
@@ -260,22 +260,22 @@ func (b *bundleAnalysis) scriptFunctionLocals(p *bundleProgram, nodes []*scripts
 		}
 
 		switch n.Kind {
-		case "export_statement":
+		case scriptsyntax.KindExportStatement:
 			b.scriptFunctionLocals(p, n.Children, names, direct, depth+1)
-		case "arrow_function", "function_expression", "generator_function", "method_definition", "class":
+		case scriptsyntax.KindArrowFunction, scriptsyntax.KindFunctionExpression, scriptsyntax.KindGeneratorFunction, scriptsyntax.KindMethodDefinition, scriptsyntax.KindClass:
 			continue
-		case "function_declaration", "generator_function_declaration", "class_declaration":
+		case scriptsyntax.KindFunctionDeclaration, scriptsyntax.KindGeneratorFunctionDeclaration, scriptsyntax.KindClassDeclaration:
 			if direct {
-				b.scriptBindingNames(p, n.Child("name"), names, 0)
+				b.scriptBindingNames(p, n.Child(scriptsyntax.FieldName), names, 0)
 			}
-		case "for_in_statement":
+		case scriptsyntax.KindForInStatement:
 			b.scriptIteratorBinding(p, n, names, true)
 			b.scriptFunctionLocals(p, n.Children, names, false, depth+1)
-		case "lexical_declaration", "variable_declaration":
-			if direct || n.Kind == "variable_declaration" {
+		case scriptsyntax.KindLexicalDeclaration, scriptsyntax.KindVariableDeclaration:
+			if direct || n.Kind == scriptsyntax.KindVariableDeclaration {
 				for _, decl := range n.Children {
-					if decl.Kind == "variable_declarator" {
-						b.scriptBindingNames(p, decl.Child("name"), names, 0)
+					if decl.Kind == scriptsyntax.KindVariableDeclarator {
+						b.scriptBindingNames(p, decl.Child(scriptsyntax.FieldName), names, 0)
 					}
 				}
 			}
@@ -287,14 +287,14 @@ func (b *bundleAnalysis) scriptFunctionLocals(p *bundleProgram, nodes []*scripts
 
 func (b *bundleAnalysis) scriptIteratorBinding(p *bundleProgram, n *scriptsyntax.Node, names map[string]bool, hoisted bool) {
 	for _, c := range n.Children {
-		if c.Field == "kind" && (hoisted && c.Kind == "var" || !hoisted && (c.Kind == "let" || c.Kind == "const")) {
-			b.scriptBindingNames(p, n.Child("left"), names, 0)
+		if c.Field == scriptsyntax.FieldKind && (hoisted && c.Kind == scriptsyntax.KindVar || !hoisted && (c.Kind == scriptsyntax.KindLet || c.Kind == scriptsyntax.KindConst)) {
+			b.scriptBindingNames(p, n.Child(scriptsyntax.FieldLeft), names, 0)
 		}
 	}
 }
 
 func (b *bundleAnalysis) scriptGlobalWrites(nodes []*bundleNode, locals map[string]bool, depth int) {
-	if depth > 64 {
+	if depth > maxBundleProjectionDepth {
 		b.err = errors.New("script global write projection depth limit")
 		return
 	}
@@ -311,8 +311,9 @@ func (b *bundleAnalysis) scriptGlobalWrites(nodes []*bundleNode, locals map[stri
 		scope := locals
 		if n.kind == nodeScope {
 			scope = map[string]bool{}
-			maps.Copy(scope, locals)
-			maps.Copy(scope, n.locals)
+			if !copyBundleEntries(b, scope, locals) || !copyBundleEntries(b, scope, n.locals) {
+				return
+			}
 		}
 
 		if (n.kind == nodeAssign || n.kind == nodeMutate) && n.name != "" && !scope[n.name] {
@@ -328,7 +329,7 @@ func (b *bundleAnalysis) scriptGlobalWrites(nodes []*bundleNode, locals map[stri
 }
 
 func (b *bundleAnalysis) scriptNestedReturn(nodes []*bundleNode, nested bool, depth int) bool {
-	if depth > 64 {
+	if depth > maxBundleProjectionDepth {
 		return true
 	}
 
@@ -354,7 +355,7 @@ func (b *bundleAnalysis) scriptNestedReturn(nodes []*bundleNode, nested bool, de
 }
 
 func (b *bundleAnalysis) scriptCollection(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
-	if n.Kind == "object" {
+	if n.Kind == scriptsyntax.KindObject {
 		out.kind = nodeObject
 		out.children = b.scriptNodes(p, n.Children, depth+1)
 	} else {
@@ -373,7 +374,7 @@ func (b *bundleAnalysis) scriptFunctionDeclaration(p *bundleProgram, n *scriptsy
 
 func (b *bundleAnalysis) scriptCallNode(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
 	out.kind = nodeCall
-	if n.Kind == "new_expression" {
+	if n.Kind == scriptsyntax.KindNewExpression {
 		out.kind = nodeConstruct
 	}
 
@@ -383,21 +384,35 @@ func (b *bundleAnalysis) scriptCallNode(p *bundleProgram, n *scriptsyntax.Node, 
 }
 
 func (b *bundleAnalysis) scriptMutation(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
-	left := n.Child("left")
+	left := n.Child(scriptsyntax.FieldLeft)
 	if left == nil {
-		left = n.Child("argument")
+		left = n.Child(scriptsyntax.FieldArgument)
 	}
 
-	if left != nil && (left.Kind == "member_expression" || left.Kind == "subscript_expression") {
-		return b.scriptMemberWrite(p, left, n.Child("right"), out, depth)
+	if left != nil && (left.Kind == scriptsyntax.KindMemberExpression || left.Kind == scriptsyntax.KindSubscriptExpression) {
+		return b.scriptMemberWrite(p, left, n.Child(scriptsyntax.FieldRight), out, depth)
 	}
 
-	out.kind, out.name = nodeMutate, scriptText(p, n.Child("left"))
-	if argument := n.Child("argument"); argument != nil {
+	op := strings.TrimSuffix(scriptText(p, n.Child(scriptsyntax.FieldOperator)), "=")
+	if left != nil && left.Kind == scriptsyntax.KindIdentifier && scriptBinaryKind(op) == nodeScalar {
+		out.kind, out.name = nodeAssign, scriptText(p, left)
+		result := &bundleNode{kind: nodeScalar, span: out.span, children: []*bundleNode{b.scriptNode(p, left, depth+1, false)}}
+
+		if right := n.Child(scriptsyntax.FieldRight); right != nil {
+			result.children = append(result.children, b.scriptNode(p, right, depth+1, false))
+		}
+
+		out.children = []*bundleNode{result}
+
+		return out
+	}
+
+	out.kind, out.name = nodeMutate, scriptText(p, n.Child(scriptsyntax.FieldLeft))
+	if argument := n.Child(scriptsyntax.FieldArgument); argument != nil {
 		out.name = scriptText(p, argument)
 	}
 
-	out.children = []*bundleNode{b.scriptNode(p, n.Child("right"), depth+1, false)}
+	out.children = []*bundleNode{b.scriptNode(p, n.Child(scriptsyntax.FieldRight), depth+1, false)}
 
 	return out
 }

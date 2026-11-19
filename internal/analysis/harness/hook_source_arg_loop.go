@@ -10,6 +10,11 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxBoundedArrayItems   = 8
+	maxPositionalCaseItems = 16
+)
+
 func (w *hookSourceWalk) applyArgumentLoop(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState, chain []report.SourceRef) bool {
 	root := pluginRootParameters[w.plugin.host]
 	if state.lookupUnknown || !hookLocalVariable(cmd.ForArguments, root) || len(cmd.Redirects) != 0 || len(cmd.Alternatives) != 2 {
@@ -121,7 +126,7 @@ func hookFileCallbackBody(body *shellsyntax.File, variable string, state hookSou
 }
 
 func hookLoopFallthrough(stmt, fallback *shellsyntax.Statement, state hookSourceState) bool {
-	return !stmt.Negated && !stmt.Background && stmt.Next == "||" && len(stmt.Commands) == 1 &&
+	return !stmt.Negated && !stmt.Background && stmt.Next == shellsyntax.OrElse && len(stmt.Commands) == 1 &&
 		!fallback.Negated && !hookAndOrLink(fallback.Next) && hookKnownStatus(fallback, state, "continue")
 }
 
@@ -142,7 +147,7 @@ func hookSingleCaseBody(body *shellsyntax.File) bool {
 
 func (w *hookSourceWalk) applyBoundedArray(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState, chain []report.SourceRef) bool {
 	count := state.kinds[cmd.ForArray].fixedArraySize - 1
-	if !state.explicitBash || count < 0 || count > 8 || w.boundedArrayDepth >= 2 {
+	if !state.explicitBash || count < 0 || count > maxBoundedArrayItems || w.boundedArrayDepth >= 2 {
 		return false
 	}
 
@@ -167,7 +172,7 @@ func (w *hookSourceWalk) applyBoundedArray(e *entry, view source.View, cmd *shel
 // as reachable. Validate all selected arms before updating caller bindings.
 func (w *hookSourceWalk) applyPositionalCases(e *entry, view source.View, name string, body *shellsyntax.File, state *hookSourceState, chain []report.SourceRef) bool {
 	args := state.positional
-	if !args.exact || len(args.values) > 16 {
+	if !args.exact || len(args.values) > maxPositionalCaseItems {
 		return false
 	}
 
@@ -218,7 +223,7 @@ func (w *hookSourceWalk) applyShiftCaseLoop(e *entry, view source.View, cmd *she
 		return false
 	}
 
-	if !args.exact || len(args.values) > 16 || slices.ContainsFunc(args.values, func(arg hookSourceArgument) bool { return !arg.known }) {
+	if !args.exact || len(args.values) > maxPositionalCaseItems || slices.ContainsFunc(args.values, func(arg hookSourceArgument) bool { return !arg.known }) {
 		return w.summarizeShiftCaseLoop(selection, state)
 	}
 
@@ -296,7 +301,7 @@ func hookShiftLoopPrefix(arm *shellsyntax.File, state hookSourceState) *shellsyn
 		last = stmts[len(stmts)-1]
 	}
 
-	if last.Background || last.Next == "&" || last.Negated || hookAndOrLink(last.Next) ||
+	if last.Background || last.Next == shellsyntax.Background || last.Negated || hookAndOrLink(last.Next) ||
 		len(last.Commands) != 1 || hookShiftCount(last.Commands[0]) == 0 {
 		return nil
 	}
@@ -317,7 +322,7 @@ func (w *hookSourceWalk) shiftCaseArm(view source.View, selection *shellsyntax.C
 	i := len(arm.Statements) - 1
 	stmt := arm.Statements[i]
 
-	if stmt.Background || stmt.Next == "&" || stmt.Negated || hookAndOrLink(stmt.Next) || len(stmt.Commands) != 1 ||
+	if stmt.Background || stmt.Next == shellsyntax.Background || stmt.Negated || hookAndOrLink(stmt.Next) || len(stmt.Commands) != 1 ||
 		state.lookupUnknown || state.hasFunction("shift") {
 		return nil, 0
 	}
@@ -379,7 +384,7 @@ func hookPositionalLoopTest(t *shellsyntax.File, state hookSourceState) (recogni
 	}
 
 	left := expr[0]
-	if left.Writes || left.Expands || len(left.Parts) != 1 || left.Parts[0].Kind != "parameter" || left.Parts[0].Text != "#" {
+	if left.Writes || left.Expands || len(left.Parts) != 1 || left.Parts[0].Kind != shellsyntax.PartParameter || left.Parts[0].Text != "#" {
 		return false, false
 	}
 
@@ -474,7 +479,7 @@ func hookOptionGuard(prelude *shellsyntax.File, state hookSourceState, effects *
 	}
 
 	stmt := prelude.Statements[0]
-	if stmt.Background || stmt.Next == "&" || len(stmt.Commands) != 1 {
+	if stmt.Background || stmt.Next == shellsyntax.Background || len(stmt.Commands) != 1 {
 		return false
 	}
 
@@ -498,8 +503,8 @@ func hookStaticCasePatterns(selection *shellsyntax.CaseSelection) bool {
 func hookStaticCasePattern(pattern *shellsyntax.Word) bool {
 	return !pattern.Writes && !slices.ContainsFunc(pattern.Parts, func(part shellsyntax.Part) bool {
 		switch part.Kind {
-		case "literal", "parameter", "parameter_default_dot", "parameter_default_empty", "parameter_trim_newline",
-			"parameter_script_dir", "parameter_replace_all", "parameter_bash_source":
+		case shellsyntax.PartLiteral, shellsyntax.PartParameter, shellsyntax.PartParameterDefaultDot, shellsyntax.PartParameterDefaultEmpty, shellsyntax.PartParameterTrimNewline,
+			shellsyntax.PartParameterScriptDir, shellsyntax.PartParameterReplaceAll, shellsyntax.PartParameterBashSource:
 			return false
 		default:
 			return true

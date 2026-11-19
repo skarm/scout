@@ -12,6 +12,10 @@ import (
 	"github.com/skarm/scout/internal/distribution/registry"
 )
 
+const (
+	maxRegistrySnapshotFileBytes = 32 << 20
+)
+
 func registryCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		return usageError(stderr, "registry requires fetch or compare")
@@ -101,7 +105,7 @@ func compareRegistry(ctx context.Context, args []string, stdout, stderr io.Write
 func readRegistrySnapshot(path string) (registry.Snapshot, error) {
 	var out registry.Snapshot
 
-	data, err := readTrusted(path, nil, 32<<20)
+	data, err := readTrusted(path, nil, maxRegistrySnapshotFileBytes)
 	if err != nil {
 		return out, err
 	}

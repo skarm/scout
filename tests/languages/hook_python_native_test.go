@@ -30,9 +30,14 @@ print(json.dumps({"context": "Prefix: " + text}))
 
 	for _, tc := range []struct {
 		name, command, body string
+		file                bool
 		complete            bool
 	}{
 		{name: "bounded read-only filter", command: "python3 -I -S - ./notes.txt", body: program, complete: true},
+		{name: "captured isolated program", command: `python3 -I -B -S "$CLAUDE_PLUGIN_ROOT/filter.py" ./notes.txt`, body: program, file: true, complete: true},
+		{name: "captured program with site enabled", command: `python3 -I -B "$CLAUDE_PLUGIN_ROOT/filter.py" ./notes.txt`, body: program, file: true},
+		{name: "captured program with a dynamic argument list", command: `python3 -I -S "$CLAUDE_PLUGIN_ROOT/filter.py" "$@"`, body: program, file: true},
+		{name: "captured program with an additional import", command: `python3 -I -S "$CLAUDE_PLUGIN_ROOT/filter.py" ./notes.txt`, body: "import pathlib\n" + program, file: true},
 		{name: "site enabled", command: "python3 -I - ./notes.txt", body: program},
 		{name: "write mode", command: "python3 -I -S - ./notes.txt", body: strings.Replace(program, `encoding="utf-8"`, `mode="w", encoding="utf-8"`, 1)},
 		{name: "unbounded read", command: "python3 -I -S - ./notes.txt", body: strings.Replace(program, "read(100)", "read()", 1)},
@@ -42,7 +47,13 @@ print(json.dumps({"context": "Prefix: " + text}))
 			root := t.TempDir()
 			scenario.WriteFile(t, root, ".claude-plugin/plugin.json", `{"name":"test-plugin"}`)
 			scenario.WriteFile(t, root, "hooks/hooks.json", `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/wrapper.sh\""}]}]}}`)
-			scenario.WriteFile(t, root, "wrapper.sh", tc.command+" <<'PY'\n"+tc.body+"PY\n")
+			wrapper := tc.command + " <<'PY'\n" + tc.body + "PY\n"
+			if tc.file {
+				wrapper = tc.command + "\n"
+				scenario.WriteFile(t, root, "filter.py", tc.body)
+			}
+
+			scenario.WriteFile(t, root, "wrapper.sh", wrapper)
 
 			config := scantest.DefaultConfig()
 			config.Scanner = scout.DefaultOptions()

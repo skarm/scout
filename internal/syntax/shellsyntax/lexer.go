@@ -24,12 +24,12 @@ func (p *parser) lex() (token, error) {
 
 	start := p.at
 	if start == p.end {
-		return token{kind: "eof", span: source.Span{Start: start, End: start}}, nil
+		return token{kind: tokenEOF, span: source.Span{Start: start, End: start}}, nil
 	}
 
 	if p.text[p.at] == '\n' {
 		p.at++
-		return token{kind: "newline", span: source.Span{Start: start, End: p.at}}, nil
+		return token{kind: tokenNewline, span: source.Span{Start: start, End: p.at}}, nil
 	}
 
 	for _, op := range []string{";;&", ";&", "((", "<(", ">("} {
@@ -38,7 +38,7 @@ func (p *parser) lex() (token, error) {
 		}
 	}
 
-	for _, op := range []string{"&>>", "<<-", "<<<", "&&", "||", "|&", ">>", "<<", "<&", ">&", "<>", ">|", "&>", ";;", ";", "&", "|", "(", ")", "<", ">"} {
+	for _, op := range []string{RedirectAppendBoth, RedirectStripHereDoc, RedirectHereString, AndThen, OrElse, PipeWithStderr, RedirectAppend, RedirectHereDoc, RedirectDuplicateInput, RedirectDuplicateOutput, RedirectReadWrite, RedirectClobber, RedirectBoth, tokenEndCase, sequence, Background, Pipe, tokenOpenParen, tokenCloseParen, RedirectInput, RedirectOutput} {
 		if strings.HasPrefix(p.text[p.at:p.end], op) {
 			p.at += len(op)
 			return token{kind: op, span: source.Span{Start: start, End: p.at}}, nil
@@ -59,7 +59,7 @@ func (p *parser) lexWord(start int) (token, error) {
 		return token{}, p.fail("unexpected_token")
 	}
 
-	return token{kind: "word", word: w, span: w.Span}, nil
+	return token{kind: tokenWord, word: w, span: w.Span}, nil
 }
 
 func (p *parser) parts(w *Word, mode wordMode) error {
@@ -182,7 +182,7 @@ func (p *parser) literal(w *Word, start, end int, text string, quoted bool) erro
 	}
 
 	w.Parts = append(w.Parts, Part{
-		Kind:   "literal",
+		Kind:   PartLiteral,
 		Text:   text,
 		Span:   source.Span{Start: start, End: end},
 		Quoted: quoted,
@@ -237,13 +237,13 @@ func (p *parser) commandSubstitution(w *Word, quoted bool, start int) error {
 	}
 
 	closing, err := q.take()
-	if err != nil || closing.kind != ")" {
+	if err != nil || closing.kind != tokenCloseParen {
 		return p.fail("unclosed_substitution")
 	}
 
 	p.at = q.at
 	w.Parts = append(w.Parts, Part{
-		Kind:   "substitution",
+		Kind:   PartSubstitution,
 		Tree:   tree,
 		Span:   source.Span{Start: start, End: p.at},
 		Quoted: quoted,
@@ -270,7 +270,7 @@ func (p *parser) parameterExpansion(w *Word, quoted bool, start int, c byte) err
 	}
 
 	w.Parts = append(w.Parts, Part{
-		Kind: "parameter",
+		Kind: PartParameter,
 		Text: p.text[begin:p.at],
 		Span: source.Span{
 			Start: start,
@@ -302,7 +302,7 @@ func (p *parser) hereBodies() error {
 		body := &Word{Span: source.Span{Start: start, End: end}}
 		if r.QuotedDelimiter {
 			body.Quoted = true
-			body.Parts = []Part{{Kind: "literal", Text: p.text[start:end], Span: body.Span, Quoted: true}}
+			body.Parts = []Part{{Kind: PartLiteral, Text: p.text[start:end], Span: body.Span, Quoted: true}}
 		} else {
 			q, err := p.child(start, end)
 			if err != nil {
@@ -314,7 +314,7 @@ func (p *parser) hereBodies() error {
 			}
 		}
 
-		if r.Op == "<<-" {
+		if r.Op == RedirectStripHereDoc {
 			body.Expands = true
 		} // tab-removal is not represented as a constant value
 
@@ -387,13 +387,13 @@ func (p *parser) bracedParameter(w *Word, quoted bool, start int) error {
 
 	name := p.text[begin:p.at]
 
-	kind := "parameter"
+	kind := PartParameter
 	if quoted && strings.HasPrefix(p.text[p.at:p.end], ":-.}") {
-		kind = "parameter_default_dot"
+		kind = PartParameterDefaultDot
 		p.at += 3
 	} else if quoted && name == "0" {
 		if suffix := scriptDirectorySuffix(p.text[p.at:p.end]); suffix != "" {
-			kind = "parameter_script_dir"
+			kind = PartParameterScriptDir
 			p.at += len(suffix) - 1
 		}
 	}

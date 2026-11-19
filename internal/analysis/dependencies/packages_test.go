@@ -3,6 +3,7 @@ package dependencies_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/dependencies"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/internal/scantest"
 	"github.com/skarm/scout/osv"
 	"github.com/skarm/scout/report"
 )
@@ -148,4 +150,81 @@ func pipfileDeclarations(text string) report.DependencyReport {
 	ctx := context.Background()
 	docs := document.PrepareAll(ctx, []artifact.File{artifact.NewFile("Pipfile.lock", []byte(text), false)})
 	return dependencies.Collect(ctx, docs)
+}
+
+func TestRequirementsSourcesConstrainPublicAdvisories(t *testing.T) {
+	config := scantest.DefaultConfig()
+	options := osv.DefaultOptions()
+	options.Enabled = true
+	var err error
+	options.Offline, err = json.Marshal(osv.Cache{Version: 1, QueriedAt: time.Now().UTC(), Records: []osv.Record{{
+		Ecosystem: "PyPI", Name: "sample", Version: "1.2.3", Vulnerabilities: []osv.ID{{ID: "GHSA-fixture-only"}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.Scanner.Vulnerabilities = &options
+	scanner, err := scantest.New(config, t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, text string
+		exact      bool
+	}{
+		{"no override", "sample==1.2.3\n", true},
+		{"comment", "# --index-url https://private.invalid/simple\nsample==1.2.3\n", true},
+		{"public", "--index-url https://pypi.org/simple\nsample==1.2.3\n", true},
+		{"public extra", "--extra-index-url=https://pypi.org/simple/\nsample==1.2.3\n", true},
+		{"public quoted", "-i 'https://pypi.org/simple'\nsample==1.2.3\n", true},
+		{"last public index", "-i https://private.invalid/simple\n-i https://pypi.org/simple\nsample==1.2.3\n", true},
+		{"last private index", "-i https://pypi.org/simple\n-i https://private.invalid/simple\nsample==1.2.3\n", false},
+		{"same line alternate", "--index-url https://pypi.org/simple --extra-index-url https://private.invalid/simple\nsample==1.2.3\n", false},
+		{"extra index cannot be reset", "--extra-index-url https://private.invalid/simple\n-i https://pypi.org/simple\nsample==1.2.3\n", false},
+		{"private before", "--index-url https://private.invalid/simple\nsample==1.2.3\n", false},
+		{"private after", "sample==1.2.3\n--index-url https://private.invalid/simple\n", false},
+		{"private equals", "--index-url=https://private.invalid/simple\nsample==1.2.3\n", false},
+		{"private short", "-ihttps://private.invalid/simple\nsample==1.2.3\n", false},
+		{"extra index", "sample==1.2.3\n--extra-index-url https://private.invalid/simple\n", false},
+		{"local links", "--no-index\n-f /not-opened\nsample==1.2.3\n", false},
+		{"include", "sample==1.2.3\n-r /not-opened\n", false},
+		{"constraints", "sample==1.2.3\n--constraint=/not-opened\n", false},
+		{"find links", "sample==1.2.3\n--find-links=https://private.invalid/wheels\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := scanner.ScanBytes(t.Context(), "requirements.txt", []byte(tc.text))
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			if err := report.ValidateSealedRun(result.Run); err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Dependencies.Declarations) != 1 || len(result.Vulnerabilities.Queries) != 1 {
+				t.Fatalf("lost declaration/query: %+v %+v", result.Dependencies, result.Vulnerabilities)
+			}
+			declaration := result.Dependencies.Declarations[0]
+			if got := declaration.VersionSemantics == report.VersionExactDeclaration; got != tc.exact {
+				t.Errorf("public coordinate=%t want=%t: %+v", got, tc.exact, declaration)
+			}
+			if !strings.Contains(tc.text[declaration.Source.ByteStart:declaration.Source.ByteEnd], "sample==1.2.3") {
+				t.Fatal("lost physical declaration evidence")
+			}
+			count := 0
+			for _, finding := range result.Findings {
+				if finding.RuleID == "OSV001" {
+					count++
+				}
+			}
+			want := 0
+			if tc.exact {
+				want = 1
+			}
+			if count != want || len(result.Vulnerabilities.Matches) != want {
+				t.Errorf("public advisory findings=%d matches=%d want=%d", count, len(result.Vulnerabilities.Matches), want)
+			}
+			if !tc.exact && (result.Vulnerabilities.Queries[0].Status != "unresolved_version" || !errors.Is(err, scantest.ErrIncomplete)) {
+				t.Errorf("unresolved origin lost partial state: %+v err=%v", result.Vulnerabilities, err)
+			}
+		})
+	}
 }

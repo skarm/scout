@@ -103,9 +103,34 @@ func TestRequestPreservesCancellation(t *testing.T) {
 
 func TestResolveAndValidation(t *testing.T) {
 	sha := strings.Repeat("a", 40)
+	wantArchive := fetch.Target{
+		URL: "https://codeload.github.com/owner/repository/zip/" + sha, Name: "repository.zip", Kind: "github-archive", Revision: sha,
+	}
+	for _, tc := range []struct {
+		name, url, rev string
+		want           fetch.Target
+	}{
+		{name: "pinned", url: "https://github.com/owner/repository", rev: sha, want: wantArchive},
+		{name: "git-suffix-and-uppercase-revision", url: "https://github.com/owner/repository.git", rev: strings.ToUpper(sha), want: wantArchive},
+		{
+			name: "direct", url: "https://example.com/SKILL.md",
+			want: fetch.Target{URL: "https://example.com/SKILL.md", Name: "SKILL.md", Kind: "https"},
+		},
+		{
+			name: "direct-without-filename", url: "https://example.com/",
+			want: fetch.Target{URL: "https://example.com/", Name: "download.bin", Kind: "https"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := enabled()
+			opts.Revision = tc.rev
+			got, err := fetch.ResolveTarget(tc.url, opts)
+			if err != nil || got != tc.want {
+				t.Fatalf("ResolveTarget(%q, revision=%q) = %+v, %v; want %+v, nil", tc.url, tc.rev, got, err, tc.want)
+			}
+		})
+	}
 	for _, tc := range []struct{ name, url, rev, want string }{
-		{name: "pinned", url: "https://github.com/owner/repository", rev: sha, want: ""},
-		{name: "git-suffix", url: "https://github.com/owner/repository.git", rev: sha, want: ""},
 		{
 			name: "mutable-ref",
 			url:  "https://github.com/owner/repository",
@@ -131,21 +156,17 @@ func TestResolveAndValidation(t *testing.T) {
 		{name: "percent-slash", url: "https://example.com/a%2fb", rev: "", want: "invalid_url"},
 		{name: "ftp", url: "ftp://example.com/a", rev: "", want: "https_required"},
 		{name: "bad-port", url: "https://example.com:999999999/a", rev: "", want: "invalid_port"},
-		{name: "direct", url: "https://example.com/SKILL.md", rev: "", want: ""},
 		{name: "ref-on-direct", url: "https://example.com/a", rev: sha, want: "revision_only_for_github"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := enabled()
 			o.Revision = tc.rev
-			target, err := fetch.ResolveTarget(tc.url, o)
-			if code(err) != tc.want {
-				t.Fatalf("got %s want %s", code(err), tc.want)
+			_, err := fetch.ResolveTarget(tc.url, o)
+			if failure, ok := errors.AsType[*fetch.Error](err); !ok || failure.Code != tc.want {
+				t.Fatalf("ResolveTarget error = %T (%v); want *fetch.Error with code %q", err, err, tc.want)
 			}
 			if strings.Contains(fmt.Sprint(err), "SENTINEL") {
 				t.Fatal("input leaked")
-			}
-			if tc.name == "pinned" && (target.URL != "https://codeload.github.com/owner/repository/zip/"+sha || target.Name != "repository.zip") {
-				t.Fatal(target)
 			}
 		})
 	}

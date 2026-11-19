@@ -10,11 +10,11 @@ func (b *pythonNormalizer) nodeInteger(n *pythonSyntax, _ int, kind NodeKind) *N
 	out := b.make(n, kind)
 	b.set(out, FieldValue, NullValue())
 
-	if n.Kind == "integer" {
+	if n.Kind == pyKindInteger {
 		b.set(out, NumericTruth, BoolValue(pythonIntegerTruth(b.textOf(n))))
 	}
 
-	if n.Kind == "float" {
+	if n.Kind == pyKindFloat {
 		v, err := strconv.ParseFloat(strings.ReplaceAll(b.textOf(n), "_", ""), 64)
 		if err == nil || math.IsInf(v, 0) {
 			b.set(out, NumericTruth, BoolValue(v != 0))
@@ -23,15 +23,15 @@ func (b *pythonNormalizer) nodeInteger(n *pythonSyntax, _ int, kind NodeKind) *N
 		}
 	}
 
-	if n.Kind == "ellipsis" {
+	if n.Kind == pyKindEllipsis {
 		b.set(out, NumericTruth, BoolValue(true))
 	}
 
-	if n.Kind == "true" {
+	if n.Kind == pyKindTrue {
 		b.set(out, FieldValue, BoolValue(true))
 	}
 
-	if n.Kind == "false" {
+	if n.Kind == pyKindFalse {
 		b.set(out, FieldValue, BoolValue(false))
 	}
 

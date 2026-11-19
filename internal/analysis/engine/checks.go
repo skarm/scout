@@ -10,6 +10,8 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const statusNotPlanned = "not_planned"
+
 func (e *Engine) runCheck(ctx context.Context, a check.Analyzer, rule report.Rule, files []document.File, byPath map[string]document.File, budget int, plan *validation.Ledger) (out outcome) {
 	out.check = report.Check{AnalyzerID: rule.ID, Version: rule.Version, Status: report.OutcomeCompleted}
 
@@ -44,7 +46,7 @@ func (e *Engine) runCheck(ctx context.Context, a check.Analyzer, rule report.Rul
 		f := doc.Artifact()
 
 		switch out.fileChecks[i].Status {
-		case report.OutcomeNotApplicable, "not_planned":
+		case report.OutcomeNotApplicable, statusNotPlanned:
 			continue
 		}
 
@@ -146,7 +148,7 @@ func (out *outcome) planFiles(a check.Analyzer, rule report.Rule, files []docume
 
 	for i, f := range files {
 		if !plan.Scheduled(rule.ID, f.Artifact().Metadata().Path) {
-			out.fileChecks[i].Status = "not_planned"
+			out.fileChecks[i].Status = statusNotPlanned
 			out.check.Status = report.OutcomePartial
 
 			continue

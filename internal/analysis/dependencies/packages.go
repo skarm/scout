@@ -8,20 +8,24 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/skarm/scout/internal/syntax/language"
-
-	"golang.org/x/mod/semver"
-
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
+
+	"golang.org/x/mod/semver"
 )
 
-const maxDeclarations = 8192
+const (
+	maxDependencyNameBytes    = 256
+	maxDependencyVersionBytes = 256
+	maxNPMLockDepth           = 32
+	maxDeclarations           = 8192
+)
 
 var (
 	requirement    = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[A-Za-z0-9_,.-]+\])?\s*(===|==|~=|>=|<=|!=|>|<)?\s*([^\s;#]+)?`)
@@ -64,7 +68,7 @@ func appendDecl(out *report.DependencyReport, doc document.File, u *document.Uni
 		return false
 	}
 
-	if !(textmatch.Token(name, 256, "@/_.-") && (textmatch.Alnum(name[0]) || name[0] == '@')) || len(version) > 256 {
+	if !(textmatch.Token(name, maxDependencyNameBytes, "@/_.-") && (textmatch.Alnum(name[0]) || name[0] == '@')) || len(version) > maxDependencyVersionBytes {
 		return false
 	}
 	// Source references and digests retain the declaration. An unresolved source
@@ -361,7 +365,7 @@ func collectNPMLockV1(ctx context.Context, n *jsonconfig.Node, depth int, add de
 		return false
 	}
 
-	if depth > 32 || n.Kind != jsonconfig.KindObject {
+	if depth > maxNPMLockDepth || n.Kind != jsonconfig.KindObject {
 		return true
 	}
 
@@ -421,6 +425,7 @@ func collectRequirements(ctx context.Context, doc document.File, out *report.Dep
 		ParserVersion: "1",
 	})
 	raw := doc.Artifact().Content()
+	publicSource := requirementsPublicSource(ctx, raw)
 	offset := 0
 
 	for _, line := range strings.SplitAfter(raw, "\n") {
@@ -447,6 +452,9 @@ func collectRequirements(ctx context.Context, doc document.File, out *report.Dep
 		}
 
 		pkg, v, kind := parsed.name, parsed.version, parsed.kind
+		if !publicSource {
+			kind = report.VersionUnresolved
+		}
 
 		if !appendDecl(out, doc, nil, report.EcosystemPyPI, normalizePyPIName(pkg), v, kind, source.Span{Start: start, End: offset}, false) {
 			out.Manifests[mi].Status = report.OutcomePartial

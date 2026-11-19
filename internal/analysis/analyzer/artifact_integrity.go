@@ -9,7 +9,6 @@ import (
 	"errors"
 	"path"
 	"regexp"
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -18,6 +17,11 @@ import (
 	"github.com/skarm/scout/internal/analysis/securitytext"
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/report"
+)
+
+const (
+	unicodeCancellationInterval = 1024
+	unicodeControlRatioScale    = 100
 )
 
 //nolint:gochecknoglobals // Immutable lookup data shared by concurrent scans; initialized once to avoid rebuilding it per input.
@@ -137,7 +141,7 @@ func artifactVariationPayload(ctx context.Context, d document.File) (source.Span
 }
 
 func artifactUnicode(ctx context.Context, d document.File) (source.Span, error) {
-	if d.Artifact().Metadata().Kind != "text" {
+	if d.Artifact().Metadata().Kind != report.FileKindText {
 		return source.Span{}, nil
 	}
 
@@ -158,7 +162,7 @@ func artifactReconstructionLimit(_ context.Context, d document.File) (source.Spa
 }
 
 func artifactSeparatedInstruction(_ context.Context, d document.File) (source.Span, error) {
-	if d.Artifact().Metadata().Kind != "text" {
+	if d.Artifact().Metadata().Kind != report.FileKindText {
 		return source.Span{}, nil
 	}
 
@@ -200,7 +204,7 @@ func suspiciousUnicode(ctx context.Context, text string) (bool, error) {
 	controls, total := 0, 0
 
 	for at, r := range text {
-		if at%1024 == 0 && ctx.Err() != nil {
+		if at%unicodeCancellationInterval == 0 && ctx.Err() != nil {
 			return false, ctx.Err()
 		}
 
@@ -211,11 +215,17 @@ func suspiciousUnicode(ctx context.Context, text string) (bool, error) {
 		}
 	}
 
-	if total > 0 && controls*100 >= total {
+	if total > 0 && controls*unicodeControlRatioScale >= total {
 		return true, nil
 	}
 
-	return slices.ContainsFunc(strings.FieldsFunc(text, func(r rune) bool { return !unicode.IsLetter(r) }), confusingIdentifier), nil
+	for word := range strings.FieldsFuncSeq(text, func(r rune) bool { return !unicode.IsLetter(r) }) {
+		if confusingIdentifier(word) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func artifactIntegrityRules() []Analyzer {

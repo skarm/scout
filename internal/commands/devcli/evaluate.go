@@ -14,6 +14,13 @@ import (
 	"github.com/skarm/scout/internal/dev/evaluation"
 )
 
+const (
+	maxEvaluationReviewConfigBytes = 256 << 10
+	defaultEvaluationTimeout       = 2 * time.Minute
+	maxEvaluationTimeout           = 10 * time.Minute
+	maxEvaluationTrustedReviewers  = 32
+)
+
 type evaluationInvocation struct {
 	path, split, llmConfig string
 	labelReviewPath        string
@@ -152,7 +159,7 @@ func (c evaluationInvocation) scannerOptions(ctx context.Context) (scout.Options
 		return opts, nil
 	}
 
-	data, err := readEvaluationFile(ctx, c.llmConfig, 256<<10)
+	data, err := readEvaluationFile(ctx, c.llmConfig, maxEvaluationReviewConfigBytes)
 	if err != nil {
 		return scout.Options{}, err
 	}
@@ -182,14 +189,14 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 	fs := flag.NewFlagSet("evaluate", flag.ContinueOnError)
 	fs.SetOutput(diag)
 	profile := fs.String("profile", "standard", "standard or custom (builtins only); mutually exclusive with --llm-config")
-	fs.DurationVar(&c.timeout, "timeout", 2*time.Minute, "whole corpus deadline")
+	fs.DurationVar(&c.timeout, "timeout", defaultEvaluationTimeout, "whole corpus deadline")
 	fs.StringVar(&c.split, "split", "", "measure only train, tune or holdout after validating all splits")
 	fs.BoolVar(&c.shellHooks, "shell-hooks", false, "report targeted signal metrics for shell_hooks cases labelled for eval and generated-script execution")
 	fs.StringVar(&c.shellHookRootsPath, "shell-hook-roots", "", "explicit host, shell-safe plugin path and case IDs to assume for simple hook launches; requires --shell-hooks")
 	fs.StringVar(&c.llmConfig, "llm-config", "", "explicit scout.config/v1 with review provider and scanner settings")
 	fs.StringVar(&c.labelReviewPath, "label-review", "", "separate scout.corpus-review/v1 decisions bound to the exact corpus SHA-256")
 	fs.Func("trusted-label-reviewer", "explicitly trusted reviewer ID for --label-review; repeatable, at most 32", func(id string) error {
-		if id == "" || len(c.trustedLabelReviewers) >= 32 {
+		if id == "" || len(c.trustedLabelReviewers) >= maxEvaluationTrustedReviewers {
 			return errors.New("trusted label reviewers require nonempty IDs and at most 32 values")
 		}
 
@@ -237,7 +244,7 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 		return c, errors.New("--label-review and at least one --trusted-label-reviewer must be supplied together")
 	}
 
-	if fs.NArg() != 1 || c.timeout <= 0 || c.timeout > 10*time.Minute {
+	if fs.NArg() != 1 || c.timeout <= 0 || c.timeout > maxEvaluationTimeout {
 		return c, errors.New("evaluate requires one corpus and bounded timeout")
 	}
 

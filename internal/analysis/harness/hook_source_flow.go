@@ -12,11 +12,16 @@ import (
 )
 
 func (s hookSourceState) clone() hookSourceState {
+	if !s.work.spend(len(s.vars) + len(s.kinds) + len(s.locals) + len(s.readonly) + len(s.functions) + len(s.trapFunctions)) {
+		return hookSourceState{work: s.work}.blockTrace()
+	}
+
 	s.vars = maps.Clone(s.vars)
 	s.kinds = maps.Clone(s.kinds)
 	s.locals = maps.Clone(s.locals)
 	s.readonly = maps.Clone(s.readonly)
 	s.functions = maps.Clone(s.functions)
+	s.trapFunctions = maps.Clone(s.trapFunctions)
 
 	return s
 }
@@ -43,6 +48,10 @@ func (s hookSourceState) resume(caller hookSourceState) hookSourceState {
 }
 
 func (s hookSourceState) join(other hookSourceState) hookSourceState {
+	if s.work.stopped {
+		return hookSourceState{work: s.work}.blockTrace()
+	}
+
 	returns := s.returns
 	if other.returns != nil && other.returns != returns {
 		returns = mergeHookReturn(returns, other.returns.clone())
@@ -87,6 +96,16 @@ func mergeHookReturn(previous *hookSourceState, next hookSourceState) *hookSourc
 }
 
 func (s hookSourceState) joinBindings(other hookSourceState) hookSourceState {
+	// Reserve all map passes before mutating either branch's bindings.
+	cost := len(s.vars) + len(s.kinds) + len(s.functions) + len(other.functions) + len(other.trapFunctions) + len(other.readonly)
+	if !s.lookupUnknown && !other.lookupUnknown && s.locals != nil && other.locals != nil {
+		cost += len(s.locals) + len(other.locals)
+	}
+
+	if !s.work.spend(cost) {
+		return hookSourceState{work: s.work}.blockTrace()
+	}
+
 	if s.cwd != other.cwd {
 		s.cwd = ""
 	}
@@ -114,6 +133,12 @@ func (s hookSourceState) joinBindings(other hookSourceState) hookSourceState {
 	s.rootUnknown = s.rootUnknown || other.rootUnknown
 
 	s.trapCommands |= other.trapCommands
+	if s.trapFunctions == nil {
+		s.trapFunctions = maps.Clone(other.trapFunctions)
+	} else {
+		maps.Copy(s.trapFunctions, other.trapFunctions)
+	}
+
 	for key, value := range s.vars {
 		if next, ok := other.vars[key]; !ok || next != value {
 			delete(s.vars, key)
@@ -276,6 +301,11 @@ func (w *hookSourceWalk) routeOperand(e *entry, view source.View, stmt *shellsyn
 	}
 
 	next := state.clone()
+	if next.traceBlocked {
+		out.stopped = mergeHookPath(out.stopped, next)
+		return
+	}
+
 	if truth, supported, known := w.unaryTest(stmt, state); supported {
 		if !known || truth {
 			success := next.clone()
@@ -329,7 +359,7 @@ func (w *hookSourceWalk) routeOperand(e *entry, view source.View, stmt *shellsyn
 }
 
 func (w *hookSourceWalk) unaryTest(stmt *shellsyntax.Statement, state hookSourceState) (truth, supported, known bool) {
-	if len(stmt.Commands) != 1 || stmt.Background || stmt.Next == "&" {
+	if len(stmt.Commands) != 1 || stmt.Background || stmt.Next == shellsyntax.Background {
 		return false, false, false
 	}
 
@@ -355,7 +385,7 @@ func (w *hookSourceWalk) unaryTest(stmt *shellsyntax.Statement, state hookSource
 }
 
 func (w *hookSourceWalk) stringComparison(stmt *shellsyntax.Statement, state hookSourceState) (truth, known bool) {
-	if !state.explicitBash || len(stmt.Commands) != 1 || stmt.Background || stmt.Next == "&" || len(stmt.Commands[0].Redirects) != 0 {
+	if !state.explicitBash || len(stmt.Commands) != 1 || stmt.Background || stmt.Next == shellsyntax.Background || len(stmt.Commands[0].Redirects) != 0 {
 		return false, false
 	}
 
@@ -386,7 +416,7 @@ func hookBracketExpression(cmd *shellsyntax.Command, state hookSourceState) ([]*
 	head, tail := cmd.Words[0], cmd.Words[len(cmd.Words)-1]
 	end, _ := tail.Literal()
 
-	if len(head.Parts) != 1 || head.Parts[0].Kind != "literal" || head.Parts[0].Text != "[" || end != "]" {
+	if len(head.Parts) != 1 || head.Parts[0].Kind != shellsyntax.PartLiteral || head.Parts[0].Text != "[" || end != "]" {
 		return nil, false
 	}
 
@@ -451,7 +481,7 @@ func hookUnsignedExpansion(word *shellsyntax.Word) bool {
 
 	part := word.Parts[0]
 
-	return part.Kind == "parameter" && part.PlainParameter && (part.Text == "?" || part.Text == "#")
+	return part.Kind == shellsyntax.PartParameter && part.PlainParameter && (part.Text == "?" || part.Text == "#")
 }
 
 func hookLiteralDecimal(word *shellsyntax.Word) bool {
@@ -477,7 +507,7 @@ func hookQuotedScalarOperand(word *shellsyntax.Word) bool {
 	}
 
 	for _, part := range word.Parts {
-		if part.Kind == "literal" {
+		if part.Kind == shellsyntax.PartLiteral {
 			if !part.Quoted && strings.ContainsAny(part.Text, "*?[~{}") {
 				return false
 			}
@@ -490,11 +520,11 @@ func hookQuotedScalarOperand(word *shellsyntax.Word) bool {
 		}
 
 		switch part.Kind {
-		case "parameter", "parameter_default_empty", "parameter_default_dot", "parameter_script_dir", "parameter_bash_source", "parameter_length", "substitution":
-			if part.Text == "@" || part.Text == "*" || part.Kind == "parameter" && word.Expands {
+		case shellsyntax.PartParameter, shellsyntax.PartParameterDefaultEmpty, shellsyntax.PartParameterDefaultDot, shellsyntax.PartParameterScriptDir, shellsyntax.PartParameterBashSource, shellsyntax.PartParameterLength, shellsyntax.PartSubstitution:
+			if part.Text == "@" || part.Text == "*" || part.Kind == shellsyntax.PartParameter && word.Expands {
 				return false
 			}
-		case "parameter_value":
+		case shellsyntax.PartParameterValue:
 			if !part.SingleField {
 				return false
 			}
@@ -565,6 +595,15 @@ func hookPipelineStage(cmd *shellsyntax.Command, state hookSourceState) bool {
 
 	switch name {
 	case "cat", "cut", "echo", "grep", "head", "ls", "tail", "tr", "wc":
+	case "cmp":
+		if len(cmd.Words) != 4 {
+			return false
+		}
+
+		option, _ := cmd.Words[1].Literal()
+		if option != "-s" || !hookTestOperand(cmd.Words[2]) || !hookTestOperand(cmd.Words[3]) {
+			return false
+		}
 	case "jq":
 		if !hookJQReadOnlyPredicate(cmd.Words[1:], state) {
 			return false
@@ -674,8 +713,8 @@ func hookTestOperand(word *shellsyntax.Word) bool {
 
 	for _, part := range word.Parts {
 		switch part.Kind {
-		case "literal":
-		case "parameter", "parameter_default_dot", "parameter_default_empty", "parameter_script_dir":
+		case shellsyntax.PartLiteral:
+		case shellsyntax.PartParameter, shellsyntax.PartParameterDefaultDot, shellsyntax.PartParameterDefaultEmpty, shellsyntax.PartParameterScriptDir:
 			if !part.Quoted || part.Text == "@" || part.Text == "*" {
 				return false
 			}
@@ -703,7 +742,7 @@ func simpleHookCommand(stmt *shellsyntax.Statement, name string) bool {
 }
 
 func hookKnownStatus(stmt *shellsyntax.Statement, state hookSourceState, name string) bool {
-	return !state.lookupUnknown && !state.hasFunction(name) && !stmt.Background && stmt.Next != "&" && simpleHookCommand(stmt, name)
+	return !state.lookupUnknown && !state.hasFunction(name) && !stmt.Background && stmt.Next != shellsyntax.Background && simpleHookCommand(stmt, name)
 }
 
 func (w *hookSourceWalk) conditional(e *entry, view source.View, cmd *shellsyntax.Command, state hookSourceState, chain []report.SourceRef, entrypoint bool) hookSourceState {

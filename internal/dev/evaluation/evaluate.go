@@ -24,7 +24,11 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-const MaxCorpusBytes = 8 << 20
+const (
+	upperLatencyPercentile = 95
+	percentileScale        = 100
+	MaxCorpusBytes         = 8 << 20
+)
 
 type Case struct {
 	ID            string   `json:"id"`
@@ -335,7 +339,7 @@ func (r *Report) finish(durations []int64) {
 	if len(durations) > 0 {
 		slices.Sort(durations)
 		r.P50NS = durations[(len(durations)-1)/2]
-		r.P95NS = durations[(95*len(durations)+99)/100-1]
+		r.P95NS = durations[(upperLatencyPercentile*len(durations)+percentileScale-1)/percentileScale-1]
 	}
 }
 

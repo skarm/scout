@@ -17,6 +17,11 @@ import (
 )
 
 const (
+	privateFileMode      = 0o600
+	privateDirectoryMode = 0o700
+)
+
+const (
 	maxJSONLine   = 64 << 20
 	decisionAllow = "allow"
 	findingsKey   = "findings"
@@ -161,7 +166,7 @@ func writeJSON(path string, value any) error {
 		return err
 	}
 
-	return os.WriteFile(path, append(b, '\n'), 0o600)
+	return os.WriteFile(path, append(b, '\n'), privateFileMode)
 }
 
 func printJSON(w io.Writer, value any) error {
@@ -215,11 +220,17 @@ func sortedKeys[V any](m map[string]V) []string {
 }
 
 func newOutput(path string) error {
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+	path = filepath.Clean(path)
+	if err := os.MkdirAll(filepath.Dir(path), privateDirectoryMode); err != nil {
+		return err
+	}
+
+	err := os.Mkdir(path, privateDirectoryMode)
+	if errors.Is(err, os.ErrExist) {
 		return errors.New("output must be a new directory")
 	}
 
-	return os.MkdirAll(path, 0o700)
+	return err
 }
 
 func safeJoin(root, name string) (string, error) {

@@ -75,7 +75,7 @@ func (p *planner) planVerification(proposals []report.SemanticProposal, initialP
 }
 
 func (p *planner) proposalGap(code, proposalID string) {
-	if len(p.gaps) >= 4096 {
+	if len(p.gaps) >= maxSemanticGaps {
 		p.omittedGaps++
 		return
 	}

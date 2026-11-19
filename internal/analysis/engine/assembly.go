@@ -158,12 +158,12 @@ func (run *execution) finalize() (report.Analysis, error) {
 		r.Diagnostics = append(r.Diagnostics, o.diagnostics...)
 	}
 
-	vulnerabilities := run.options.Vulnerabilities
+	vulnerabilityRequests := run.options.Vulnerabilities.MaxRequests
 	if run.options.VulnerabilityQuota != nil {
-		vulnerabilities.MaxRequests = *run.options.VulnerabilityQuota
+		vulnerabilityRequests = *run.options.VulnerabilityQuota
 	}
 
-	applyVulnerabilities(run.ctx, r, run.documents, vulnerabilities, run.collector)
+	applyVulnerabilities(run.ctx, r, run.documents, run.options.Vulnerabilities, vulnerabilityRequests, run.collector)
 	applySignatures(run.ctx, r, run.documents, run.engine.signatures, run.options.SignatureRuntime, run.collector, run.fileIndex)
 	run.collector.finish(r, run.fileIndex)
 
@@ -190,7 +190,7 @@ func (run *execution) finish() (report.Analysis, error) {
 	sortFileCoverage(r.Coverage.Files)
 	r.Coverage.ShellHooks = run.shellHookCoverage()
 
-	r.Semantic = semantic.RunWithin(run.ctx, run.files, r.Components, r.Findings, r.Artifact.SnapshotSHA256, run.options.Semantic, run.options.Provider, r.Extraction, run.options.SemanticQuota)
+	r.Semantic = semantic.RunWithin(run.ctx, run.files, run.documents, r.Components, r.Findings, r.Artifact.SnapshotSHA256, run.options.Semantic, run.options.Provider, r.Extraction, run.options.SemanticQuota)
 	if run.options.Semantic.Enabled {
 		semanticFileCoverage(r)
 		run.ledger.CompleteSemantic(r.Semantic.Completeness)

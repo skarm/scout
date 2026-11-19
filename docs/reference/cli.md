@@ -272,8 +272,7 @@ unless an explicit numeric loopback exception applies.
   enables the service. Version 1 covers ordinary vulnerability IDs; version 2
   also selects `MAL001` for explicitly classified malicious-package records.
   Fresh version-2 cache answers take precedence over ordinary network queries.
-  Currently, `--vuln=false` does not override a
-  nonempty cache path.
+  A nonempty cache path also takes precedence over `--vuln=false`.
 - `--osv-cache-max-age DURATION`: maximum cache age; default `168h` (7 days),
   range `1m`..`8760h`.
 - `--osv-endpoint URL`: query endpoint; default `https://api.osv.dev/v1/querybatch`.

@@ -105,7 +105,7 @@ func (w *hookSourceWalk) hookEnvironmentWriter(cmd *shellsyntax.Command, state h
 
 func (w *hookSourceWalk) hookEnvironmentWriterGroup(group *shellsyntax.File, state hookSourceState) bool {
 	for _, stmt := range group.Statements {
-		if !w.plugin.b.step() || stmt.Background || stmt.Next == "&" || hookAndOrLink(stmt.Next) || len(stmt.Commands) != 1 {
+		if !w.plugin.b.step() || stmt.Background || stmt.Next == shellsyntax.Background || hookAndOrLink(stmt.Next) || len(stmt.Commands) != 1 {
 			return false
 		}
 
@@ -135,7 +135,7 @@ func hookEnvironmentPrint(cmd *shellsyntax.Command, state hookSourceState) bool 
 	case "echo":
 		word := args[0]
 
-		return !word.Expands && len(word.Parts) > 0 && word.Parts[0].Kind == "literal" &&
+		return !word.Expands && len(word.Parts) > 0 && word.Parts[0].Kind == shellsyntax.PartLiteral &&
 			word.Parts[0].Text != "" && !strings.HasPrefix(word.Parts[0].Text, "-")
 	case "printf":
 		first, _ := args[0].Literal()
@@ -157,11 +157,11 @@ func hookEnvironmentOutput(redirects []*shellsyntax.Redirect) *shellsyntax.Redir
 	var output *shellsyntax.Redirect
 
 	for _, r := range redirects {
-		if r.FD == "2" && r.Op == ">" && hookDiscardedOutput(r) {
+		if r.FD == shellsyntax.StderrFD && r.Op == shellsyntax.RedirectOutput && hookDiscardedOutput(r) {
 			continue
 		}
 
-		if output != nil || r.FD != "" && r.FD != "1" || (r.Op != ">" && r.Op != ">>") || r.Target == nil ||
+		if output != nil || r.FD != "" && r.FD != shellsyntax.StdoutFD || (r.Op != shellsyntax.RedirectOutput && r.Op != shellsyntax.RedirectAppend) || r.Target == nil ||
 			!quotedGlobVariable(r.Target, hostEnvironmentFile) {
 			return nil
 		}

@@ -19,7 +19,14 @@ import (
 )
 
 const (
-	statusLimit = "limit"
+	statusLimit           = "limit"
+	maxExternalDepth      = 8
+	maxExternalRequests   = 64
+	maxExternalBytes      = 32 << 20
+	maxExternalOrigins    = 32
+	maxExternalURLBytes   = 2048
+	maxFileReferences     = 512
+	maxReferenceInventory = 4096
 )
 
 var referencePattern = regexp.MustCompile(`https?://[^\s<>"'` + "`" + `\\]+`)
@@ -53,12 +60,15 @@ type traversal struct {
 }
 
 func (o Options) Validate(loopback bool) error {
-	if o.MaxDepth < 1 || o.MaxDepth > 8 || o.MaxRequests < 1 || o.MaxRequests > 64 || o.MaxBytes < 1 || o.MaxBytes > 32<<20 || len(o.AllowedOrigins) < 1 || len(o.AllowedOrigins) > 32 {
+	if o.MaxDepth < 1 || o.MaxDepth > maxExternalDepth ||
+		o.MaxRequests < 1 || o.MaxRequests > maxExternalRequests ||
+		o.MaxBytes < 1 || o.MaxBytes > maxExternalBytes ||
+		len(o.AllowedOrigins) < 1 || len(o.AllowedOrigins) > maxExternalOrigins {
 		return errors.New("invalid external traversal limits")
 	}
 
 	for _, origin := range o.AllowedOrigins {
-		u, err := netpolicy.ParseURL(origin, netpolicy.URLPolicy{MaxBytes: 2048, AllowLoopback: loopback})
+		u, err := netpolicy.ParseURL(origin, netpolicy.URLPolicy{MaxBytes: maxExternalURLBytes, AllowLoopback: loopback})
 		if err != nil || u.Path != "" && u.Path != "/" {
 			return errors.New("external origins must be explicit HTTPS origins")
 		}
@@ -144,20 +154,20 @@ func newTraversal(ctx context.Context, snapshot artifact.Snapshot, o Options, do
 func (t *traversal) inspect(item queued) {
 	text := item.file.Content()
 
-	matches := referencePattern.FindAllStringIndex(text, 513)
-	if len(matches) > 512 {
+	matches := referencePattern.FindAllStringIndex(text, maxFileReferences+1)
+	if len(matches) > maxFileReferences {
 		t.report.Complete = false
-		matches = matches[:512]
+		matches = matches[:maxFileReferences]
 	}
 
 	for _, at := range matches {
-		if len(t.report.References) >= 4096 {
+		if len(t.report.References) >= maxReferenceInventory {
 			t.report.Complete = false
 			break
 		}
 
 		raw := strings.TrimRight(text[at[0]:at[1]], ".,;:)]}")
-		if len(raw) > 2048 {
+		if len(raw) > maxExternalURLBytes {
 			t.report.Complete = false
 			continue
 		}

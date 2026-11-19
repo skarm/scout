@@ -17,6 +17,16 @@ import (
 	"github.com/skarm/scout/policy"
 )
 
+const (
+	maxTargetMappings     = 64
+	httpReadHeaderTimeout = 3 * time.Second
+	httpReadTimeout       = 10 * time.Second
+	httpWriteGracePeriod  = 5 * time.Second
+	httpIdleTimeout       = 30 * time.Second
+	maxHTTPHeaderBytes    = 8192
+	httpShutdownTimeout   = 5 * time.Second
+)
+
 type repeated []string
 
 type mcpInvocation struct {
@@ -28,7 +38,7 @@ type mcpInvocation struct {
 
 func (r *repeated) String() string { return strings.Join(*r, ",") }
 func (r *repeated) Set(v string) error {
-	if len(*r) >= 64 {
+	if len(*r) >= maxTargetMappings {
 		return errors.New("repeated argument limit")
 	}
 
@@ -165,11 +175,11 @@ func serveMCPHTTP(ctx context.Context, server *mcp.Server, address string, timeo
 
 	httpServer := &http.Server{
 		Handler:           handler,
-		ReadHeaderTimeout: 3 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      timeout + 5*time.Second,
-		IdleTimeout:       30 * time.Second,
-		MaxHeaderBytes:    8192,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		WriteTimeout:      timeout + httpWriteGracePeriod,
+		IdleTimeout:       httpIdleTimeout,
+		MaxHeaderBytes:    maxHTTPHeaderBytes,
 	}
 
 	done := make(chan struct{})
@@ -178,7 +188,7 @@ func serveMCPHTTP(ctx context.Context, server *mcp.Server, address string, timeo
 	go func() {
 		select {
 		case <-ctx.Done():
-			c, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			c, cancel := context.WithTimeout(context.WithoutCancel(ctx), httpShutdownTimeout)
 			defer cancel()
 
 			if err := httpServer.Shutdown(c); err != nil {

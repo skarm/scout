@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/language"
@@ -18,6 +19,10 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
+)
+
+const (
+	maxRegistryOperations = 8192
 )
 
 //nolint:gochecknoglobals // Immutable lookup data shared by concurrent scans; initialized once to avoid rebuilding it per input.
@@ -113,7 +118,7 @@ func (a registryCheck) Find(ctx context.Context, d document.File, budget int) (R
 			}
 
 			operations++
-			if operations > 8192 {
+			if operations > maxRegistryOperations {
 				return out, errors.New("registry record budget exceeded")
 			}
 
@@ -148,7 +153,7 @@ func (a registryCheck) inspectRegistryRecord(entry, record *jsonconfig.Node, ope
 func (a registryCheck) inspectRegistryPackages(record *jsonconfig.Node, operations *int, emit func(*jsonconfig.Node, report.Severity, bool)) error {
 	for _, p := range record.GetOrEmpty("packages").Elements {
 		*operations++
-		if *operations > 8192 {
+		if *operations > maxRegistryOperations {
 			return errors.New("registry record budget exceeded")
 		}
 
@@ -203,9 +208,9 @@ func registryEmitter(u document.Unit, out *Result, partial *bool, seen map[sourc
 			return
 		}
 
-		signal := "registry_assertion"
+		signal := check.RegistryAssertion
 		if unavailable {
-			signal = "evidence_unavailable"
+			signal = check.EvidenceUnavailable
 		}
 
 		out.Matches = append(out.Matches, Match{

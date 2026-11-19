@@ -23,6 +23,16 @@ const (
 	codeUnsupportedTag = "unsupported_tag"
 )
 
+const (
+	yamlTagMapping  = "!!map"
+	yamlTagSequence = "!!seq"
+	yamlTagString   = "!!str"
+	yamlTagBool     = "!!bool"
+	yamlTagInt      = "!!int"
+	yamlTagFloat    = "!!float"
+	yamlTagNull     = "!!null"
+)
+
 // Config conversion owns its budget independently of either decoder. It never
 // follows aliases or accepts values outside the explicit scalar vocabulary.
 type configProjection struct {
@@ -234,7 +244,7 @@ func (p *yamlProjection) positionedNode(n *yaml.Node, depth int) (*ConfigNode, e
 }
 
 func (p *yamlProjection) mapping(out *ConfigNode, n *yaml.Node, depth int) error {
-	if n.ShortTag() != "!!map" || len(n.Content)%2 != 0 {
+	if n.ShortTag() != yamlTagMapping || len(n.Content)%2 != 0 {
 		return &Failure{Category: codeUnsupportedTag}
 	}
 
@@ -267,7 +277,7 @@ func (p *yamlProjection) mapping(out *ConfigNode, n *yaml.Node, depth int) error
 }
 
 func (p *yamlProjection) member(key, value *yaml.Node, depth int) (Member, error) {
-	if key.Kind != yaml.ScalarNode || key.ShortTag() != "!!str" || key.Value == "<<" {
+	if key.Kind != yaml.ScalarNode || key.ShortTag() != yamlTagString || key.Value == "<<" {
 		return Member{}, &Failure{Category: "ambiguous_key"}
 	}
 
@@ -290,7 +300,7 @@ func (p *yamlProjection) member(key, value *yaml.Node, depth int) (Member, error
 }
 
 func (p *yamlProjection) sequence(out *ConfigNode, n *yaml.Node, depth int) error {
-	if n.ShortTag() != "!!seq" {
+	if n.ShortTag() != yamlTagSequence {
 		return &Failure{Category: codeUnsupportedTag}
 	}
 
@@ -310,15 +320,15 @@ func (p *yamlProjection) sequence(out *ConfigNode, n *yaml.Node, depth int) erro
 
 func (p *yamlProjection) scalar(out *ConfigNode, n *yaml.Node) error {
 	switch n.ShortTag() {
-	case "!!str":
+	case yamlTagString:
 		out.Kind, out.Text = jsonconfig.KindString, n.Value
-	case "!!bool":
+	case yamlTagBool:
 		if !strings.EqualFold(n.Value, "true") && !strings.EqualFold(n.Value, "false") {
 			return &Failure{Category: "unsupported_scalar"}
 		}
 
 		out.Kind, out.Bool = jsonconfig.KindBool, strings.EqualFold(n.Value, "true")
-	case "!!int", "!!float", "!!null":
+	case yamlTagInt, yamlTagFloat, yamlTagNull:
 		var scalar any
 		if err := n.Decode(&scalar); err != nil {
 			return &Failure{Category: "invalid_scalar"}
@@ -326,7 +336,7 @@ func (p *yamlProjection) scalar(out *ConfigNode, n *yaml.Node) error {
 
 		out.Kind = jsonconfig.KindNull
 
-		if n.ShortTag() != "!!null" {
+		if n.ShortTag() != yamlTagNull {
 			out.Kind, out.Text = jsonconfig.KindNumber, fmt.Sprint(scalar)
 		}
 	default:

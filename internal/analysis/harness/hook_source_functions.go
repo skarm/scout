@@ -107,6 +107,11 @@ func (w *hookSourceWalk) callFunctions(e *entry, view source.View, cmd *shellsyn
 
 	for _, definition := range definitions {
 		next := state.clone()
+		if next.traceBlocked {
+			*state = next
+			return false
+		}
+
 		next.functions[name] = []hookSourceFunction{definition}
 		w.callFunction(e, view, cmd, definition, chain, &next)
 		merged = mergeHookPath(merged, next)

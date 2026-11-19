@@ -59,7 +59,7 @@ func (w *hookSourceWalk) claudeBashHookOutput(hook *jsonconfig.Node, matcher str
 
 func hookKeepsOutput(redirects []*shellsyntax.Redirect) bool {
 	for _, redirect := range redirects {
-		if redirect.FD == "2" && redirect.Op == ">" && hookDiscardedOutput(redirect) || hookStdinRedirect(redirect) {
+		if redirect.FD == shellsyntax.StderrFD && redirect.Op == shellsyntax.RedirectOutput && hookDiscardedOutput(redirect) || hookStdinRedirect(redirect) {
 			continue
 		}
 
@@ -77,12 +77,12 @@ func (w *hookSourceWalk) traceHostUpdatedInput(e *entry, view source.View, cmd *
 
 	input := false
 	for _, redirect := range cmd.Redirects {
-		if redirect.Op == "<<<" && !input && (redirect.FD == "" || redirect.FD == "0") && hookFixedArgument(redirect.Target) {
+		if redirect.Op == shellsyntax.RedirectHereString && !input && (redirect.FD == "" || redirect.FD == shellsyntax.StdinFD) && hookFixedArgument(redirect.Target) {
 			input = true
 			continue
 		}
 
-		if redirect.FD != "2" || redirect.Op != ">" || !hookDiscardedOutput(redirect) {
+		if redirect.FD != shellsyntax.StderrFD || redirect.Op != shellsyntax.RedirectOutput || !hookDiscardedOutput(redirect) {
 			return false
 		}
 	}

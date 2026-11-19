@@ -17,6 +17,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxBundleSurfaceDepth = 32
+)
+
 var bundleURLs = regexp.MustCompile(`(?i)https?://(?:\[[0-9a-f:.]+\]|[^\s<>"'\x60)\[\]])+`)
 
 func canonicalHost(raw string) string {
@@ -177,7 +181,7 @@ func (b *bundleAnalysis) toolCollisions(d document.File) {
 				return
 			}
 
-			if depth > 32 {
+			if depth > maxBundleSurfaceDepth {
 				b.err = errors.New("tool namespace depth limit")
 				return
 			}
@@ -211,7 +215,7 @@ func (b *bundleAnalysis) sqlStatementEndpoints(d document.File, u document.Unit,
 			return
 		}
 
-		if tok.Kind != "word" && tok.Kind != "identifier" {
+		if tok.Kind != sqlsyntax.KindWord && tok.Kind != sqlsyntax.KindIdentifier {
 			continue
 		}
 
@@ -226,7 +230,7 @@ func (b *bundleAnalysis) sqlStatementEndpoints(d document.File, u document.Unit,
 		}
 
 		operand := i + 2
-		if tokens[operand].Kind == "word" && (tokens[operand].Text == "URL" || tokens[operand].Text == "URI") {
+		if tokens[operand].Kind == sqlsyntax.KindWord && (tokens[operand].Text == "URL" || tokens[operand].Text == "URI") {
 			operand++
 			for operand < len(tokens) && (tokens[operand].Text == ":" || tokens[operand].Text == "=") {
 				operand++

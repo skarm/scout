@@ -11,7 +11,13 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-const MaxTasks = 131072
+const (
+	maxInitialLedgerCapacity = 256
+	maxOutcomeReasonBytes    = 128
+	MaxTasks                 = 131072
+	taskAnalyzer             = "analyzer"
+	taskSemanticReview       = "semantic_review"
+)
 
 // Ledger is mutated only by the engine coordinator. Workers read fixed scheduling
 // decisions. Tasks and inputs are copied before execution and bound to bytes.
@@ -54,7 +60,7 @@ func newLedger(files []report.File, rules []report.Rule, g report.ComponentGraph
 
 	// Bound the initial reservation because declarations may be duplicates
 	// or exceed the retained plan limit.
-	capacity := min(limit, 256, 1+len(rules)+len(g.Plugins)+len(g.References)+len(g.Issues))
+	capacity := min(limit, maxInitialLedgerCapacity, 1+len(rules)+len(g.Plugins)+len(g.References)+len(g.Issues))
 	l := &Ledger{
 		tasks:     make([]report.AnalysisTask, 0, capacity),
 		index:     make(map[string]int, capacity),
@@ -187,7 +193,7 @@ func (l *Ledger) CompleteSemantic(completeness report.Completeness) {
 	}
 
 	for _, t := range l.tasks {
-		if t.Kind == "semantic_review" && t.Required {
+		if t.Kind == taskSemanticReview && t.Required {
 			l.record(t.ID, status, "semantic_child_plan_"+status)
 		}
 	}
@@ -255,7 +261,7 @@ func (l *Ledger) planDiscoveryGaps(issues []report.HarnessIssue) {
 
 func (l *Ledger) planSemantic(enabled bool) {
 	// Explicit non-selection is not silently downgraded from a requested mode.
-	id := l.add(report.AnalysisTask{Kind: "semantic_review", Version: "1", Required: enabled})
+	id := l.add(report.AnalysisTask{Kind: taskSemanticReview, Version: "1", Required: enabled})
 	if id != "" && !enabled {
 		l.record(id, report.OutcomeDisabled, "semantic_review_not_requested")
 	}
@@ -282,7 +288,7 @@ func (l *Ledger) planAnalyzers(files []report.File, rules []report.Rule) {
 	inputDigest := artifact.Hash(encoded)
 	for _, r := range rs {
 		l.add(report.AnalysisTask{
-			Kind: "analyzer", AnalyzerID: r.ID, Version: r.Version,
+			Kind: taskAnalyzer, AnalyzerID: r.ID, Version: r.Version,
 			InputSHA256: inputDigest, Required: true,
 		})
 	}
@@ -311,7 +317,7 @@ func (l *Ledger) add(t report.AnalysisTask) string {
 		return ""
 	}
 
-	if t.Kind == "analyzer" {
+	if t.Kind == taskAnalyzer {
 		if _, duplicate := l.analyzers[t.AnalyzerID]; duplicate {
 			l.issues["duplicate_planned_task"] = true
 			return ""
@@ -344,7 +350,7 @@ func (l *Ledger) record(id, status, reason string) {
 		status, reason = normalized, "invalid_outcome"
 	}
 	// Reasons are scanner-controlled enums, not analyzer error strings.
-	if len(reason) == 0 || len(reason) > 128 {
+	if len(reason) == 0 || len(reason) > maxOutcomeReasonBytes {
 		l.issues["invalid_task_reason"] = true
 		reason = "invalid_reason"
 		status = report.OutcomeFailed

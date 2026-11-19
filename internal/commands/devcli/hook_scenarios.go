@@ -14,6 +14,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	hookScenarioTimeout = 10 * time.Second
+)
+
 func hookScenarios(ctx context.Context, args []string, out, diag io.Writer) int {
 	fs := flag.NewFlagSet("hook-scenarios", flag.ContinueOnError)
 	fs.SetOutput(diag)
@@ -27,7 +31,7 @@ func hookScenarios(ctx context.Context, args []string, out, diag io.Writer) int 
 		return failure(diag, errors.New("--corpus required"))
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, hookScenarioTimeout)
 	defer cancel()
 
 	data, err := readEvaluationFile(ctx, *corpus, evaluation.MaxCorpusBytes)

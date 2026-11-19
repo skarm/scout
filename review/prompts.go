@@ -25,7 +25,7 @@ func PromptForRequest(ctx context.Context, payload []byte) (string, error) {
 
 	root, e := jsonconfig.Parse(ctx, string(payload))
 	if e != nil || root.Kind != jsonconfig.KindObject {
-		return "", transportError("invalid_request")
+		return "", reviewJSONError(e, transportError("invalid_request"))
 	}
 
 	identity := make(map[string]string, 4)

@@ -1,15 +1,15 @@
 package python
 
-import (
-	"maps"
-	"slices"
+import "github.com/skarm/scout/internal/syntax/frontend"
 
-	"github.com/skarm/scout/internal/syntax/frontend"
+const (
+	maxTruthDepth         = 32
+	maxHandlerOriginDepth = 8
 )
 
 // 0 unknown, 1 definitely false, 2 definitely true. No Python code is evaluated.
 func pyTruth(n *frontend.Node, s *pyState, depth int) uint8 {
-	if n == nil || depth > 32 {
+	if n == nil || depth > maxTruthDepth {
 		return 0
 	}
 
@@ -47,9 +47,9 @@ func pyContainerTruth(nodes []*frontend.Node, dictionary bool) uint8 {
 func pyUnaryTruth(n *frontend.Node, s *pyState, depth int) uint8 {
 	v := pyTruth(n.Child(frontend.Operand), s, depth+1)
 	switch n.String(frontend.Op) {
-	case "Not":
+	case frontend.OpNot:
 		return map[uint8]uint8{0: 0, 1: 2, 2: 1}[v]
-	case "USub", "UAdd":
+	case frontend.OpUSub, frontend.OpUAdd:
 		return v
 	default:
 		return 0
@@ -109,17 +109,28 @@ func pyScalarTruth(v frontend.Value) uint8 {
 }
 
 func pyHandlerOrigins(v pyValue, depth int, seen map[*pyInstance]bool) pyValue {
+	return pyHandlerOriginsWithin(v, depth, seen, nil)
+}
+
+func pyHandlerOriginsWithin(v pyValue, depth int, seen map[*pyInstance]bool, work *pyStateWork) pyValue {
 	out := joinPy(v)
-	if depth > 8 || v.instance() == nil || seen[v.instance()] {
+	if depth > maxHandlerOriginDepth || v.instance() == nil || seen[v.instance()] {
 		return out
 	}
 
 	seen[v.instance()] = true
 
-	keys := slices.Sorted(maps.Keys(v.instance().fields))
+	keys := sortedPyKeys(v.instance().fields, work)
+	if work.failed() {
+		return pyValue{}
+	}
 
 	for _, key := range keys {
-		out = joinPy(out, pyHandlerOrigins(v.instance().fields[key], depth+1, seen))
+		out = joinPy(out, pyHandlerOriginsWithin(v.instance().fields[key], depth+1, seen, work))
+
+		if work.failed() {
+			return pyValue{}
+		}
 	}
 
 	return out

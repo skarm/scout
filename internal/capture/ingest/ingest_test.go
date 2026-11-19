@@ -49,7 +49,11 @@ func TestPortablePaths(t *testing.T) {
 		{name: "\xff", ok: false},
 		{name: "a\u202e.md", ok: false},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		name := tc.name
+		if name == "" {
+			name = "empty_path"
+		}
+		t.Run(name, func(t *testing.T) {
 			err := ingest.ValidatePath(tc.name, 1024, 32)
 			if (err == nil) != tc.ok {
 				t.Fatalf("ok=%v: %v", tc.ok, err)

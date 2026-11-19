@@ -220,7 +220,7 @@ func (r *LLMReport) finish() {
 	slices.Sort(r.durations)
 	r.P50NS = r.durations[(len(r.durations)-1)/2]
 
-	r.P95NS = r.durations[(95*len(r.durations)+99)/100-1]
+	r.P95NS = r.durations[(upperLatencyPercentile*len(r.durations)+percentileScale-1)/percentileScale-1]
 	if r.Price != nil && r.Usage.Complete {
 		cost := (float64(r.Usage.InputTokens)*r.Price.InputUSDPerMillion + float64(r.Usage.OutputTokens)*r.Price.OutputUSDPerMillion) / 1e6
 		r.EstimatedCostUSD = &cost

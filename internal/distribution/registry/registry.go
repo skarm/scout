@@ -16,8 +16,29 @@ import (
 )
 
 const (
+	fieldServers    = "servers"
+	fieldMetadata   = "metadata"
+	fieldNextCursor = "nextCursor"
+	fieldName       = "name"
+	fieldServer     = "server"
+	fieldMeta       = "_meta"
+	fieldIsLatest   = "isLatest"
+	fieldVersion    = "version"
+)
+
+const (
 	Schema          = "scout.registry-snapshot/v1"
 	defaultEndpoint = "https://registry.modelcontextprotocol.io/v0/servers"
+)
+
+const (
+	defaultPages         = 32
+	defaultRecords       = 8192
+	defaultResponseBytes = 8 << 20
+	maxPages             = 128
+	maxRecords           = 32768
+	maxResponseBytes     = 32 << 20
+	maxServerNameBytes   = 512
 )
 
 type Options struct {
@@ -58,9 +79,9 @@ type captureState struct {
 func DefaultOptions() Options {
 	return Options{
 		Endpoint:   defaultEndpoint,
-		MaxPages:   32,
-		MaxRecords: 8192,
-		MaxBytes:   8 << 20,
+		MaxPages:   defaultPages,
+		MaxRecords: defaultRecords,
+		MaxBytes:   defaultResponseBytes,
 		Download:   fetch.DefaultOptions(),
 	}
 }
@@ -128,6 +149,13 @@ func Fetch(ctx context.Context, o Options) (Snapshot, error) {
 
 func Compare(ctx context.Context, before, after Snapshot) (comparison, error) {
 	out := comparison{Schema: "scout.registry-comparison/v1", Changes: []change{}}
+	if ctx == nil {
+		return out, errors.New("registry comparison requires a context")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return out, err
+	}
 
 	a, err := recordIndex(ctx, before)
 	if err != nil {
@@ -161,11 +189,13 @@ func Compare(ctx context.Context, before, after Snapshot) (comparison, error) {
 		}
 	}
 
-	return out, nil
+	return out, ctx.Err()
 }
 
 func validateOptions(ctx context.Context, o Options) error {
-	if ctx == nil || o.MaxPages < 1 || o.MaxPages > 128 || o.MaxRecords < 1 || o.MaxRecords > 32768 || o.MaxBytes < 1 || o.MaxBytes > 32<<20 || len(o.Name) > 512 {
+	if ctx == nil || o.MaxPages < 1 || o.MaxPages > maxPages ||
+		o.MaxRecords < 1 || o.MaxRecords > maxRecords ||
+		o.MaxBytes < 1 || o.MaxBytes > maxResponseBytes || len(o.Name) > maxServerNameBytes {
 		return errors.New("invalid registry options")
 	}
 
@@ -196,23 +226,36 @@ func (s *captureState) page(ctx context.Context, cursor string) (string, error) 
 		return "", errors.New("invalid registry page")
 	}
 
-	servers := root.Get("servers")
+	servers := root.Get(fieldServers)
 	if servers == nil || servers.Kind != jsonconfig.KindArray {
 		return "", errors.New("registry servers array required")
 	}
 
-	if err := s.records(servers, data); err != nil {
+	next, err := nextCursor(root.Get(fieldMetadata))
+	if err != nil {
 		return "", err
 	}
 
 	s.snapshot.Pages = append(s.snapshot.Pages, page{SHA256: hash(data), Bytes: len(data)})
 
-	next := root.Get("metadata").Get("nextCursor")
+	if err := s.records(servers, data); err != nil {
+		return "", err
+	}
+
+	return next, nil
+}
+
+func nextCursor(metadata *jsonconfig.Node) (string, error) {
+	if metadata != nil && metadata.Kind != jsonconfig.KindNull && metadata.Kind != jsonconfig.KindObject {
+		return "", errors.New("invalid registry pagination metadata")
+	}
+
+	next := metadata.Get(fieldNextCursor)
 	if next == nil || next.Kind == jsonconfig.KindNull {
 		return "", nil
 	}
 
-	if next.Kind != jsonconfig.KindString || len(next.String) > 2048 {
+	if next.Kind != jsonconfig.KindString || len(next.String) > fetch.MaxPageCursorBytes {
 		return "", errors.New("invalid registry cursor")
 	}
 
@@ -221,7 +264,7 @@ func (s *captureState) page(ctx context.Context, cursor string) (string, error) 
 
 func (s *captureState) records(servers *jsonconfig.Node, data []byte) error {
 	for _, entry := range servers.Elements {
-		name, ok := serverNode(entry).Get("name").Text()
+		name, ok := serverNode(entry).Get(fieldName).Text()
 		if !ok || name == "" {
 			return errors.New("registry server identity unavailable")
 		}
@@ -241,20 +284,6 @@ func (s *captureState) records(servers *jsonconfig.Node, data []byte) error {
 }
 
 func latestRecords(ctx context.Context, records []json.RawMessage) ([]json.RawMessage, error) {
-	latest := map[string]bool{}
-
-	for _, raw := range records {
-		root, err := jsonconfig.Parse(ctx, string(raw))
-		if err != nil {
-			return nil, err
-		}
-
-		if isLatest(root) {
-			name, _ := serverNode(root).Get("name").Text()
-			latest[name] = true
-		}
-	}
-
 	out := make([]json.RawMessage, 0)
 
 	for _, raw := range records {
@@ -263,8 +292,7 @@ func latestRecords(ctx context.Context, records []json.RawMessage) ([]json.RawMe
 			return nil, err
 		}
 
-		name, _ := serverNode(root).Get("name").Text()
-		if !latest[name] || isLatest(root) {
+		if isLatest(root) {
 			out = append(out, raw)
 		}
 	}
@@ -273,7 +301,7 @@ func latestRecords(ctx context.Context, records []json.RawMessage) ([]json.RawMe
 }
 
 func serverNode(n *jsonconfig.Node) *jsonconfig.Node {
-	if server := n.Get("server"); server != nil {
+	if server := n.Get(fieldServer); server != nil {
 		return server
 	}
 
@@ -281,12 +309,12 @@ func serverNode(n *jsonconfig.Node) *jsonconfig.Node {
 }
 
 func isLatest(n *jsonconfig.Node) bool {
-	value := n.Get("_meta").Get("io.modelcontextprotocol.registry/official").Get("isLatest")
+	value := n.Get(fieldMeta).Get("io.modelcontextprotocol.registry/official").Get(fieldIsLatest)
 	return value != nil && value.Kind == jsonconfig.KindBool && value.Bool
 }
 
 func recordIndex(ctx context.Context, s Snapshot) (map[string]string, error) {
-	if s.Schema != Schema || !s.Complete || len(s.Servers) > 32768 {
+	if s.Schema != Schema || !s.Complete || len(s.Servers) > maxRecords {
 		return nil, errors.New("complete registry snapshot required")
 	}
 
@@ -295,17 +323,24 @@ func recordIndex(ctx context.Context, s Snapshot) (map[string]string, error) {
 	for _, raw := range s.Servers {
 		root, err := jsonconfig.Parse(ctx, string(raw))
 		if err != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return nil, contextErr
+			}
+
 			return nil, errors.New("invalid registry record")
 		}
 
 		server := serverNode(root)
 
-		name, ok := server.Get("name").Text()
+		name, ok := server.Get(fieldName).Text()
 		if !ok || name == "" {
 			return nil, errors.New("registry record lacks identity")
 		}
 
-		version, _ := server.Get("version").Text()
+		version, _ := server.Get(fieldVersion).Text()
+		if strings.ContainsRune(name, 0) || strings.ContainsRune(version, 0) {
+			return nil, errors.New("invalid registry record identity")
+		}
 
 		id := hash([]byte(name + "\x00" + version))
 		if _, exists := index[id]; exists {

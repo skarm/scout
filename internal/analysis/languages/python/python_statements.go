@@ -5,7 +5,6 @@
 package python
 
 import (
-	"maps"
 	"strings"
 
 	"github.com/skarm/scout/internal/syntax/frontend"
@@ -28,7 +27,7 @@ func (w *pyWalker) bindingStatement(n *frontend.Node, s *pyState, depth int) boo
 	case frontend.Global, frontend.Nonlocal:
 		// Declarations were collected for the entire function before binding.
 	case frontend.UnsupportedStatement:
-		child := s.fork()
+		child := w.forkState(s)
 		w.block(n.List(frontend.Body), child, depth+1)
 
 		for name := range s.names {
@@ -142,14 +141,19 @@ func (w *pyWalker) functionStatement(n *frontend.Node, s *pyState, depth int) {
 	s.set(n.String(frontend.FieldName), functionValue(function))
 
 	for _, tp := range n.List(frontend.TypeParams) {
-		w.expr(tp, s.fork(), depth+1)
+		w.expr(tp, w.forkState(s), depth+1)
 	}
 
-	child := s.fork().scope()
-	w.prebind(n.List(frontend.Body), child)
+	child := w.forkState(s).scope()
+	if !w.prebind(n.List(frontend.Body), child) {
+		return
+	}
+
 	w.bindArgs(args, child)
 
-	maps.Copy(child.names, child.defaultsFor(function))
+	if !w.copyDefaults(child, child.defaultsFor(function)) {
+		return
+	}
 
 	w.frames = append(w.frames, &pyFrame{})
 	w.block(n.List(frontend.Body), child, depth+1)
@@ -173,7 +177,7 @@ func (w *pyWalker) classStatement(n *frontend.Node, s *pyState, depth int) {
 	}
 
 	for _, tp := range n.List(frontend.TypeParams) {
-		w.expr(tp, s.fork(), depth+1)
+		w.expr(tp, w.forkState(s), depth+1)
 	}
 
 	w.defineClass(n, s, depth+1, bases)
@@ -191,10 +195,10 @@ func (w *pyWalker) controlStatement(n *frontend.Node, s *pyState, depth int) boo
 		return false
 	case frontend.If:
 		w.expr(n.Child(frontend.Test), s, depth+1)
-		a, b := s.fork(), s.fork()
+		a, b := w.forkState(s), w.forkState(s)
 		w.block(n.List(frontend.Body), a, depth+1)
 		w.block(n.List(frontend.Orelse), b, depth+1)
-		mergePyBranches(s, a, b)
+		w.mergeBranches(s, a, b)
 	case frontend.With, frontend.AsyncWith:
 		w.withStatement(n, s, depth)
 
@@ -215,7 +219,7 @@ func (w *pyWalker) controlStatement(n *frontend.Node, s *pyState, depth int) boo
 }
 
 func (w *pyWalker) tryStatement(n *frontend.Node, s *pyState, depth int) {
-	a := s.fork()
+	a := w.forkState(s)
 	w.block(n.List(frontend.Body), a, depth+1)
 
 	var entry *pyState
@@ -223,7 +227,7 @@ func (w *pyWalker) tryStatement(n *frontend.Node, s *pyState, depth int) {
 	handlers := n.List(frontend.Handlers)
 	if len(handlers) != 0 {
 		// Exceptions can occur before or after the body changes a binding.
-		entry = mergePy(s, a, map[pyValuePair]pyValue{})
+		entry = w.mergeStates(s, a)
 	}
 
 	w.block(n.List(frontend.Orelse), a, depth+1)
@@ -234,13 +238,13 @@ func (w *pyWalker) tryStatement(n *frontend.Node, s *pyState, depth int) {
 		merged = w.mergeTryHandlers(handlers, entry, merged, depth)
 	}
 
-	mergePyBranches(s, s, merged)
+	w.mergeBranches(s, s, merged)
 	w.block(n.List(frontend.Finalbody), s, depth+1)
 }
 
 func (w *pyWalker) mergeTryHandlers(handlers []*frontend.Node, entry, merged *pyState, depth int) *pyState {
 	for _, h := range handlers {
-		b := entry.fork()
+		b := w.forkState(entry)
 		w.expr(h.Child(frontend.Test), b, depth+1)
 
 		name := h.String(frontend.FieldName)
@@ -254,7 +258,7 @@ func (w *pyWalker) mergeTryHandlers(handlers []*frontend.Node, entry, merged *py
 			b.set(name, pyValue{})
 		}
 
-		merged = mergePy(merged, b, map[pyValuePair]pyValue{})
+		merged = w.mergeStates(merged, b)
 	}
 
 	return merged
@@ -263,13 +267,13 @@ func (w *pyWalker) mergeTryHandlers(handlers []*frontend.Node, entry, merged *py
 func (w *pyWalker) loopStatement(n *frontend.Node, s *pyState, depth int) {
 	w.expr(n.Child(frontend.Iter), s, depth+1)
 	w.expr(n.Child(frontend.Test), s, depth+1)
-	a := s.fork()
+	a := w.forkState(s)
 	w.assign(n.Child(frontend.Target), pyValue{}, a, n)
 	w.block(n.List(frontend.Body), a, depth+1)
 	// Explore a second possible iteration so loop-carried sources can
 	// reach earlier sinks. The parser still reports limited loop semantics.
 	w.block(n.List(frontend.Body), a, depth+1)
-	mergePyBranches(s, s, a)
+	w.mergeBranches(s, s, a)
 	w.block(n.List(frontend.Orelse), s, depth+1)
 }
 

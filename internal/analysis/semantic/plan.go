@@ -11,13 +11,20 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/knowledge"
 	"github.com/skarm/scout/report"
 	"github.com/skarm/scout/review"
 )
 
-const excerptBytes = 768
+const (
+	maxDiscoveryChunkOverlapBytes = 512
+	assessmentContextBytes        = 384
+	maxSemanticGaps               = 4096
+	maxIndexedComponents          = 32
+	excerptBytes                  = 768
+)
 
 type work struct {
 	request  review.Request
@@ -36,6 +43,8 @@ type planner struct {
 	bytes       int
 	omittedGaps int
 	extraction  report.ExtractionReport
+
+	descriptions map[string]bool
 }
 
 type exactEvidence struct {
@@ -63,7 +72,7 @@ func (p *planner) request(mode string) review.Request {
 }
 
 func (p *planner) gap(code, path string, start, end int, finding, plugin string) {
-	if len(p.gaps) >= 4096 {
+	if len(p.gaps) >= maxSemanticGaps {
 		p.omittedGaps++
 		return
 	}
@@ -191,7 +200,7 @@ func (p *planner) planDiscovery(f artifact.File) {
 	m := f.Metadata()
 
 	text := f.Content()
-	if m.Kind != "text" || !utf8.ValidString(text) {
+	if m.Kind != report.FileKindText || !utf8.ValidString(text) {
 		p.gap("non_text_semantics_unsupported", m.Path, 0, len(text), "", "")
 		return
 	}
@@ -221,7 +230,7 @@ func (p *planner) planDiscovery(f artifact.File) {
 		} else {
 			// Small overlap reduces simple seam misses, without claiming general
 			// cross-chunk reasoning. Every byte remains covered by a discovery scope.
-			start = end - min(512, o.ChunkBytes/8)
+			start = end - min(maxDiscoveryChunkOverlapBytes, o.ChunkBytes/8)
 			start = boundaryBefore(text, start)
 		}
 	}
@@ -297,7 +306,7 @@ func (p *planner) planSkillIntents() {
 	}
 
 	for _, c := range p.graph.Components {
-		if c.Kind != "skill" || c.PluginID != "" || owned[c.Path] {
+		if c.Kind != report.ComponentSkill || c.PluginID != "" || owned[c.Path] {
 			continue
 		}
 
@@ -365,10 +374,10 @@ func (p *planner) planAssessment(finding report.Finding) {
 func (p *planner) assessmentContext(req *review.Request, finding report.Finding, seen map[string]bool, bytes int) {
 	o := p.options
 	if f, ok := p.files[finding.Location.Path]; ok {
-		start := max(0, finding.Location.ByteStart-384)
+		start := max(0, finding.Location.ByteStart-assessmentContextBytes)
 		start = boundaryBefore(f.Content(), start)
 
-		end := min(len(f.Content()), finding.Location.ByteEnd+384)
+		end := min(len(f.Content()), finding.Location.ByteEnd+assessmentContextBytes)
 		for end < len(f.Content()) && !boundaryAt(f.Content(), end) {
 			end++
 		}
@@ -420,10 +429,10 @@ func (p *planner) indexComponents() {
 	for path, ids := range p.components {
 		sort.Strings(ids)
 
-		if len(ids) > 32 {
+		if len(ids) > maxIndexedComponents {
 			p.gap("component_context_limit", path, 0, 0, "", "")
 
-			ids = ids[:32]
+			ids = ids[:maxIndexedComponents]
 		}
 
 		p.components[path] = ids
@@ -459,7 +468,7 @@ func (p *planner) pluginContext(req *review.Request, names []string) bool {
 
 	for _, name := range names {
 		f, ok := p.files[name]
-		if !ok || f.Metadata().Kind != "text" {
+		if !ok || f.Metadata().Kind != report.FileKindText {
 			limited = true
 			continue
 		}
@@ -480,7 +489,7 @@ func (p *planner) planSkillIntent(c report.Component) {
 	o := p.options
 
 	f, ok := p.files[c.Path]
-	if !ok || f.Metadata().Kind != "text" || len(f.Content()) > o.ChunkBytes {
+	if !ok || f.Metadata().Kind != report.FileKindText || len(f.Content()) > o.ChunkBytes {
 		p.gap("skill_intent_context_incomplete", c.Path, 0, 0, "", "")
 		return
 	}
@@ -521,7 +530,7 @@ func (p *planner) assessmentEvidence(refs []report.Location) exactEvidence {
 
 func (p *planner) evidenceExcerpt(loc report.Location) (review.Excerpt, bool) {
 	f, ok := p.files[loc.Path]
-	if !ok || f.Metadata().Kind != "text" || loc.ByteStart < 0 || loc.ByteEnd <= loc.ByteStart || loc.ByteEnd > len(f.Content()) || !boundaryAt(f.Content(), loc.ByteStart) || !boundaryAt(f.Content(), loc.ByteEnd) {
+	if !ok || f.Metadata().Kind != report.FileKindText || loc.ByteStart < 0 || loc.ByteEnd <= loc.ByteStart || loc.ByteEnd > len(f.Content()) || !boundaryAt(f.Content(), loc.ByteStart) || !boundaryAt(f.Content(), loc.ByteEnd) {
 		return review.Excerpt{}, false
 	}
 	// Main evidence is exact; contextual windows cannot replace or obscure it.
@@ -533,7 +542,7 @@ func (p *planner) evidenceExcerpt(loc report.Location) (review.Excerpt, bool) {
 	return ex, true
 }
 
-func build(ctx context.Context, files []artifact.File, g report.ComponentGraph, findings []report.Finding, snapshot string, o review.Options, extraction report.ExtractionReport) *planner {
+func build(ctx context.Context, files []artifact.File, docs []document.File, g report.ComponentGraph, findings []report.Finding, snapshot string, o review.Options, extraction report.ExtractionReport) *planner {
 	p := &planner{
 		ctx:        ctx,
 		options:    o,
@@ -545,6 +554,7 @@ func build(ctx context.Context, files []artifact.File, g report.ComponentGraph, 
 		gaps:       []report.SemanticGap{},
 	}
 	p.extraction = extraction
+	p.descriptions = preparedDescriptions(docs)
 
 	fs := append([]artifact.File(nil), files...)
 	for _, f := range fs {

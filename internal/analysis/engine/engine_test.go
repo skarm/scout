@@ -192,7 +192,11 @@ func TestFindingSeverityCannotExceedRuleMaximum(t *testing.T) {
 			decision: report.Review,
 		},
 	} {
-		t.Run(string(tc.severity), func(t *testing.T) {
+		name := string(tc.severity)
+		if name == "" {
+			name = "rule_default"
+		}
+		t.Run(name, func(t *testing.T) {
 			a := fake{id: "SEVERITY", find: func(context.Context, document.File, int) (check.Result, error) {
 				return check.Result{Matches: []check.Match{{Start: 0, End: 1, Severity: tc.severity}}}, nil
 			}}

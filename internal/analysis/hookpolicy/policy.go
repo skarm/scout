@@ -15,11 +15,16 @@ import (
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/hookevent"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
+)
+
+const (
+	maxHookSettingTextBytes = 65536
 )
 
 //nolint:gochecknoglobals // Fixed setting and permission vocabularies shared read-only by scans.
@@ -102,7 +107,7 @@ func KnownEvent(name string) bool { return hookevent.Known(name) }
 
 func IsSettings(name string) bool {
 	b := path.Base(name)
-	return b == "settings.json" || b == "settings.local.json"
+	return b == artifact.ClaudeSettings || b == artifact.ClaudeLocalSettings
 }
 
 // ValidDisable only trusts the closed modeled schema. Unknown fields cannot
@@ -231,11 +236,11 @@ func stringObject(n *jsonconfig.Node) bool {
 }
 
 func scopeRoot(name string) (string, bool) {
-	if path.Base(name) == "SKILL.md" {
+	if path.Base(name) == artifact.SkillManifest {
 		return path.Dir(name), true
 	}
 
-	if strings.HasSuffix(name, ".claude-plugin/plugin.json") || strings.HasSuffix(name, ".codex-plugin/plugin.json") {
+	if strings.HasSuffix(name, artifact.ClaudePluginManifest) || strings.HasSuffix(name, artifact.CodexPluginManifest) {
 		return path.Dir(path.Dir(name)), true
 	}
 
@@ -268,7 +273,7 @@ func scopeStates(scopes map[string]bool, settings map[string]setting) map[string
 		ns, root, _ := strings.Cut(key, "\x00")
 		state := State{}
 
-		for _, name := range []string{path.Join(root, ".claude/settings.local.json"), path.Join(root, ".claude/settings.json"), path.Join(root, "settings.local.json"), path.Join(root, "settings.json")} {
+		for _, name := range []string{path.Join(root, artifact.ClaudeProjectLocalSettings), path.Join(root, artifact.ClaudeProjectSettings), path.Join(root, artifact.ClaudeLocalSettings), path.Join(root, artifact.ClaudeSettings)} {
 			s, ok := settings[ns+"\x00"+name]
 			if !ok {
 				continue
@@ -324,7 +329,7 @@ func set(s string) map[string]bool {
 
 func text(n *jsonconfig.Node, nonempty bool) bool {
 	s, ok := n.Text()
-	return ok && len(s) <= 65536 && !strings.ContainsRune(s, 0) && (!nonempty || strings.TrimSpace(s) != "")
+	return ok && len(s) <= maxHookSettingTextBytes && !strings.ContainsRune(s, 0) && (!nonempty || strings.TrimSpace(s) != "")
 }
 
 func stringsList(n *jsonconfig.Node) bool {

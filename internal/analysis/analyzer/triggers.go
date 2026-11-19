@@ -17,6 +17,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxTriggerOperations = 32768
+)
+
 var (
 
 	//nolint:gochecknoglobals // Immutable lookup data shared by concurrent scans; initialized once to avoid rebuilding it per input.
@@ -92,7 +96,7 @@ func (a triggerCheck) Find(ctx context.Context, f document.File, budget int) (Re
 			}
 
 			ops++
-			if ops > 32768 {
+			if ops > maxTriggerOperations {
 				out.Truncated = true
 				return out, nil
 			}

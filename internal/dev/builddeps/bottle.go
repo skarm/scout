@@ -19,6 +19,12 @@ import (
 )
 
 const (
+	maxRegistryAuthResponseBytes = 1 << 20
+
+	bottleDownloadTimeout     = 10 * time.Minute
+	bottleDialTimeout         = 30 * time.Second
+	bottleTLSHandshakeTimeout = 10 * time.Second
+
 	maxArchive        = 512 << 20
 	licenseFile       = "LICENSE"
 	headerFile        = "include/yara_x.h"
@@ -90,7 +96,7 @@ func ensureBottle(ctx context.Context, prefix string, asset bottle) error {
 
 //nolint:gosec // G304: destination is a newly allocated staging file in the dependency cache.
 func downloadBottle(ctx context.Context, destination string, asset bottle) error {
-	client := &http.Client{Timeout: 10 * time.Minute}
+	client := &http.Client{Timeout: bottleDownloadTimeout}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://ghcr.io/token?service=ghcr.io&scope=repository:homebrew/core/yara-x:pull", nil)
 	if err != nil {
@@ -110,7 +116,7 @@ func downloadBottle(ctx context.Context, destination string, asset bottle) error
 	var auth struct {
 		Token string `json:"token"`
 	}
-	if err := json.NewDecoder(io.LimitReader(authResponse.Body, 1<<20)).Decode(&auth); err != nil || auth.Token == "" {
+	if err := json.NewDecoder(io.LimitReader(authResponse.Body, maxRegistryAuthResponseBytes)).Decode(&auth); err != nil || auth.Token == "" {
 		return errors.New("invalid Homebrew registry token response")
 	}
 
@@ -156,14 +162,14 @@ func getResponse(client *http.Client, request *http.Request) (*http.Response, er
 		return response, err
 	}
 	// Retry a failed connection over IPv4 when the host advertises unreachable IPv6.
-	dialer := &net.Dialer{Timeout: 30 * time.Second}
+	dialer := &net.Dialer{Timeout: bottleDialTimeout}
 
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: func(ctx context.Context, _, address string) (net.Conn, error) {
 			return dialer.DialContext(ctx, "tcp4", address)
 		},
-		TLSHandshakeTimeout: 10 * time.Second,
+		TLSHandshakeTimeout: bottleTLSHandshakeTimeout,
 	}
 	defer transport.CloseIdleConnections()
 

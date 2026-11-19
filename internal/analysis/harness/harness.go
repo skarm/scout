@@ -73,8 +73,16 @@ type candidateSet struct {
 	values []candidate
 }
 
+const (
+	maxPlugins         = 128
+	maxComponents      = 4096
+	maxEdges           = 8192
+	maxReferences      = 4096
+	maxGraphOperations = 500000
+)
+
 func Limits() report.HarnessLimits {
-	return report.HarnessLimits{Plugins: 128, Components: 4096, Edges: 8192, References: 4096, Operations: 500000}
+	return report.HarnessLimits{Plugins: maxPlugins, Components: maxComponents, Edges: maxEdges, References: maxReferences, Operations: maxGraphOperations}
 }
 
 // Discover reuses whole-file JSON trees from bounded preparation. Fenced JSON is
@@ -211,7 +219,7 @@ func (s *candidateSet) addProjectHookSettings(ns *namespace) {
 		dir := path.Dir(name)
 		base := path.Base(name)
 
-		if path.Base(dir) != ".claude" || base != "settings.json" && base != "settings.local.json" {
+		if path.Base(dir) != ".claude" || base != artifact.ClaudeSettings && base != artifact.ClaudeLocalSettings {
 			continue
 		}
 
@@ -253,15 +261,19 @@ func (b *builder) standaloneSkills() {
 				break
 			}
 
-			if path.Base(name) == "SKILL.md" {
+			if path.Base(name) == artifact.SkillManifest {
 				e := ns.entries[name]
-				b.node("", "skill", e, report.HostAgentSkills, "unknown", whole(e), "standalone")
+				b.node("", report.ComponentSkill, e, report.HostAgentSkills, "unknown", whole(e), "standalone")
 			}
 		}
 	}
 }
 
-func (b *builder) step() bool {
+func (b *builder) step() bool { return b.spend(1) }
+
+// Reserve a whole operation before copying or merging state. A refused
+// reservation leaves the graph already built by earlier operations intact.
+func (b *builder) spend(n int) bool {
 	if b.stopped {
 		return false
 	}
@@ -273,13 +285,14 @@ func (b *builder) step() bool {
 		return false
 	}
 
-	b.operations++
-	if b.operations > b.r.Limits.Operations {
+	if n > b.r.Limits.Operations-b.operations {
 		b.stopped = true
 		b.issue("harness_operation_limit", "", "", report.OutcomePartial)
 
 		return false
 	}
+
+	b.operations += n
 
 	return true
 }
@@ -454,7 +467,7 @@ func (b *builder) finish() {
 // A scan of a bundle is not an instruction to install an invented outer plugin.
 // Manifestless default-layout candidates remain supported inside each namespace.
 func (b *builder) containerCollection(ns *namespace) bool {
-	for _, name := range []string{"SKILL.md", "hooks/hooks.json", ".mcp.json", ".lsp.json"} {
+	for _, name := range []string{artifact.SkillManifest, "hooks/hooks.json", ".mcp.json", ".lsp.json"} {
 		if ns.entries[name] != nil {
 			return false
 		}

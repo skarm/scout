@@ -14,6 +14,16 @@ import (
 	"github.com/skarm/scout/internal/textmatch"
 )
 
+const (
+	minPaddingLines    = 20
+	minPaddingColumns  = 80
+	minPaddingRunBytes = 2048
+	minRepeatedGlyphs  = 512
+	minPaddedTextBytes = 4096
+	minPaddingTenths   = 9
+	tenthsScale        = 10
+)
+
 type paddingLine struct {
 	text       string
 	start, end int
@@ -22,8 +32,8 @@ type paddingLine struct {
 func paddingMatches(ctx context.Context, name, text string, budget int) (Result, error) {
 	out := Result{}
 
-	if budget < 1 {
-		return Result{Truncated: true}, nil
+	if err := ctx.Err(); err != nil {
+		return out, err
 	}
 
 	name = path.Base(strings.ReplaceAll(name, "\\", "/"))
@@ -156,7 +166,7 @@ func paddingLineRuns(ctx context.Context, lines []paddingLine, emit func(int, in
 			j++
 		}
 
-		if j-i >= 20 {
+		if j-i >= minPaddingLines {
 			emit(lines[i].start, lines[j-1].end)
 		}
 
@@ -256,7 +266,7 @@ func paddingColumnRuns(line paddingLine, aligned map[int]bool, emit func(int, in
 	onlySpaces := true
 
 	flush := func(at int) {
-		if count >= 80 && !(onlySpaces && aligned[column]) {
+		if count >= minPaddingColumns && !(onlySpaces && aligned[column]) {
 			emit(line.start+runStart, line.start+at)
 		}
 
@@ -301,7 +311,7 @@ func (r *paddingByteRun) consume(at, size int, padding bool, emit func(int, int)
 }
 
 func (r *paddingByteRun) flush(end int, emit func(int, int)) {
-	if r.bytes > 2048 {
+	if r.bytes > minPaddingRunBytes {
 		emit(r.start, end)
 	}
 
@@ -323,7 +333,7 @@ func (r *paddingGlyphRun) consume(at int, char rune, emit func(int, int)) {
 }
 
 func (r *paddingGlyphRun) flush(end int, emit func(int, int)) {
-	if r.count >= 512 && !paddingChar(r.last) {
+	if r.count >= minRepeatedGlyphs && !paddingChar(r.last) {
 		emit(r.start, end)
 	}
 }
@@ -334,7 +344,7 @@ func paddingRuneRuns(ctx context.Context, text string, emit func(int, int)) erro
 	paddingBytes := 0
 
 	for at, char := range text {
-		if at%4096 == 0 && ctx.Err() != nil {
+		if at%textScanCheckBytes == 0 && ctx.Err() != nil {
 			return ctx.Err()
 		}
 
@@ -350,7 +360,7 @@ func paddingRuneRuns(ctx context.Context, text string, emit func(int, int)) erro
 	padding.flush(len(text), emit)
 	repeated.flush(len(text), emit)
 
-	if len(text) > 4096 && paddingBytes*10 > len(text)*9 {
+	if len(text) > minPaddedTextBytes && paddingBytes*tenthsScale > len(text)*minPaddingTenths {
 		emit(0, len(text))
 	}
 

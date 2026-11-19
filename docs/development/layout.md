@@ -5,54 +5,14 @@ English · [Русский](layout.ru.md)
 Scout uses one Go module. Public packages are `scout`, `report`, `policy`, `baseline`,
 `review`, `fetch`, `osv`, `knowledge`, `rulepack` and `mcp`.
 
-```text
-scout/
-├── *.go                         # Scanner API; scan_test.go checks private helpers
-│   └── doc.go                   # package documentation
-├── cmd/{scout,scout-dev}/        # entrypoints
-├── report/                      # independent public contract
-├── policy/                      # policy evaluation of a sealed Run
-├── baseline/                    # trusted approvals
-├── review/                      # public provider protocols
-├── fetch/                       # public download configuration
-├── osv/                         # OSV and offline cache
-├── knowledge/{data,prompts,sources}/
-├── rulepack/                    # public versioned trusted-rulepack format
-├── mcp/                         # public server API
-├── internal/
-│   ├── buildinfo/               # module versions embedded in the running binary
-│   ├── capture/                 # ingest, artifact, rootfs, archives, extraction, external
-│   ├── syntax/                  # parsers, frontend, language/filetype, source maps
-│   ├── analysis/
-│   │   ├── languages/{golang,python,shell,javascript,sql,literals}/
-│   │   ├── analyzer/            # common catalog and cross-language checks
-│   │   ├── check/               # Analyzer, Match, Facts and binding contract
-│   │   ├── sourcepolicy/        # offline default package-source predicates
-│   │   ├── document/            # prepared source views
-│   │   ├── engine/              # orchestration and budgets
-│   │   ├── environment/         # explicit joint review of captured component facts
-│   │   └── other analysis packages
-│   ├── signatures/{rules,testdata}/
-│   ├── distribution/{integrations,skills,registry,attestation}/
-│   ├── discovery/               # passive agent configuration and component inventory
-│   ├── commands/{cli,config,devcli,output}/
-│   ├── dev/                     # builddeps, evaluation, maintenance, provenance,
-│   │                            # releasecheck, releasepack, replay, replaywire, treeparsecheck
-│   ├── nativecheck/
-│   ├── nativecontract/
-│   ├── netpolicy/
-│   ├── promptguard/             # raw-byte guard shared by literal and native checks
-│   ├── textmatch/
-│   ├── architecture/
-│   └── scantest/scenarios/
-├── tests/{api,scan,languages,regression,acceptance,performance}/
-├── testdata/                    # inputs, acceptance captures and provenance receipts
-├── docs/{user,development,reference}/
-├── licenses/
-├── .github/workflows/
-├── bin/                         # ignored: default build output; configurable with BIN_DIR
-└── .work/                       # ignored: temporary artifacts, coverage and metrics
-```
+- `cmd/scout` and `cmd/scout-dev` are the public and developer entry points.
+- `internal/capture` builds the inventory. `internal/syntax` parses captured sources and owns their coordinates.
+- `internal/analysis` orchestrates checks and limits. `internal/signatures` owns native signature checks.
+- `internal/commands` owns CLI parsing, configuration and output. `internal/discovery` inventories installed components.
+- `internal/distribution` owns integration exports, registry snapshots and attestation checks.
+- `internal/dev` contains build, evaluation, replay and release tooling.
+
+[Architecture and trust boundaries](architecture.md)
 
 ## Code ownership
 
@@ -81,12 +41,6 @@ references when moving or renaming code. Do not rewrite recorded evidence.
 
 ## Documentation and working data
 
-English guides use `.md`; Russian counterparts use `.ru.md`. Source GoDoc is English.
-See [writing conventions](documentation.md).
+Guides live under `docs/user`, `docs/reference` and `docs/development`. Use the [writing conventions](documentation.md) for English, Russian and GoDoc.
 
-`bin/` is the default binary output directory; `BIN_DIR` can point elsewhere.
-`make install` copies Scout to `PREFIX/bin` (default `~/.local/bin`). `.work/`
-holds temporary reports, coverage and metrics. `make clean` removes the built
-binaries and `.work/`, preserving installed copies. Acceptance captures live in
-`testdata/acceptance/`; saved replay and receipts live in `testdata/provenance/`.
-Native dependencies use the user cache.
+`bin/` holds builds and `.work/` holds temporary reports and metrics. See [build paths](native-build.md#installation-and-output-paths) for overrides and cleanup. Acceptance captures and provenance receipts live under `testdata/`.

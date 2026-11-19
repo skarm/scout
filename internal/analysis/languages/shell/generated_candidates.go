@@ -194,7 +194,7 @@ func generatedHeredocPreamble(parent source.View, input *shellsyntax.Redirect, v
 	raw := text[span.Start:span.End]
 	prefix := raw
 
-	if input.Op == "<<-" {
+	if input.Op == shellsyntax.RedirectStripHereDoc {
 		prefix = strings.TrimLeft(prefix, "\t")
 	}
 

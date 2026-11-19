@@ -11,36 +11,44 @@ import (
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/literals"
 	"github.com/skarm/scout/internal/syntax/frontend"
+	"github.com/skarm/scout/internal/syntax/markdown"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/scriptsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
 const (
-	nodeArray       = "array-value"
-	nodeObject      = "object-value"
-	nodeReturn      = "return"
-	nodeName        = "name"
-	nodeLiteral     = "literal"
-	nodeFunction    = "function-value"
-	nodeAssign      = "assign"
-	nodeAssignGroup = "parallel-assign"
-	nodeDeclare     = "declare-if-absent"
-	nodeMutate      = "compound-write"
-	nodeIndex       = "index"
-	nodeMember      = "member"
-	nodeCall        = "call"
-	nodeConstruct   = "construct"
-	nodeConcat      = "concat"
-	nodeBranch      = "branch"
-	nodeAggregate   = "aggregate"
-	nodeScope       = "lexical-scope"
-	nodeSequence    = "sequence"
-	nodeStatement   = "expression-statement"
-	nodeResolver    = "resolver-value"
-	nodeAddress     = "address-value"
-	nodeWrite       = "member-write"
-	nodeAwait       = "await-value"
+	maxBundleProjectionDepth = 64
+)
+
+const (
+	nodeArray         = "array-value"
+	nodeObject        = "object-value"
+	nodeReturn        = "return"
+	nodeName          = "name"
+	nodeLiteral       = "literal"
+	nodeFunction      = "function-value"
+	nodeImport        = "import-value"
+	nodeAssign        = "assign"
+	nodeAssignGroup   = "parallel-assign"
+	nodeDeclare       = "declare-if-absent"
+	nodeMutate        = "compound-write"
+	nodeIndex         = "index"
+	nodeMember        = "member"
+	nodeCall          = "call"
+	nodeConstruct     = "construct"
+	nodeConcat        = "concat"
+	nodeScalar        = "scalar-result"
+	nodePythonCompare = "python-comparison"
+	nodeBranch        = "branch"
+	nodeAggregate     = "aggregate"
+	nodeScope         = "lexical-scope"
+	nodeSequence      = "sequence"
+	nodeStatement     = "expression-statement"
+	nodeResolver      = "resolver-value"
+	nodeAddress       = "address-value"
+	nodeWrite         = "member-write"
+	nodeAwait         = "await-value"
 )
 
 type bundleNode struct {
@@ -50,8 +58,10 @@ type bundleNode struct {
 	span             source.Span
 	children         []*bundleNode
 	function         *bundleFunction
+	imported         bundleImport
 	locals           map[string]bool
 	globalWrite      bool
+	isolated         bool // Class body bindings do not escape into the enclosing frame.
 	rebind           bool
 	valueFirst       bool     // Python plain member assignment evaluates the RHS first.
 	argumentNames    []string // Python call arguments: empty=positional, *=unresolved expansion.
@@ -92,7 +102,7 @@ type bundleProgram struct {
 
 func (b *bundleAnalysis) buildPrograms(d document.File) {
 	for _, u := range d.Units() {
-		if u.Origin != "file" && u.Origin != "fenced-code" && u.Origin != "indented-code" {
+		if u.Origin != "file" && u.Origin != markdown.FencedCode && u.Origin != markdown.IndentedCode {
 			continue
 		}
 
@@ -166,7 +176,7 @@ func (b *bundleAnalysis) pythonNodes(p *bundleProgram, nodes []*frontend.Node, d
 }
 
 func (b *bundleAnalysis) pythonNode(p *bundleProgram, n *frontend.Node, depth int) *bundleNode {
-	if depth > 64 {
+	if depth > maxBundleProjectionDepth {
 		b.gap = errors.New("python bundle projection depth limit")
 		return nil
 	}
@@ -194,17 +204,35 @@ func (b *bundleAnalysis) pythonNode(p *bundleProgram, n *frontend.Node, depth in
 			b.gap = errors.New("dynamic Python parameter defaults are unresolved")
 		}
 
-		b.pythonAnnotationLocals(n.List(frontend.Body), fn.locals, 0)
+		b.pythonFunctionLocals(n.List(frontend.Body), fn.locals)
 
 		p.buildingFunction++
 		fn.body = b.pythonNodes(p, n.List(frontend.Body), depth+1)
 		p.buildingFunction--
-		p.functions[fn.name] = fn
 
-		return nil
+		// Definitions bind when reached. Keep each function identity separately
+		// so an earlier alias survives a later definition with the same name.
+		name := fn.name
+		fn.name = "*python-function@" + strconv.Itoa(n.Start) + "*"
+		p.functions[fn.name] = fn
+		out.kind, out.name = nodeAssign, name
+		out.children = []*bundleNode{{kind: nodeFunction, function: fn}}
+
+		return out
+	case frontend.ClassDef:
+		// Class bodies execute in a separate namespace. Keep method observations,
+		// without introducing their names into the enclosing module's bindings.
+		body := b.pythonNodes(p, n.List(frontend.Body), depth+1)
+		out.kind, out.name = nodeAssign, n.String(frontend.FieldName)
+		expressions := b.pythonNodes(p, n.List(frontend.DecoratorList), depth+1)
+		expressions = append(expressions, b.pythonNodes(p, n.List(frontend.Bases), depth+1)...)
+		expressions = append(expressions, b.pythonNodes(p, n.List(frontend.Keywords), depth+1)...)
+		expressions = append(expressions, &bundleNode{kind: nodeScope, isolated: true, children: body})
+		out.children = []*bundleNode{{kind: nodeSequence, children: expressions}}
+
+		return out
 	case frontend.Import, frontend.ImportFrom:
-		b.pythonImports(p, n)
-		return nil
+		return b.pythonImports(n, out)
 	case frontend.Name:
 		out.kind, out.name = nodeName, n.String(frontend.ID)
 	case frontend.Constant:
@@ -244,37 +272,29 @@ func (b *bundleAnalysis) pythonNode(p *bundleProgram, n *frontend.Node, depth in
 		out.kind = nodeBranch
 		out.children = b.pythonNodes(p, n.Children(), depth+1)
 	case frontend.BinOp:
-		out.kind = nodeConcat
+		if n.String(frontend.Op) == "+" {
+			out.kind = nodeConcat
+		} else {
+			// Repetition, formatting and user-defined operators may retain
+			// operand data, but are not literal string concatenation.
+			b.gap = errors.New("python binary operation result is unresolved")
+		}
+
+		out.children = []*bundleNode{child(n.Child(frontend.Left)), child(n.Child(frontend.Right))}
+	case frontend.UnaryOp:
+		if n.String(frontend.Op) == frontend.OpNot {
+			out.kind = nodeScalar
+		}
+
+		out.children = []*bundleNode{child(n.Child(frontend.Operand))}
+	case frontend.Compare:
+		out.kind = nodePythonCompare
 		out.children = []*bundleNode{child(n.Child(frontend.Left)), child(n.Child(frontend.Right))}
 	default:
 		out.children = b.pythonNodes(p, n.Children(), depth+1)
 	}
 
 	return out
-}
-
-func (b *bundleAnalysis) pythonAnnotationLocals(nodes []*frontend.Node, names map[string]bool, depth int) {
-	if depth > 64 {
-		b.err = errors.New("python local annotation binding depth limit")
-		return
-	}
-
-	for _, n := range nodes {
-		if !b.step() {
-			return
-		}
-
-		switch n.Kind() {
-		case frontend.FunctionDef, frontend.AsyncFunctionDef, frontend.ClassDef:
-			continue
-		case frontend.AnnAssign:
-			if target := n.Child(frontend.Target); target != nil && target.Kind() == frontend.Name {
-				names[target.String(frontend.ID)] = true
-			}
-		default:
-			b.pythonAnnotationLocals(n.Children(), names, depth+1)
-		}
-	}
 }
 
 func (b *bundleAnalysis) pythonAssignment(p *bundleProgram, n *frontend.Node, out *bundleNode, depth int) *bundleNode {
@@ -358,6 +378,12 @@ func pythonParameters(fn *bundleFunction, args *frontend.Node) bool {
 		}
 	}
 
+	for _, field := range []frontend.FieldKind{frontend.Vararg, frontend.Kwarg} {
+		if arg := args.Child(field); arg != nil {
+			fn.locals[arg.String(frontend.FieldArg)] = true
+		}
+	}
+
 	dynamic := false
 	for i, value := range args.List(frontend.Defaults) {
 		dynamic = dynamic || value != nil && value.Kind() != frontend.Constant
@@ -409,7 +435,9 @@ func scriptText(p *bundleProgram, n *scriptsyntax.Node) string {
 		return ""
 	}
 
-	return p.unit.View.Text()[n.Start:n.End]
+	value, _ := scriptsyntax.IdentifierText(n.Kind, p.unit.View.Text()[n.Start:n.End])
+
+	return value
 }
 
 func bundleScriptLiteral(s string) (string, bool) {
@@ -454,7 +482,7 @@ func (b *bundleAnalysis) scriptNodesExported(p *bundleProgram, nodes []*scriptsy
 }
 
 func (b *bundleAnalysis) scriptNode(p *bundleProgram, n *scriptsyntax.Node, depth int, exported bool) *bundleNode {
-	if depth > 64 {
+	if depth > maxBundleProjectionDepth {
 		b.err = errors.New("script bundle projection depth limit")
 		return nil
 	}
@@ -470,63 +498,63 @@ func (b *bundleAnalysis) scriptNode(p *bundleProgram, n *scriptsyntax.Node, dept
 
 	child := func(n *scriptsyntax.Node) *bundleNode { return b.scriptNode(p, n, depth+1, false) }
 	switch n.Kind {
-	case "comment":
+	case scriptsyntax.KindComment:
 		return nil
-	case "export_statement":
+	case scriptsyntax.KindExportStatement:
 		return b.scriptExport(p, n, out, depth)
-	case "import_statement":
+	case scriptsyntax.KindImportStatement:
 		b.scriptImport(p, n)
 		return nil
-	case "function_declaration":
+	case scriptsyntax.KindFunctionDeclaration:
 		b.scriptFunctionDeclaration(p, n, depth, exported)
 		return nil
-	case "arrow_function", "function_expression":
+	case scriptsyntax.KindArrowFunction, scriptsyntax.KindFunctionExpression:
 		out.kind, out.function = nodeFunction, b.scriptFunction(p, n, depth)
-	case "generator_function_declaration", "generator_function", "class_declaration", "class", "method_definition":
+	case scriptsyntax.KindGeneratorFunctionDeclaration, scriptsyntax.KindGeneratorFunction, scriptsyntax.KindClassDeclaration, scriptsyntax.KindClass, scriptsyntax.KindMethodDefinition:
 		b.gap = errors.New("script generator, class or method bundle values are unresolved")
 		return nil
-	case "lexical_declaration", "variable_declaration":
+	case scriptsyntax.KindLexicalDeclaration, scriptsyntax.KindVariableDeclaration:
 		out.children = b.scriptDeclarations(p, n, depth, exported)
-	case "statement_block", "catch_clause", "for_statement", "for_in_statement", "switch_body":
+	case scriptsyntax.KindStatementBlock, scriptsyntax.KindCatchClause, scriptsyntax.KindForStatement, scriptsyntax.KindForInStatement, scriptsyntax.KindSwitchBody:
 		return b.scriptScope(p, n, out, depth)
-	case "sequence_expression":
+	case scriptsyntax.KindSequenceExpression:
 		out.kind = nodeSequence
 		out.children = b.scriptArray(p, n.Children, depth)
-	case "await_expression":
+	case scriptsyntax.KindAwaitExpression:
 		out.kind = nodeAwait
 		out.children = []*bundleNode{b.scriptValue(p, n, depth)}
-	case "parenthesized_expression", "as_expression", "satisfies_expression", "type_assertion", "non_null_expression":
+	case scriptsyntax.KindParenthesizedExpression, scriptsyntax.KindAsExpression, scriptsyntax.KindSatisfiesExpression, scriptsyntax.KindTypeAssertion, scriptsyntax.KindNonNullExpression:
 		return b.scriptValue(p, n, depth)
-	case "identifier", "property_identifier", "shorthand_property_identifier":
+	case scriptsyntax.KindIdentifier, scriptsyntax.KindPropertyIdentifier, scriptsyntax.KindShorthandPropertyIdentifier:
 		out.kind, out.name = nodeName, scriptText(p, n)
-	case "string", "template_string":
+	case scriptsyntax.KindString, scriptsyntax.KindTemplateString:
 		return b.scriptLiteral(p, n, out, depth)
-	case "array", "object":
+	case scriptsyntax.KindArray, scriptsyntax.KindObject:
 		return b.scriptCollection(p, n, out, depth)
-	case "member_expression":
-		out.kind, out.name = nodeMember, scriptText(p, n.Child("property"))
-		out.children = []*bundleNode{child(n.Child("object"))}
-	case "subscript_expression":
+	case scriptsyntax.KindMemberExpression:
+		out.kind, out.name = nodeMember, scriptText(p, n.Child(scriptsyntax.FieldProperty))
+		out.children = []*bundleNode{child(n.Child(scriptsyntax.FieldObject))}
+	case scriptsyntax.KindSubscriptExpression:
 		out.kind = nodeIndex
-		out.children = []*bundleNode{child(n.Child("object")), child(n.Child("index"))}
-	case "call_expression", "new_expression":
+		out.children = []*bundleNode{child(n.Child(scriptsyntax.FieldObject)), child(n.Child(scriptsyntax.FieldIndex))}
+	case scriptsyntax.KindCallExpression, scriptsyntax.KindNewExpression:
 		return b.scriptCallNode(p, n, out, depth)
-	case "return_statement", "expression_statement":
+	case scriptsyntax.KindReturnStatement, scriptsyntax.KindExpressionStatement:
 		return b.scriptStatement(p, n, out, depth)
-	case "variable_declarator":
+	case scriptsyntax.KindVariableDeclarator:
 		return b.scriptDeclaration(p, n, out, depth, exported)
-	case "assignment_expression":
+	case scriptsyntax.KindAssignmentExpression:
 		return b.scriptAssignment(p, n, out, depth)
-	case "augmented_assignment_expression", "update_expression":
+	case scriptsyntax.KindAugmentedAssignmentExpression, scriptsyntax.KindUpdateExpression:
 		return b.scriptMutation(p, n, out, depth)
-	case "unary_expression":
+	case scriptsyntax.KindUnaryExpression:
 		return b.scriptUnary(p, n, out, depth)
-	case "binary_expression":
-		out.kind = nodeConcat
-		out.children = []*bundleNode{child(n.Child("left")), child(n.Child("right"))}
-	case "pair":
-		return child(n.Child("value"))
-	case "if_statement", "while_statement", "try_statement", "switch_statement", "ternary_expression":
+	case scriptsyntax.KindBinaryExpression:
+		out.kind = scriptBinaryKind(scriptText(p, n.Child(scriptsyntax.FieldOperator)))
+		out.children = []*bundleNode{child(n.Child(scriptsyntax.FieldLeft)), child(n.Child(scriptsyntax.FieldRight))}
+	case scriptsyntax.KindPair:
+		return child(n.Child(scriptsyntax.FieldValue))
+	case scriptsyntax.KindIfStatement, scriptsyntax.KindWhileStatement, scriptsyntax.KindTryStatement, scriptsyntax.KindSwitchStatement, scriptsyntax.KindTernaryExpression:
 		out.kind = nodeBranch
 		out.children = b.scriptNodes(p, n.Children, depth+1)
 	default:
@@ -537,7 +565,7 @@ func (b *bundleAnalysis) scriptNode(p *bundleProgram, n *scriptsyntax.Node, dept
 }
 
 func (b *bundleAnalysis) scriptStatement(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
-	if n.Kind == "return_statement" {
+	if n.Kind == scriptsyntax.KindReturnStatement {
 		out.kind = nodeReturn
 		out.children = []*bundleNode{b.scriptValue(p, n, depth)}
 	} else {
@@ -579,11 +607,11 @@ func (b *bundleAnalysis) literalNode(n *bundleNode) *bundleNode {
 }
 
 func (b *bundleAnalysis) scriptAssignment(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
-	if left := n.Child("left"); left != nil && (left.Kind == "member_expression" || left.Kind == "subscript_expression") {
-		return b.scriptMemberWrite(p, left, n.Child("right"), out, depth)
+	if left := n.Child(scriptsyntax.FieldLeft); left != nil && (left.Kind == scriptsyntax.KindMemberExpression || left.Kind == scriptsyntax.KindSubscriptExpression) {
+		return b.scriptMemberWrite(p, left, n.Child(scriptsyntax.FieldRight), out, depth)
 	}
 
-	b.scriptBindingWrite(p, n.Child("left"), n.Child("right"), out, depth)
+	b.scriptBindingWrite(p, n.Child(scriptsyntax.FieldLeft), n.Child(scriptsyntax.FieldRight), out, depth)
 
 	return out
 }
@@ -592,7 +620,7 @@ func (b *bundleAnalysis) scriptBindingWrite(p *bundleProgram, target, value *scr
 	out.kind = nodeAssign
 	out.children = []*bundleNode{b.scriptNode(p, value, depth+1, false)}
 
-	if target != nil && target.Kind == "identifier" {
+	if target != nil && target.Kind == scriptsyntax.KindIdentifier {
 		out.name = scriptText(p, target)
 	} else {
 		// A partial pattern write could preserve an overwritten resolver alias.
@@ -601,8 +629,8 @@ func (b *bundleAnalysis) scriptBindingWrite(p *bundleProgram, target, value *scr
 }
 
 func (b *bundleAnalysis) scriptDeclaration(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int, exported bool) *bundleNode {
-	target := n.Child("name")
-	b.scriptBindingWrite(p, target, n.Child("value"), out, depth)
+	target := n.Child(scriptsyntax.FieldName)
+	b.scriptBindingWrite(p, target, n.Child(scriptsyntax.FieldValue), out, depth)
 
 	if out.globalWrite {
 		// Declaration patterns contain local bindings, never member writes.
@@ -619,23 +647,39 @@ func (b *bundleAnalysis) scriptDeclaration(p *bundleProgram, n *scriptsyntax.Nod
 }
 
 func (b *bundleAnalysis) scriptUnary(p *bundleProgram, n *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
-	if scriptText(p, n.Child("operator")) == "delete" {
+	switch scriptText(p, n.Child(scriptsyntax.FieldOperator)) {
+	case "delete":
 		out.kind, out.globalWrite = nodeAssign, true
+	case "void", "typeof":
+		out.kind = nodeStatement // Evaluate the operand without carrying its contents forward.
+	case "+", "-", "~", "!":
+		out.kind = nodeScalar
 	}
 
-	out.children = []*bundleNode{b.scriptNode(p, n.Child("argument"), depth+1, false)}
+	out.children = []*bundleNode{b.scriptNode(p, n.Child(scriptsyntax.FieldArgument), depth+1, false)}
 
 	return out
 }
 
+// Arithmetic and comparisons produce a number, bigint or boolean even for text operands.
+func scriptBinaryKind(op string) string {
+	switch op {
+	case scriptsyntax.OpSubtract, scriptsyntax.OpMultiply, scriptsyntax.OpDivide, scriptsyntax.OpRemainder, scriptsyntax.OpPower, scriptsyntax.OpBitwiseAnd, scriptsyntax.OpBitwiseOr, scriptsyntax.OpBitwiseXor, scriptsyntax.OpLeftShift, scriptsyntax.OpRightShift, scriptsyntax.OpUnsignedRightShift,
+		scriptsyntax.OpEqual, scriptsyntax.OpNotEqual, scriptsyntax.OpStrictEqual, scriptsyntax.OpStrictNotEqual, scriptsyntax.OpLess, scriptsyntax.OpLessEqual, scriptsyntax.OpGreater, scriptsyntax.OpGreaterEqual, scriptsyntax.OpIn, scriptsyntax.OpInstanceof, scriptsyntax.OpIncrement, scriptsyntax.OpDecrement:
+		return nodeScalar
+	}
+
+	return nodeConcat
+}
+
 func (b *bundleAnalysis) scriptMemberWrite(p *bundleProgram, left, right *scriptsyntax.Node, out *bundleNode, depth int) *bundleNode {
 	out.kind = nodeWrite
-	out.children = []*bundleNode{b.scriptNode(p, left.Child("object"), depth+1, false)}
+	out.children = []*bundleNode{b.scriptNode(p, left.Child(scriptsyntax.FieldObject), depth+1, false)}
 
-	if left.Kind == "member_expression" {
-		out.name, out.known = scriptText(p, left.Child("property")), true
+	if left.Kind == scriptsyntax.KindMemberExpression {
+		out.name, out.known = scriptText(p, left.Child(scriptsyntax.FieldProperty)), true
 	} else {
-		out.children = append(out.children, b.scriptNode(p, left.Child("index"), depth+1, false))
+		out.children = append(out.children, b.scriptNode(p, left.Child(scriptsyntax.FieldIndex), depth+1, false))
 	}
 
 	out.children = append(out.children, b.scriptNode(p, right, depth+1, false))
@@ -646,9 +690,21 @@ func (b *bundleAnalysis) scriptMemberWrite(p *bundleProgram, left, right *script
 func (b *bundleAnalysis) scriptArray(p *bundleProgram, children []*scriptsyntax.Node, depth int) []*bundleNode {
 	var out []*bundleNode
 
+	expectItem := true
+
 	for _, c := range children {
-		if c.Kind != "[" && c.Kind != "]" && c.Kind != "," {
+		switch c.Kind {
+		case scriptsyntax.KindOpenBracket, scriptsyntax.KindCloseBracket, scriptsyntax.KindComment:
+			continue
+		case scriptsyntax.KindComma:
+			if expectItem {
+				out = append(out, nil) // An elision occupies an array index.
+			}
+
+			expectItem = true
+		default:
 			out = append(out, b.scriptNode(p, c, depth+1, false))
+			expectItem = false
 		}
 	}
 
@@ -659,7 +715,7 @@ func (b *bundleAnalysis) goStatements(p *bundleProgram, fs *token.FileSet, stmts
 	var out []*bundleNode
 
 	for _, s := range stmts {
-		if depth > 64 {
+		if depth > maxBundleProjectionDepth {
 			b.gap = errors.New("go bundle projection depth limit")
 			break
 		}
@@ -756,7 +812,7 @@ func assignmentGroup(at *bundleNode, assignments []*bundleNode) []*bundleNode {
 }
 
 func (b *bundleAnalysis) goExpr(p *bundleProgram, fs *token.FileSet, e ast.Expr, depth int) *bundleNode {
-	if depth > 64 {
+	if depth > maxBundleProjectionDepth {
 		b.gap = errors.New("go bundle expression depth limit")
 		return nil
 	}
@@ -843,10 +899,35 @@ func (b *bundleAnalysis) goComposite(p *bundleProgram, fs *token.FileSet, e *ast
 	}
 
 	for _, value := range e.Elts {
+		if pair, ok := value.(*ast.KeyValueExpr); ok && goMapLiteral(p, e.Type) {
+			// Map keys are evaluated data; struct keys are field labels.
+			n.children = append(n.children, b.goExpr(p, fs, pair.Key, depth+1))
+		}
+
 		n.children = append(n.children, b.goExpr(p, fs, value, depth+1))
 	}
 
 	return n
+}
+
+func goMapLiteral(p *bundleProgram, typ ast.Expr) bool {
+	if _, ok := typ.(*ast.MapType); ok {
+		return true
+	}
+
+	selector, ok := typ.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Values" {
+		return false
+	}
+
+	qualifier, ok := selector.X.(*ast.Ident)
+	if !ok || p.imports[qualifier.Name].module != "net/url" {
+		return false
+	}
+
+	tree, ok := p.unit.Tree.(parse.GoTree)
+
+	return ok && tree.Bindings.Lookup(qualifier) == nil
 }
 
 func goResolverType(p *bundleProgram, typ ast.Expr) bool {
@@ -919,27 +1000,41 @@ func (b *bundleAnalysis) buildGo(p *bundleProgram, t parse.GoTree) {
 	}
 }
 
-func (b *bundleAnalysis) pythonImports(p *bundleProgram, n *frontend.Node) {
-	module := n.String(frontend.FieldModule)
-
-	level, _ := n.Field(frontend.Level).Integer()
+func (b *bundleAnalysis) pythonImports(n *frontend.Node, out *bundleNode) *bundleNode {
 	for _, alias := range n.List(frontend.Names) {
-		name, as := alias.String(frontend.FieldName), alias.String(frontend.Asname)
-		if as == "" {
-			as = name
+		if !b.step() {
+			break
 		}
 
-		if n.Kind() == frontend.Import {
-			p.imports[as] = bundleImport{module: name, local: true}
-		} else {
-			prefix := ""
-			if level > 0 {
-				prefix = strings.Repeat(".", int(level))
-			}
-
-			p.imports[as] = bundleImport{module: prefix + module, symbol: name, local: true}
-		}
+		name, imp := pythonImportBinding(n, alias)
+		out.children = append(out.children, &bundleNode{kind: nodeImport, name: name, imported: imp, span: out.span})
 	}
+
+	return out
+}
+
+func pythonImportBinding(n, alias *frontend.Node) (string, bundleImport) {
+	name, as := alias.String(frontend.FieldName), alias.String(frontend.Asname)
+	if n.Kind() == frontend.Import {
+		module := name
+		if as == "" {
+			as, _, _ = strings.Cut(name, ".")
+			module = as
+		}
+
+		return as, bundleImport{module: module, local: true}
+	}
+
+	if as == "" {
+		as = name
+	}
+
+	module := n.String(frontend.FieldModule)
+	if level, _ := n.Field(frontend.Level).Integer(); level > 0 {
+		module = strings.Repeat(".", int(level)) + module
+	}
+
+	return as, bundleImport{module: module, symbol: name, local: true}
 }
 
 func (b *bundleAnalysis) scriptImport(p *bundleProgram, n *scriptsyntax.Node) {
@@ -953,10 +1048,10 @@ func (b *bundleAnalysis) scriptImport(p *bundleProgram, n *scriptsyntax.Node) {
 		}
 
 		switch n.Kind {
-		case "import_specifier":
-			name := scriptText(p, n.Child("name"))
+		case scriptsyntax.KindImportSpecifier:
+			name := scriptText(p, n.Child(scriptsyntax.FieldName))
 
-			alias := scriptText(p, n.Child("alias"))
+			alias := scriptText(p, n.Child(scriptsyntax.FieldAlias))
 			if alias == "" {
 				alias = name
 			}
@@ -964,17 +1059,17 @@ func (b *bundleAnalysis) scriptImport(p *bundleProgram, n *scriptsyntax.Node) {
 			p.imports[alias] = bundleImport{module: module, symbol: name, local: strings.HasPrefix(module, ".")}
 
 			return
-		case "namespace_import":
+		case scriptsyntax.KindNamespaceImport:
 			for _, c := range n.Children {
-				if c.Kind == "identifier" {
+				if c.Kind == scriptsyntax.KindIdentifier {
 					p.imports[scriptText(p, c)] = bundleImport{module: module, local: strings.HasPrefix(module, ".")}
 				}
 			}
 
 			return
-		case "import_clause":
+		case scriptsyntax.KindImportClause:
 			for _, c := range n.Children {
-				if c.Kind == "identifier" {
+				if c.Kind == scriptsyntax.KindIdentifier {
 					symbol := ""
 					if strings.HasPrefix(module, ".") {
 						symbol = "default"
@@ -997,7 +1092,7 @@ func (b *bundleAnalysis) scriptImport(p *bundleProgram, n *scriptsyntax.Node) {
 }
 
 func (b *bundleAnalysis) scriptModuleSpecifier(p *bundleProgram, n *scriptsyntax.Node) string {
-	module, ok := bundleScriptLiteral(scriptText(p, n.Child("source")))
+	module, ok := bundleScriptLiteral(scriptText(p, n.Child(scriptsyntax.FieldSource)))
 	module = strings.TrimPrefix(module, "node:")
 
 	if !ok || module == "" {
@@ -1010,13 +1105,13 @@ func (b *bundleAnalysis) scriptModuleSpecifier(p *bundleProgram, n *scriptsyntax
 }
 
 func (b *bundleAnalysis) scriptFunction(p *bundleProgram, n *scriptsyntax.Node, depth int) *bundleFunction {
-	if p.buildingFunction > 0 || n.Kind == "function_declaration" && len(p.scriptScopes) > 0 {
+	if p.buildingFunction > 0 || n.Kind == scriptsyntax.KindFunctionDeclaration && len(p.scriptScopes) > 0 {
 		b.gap = errors.New("nested script bundle functions are unresolved")
 		return nil
 	}
 
-	fn := &bundleFunction{program: p, name: scriptText(p, n.Child("name")), locals: map[string]bool{}}
-	if n.Kind != "function_declaration" {
+	fn := &bundleFunction{program: p, name: scriptText(p, n.Child(scriptsyntax.FieldName)), locals: map[string]bool{}}
+	if n.Kind != scriptsyntax.KindFunctionDeclaration {
 		fn.self = fn.name
 		// This key cannot collide with a source-level identifier. Expressions
 		// enter lexical bindings only when their assignment is evaluated.
@@ -1024,23 +1119,23 @@ func (b *bundleAnalysis) scriptFunction(p *bundleProgram, n *scriptsyntax.Node, 
 	}
 
 	var params []*scriptsyntax.Node
-	if list := n.Child("parameters"); list != nil {
+	if list := n.Child(scriptsyntax.FieldParameters); list != nil {
 		params = list.Children
-	} else if param := n.Child("parameter"); param != nil {
+	} else if param := n.Child(scriptsyntax.FieldParameter); param != nil {
 		params = []*scriptsyntax.Node{param}
 	}
 
 	for _, c := range params {
-		if c.Kind == "(" || c.Kind == ")" || c.Kind == "," || c.Kind == "comment" {
+		if c.Kind == scriptsyntax.KindOpenParen || c.Kind == scriptsyntax.KindCloseParen || c.Kind == scriptsyntax.KindComma || c.Kind == scriptsyntax.KindComment {
 			continue
 		}
 
 		name := c
-		if c.Kind == "required_parameter" || c.Kind == "optional_parameter" {
-			name = c.Child("pattern")
+		if c.Kind == scriptsyntax.KindRequiredParameter || c.Kind == scriptsyntax.KindOptionalParameter {
+			name = c.Child(scriptsyntax.FieldPattern)
 		}
 
-		if name == nil || name.Kind != "identifier" || c.Child("value") != nil {
+		if name == nil || name.Kind != scriptsyntax.KindIdentifier || c.Child(scriptsyntax.FieldValue) != nil {
 			b.gap = errors.New("script bundle parameter pattern is unresolved")
 			return nil
 		}
@@ -1049,9 +1144,9 @@ func (b *bundleAnalysis) scriptFunction(p *bundleProgram, n *scriptsyntax.Node, 
 		fn.locals[scriptText(p, name)] = true
 	}
 
-	if body := n.Child("body"); body != nil {
+	if body := n.Child(scriptsyntax.FieldBody); body != nil {
 		p.buildingFunction++
-		if body.Kind == "statement_block" {
+		if body.Kind == scriptsyntax.KindStatementBlock {
 			b.scriptFunctionLocals(p, body.Children, fn.locals, true, 0)
 			fn.body = b.scriptNodes(p, body.Children, depth+1)
 		} else if value := b.scriptNode(p, body, depth+1, false); value != nil {

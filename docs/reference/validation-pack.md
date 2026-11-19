@@ -39,14 +39,9 @@ Knowledge, instruction and integration bundle labels are defined together in
 [`internal/reviewpack/version.go`](../../internal/reviewpack/version.go).
 `knowledge.Version` and `review.PromptVersion` remain public Go constants.
 These labels are independent of the Scout version and protocol/JSON schema versions.
-The `v4` suffix was inherited from the preview; the available Git history does
-not establish a sequence of four releases.
 
 SHA-256 digests identify the exact pack, individual instructions and bundle files.
 Content edits update digests automatically. Change a label when its compatibility
 contract changes, rather than for every text edit.
 
-Exported `.scout-bundle.json` and `transfer-manifest.json` receive the same current
-bundle version. The `adaptation_version` field in `transfer-manifest.json` retains
-the original adaptation label; old versions recorded in provenance do not describe
-the current bundle.
+Exports use the same bundle version in `.scout-bundle.json` and `transfer-manifest.json`. The `adaptation_version` field identifies the source adaptation.

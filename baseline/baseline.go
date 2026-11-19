@@ -21,6 +21,12 @@ import (
 )
 
 const (
+	maxEngineVersionBytes = 128
+	maxProfileBytes       = 256
+	maxReasonBytes        = 1024
+	maxRuleIDBytes        = 128
+	maxGlobBytes          = 1024
+
 	// Version is the supported baseline document schema version.
 	Version = 1
 	// MaxBytes is the maximum accepted baseline JSON size in bytes.
@@ -32,7 +38,8 @@ const (
 // Shared vocabulary used by this package's protocols and reports.
 const (
 	valueFingerprint = "fingerprint"
-	valueGlob        = "glob"
+	// KindGlob identifies an approval that matches a path pattern.
+	KindGlob = "glob"
 )
 
 // Entry records a fingerprint or glob approval, its reason and its exclusive expiry time.
@@ -291,7 +298,7 @@ func validateHeader(d Document) error {
 		return errors.New("baseline requires a SHA-256 rulepack digest")
 	}
 
-	if d.Version != Version || d.EngineVersion == "" || d.Profile == "" || len(d.EngineVersion) > 128 || len(d.Profile) > 256 || d.Entries == nil || len(d.Entries) > MaxEntries {
+	if d.Version != Version || d.EngineVersion == "" || d.Profile == "" || len(d.EngineVersion) > maxEngineVersionBytes || len(d.Profile) > maxProfileBytes || d.Entries == nil || len(d.Entries) > MaxEntries {
 		return errors.New("invalid baseline header or entry limit")
 	}
 
@@ -299,7 +306,7 @@ func validateHeader(d Document) error {
 }
 
 func validateEntry(e Entry) error {
-	if strings.TrimSpace(e.Reason) == "" || len(e.Reason) > 1024 {
+	if strings.TrimSpace(e.Reason) == "" || len(e.Reason) > maxReasonBytes {
 		return errors.New("baseline reason required (1..1024 bytes)")
 	}
 
@@ -310,7 +317,7 @@ func validateEntry(e Entry) error {
 	switch e.Kind {
 	case valueFingerprint:
 		return validateFingerprint(e)
-	case valueGlob:
+	case KindGlob:
 		return validateGlob(e)
 	default:
 		return errors.New("unknown baseline entry kind")
@@ -326,7 +333,7 @@ func validateFingerprint(e Entry) error {
 }
 
 func validateGlob(e Entry) error {
-	if e.Fingerprint != "" || e.RuleID == "" || e.PathGlob == "" || len(e.RuleID) > 128 || len(e.PathGlob) > 1024 || len(e.MessageGlob) > 1024 {
+	if e.Fingerprint != "" || e.RuleID == "" || e.PathGlob == "" || len(e.RuleID) > maxRuleIDBytes || len(e.PathGlob) > maxGlobBytes || len(e.MessageGlob) > maxGlobBytes {
 		return errors.New("glob baseline requires explicit rule and path")
 	}
 
@@ -345,7 +352,7 @@ func validateGlobPermission(entries []Entry, allowed bool) error {
 	}
 
 	for _, entry := range entries {
-		if entry.Kind == valueGlob {
+		if entry.Kind == KindGlob {
 			return errors.New("glob approvals require explicit permission")
 		}
 	}
@@ -370,7 +377,7 @@ func indexApprovals(entries []Entry, now time.Time, out *Result) approvalIndex {
 
 		out.Unmatched++
 
-		if e.Kind == valueGlob {
+		if e.Kind == KindGlob {
 			index.globs = append(index.globs, i)
 		} else if _, exists := index.exact[e.Fingerprint]; !exists {
 			index.exact[e.Fingerprint] = i

@@ -25,7 +25,7 @@ func timeoutFallback(stmts []*shellsyntax.Statement, s *shellState) (string, []*
 
 	launch := timeoutAssignment(stmts[3])
 	if start == nil || update == nil || launch == nil || start.Name != update.Name ||
-		!timeoutListEnd(stmts[0].Next) || stmts[1].Next != "&&" || !timeoutListEnd(stmts[2].Next) ||
+		!timeoutListEnd(stmts[0].Next) || stmts[1].Next != shellsyntax.AndThen || !timeoutListEnd(stmts[2].Next) ||
 		s.functions["command"] != nil || s.functions["timeout"] != nil {
 		return "", nil
 	}
@@ -36,8 +36,8 @@ func timeoutFallback(stmts []*shellsyntax.Statement, s *shellState) (string, []*
 	}
 
 	prefix, output := update.Value.Parts[0], launch.Value.Parts[0]
-	if prefix.Kind != "literal" || !strings.HasPrefix(prefix.Text, "timeout ") ||
-		output.Kind != "substitution" || output.Tree == nil {
+	if prefix.Kind != shellsyntax.PartLiteral || !strings.HasPrefix(prefix.Text, "timeout ") ||
+		output.Kind != shellsyntax.PartSubstitution || output.Tree == nil {
 		return "", nil
 	}
 
@@ -70,7 +70,7 @@ func timeoutInvocation(prefix string, body []*shellsyntax.Statement, s *shellSta
 	}
 
 	param := head.Parts[0]
-	if param.Kind != "parameter" || !param.PlainParameter || param.Quoted || param.Text != prefix {
+	if param.Kind != shellsyntax.PartParameter || !param.PlainParameter || param.Quoted || param.Text != prefix {
 		return nil
 	}
 
@@ -119,7 +119,7 @@ func timeoutAssignment(stmt *shellsyntax.Statement) *shellsyntax.Assignment {
 }
 
 func timeoutSimpleCommand(stmt *shellsyntax.Statement) *shellsyntax.Command {
-	if stmt.Negated || stmt.Background || stmt.Next == "&" || len(stmt.Commands) != 1 {
+	if stmt.Negated || stmt.Background || stmt.Next == shellsyntax.Background || len(stmt.Commands) != 1 {
 		return nil
 	}
 
@@ -142,20 +142,20 @@ func timeoutLiteralWords(words []*shellsyntax.Word, values ...string) bool {
 func timeoutDirectoryGuard(stmt *shellsyntax.Statement, s *shellState) bool {
 	cmd := timeoutSimpleCommand(stmt)
 
-	return stmt.Next == "&&" && cmd != nil && len(cmd.Assignments) == 0 && len(cmd.Words) == 2 &&
+	return stmt.Next == shellsyntax.AndThen && cmd != nil && len(cmd.Assignments) == 0 && len(cmd.Words) == 2 &&
 		timeoutLiteralWords(cmd.Words[:1], "cd") && s.functions["cd"] == nil &&
 		cmd.Words[1].Quoted && !cmd.Words[1].Writes && timeoutDiscardedOutput(cmd)
 }
 
 func timeoutDiscardedOutput(cmd *shellsyntax.Command) bool {
 	for _, redirect := range cmd.Redirects {
-		if redirect.Op != ">" && redirect.Op != ">&" {
+		if redirect.Op != shellsyntax.RedirectOutput && redirect.Op != shellsyntax.RedirectDuplicateOutput {
 			return false
 		}
 
 		target, known := redirect.Target.Literal()
-		if !known || redirect.Op == ">" && target != "/dev/null" ||
-			redirect.Op == ">&" && (redirect.FD != "2" || target != "1") {
+		if !known || redirect.Op == shellsyntax.RedirectOutput && target != "/dev/null" ||
+			redirect.Op == shellsyntax.RedirectDuplicateOutput && (redirect.FD != shellsyntax.StderrFD || target != "1") {
 			return false
 		}
 	}

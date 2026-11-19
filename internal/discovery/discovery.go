@@ -10,6 +10,16 @@ import (
 	"strings"
 )
 
+const (
+	defaultEntries = 10000
+	defaultDepth   = 12
+	defaultBytes   = 8 << 20
+	maxEntries     = 100000
+	maxDepth       = 32
+	maxBytes       = 64 << 20
+	maxProjects    = 32
+)
+
 // Options selects operator-owned roots. Configuration cannot expand these roots.
 type Options struct {
 	Home, CodexHome, ClaudeHome string
@@ -23,7 +33,7 @@ type Options struct {
 // DefaultOptions selects both agents and bounded discovery of known locations.
 // Projects and environment overrides are supplied explicitly by the caller.
 func DefaultOptions(home string) Options {
-	return Options{Home: home, Agent: "all", System: true, MaxEntries: 10000, MaxDepth: 12, MaxBytes: 8 << 20}
+	return Options{Home: home, Agent: "all", System: true, MaxEntries: defaultEntries, MaxDepth: defaultDepth, MaxBytes: defaultBytes}
 }
 
 // Snapshot is an inventory, not evidence that a component is active or safe.
@@ -108,8 +118,8 @@ type builder struct {
 // Operational failures retain a partial Snapshot; invalid options return no inventory.
 func Discover(ctx context.Context, options Options) (Snapshot, error) {
 	if ctx == nil || options.Home == "" || !slices.Contains([]string{"all", "codex", "claude-code"}, options.Agent) ||
-		options.MaxEntries < 1 || options.MaxEntries > 100000 || options.MaxDepth < 1 || options.MaxDepth > 32 ||
-		options.MaxBytes < 1 || options.MaxBytes > 64<<20 || len(options.Projects) > 32 {
+		options.MaxEntries < 1 || options.MaxEntries > maxEntries || options.MaxDepth < 1 || options.MaxDepth > maxDepth ||
+		options.MaxBytes < 1 || options.MaxBytes > maxBytes || len(options.Projects) > maxProjects {
 		return Snapshot{}, errors.New("invalid discovery options")
 	}
 

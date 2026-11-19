@@ -75,70 +75,13 @@ These built-in checks also run in the reduced core build:
 - `SE006`: selected OpenAI project, service-account, admin and legacy key shapes.
 - `SE007`: selected Anthropic `api03` and `admin01` key shapes.
 
-Checks require token boundaries and at least 3 bits/byte of secret-payload Shannon
-entropy, and filter whole-payload placeholders such as
-`glpat-REPLACE_WITH_YOUR_GITLAB_TOKEN` and `glpat-your-personal-access-token`.
-For Slack, these filters inspect only the final secret segment; numeric segments
-do not contribute entropy or dilute the entropy of that secret segment.
-An example label, file path or inline suppression comment cannot exempt adjacent
-credentials. Raw bytes, supported security views and decoded structured scalars
-are checked; transformed evidence can identify an enclosing original scalar or carrier.
-Each rule admits at most 65,536 candidates per inspected text representation;
-exhaustion leaves the check incomplete, including when all candidates were filtered.
-Reaching the retained-match quota exactly does not make subsequent clean files
-incomplete; a zero-quota probe checks for an additional accepted match.
-Findings contain source coordinates and hashes, not credential values or excerpts.
-
-The rules report credential-shaped material, not verified live secrets. Low-entropy
-credentials, custom GitLab prefixes, newer stateless GitHub installation tokens,
-unlisted Slack token types, other encodings and dynamically constructed values
-remain outside this selected coverage. Provider formats can change.
+Rules check token boundaries and filter recognized placeholders. They inspect raw bytes and supported decoded views. The candidate limit is 65,536 per rule per text representation. Exceeding it leaves a coverage gap. Findings retain coordinates and hashes without copying credential values.
 
 ### MCP schema references
 
-`MC004` is a built-in Medium signal for a tool's `inputSchema` or `outputSchema`
-referencing a resource outside that schema's captured resource inventory through
-`$ref` or the initial target of `$dynamicRef`. It
-inspects tool lists, JSON-RPC `result.tools`, imported captures and Scout MCP
-snapshots, including supported JSON code blocks. For example:
+`MC004` is a Medium signal for `$ref` or the initial target of `$dynamicRef` outside a tool schema's captured resources. It inspects tool lists, JSON-RPC `result.tools` and imported snapshots. Fragment references and embedded resources in the same schema are local. Example and extension values are outside the check.
 
-```json
-{"tools":[{"name":"lookup","inputSchema":{"type":"object","properties":{"value":{"$ref":"https://schemas.example.invalid/value.json"}}}}]}
-```
-
-The check follows selected schema-bearing keywords such as `properties`, `$defs`,
-`allOf` and `items`. Fragment references and references to embedded `$id` resources
-within the same input/output schema are local; forward references are supported.
-URI identity normalizes ASCII scheme/host case, HTTP default ports and unreserved percent
-escapes and removes dot segments after decoding unreserved escapes. Escaped path
-delimiters and distinct queries remain distinct. References
-in `examples`, `default`, `const`, `enum` and arbitrary extension data are ignored.
-Declaring an `$id` or the standard `$schema` alone is not a finding.
-
-Scout never fetches these addresses or opens referenced files. Findings contain
-the original reference scalar's coordinates and hash, without the URI value.
-Optional YAML/TOML frontends retain their existing evidence-mapping limits;
-TOML evidence may cover the enclosing unit.
-An external reference can be legitimate; the signal requires review and does not
-prove client retrieval, SSRF or malicious behavior.
-
-This selected model uses [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/json-schema-core).
-Unsupported declared dialects, malformed schema-bearing positions, invalid
-reference URIs, duplicate resource IDs and URIs exceeding 4096 bytes (literal or
-resolved) leave `MC004` incomplete. Relative
-document references against opaque URN bases and relative `$id` values without
-a known absolute base are also unsupported, as are IPv6 zone identifiers. Custom
-vocabularies, runtime dynamic scope, `$recursiveRef`, client resource registries, JSON Pointer
-and anchor validity, and full schema validation are outside this check. A local
-classification does not establish that the schema or reference is valid. General
-JSON-analysis limitations and report completeness remain independent.
-
-Unsupported resource identity/dialect prevents classification of that individual
-schema's resource inventory; other input/output schemas and independent code
-blocks are still inspected. A malformed reference does not hide other valid
-references in the same schema. Known findings are retained alongside incomplete
-coverage. Version 5 adds this isolation and initial `$dynamicRef` classification;
-it does not evaluate instances or runtime dynamic-anchor overrides.
+The check uses selected [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/json-schema-core) keywords. Invalid or unresolved resource identities, unsupported dialects and URI lengths over 4096 bytes can leave coverage gaps. Other schemas remain in scope. Scout reports the source coordinates and hash without fetching the reference or validating the client at runtime.
 
 ## Optional extensions
 
@@ -160,54 +103,17 @@ rule organization_review_marker {
 scout scan --yara-rules /etc/scout/organization.yar --fail-on medium ./my-plugin
 ```
 
-No rebuild is needed. Keep the rules file outside the inspected package.
-`include` directives and the `console` module are forbidden; invalid rules fail
-the operation. A signature match remains a finding to assess in context.
-In this example it appears as `YR5` with `medium` severity; `--fail-on medium`
-sets the corresponding blocking threshold. A finding and the policy decision
-are separate parts of the report.
-
-For versioned distribution, package the same trusted source as a rulepack:
-
-```sh
-scout rules pack create --id organization --version 1 \
-  --yara /etc/scout/organization.yar --output /etc/scout/organization.rules.json
-scout rules pack inspect /etc/scout/organization.rules.json
-scout scan --rulepack /etc/scout/organization.rules.json --fail-on medium ./my-plugin
-```
-
-`--rulepack` and `--yara-rules` are mutually exclusive and require YARA to be selected.
-An optional `--rulepack-sha256` pins the entire artifact's SHA-256 from a trusted
-source. Keep the artifact outside inspected inputs. The format validates source
-hashes and compatibility; it does not authenticate the publisher.
+Keep the trusted rules file outside the target. This example produces `YR5` at Medium severity and sets the policy threshold to Medium. For release artifacts and rollback, use [versioned rulepacks](usage.md#versioned-rulepacks).
 
 ### Known-vulnerability lookup with OSV
 
-```sh
-scout scan --vuln --allow-vulnerability-network ./my-plugin
-```
-
-Lookup by exact captured dependency coordinates is enabled separately. Select a
-compatible service with `--osv-endpoint`, or use a trusted offline cache with
-`--osv-cache`. A version-2 cache additionally selects Critical `MAL001` for explicit
-`malicious-package` records with provenance. Unclassified results retain High
-`OSV001`; ordinary network responses do not close malware coverage gaps.
-Scout does not embed an up-to-date CVE or malware database. See
-[CLI usage](usage.md#network-services-and-extra-rules) for examples and limitations.
+OSV uses exact captured dependency coordinates. Enable it separately with an explicit network grant or a trusted offline cache. [OSV setup and cache format](usage.md#network-services-and-extra-rules)
 
 ### LLM review
 
-The `review` profile adds a configured LLM provider to static checks. Supported
-protocols are Chat Completions, Anthropic Messages, `anthropic-proxy` and Bedrock;
-`--quality-review` enables additional quality review. Explicit service settings
-and `--allow-source-upload` are required. See the [example below](#review) and
-[semantic review](semantic-review.md) for details.
+The `review` profile adds a configured provider and requires explicit source-upload consent. Use `--quality-review` for an additional quality pass. [Provider setup and review modes](semantic-review.md)
 
-These are the supported extension paths without source changes. The CLI does not
-load arbitrary third-party analysis engines as plugins. New static analyzers are
-added to Scout's source. `--follow-external --allow-download` expands the external
-source inputs inspected by the existing checks; see
-[external sources](../reference/external-sources.md).
+New static analyzers ship in scanner builds. [External traversal](../reference/external-sources.md) expands the inputs for existing checks.
 
 ## Standard
 
@@ -233,19 +139,9 @@ In Go, set `Profile = scout.Custom` and supply a non-nil
 
 ## Review
 
-```bash
-scout scan --profile review --semantic --allow-source-upload \
-  --llm-provider chat-completions \
-  --llm-endpoint https://trusted.example/v1/chat/completions \
-  --llm-model YOUR_MODEL --llm-api-key-env REVIEW_API_KEY ./my-plugin
-```
+Review adds an operator-selected LLM to standard checks. Configure the endpoint, model, credentials and upload consent. OSV and quality review remain separate options. [Enable semantic review](semantic-review.md#enable-review)
 
-Review adds an operator-configured provider to standard checks. The operator supplies
-the endpoint, model, credentials and upload consent. Quality review and OSV remain
-separate options. See [semantic review](semantic-review.md).
-
-The CLI also accepts aliases: `basic` for built-ins-only custom, `extended` for
-standard and `semantic` for review. Configuration files and Go use the full profile names.
+The CLI also accepts `basic` for built-ins-only custom, `extended` for standard and `semantic` for review. Configuration and Go use full names.
 
 ## Scope
 

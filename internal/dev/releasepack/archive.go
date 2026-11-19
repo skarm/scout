@@ -15,6 +15,10 @@ import (
 	"strings"
 )
 
+const (
+	maxReleaseVersionBytes = 128
+)
+
 type target struct {
 	name, label, binary, extension string
 }
@@ -97,7 +101,7 @@ func packageRelease(version, candidates, output string) (err error) {
 }
 
 func validVersion(value string) bool {
-	if len(value) == 0 || len(value) > 128 {
+	if len(value) == 0 || len(value) > maxReleaseVersionBytes {
 		return false
 	}
 

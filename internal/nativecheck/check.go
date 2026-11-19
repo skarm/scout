@@ -16,10 +16,14 @@ import (
 	"github.com/skarm/scout/internal/nativecontract"
 	"github.com/skarm/scout/internal/signatures"
 	"github.com/skarm/scout/internal/syntax/frontend"
+	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/report"
 )
 
-const schema = nativecontract.Schema
+const (
+	signatureCheckTimeout = 5 * time.Second
+	schema                = nativecontract.Schema
+)
 
 type (
 	Report = nativecontract.Report
@@ -68,10 +72,10 @@ func (s *nativeSuite) add(id, backend string, available bool, fn func() bool) {
 	case s.ctx.Err() != nil:
 		c.Status, c.Reason = report.OutcomeCancelled, "context_done"
 	case !available:
-		c.Status, c.Reason = "unavailable", "engine_not_linked"
+		c.Status, c.Reason = nativecontract.StatusUnavailable, "engine_not_linked"
 	default:
 		if guarded(fn) {
-			c.Status, c.Reason = "passed", ""
+			c.Status, c.Reason = nativecontract.StatusPassed, ""
 		}
 	}
 
@@ -131,7 +135,7 @@ func (s *nativeSuite) signatureChecks() {
 	ctx := s.ctx
 	yao := signatures.DefaultOptions()
 	yao.Enabled = true
-	yao.Timeout = 5 * time.Second
+	yao.Timeout = signatureCheckTimeout
 
 	const sentinelRule = `rule ScoutNativeSentinel { strings: $s = "SCOUT_NATIVE_SENTINEL" condition: $s }`
 
@@ -232,7 +236,7 @@ func (s *nativeSuite) pythonFlow() bool {
 }
 
 func nativeConfigValuesOK(v frontend.Result, err error) bool {
-	if err != nil || v.Status != "ok" || v.Config == nil || v.Config.Kind != "object" {
+	if err != nil || v.Status != "ok" || v.Config == nil || v.Config.Kind != jsonconfig.KindObject {
 		return false
 	}
 

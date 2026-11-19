@@ -7,6 +7,16 @@ import (
 	"slices"
 )
 
+// Operator spellings in the normalized Python IR.
+const (
+	OpAnd    = "And"
+	OpNot    = "Not"
+	OpOr     = "Or"
+	OpUAdd   = "UAdd"
+	OpUSub   = "USub"
+	opInvert = "Invert"
+)
+
 //nolint:gochecknoglobals // Read-only IR schema and Python grammar tables are shared by scans.
 var fieldNames = [...]string{
 	invalidField:   "",
@@ -114,7 +124,7 @@ var nodeSchemas = [...]nodeSchema{
 	},
 	BoolOp:  {name: "BoolOp", fields: []fieldSpec{listField(Values), textField(Op)}},
 	IfExp:   {name: "IfExp", fields: []fieldSpec{childField(Body), childField(Orelse), childField(Test)}},
-	BinOp:   {name: "BinOp", fields: []fieldSpec{childField(Left), childField(Right)}},
+	BinOp:   {name: "BinOp", fields: []fieldSpec{childField(Left), childField(Right), textField(Op)}},
 	Compare: {name: "Compare", fields: []fieldSpec{childField(Left), childField(Right), textField(Op)}},
 	UnaryOp: {name: "UnaryOp", fields: []fieldSpec{childField(Operand), textField(Op)}},
 	Starred: {name: "Starred", fields: []fieldSpec{childField(FieldValue)}},

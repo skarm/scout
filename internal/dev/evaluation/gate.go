@@ -53,7 +53,7 @@ func Assess(report Report, requirements Requirements) GateResult {
 		fail("measurement_incomplete")
 	}
 
-	if requirements.RequireIndependent && (report.CorpusKind != "independent_labelled_corpus" || report.SelectedSplit != "holdout") {
+	if requirements.RequireIndependent && (report.CorpusKind != corpusIndependentLabelled || report.SelectedSplit != "holdout") {
 		fail("independent_holdout_required")
 	}
 
@@ -65,7 +65,7 @@ func Assess(report Report, requirements Requirements) GateResult {
 		fail("labelled_holdout_required")
 	}
 
-	if report.CorpusKind == "external_unreviewed_corpus" {
+	if report.CorpusKind == corpusExternalUnreviewed {
 		fail("independent_label_review_required")
 	}
 

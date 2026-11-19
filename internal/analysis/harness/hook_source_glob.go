@@ -4,6 +4,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/report"
@@ -51,7 +52,7 @@ func (w *hookSourceWalk) applyFileGlob(e *entry, view source.View, cmd *shellsyn
 
 		child := state.child()
 		child.bindValue(glob.Name, pluginRootMarker+glob.Directory+"/"+rest, true)
-		w.resolveCommand(e, view, launch, "bash", child, chain)
+		w.resolveCommand(e, view, launch, language.ExecutableBash, child, chain)
 	}
 
 	state.bindValue(glob.Name, "", false)
@@ -67,7 +68,7 @@ func (w *hookSourceWalk) globFileLaunch(body *shellsyntax.File, name string, sta
 	check, launch, fallback := body.Statements[0], body.Statements[1], body.Statements[2]
 
 	if len(check.Commands) != 1 || len(check.Commands[0].Words) != 4 || !hookReadOnlyBracket(check.Commands[0], state) ||
-		check.Negated || check.Background || check.Next != "&&" || launch.Next != "||" ||
+		check.Negated || check.Background || check.Next != shellsyntax.AndThen || launch.Next != shellsyntax.OrElse ||
 		!hookKnownStatus(fallback, state, "true") || !singleGlobLaunch(launch, state) {
 		return nil
 	}
@@ -84,7 +85,7 @@ func (w *hookSourceWalk) globFileLaunch(body *shellsyntax.File, name string, sta
 }
 
 func singleGlobLaunch(stmt *shellsyntax.Statement, state hookSourceState) bool {
-	if stmt.Negated || stmt.Background || len(stmt.Commands) != 1 || state.hasFunction("bash") {
+	if stmt.Negated || stmt.Background || len(stmt.Commands) != 1 || state.hasFunction(language.ExecutableBash) {
 		return false
 	}
 
@@ -95,7 +96,7 @@ func singleGlobLaunch(stmt *shellsyntax.Statement, state hookSourceState) bool {
 
 	head, _ := cmd.Words[0].Literal()
 
-	return head == "bash"
+	return head == language.ExecutableBash
 }
 
 func quotedGlobVariable(word *shellsyntax.Word, name string) bool {
@@ -105,5 +106,5 @@ func quotedGlobVariable(word *shellsyntax.Word, name string) bool {
 
 	part := word.Parts[0]
 
-	return part.Quoted && part.Kind == "parameter" && part.Text == name
+	return part.Quoted && part.Kind == shellsyntax.PartParameter && part.Text == name
 }

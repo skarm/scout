@@ -1,5 +1,17 @@
 package report
 
+const (
+	defaultExtractionDepth       = 4
+	defaultExtractionObjects     = 256
+	defaultExtractionEntries     = 8192
+	defaultExtractionObjectBytes = 1 << 20
+	defaultExtractionTotalBytes  = 16 << 20
+	maxExtractionDepth           = 16
+	maxExtractionObjects         = 4096
+	maxExtractionObjectBytes     = 32 << 20
+	maxExtractionTotalBytes      = 128 << 20
+)
+
 // ExtractionLimits bounds one extraction pass across its input roots and
 // recursion levels. Scanner applies these limits per target, with a separate
 // run-wide extracted-byte budget.
@@ -115,11 +127,11 @@ type ExtractionReport struct {
 // DefaultExtractionLimits returns default limits for one extraction pass.
 func DefaultExtractionLimits() ExtractionLimits {
 	return ExtractionLimits{
-		MaxDepth:       4,
-		MaxObjects:     256,
-		MaxEntries:     8192,
-		MaxObjectBytes: 1 << 20,
-		MaxTotalBytes:  16 << 20,
+		MaxDepth:       defaultExtractionDepth,
+		MaxObjects:     defaultExtractionObjects,
+		MaxEntries:     defaultExtractionEntries,
+		MaxObjectBytes: defaultExtractionObjectBytes,
+		MaxTotalBytes:  defaultExtractionTotalBytes,
 	}
 }
 
@@ -127,14 +139,14 @@ func DefaultExtractionLimits() ExtractionLimits {
 // byte limit below the per-object limit.
 func (l ExtractionLimits) Validate() error {
 	return validateBudgets([]budgetRange{
-		{value: int64(l.MaxDepth), min: 1, max: 16, message: "extraction depth must be in 1..16"},
-		{value: int64(l.MaxObjects), min: 1, max: 4096, message: "extraction objects must be in 1..4096"},
-		{value: int64(l.MaxEntries), min: 1, max: 100000, message: "extraction entries must be in 1..100000"},
-		{value: l.MaxObjectBytes, min: 1, max: 32 << 20, message: "extraction object bytes must be in 1..33554432"},
+		{value: int64(l.MaxDepth), min: 1, max: maxExtractionDepth, message: "extraction depth must be in 1..16"},
+		{value: int64(l.MaxObjects), min: 1, max: maxExtractionObjects, message: "extraction objects must be in 1..4096"},
+		{value: int64(l.MaxEntries), min: 1, max: MaxArtifactEntries, message: "extraction entries must be in 1..100000"},
+		{value: l.MaxObjectBytes, min: 1, max: maxExtractionObjectBytes, message: "extraction object bytes must be in 1..33554432"},
 		{
 			value:   l.MaxTotalBytes,
 			min:     l.MaxObjectBytes,
-			max:     128 << 20,
+			max:     maxExtractionTotalBytes,
 			message: "extraction total bytes must be >= object bytes and <= 134217728",
 		},
 	})

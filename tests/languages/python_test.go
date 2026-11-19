@@ -343,10 +343,17 @@ func TestScannerPythonUnknownDeserializationArguments(t *testing.T) {
 		if count != tc.unsafe {
 			t.Fatalf("unsafe observations=%d, want %d", count, tc.unsafe)
 		}
+		covered := false
 		for _, check := range run.Targets[0].Analysis.Coverage.Checks {
-			if check.AnalyzerID == tc.analyzer && check.Status != tc.status {
-				t.Fatalf("deserialization status=%s, want %s", check.Status, tc.status)
+			if check.AnalyzerID == tc.analyzer {
+				covered = true
+				if check.Status != tc.status {
+					t.Fatalf("deserialization status=%s, want %s", check.Status, tc.status)
+				}
 			}
+		}
+		if !covered {
+			t.Fatalf("missing %s coverage", tc.analyzer)
 		}
 	}
 }
@@ -437,10 +444,17 @@ func TestScannerPythonHTTPBodyUsesExpandedArguments(t *testing.T) {
 			if count != tc.want {
 				t.Errorf("NV-E1=%d, want %d", count, tc.want)
 			}
+			covered := false
 			for _, check := range run.Targets[0].Analysis.Coverage.Checks {
-				if check.AnalyzerID == "NV-E1" && check.Status != tc.status {
-					t.Errorf("NV-E1 status=%s, want %s", check.Status, tc.status)
+				if check.AnalyzerID == "NV-E1" {
+					covered = true
+					if check.Status != tc.status {
+						t.Errorf("NV-E1 status=%s, want %s", check.Status, tc.status)
+					}
 				}
+			}
+			if !covered {
+				t.Fatal("missing NV-E1 coverage")
 			}
 		})
 	}

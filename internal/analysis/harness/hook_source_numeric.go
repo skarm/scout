@@ -7,6 +7,10 @@ import (
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 )
 
+const (
+	maxHookVariableFacts = 128
+)
+
 type hookVariableKind uint8
 
 type hookVariableFact struct {
@@ -21,6 +25,7 @@ const (
 	hookIndexedArray
 	hookDecimalArray
 	hookFreshTemporary
+	hookBunExecutable
 )
 
 func (fact hookVariableFact) indexedArray() bool {
@@ -46,7 +51,7 @@ func (w *hookSourceWalk) hookSafeTest(cmd *shellsyntax.Command, state hookSource
 
 func (w *hookSourceWalk) safeArithmeticOperands(operands []*shellsyntax.Word, state hookSourceState) bool {
 	for _, operand := range operands {
-		if len(operand.Parts) == 1 && operand.Parts[0].Kind == "parameter_length" {
+		if len(operand.Parts) == 1 && operand.Parts[0].Kind == shellsyntax.PartParameterLength {
 			if !state.kinds[operand.Parts[0].Text].nonemptyArray {
 				return false
 			}
@@ -54,7 +59,7 @@ func (w *hookSourceWalk) safeArithmeticOperands(operands []*shellsyntax.Word, st
 			continue
 		}
 
-		if len(operand.Parts) == 1 && operand.Parts[0].Kind == "substitution" {
+		if len(operand.Parts) == 1 && operand.Parts[0].Kind == shellsyntax.PartSubstitution {
 			if !hookDecimalOutput(operand.Parts[0].Tree, state) {
 				return false
 			}
@@ -62,7 +67,7 @@ func (w *hookSourceWalk) safeArithmeticOperands(operands []*shellsyntax.Word, st
 			continue
 		}
 
-		if len(operand.Parts) == 2 && operand.Parts[0].Kind == "literal" && operand.Parts[0].Text == "10#" {
+		if len(operand.Parts) == 2 && operand.Parts[0].Kind == shellsyntax.PartLiteral && operand.Parts[0].Text == "10#" {
 			if !hookDecimalClockField(operand.Parts[1].Tree, state) {
 				return false
 			}
@@ -71,7 +76,7 @@ func (w *hookSourceWalk) safeArithmeticOperands(operands []*shellsyntax.Word, st
 		}
 
 		part := operand.Parts[0]
-		if part.Kind == "arithmetic_variable" && strings.HasPrefix(state.vars[part.Text], "-") &&
+		if part.Kind == shellsyntax.PartArithmeticVariable && strings.HasPrefix(state.vars[part.Text], "-") &&
 			hookLocalVariable(part.Text, pluginRootParameters[w.plugin.host]) &&
 			!state.lookupUnknown && decimalDigits(strings.TrimPrefix(state.vars[part.Text], "-")) {
 			continue
@@ -134,12 +139,12 @@ func (w *hookSourceWalk) safeArithmeticText(word *shellsyntax.Word, state hookSo
 
 	for _, part := range word.Parts {
 		switch part.Kind {
-		case "literal":
-		case "parameter":
+		case shellsyntax.PartLiteral:
+		case shellsyntax.PartParameter:
 			if !part.Quoted || !part.PlainParameter || !hookVariableName(part.Text) || !w.decimalBinding(part.Text, state) {
 				return false
 			}
-		case "arithmetic":
+		case shellsyntax.PartArithmetic:
 			if !part.Quoted || part.ArithmeticOperands == nil || !w.safeArithmeticOperands(part.ArithmeticOperands, state) {
 				return false
 			}
@@ -162,8 +167,8 @@ func (w *hookSourceWalk) safeIndirectWord(word *shellsyntax.Word, state hookSour
 
 	for _, part := range word.Parts {
 		switch part.Kind {
-		case "literal", "parameter":
-		case "parameter_indirect":
+		case shellsyntax.PartLiteral, shellsyntax.PartParameter:
+		case shellsyntax.PartParameterIndirect:
 			if !w.plainIndirectReferent(part.Text, state) {
 				return false
 			}
@@ -215,7 +220,7 @@ func arithmeticOperands(word *shellsyntax.Word) []*shellsyntax.Word {
 }
 
 func (w *hookSourceWalk) refineDecimalGuard(stmt *shellsyntax.Statement, state *hookSourceState, success bool) {
-	if len(stmt.Commands) != 1 || stmt.Background || stmt.Next == "&" || state.lookupUnknown {
+	if len(stmt.Commands) != 1 || stmt.Background || stmt.Next == shellsyntax.Background || state.lookupUnknown {
 		return
 	}
 
@@ -260,7 +265,7 @@ func (w *hookSourceWalk) refineIntegerComparison(cmd *shellsyntax.Command, state
 }
 
 func (w *hookSourceWalk) refineNonemptyArray(expr []*shellsyntax.Word, operator string, state *hookSourceState) {
-	if operator != "-gt" || len(expr[0].Parts) != 1 || expr[0].Parts[0].Kind != "parameter_length" {
+	if operator != "-gt" || len(expr[0].Parts) != 1 || expr[0].Parts[0].Kind != shellsyntax.PartParameterLength {
 		return
 	}
 
@@ -289,7 +294,7 @@ func (s *hookSourceState) markAssignmentKind(assignment shellsyntax.Assignment, 
 }
 
 func (s *hookSourceState) markVariable(name string, fact hookVariableFact) {
-	if s.readonly[name] || len(s.kinds) >= 128 {
+	if s.readonly[name] || len(s.kinds) >= maxHookVariableFacts {
 		return
 	}
 
@@ -303,7 +308,9 @@ func (s *hookSourceState) markVariable(name string, fact hookVariableFact) {
 // Called after unaryTest has verified the builtin and its two operands.
 func (w *hookSourceWalk) refineEmptyTest(cmd *shellsyntax.Command, state *hookSourceState, success bool) {
 	operator, _ := cmd.Words[1].Literal()
-	if success == (operator == "-z") {
+	// A failed runtime lookup can already be empty. Preserve that fact so
+	// it can merge with a branch that fills in the same runtime's path.
+	if success == (operator == "-z") && !hookKnownBunVariable(cmd.Words[2], *state) {
 		w.markQuotedDecimal(cmd.Words[2], state)
 	}
 }
@@ -332,6 +339,10 @@ func (w *hookSourceWalk) assignmentKind(word *shellsyntax.Word, state hookSource
 		return hookDecimalScalar
 	}
 
+	if hookBunAssignment(word, state) {
+		return hookBunExecutable
+	}
+
 	if word.IndexedArray {
 		if word.DecimalElements {
 			return hookDecimalArray
@@ -342,15 +353,15 @@ func (w *hookSourceWalk) assignmentKind(word *shellsyntax.Word, state hookSource
 
 	if !word.Expands && !word.Writes && len(word.Parts) == 1 {
 		part := word.Parts[0]
-		if part.Kind == "substitution" && hookFreshTemporaryCommand(part.Tree, state) {
+		if part.Kind == shellsyntax.PartSubstitution && hookFreshTemporaryCommand(part.Tree, state) {
 			return hookFreshTemporary
 		}
 
-		if part.Kind == "parameter" && part.Text == "?" {
+		if part.Kind == shellsyntax.PartParameter && part.Text == "?" {
 			return hookDecimalScalar
 		}
 
-		if part.Kind == "parameter" && part.PlainParameter && w.decimalBinding(part.Text, state) {
+		if part.Kind == shellsyntax.PartParameter && part.PlainParameter && w.decimalBinding(part.Text, state) {
 			return hookDecimalScalar
 		}
 	}
@@ -379,7 +390,7 @@ func hookFreshTemporaryCommand(tree *shellsyntax.File, state hookSourceState) bo
 }
 
 func hookLengthExpansion(word *shellsyntax.Word) bool {
-	return !word.Writes && len(word.Parts) == 1 && word.Parts[0].Kind == "parameter_length"
+	return !word.Writes && len(word.Parts) == 1 && word.Parts[0].Kind == shellsyntax.PartParameterLength
 }
 
 // A modeled wc -l pipeline produces a decimal count with optional leading
@@ -389,9 +400,9 @@ func (w *hookSourceWalk) hookNumericSubstitution(word *shellsyntax.Word, state h
 
 	for _, part := range word.Parts {
 		switch {
-		case part.Kind == "substitution" && part.Tree != nil && tree == nil:
+		case part.Kind == shellsyntax.PartSubstitution && part.Tree != nil && tree == nil:
 			tree = part.Tree
-		case part.Kind == "literal" && part.Text == "":
+		case part.Kind == shellsyntax.PartLiteral && part.Text == "":
 		default:
 			return false
 		}
@@ -410,7 +421,7 @@ func (w *hookSourceWalk) hookGrepCount(tree *shellsyntax.File, state hookSourceS
 		return false
 	}
 
-	if len(tree.Statements) == 2 && (stmt.Next != "||" || (!hookGrepZeroFallback(tree.Statements[1], state) && !hookKnownStatus(tree.Statements[1], state, "true"))) {
+	if len(tree.Statements) == 2 && (stmt.Next != shellsyntax.OrElse || (!hookGrepZeroFallback(tree.Statements[1], state) && !hookKnownStatus(tree.Statements[1], state, "true"))) {
 		return false
 	}
 
@@ -441,7 +452,7 @@ func (w *hookSourceWalk) hookGrepCountCommand(cmd *shellsyntax.Command, state ho
 	}
 
 	for _, redirect := range cmd.Redirects {
-		if redirect.FD != "2" || redirect.Op != ">" || !hookDiscardedOutput(redirect) {
+		if redirect.FD != shellsyntax.StderrFD || redirect.Op != shellsyntax.RedirectOutput || !hookDiscardedOutput(redirect) {
 			return false
 		}
 	}
@@ -482,7 +493,7 @@ func hookCountPipeline(tree *shellsyntax.File, state hookSourceState) bool {
 	}
 
 	stmt := tree.Statements[0]
-	if stmt.Background || len(stmt.Commands) != 2 || len(stmt.Pipes) != 1 || stmt.Pipes[0] != "|" ||
+	if stmt.Background || len(stmt.Commands) != 2 || len(stmt.Pipes) != 1 || stmt.Pipes[0] != shellsyntax.Pipe ||
 		!hookCountInput(stmt.Commands[0], state) {
 		return false
 	}

@@ -138,3 +138,22 @@ func open(data []byte) error {
 	_, e := archiveutil.OpenZIP(context.Background(), data, 100, 1024, 32)
 	return e
 }
+
+func TestZIPEmptyDirectoryCannotHidePreamble(t *testing.T) {
+	empty := makeZIP(t, nil, nil)
+	for _, comment := range []string{"", "ordinary archive comment"} {
+		data := append([]byte(nil), empty...)
+		binary.LittleEndian.PutUint16(data[20:22], uint16(len(comment)))
+		data = append(data, comment...)
+		if err := open(data); err != nil {
+			t.Fatalf("valid empty archive rejected: %v", err)
+		}
+		for _, prefix := range [][]byte{[]byte("unsupported preamble"), makeZIP(t, []string{"hidden.txt"}, []string{"inert member"})} {
+			header := append([]byte(nil), data...)
+			binary.LittleEndian.PutUint32(header[16:20], uint32(len(prefix)))
+			if err := open(append(prefix, header...)); err == nil {
+				t.Fatal("empty directory hid preceding bytes")
+			}
+		}
+	}
+}
