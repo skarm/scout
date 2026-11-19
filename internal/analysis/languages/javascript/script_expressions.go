@@ -4,13 +4,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/languages/literals"
 	"github.com/skarm/scout/internal/syntax/scriptsyntax"
 	"github.com/skarm/scout/internal/syntax/sqlsyntax"
 )
 
 func scriptLiteral(text string) (string, bool) {
-	if len(text) < 2 || len(text) > 16384 || (text[0] != '\'' && text[0] != '"') || text[len(text)-1] != text[0] {
+	if len(text) < 2 || len(text) > maxStringBytes || (text[0] != '\'' && text[0] != '"') || text[len(text)-1] != text[0] {
 		return "", false
 	}
 
@@ -51,46 +52,41 @@ func (w *scriptWalk) expr(n *scriptsyntax.Node, s *scriptScope, depth int) scrip
 	}
 
 	switch n.Kind {
-	case "identifier", "shorthand_property_identifier":
+	case scriptsyntax.KindIdentifier, scriptsyntax.KindShorthandPropertyIdentifier:
 		if v, ok := s.get(w.text(n)); ok {
 			return v
 		}
 
 		return scriptValue{name: w.text(n)}
-	case "string":
+	case scriptsyntax.KindString:
 		text, ok := scriptLiteral(w.text(n))
 		return scriptValue{text: text, known: ok, stringValue: true}
-	case "number", "true", "false", "null":
-		return scriptValue{text: w.text(n), known: true, valueType: scriptNonString}
-	case "await_expression":
+	case scriptsyntax.KindNumber, scriptsyntax.KindTrue, scriptsyntax.KindFalse, scriptsyntax.KindNull:
+		return scriptValue{text: w.text(n), known: true, valueType: scriptNonString, primitive: true}
+	case scriptsyntax.KindAwaitExpression:
 		return w.await(n, s, depth)
-	case "as_expression", "satisfies_expression", "non_null_expression", "parenthesized_expression":
-		for _, c := range n.Children {
-			if c.Kind != "(" && c.Kind != ")" && c.Kind != "await" {
-				return w.expr(c, s, depth+1)
-			}
-		}
-	case "member_expression", "subscript_expression":
+	case scriptsyntax.KindAsExpression, scriptsyntax.KindSatisfiesExpression, scriptsyntax.KindNonNullExpression, scriptsyntax.KindParenthesizedExpression:
+		return w.expr(scriptInnerExpression(n), s, depth+1)
+	case scriptsyntax.KindMemberExpression, scriptsyntax.KindSubscriptExpression:
 		return w.member(n, s, depth)
-	case "call_expression", "new_expression":
+	case scriptsyntax.KindCallExpression, scriptsyntax.KindNewExpression:
 		return w.call(n, s, depth)
-	case "assignment_expression", "augmented_assignment_expression":
-		return w.assignment(n, s, depth)
+	case scriptsyntax.KindAssignmentExpression, scriptsyntax.KindAugmentedAssignmentExpression, scriptsyntax.KindUpdateExpression, scriptsyntax.KindUnaryExpression:
+		return w.scalarExpression(n, s, depth)
 
-	case "binary_expression":
-		a, b := w.expr(n.Child("left"), s, depth+1), w.expr(n.Child("right"), s, depth+1)
-		return combineScript(a, b, w.text(n.Child("operator")) == "+")
-	case "template_string":
+	case scriptsyntax.KindBinaryExpression:
+		return w.binary(n, s, depth)
+	case scriptsyntax.KindTemplateString:
 		return w.template(n, s, depth)
-	case "arrow_function", "function_expression", "generator_function":
+	case scriptsyntax.KindArrowFunction, scriptsyntax.KindFunctionExpression, scriptsyntax.KindGeneratorFunction:
 		w.function(n, s, depth+1)
 		return scriptValue{}
-	case "statement_block":
+	case scriptsyntax.KindStatementBlock:
 		w.statement(n, s, depth+1)
 		return scriptValue{}
-	case "for_statement", "for_in_statement", "while_statement", "do_statement", "switch_statement", "try_statement", "with_statement":
+	case scriptsyntax.KindForStatement, scriptsyntax.KindForInStatement, scriptsyntax.KindWhileStatement, scriptsyntax.KindDoStatement, scriptsyntax.KindSwitchStatement, scriptsyntax.KindTryStatement, scriptsyntax.KindWithStatement:
 		w.limited = true
-	case "pair":
+	case scriptsyntax.KindPair:
 		return w.pair(n, s, depth)
 	}
 
@@ -110,7 +106,7 @@ func (w *scriptWalk) expr(n *scriptsyntax.Node, s *scriptScope, depth int) scrip
 		}
 	}
 
-	if n.Kind == "object" || n.Kind == "array" {
+	if n.Kind == scriptsyntax.KindObject || n.Kind == scriptsyntax.KindArray {
 		out.valueType = scriptNonString
 	}
 
@@ -122,10 +118,10 @@ func (w *scriptWalk) member(n *scriptsyntax.Node, s *scriptScope, depth int) scr
 		return scriptValue{}
 	}
 
-	object := w.expr(n.Child("object"), s, depth+1)
+	object := w.expr(n.Child(scriptsyntax.FieldObject), s, depth+1)
 
-	property := w.text(n.Child("property"))
-	if index := n.Child("index"); index != nil {
+	property := w.text(n.Child(scriptsyntax.FieldProperty))
+	if index := n.Child(scriptsyntax.FieldIndex); index != nil {
 		v := w.expr(index, s, depth+1)
 		if !v.known {
 			return scriptValue{}
@@ -158,10 +154,11 @@ func combineScript(a, b scriptValue, concatenate bool) scriptValue {
 
 	if concatenate {
 		out.stringValue = a.stringValue || b.stringValue
-		out.known = a.known && b.known
+		fits := len(a.text)+len(b.text) <= maxStringBytes
+		out.known = a.known && b.known && fits
 
 		out.dynamic = out.dynamic || !out.known
-		if len(a.text)+len(b.text) <= 16384 {
+		if fits {
 			out.text = a.text + b.text
 		}
 	}
@@ -171,17 +168,24 @@ func combineScript(a, b scriptValue, concatenate bool) scriptValue {
 
 func (w *scriptWalk) template(n *scriptsyntax.Node, s *scriptScope, depth int) scriptValue {
 	out := scriptValue{known: true, stringValue: true}
+	textLimited := false
 
 	for _, c := range n.Children {
-		if c.Kind == "string_fragment" {
-			if len(out.text)+len(w.text(c)) <= 16384 {
-				out.text += w.text(c)
+		switch c.Kind {
+		case scriptsyntax.KindBacktick:
+		case scriptsyntax.KindStringFragment:
+			if textLimited {
+				continue
 			}
 
-			continue
-		}
-
-		if c.Kind == "template_substitution" {
+			fragment := w.text(c)
+			if len(out.text)+len(fragment) <= maxStringBytes {
+				out.text += fragment
+			} else {
+				textLimited = true
+				out.text, out.known, out.dynamic = "", false, true
+			}
+		case scriptsyntax.KindTemplateSubstitution:
 			out.known = false
 			out.dynamic = true
 
@@ -191,6 +195,10 @@ func (w *scriptWalk) template(n *scriptsyntax.Node, s *scriptScope, depth int) s
 					out.secret = v.secret
 				}
 			}
+		default:
+			// Escapes need template-specific decoding before this string is known.
+			textLimited = true
+			out.text, out.known, out.dynamic = "", false, true
 		}
 	}
 
@@ -198,14 +206,14 @@ func (w *scriptWalk) template(n *scriptsyntax.Node, s *scriptScope, depth int) s
 }
 
 func (w *scriptWalk) call(n *scriptsyntax.Node, s *scriptScope, depth int) scriptValue {
-	fun := n.Child("function")
+	fun := n.Child(scriptsyntax.FieldFunction)
 	if fun == nil {
-		fun = n.Child("constructor")
+		fun = n.Child(scriptsyntax.FieldConstructor)
 	}
 
 	name := w.expr(fun, s, depth+1).name
 
-	args := w.callArguments(n.Child("arguments"), s, depth)
+	args := w.callArguments(n.Child(scriptsyntax.FieldArguments), s, depth)
 
 	if name == "require" && len(args) == 1 && args[0].known {
 		return scriptValue{name: strings.TrimPrefix(args[0].text, "node:")}
@@ -220,7 +228,11 @@ func (w *scriptWalk) call(n *scriptsyntax.Node, s *scriptScope, depth int) scrip
 	}
 
 	if scriptShellCall(name, args) {
-		w.emit(ruleJS001, n, nil)
+		if scriptExecCommandText(name, args) {
+			w.emit(ruleJS001, n, nil, check.ShellCommandText)
+		} else {
+			w.emit(ruleJS001, n, nil)
+		}
 	}
 
 	if scriptCodeCall(name, args) {
@@ -249,6 +261,8 @@ func (w *scriptWalk) call(n *scriptsyntax.Node, s *scriptScope, depth int) scrip
 			value.valueType = scriptUnknown
 
 			value.stringValue = true
+
+			value.primitive = false
 			if name == "JSON.stringify" {
 				value.text = ""
 				value.known = false
@@ -264,6 +278,11 @@ func (w *scriptWalk) call(n *scriptsyntax.Node, s *scriptScope, depth int) scrip
 	}
 
 	return scriptValue{}
+}
+
+func scriptExecCommandText(name string, args []scriptValue) bool {
+	return (name == "child_process.exec" || name == "child_process.execSync") &&
+		len(args) > 0 && (!args[0].known || strings.TrimSpace(args[0].text) != "") && args[0].valueType != scriptNonString
 }
 
 func scriptShellCall(name string, args []scriptValue) bool {
@@ -306,14 +325,7 @@ func scriptCodeCall(name string, args []scriptValue) bool {
 }
 
 func (w *scriptWalk) await(n *scriptsyntax.Node, s *scriptScope, depth int) scriptValue {
-	var value scriptValue
-
-	for _, child := range n.Children {
-		if child.Kind != "await" {
-			value = w.expr(child, s, depth+1)
-			break
-		}
-	}
+	value := w.expr(scriptInnerExpression(n), s, depth+1)
 
 	switch value.valueType {
 	case scriptPromiseResponse:
@@ -357,16 +369,36 @@ func scriptQueryMethod(name string) bool {
 }
 
 func (w *scriptWalk) assignment(n *scriptsyntax.Node, s *scriptScope, depth int) scriptValue {
-	value := w.expr(n.Child("right"), s, depth+1)
+	left := w.scalarTarget(n.Child(scriptsyntax.FieldLeft), depth)
 
-	left := n.Child("left")
-	if n.Kind == "augmented_assignment_expression" {
-		value = combineScript(w.expr(left, s, depth+1), value, true)
+	var previous scriptValue
+
+	if n.Kind == scriptsyntax.KindAugmentedAssignmentExpression || left != nil && (left.Kind == scriptsyntax.KindMemberExpression || left.Kind == scriptsyntax.KindSubscriptExpression) {
+		previous = w.expr(left, s, depth+1)
+	}
+
+	operator := w.text(n.Child(scriptsyntax.FieldOperator))
+
+	logical := operator == scriptsyntax.OpOrAssign || operator == scriptsyntax.OpAndAssign || operator == scriptsyntax.OpNullishAssign
+	if logical {
+		assign, known := scriptAssignmentCondition(previous, operator)
+		if !known {
+			return w.conditionalAssignment(n, s, previous, depth)
+		}
+
+		if !assign {
+			return previous
+		}
+	}
+
+	value := w.expr(n.Child(scriptsyntax.FieldRight), s, depth+1)
+	if n.Kind == scriptsyntax.KindAugmentedAssignmentExpression && !logical {
+		value = scriptCompound(previous, value, operator)
 	}
 
 	w.bind(left, value, s, false)
 
-	if left != nil && w.member(left, s, depth+1).name == "process.env.NODE_TLS_REJECT_UNAUTHORIZED" && value.known && value.text == "0" {
+	if previous.name == "process.env.NODE_TLS_REJECT_UNAUTHORIZED" && value.known && value.text == "0" {
 		w.emit(ruleJS006, n, nil)
 	}
 
@@ -374,9 +406,9 @@ func (w *scriptWalk) assignment(n *scriptsyntax.Node, s *scriptScope, depth int)
 }
 
 func (w *scriptWalk) pair(n *scriptsyntax.Node, s *scriptScope, depth int) scriptValue {
-	value := w.expr(n.Child("value"), s, depth+1)
+	value := w.expr(n.Child(scriptsyntax.FieldValue), s, depth+1)
 
-	key := w.text(n.Child("key"))
+	key := w.text(n.Child(scriptsyntax.FieldKey))
 	if decoded, ok := scriptLiteral(key); ok {
 		key = decoded
 	}
@@ -400,7 +432,7 @@ func (w *scriptWalk) callArguments(arguments *scriptsyntax.Node, s *scriptScope,
 	var values []scriptValue
 
 	for _, child := range arguments.Children {
-		if child.Kind != "(" && child.Kind != ")" && child.Kind != "," {
+		if child.Kind != scriptsyntax.KindOpenParen && child.Kind != scriptsyntax.KindCloseParen && child.Kind != scriptsyntax.KindComma && child.Kind != scriptsyntax.KindComment {
 			values = append(values, w.expr(child, s, depth+1))
 		}
 	}
@@ -433,7 +465,7 @@ func scriptJoin(args []scriptValue) scriptValue {
 		out.text += value.text
 
 		out.known = out.known && value.known
-		if len(out.text) > 16384 {
+		if len(out.text) > maxStringBytes {
 			return scriptValue{}
 		}
 	}

@@ -14,8 +14,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/skarm/scout/internal/netpolicy"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/textmatch"
+)
+
+const (
+	maxAWSAccessKeyIDBytes   = 128
+	maxMessagesContentBlocks = 16
 )
 
 // MessagesOptions selects the native Anthropic Messages protocol or its explicit
@@ -143,8 +149,8 @@ func (p *MessagesProvider) request(ctx context.Context, payload []byte, system s
 		return nil, transportError("request_failed")
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set(netpolicy.HeaderContentType, netpolicy.JSONMediaType)
+	req.Header.Set(netpolicy.HeaderAccept, netpolicy.JSONMediaType)
 
 	p.authenticate(req, raw)
 
@@ -161,7 +167,7 @@ func (p *MessagesProvider) authenticate(req *http.Request, raw []byte) {
 		}
 	case ProviderAnthropicProxy:
 		if p.base.key != "" {
-			req.Header.Set("Authorization", "Bearer "+p.base.key)
+			req.Header.Set(netpolicy.HeaderAuthorization, netpolicy.BearerScheme+" "+p.base.key)
 		}
 	case ProviderBedrock:
 		signBedrock(req, raw, p.options, time.Now())
@@ -177,7 +183,7 @@ func (o MessagesOptions) validateCredentials() error {
 		return nil
 	}
 
-	if o.APIKey != "" || !validAWSRegion(o.Region) || !(len(o.AccessKeyID) >= 8 && textmatch.Token(o.AccessKeyID, 128, "")) || !credentialBytes(o.SecretAccessKey, 8) || !credentialBytes(o.SessionToken, 0) {
+	if o.APIKey != "" || !validAWSRegion(o.Region) || !(len(o.AccessKeyID) >= 8 && textmatch.Token(o.AccessKeyID, maxAWSAccessKeyIDBytes, "")) || !credentialBytes(o.SecretAccessKey, 8) || !credentialBytes(o.SessionToken, 0) {
 		return transportError("invalid_bedrock_credentials")
 	}
 
@@ -191,7 +197,7 @@ func (o MessagesOptions) validateCredentials() error {
 
 func readMessagesUsage(c *Completion, raw []byte, usage *jsonconfig.Node) error {
 	if usage != nil {
-		if aliases(usage, "input_tokens", "output_tokens") {
+		if aliases(usage, fieldInputTokens, fieldOutputTokens) {
 			return transportError("ambiguous_envelope")
 		}
 
@@ -248,27 +254,27 @@ func validAWSRegion(s string) bool {
 func decodeMessagesCompletion(ctx context.Context, raw []byte) (Completion, error) {
 	root, e := jsonconfig.Parse(ctx, string(raw))
 	if e != nil {
-		return Completion{}, transportError("invalid_envelope")
+		return Completion{}, reviewJSONError(e, transportError("invalid_envelope"))
 	}
 
-	if aliases(root, "type", "role", "content", "stop_reason", "model", "usage", "error") {
+	if aliases(root, fieldType, fieldRole, fieldContent, fieldStopReason, fieldModel, fieldUsage, fieldError) {
 		return Completion{}, transportError("ambiguous_envelope")
 	}
 
-	typ, _ := root.Get("type").Text()
-	role, _ := root.Get("role").Text()
+	typ, _ := root.Get(fieldType).Text()
+	role, _ := root.Get(fieldRole).Text()
 
-	stop, _ := root.Get("stop_reason").Text()
+	stop, _ := root.Get(fieldStopReason).Text()
 	if typ != "message" || role != "assistant" || stop != "end_turn" {
 		return Completion{}, transportError("incomplete_response")
 	}
 
-	output, err := messagesText(root.Get("content"))
+	output, err := messagesText(root.Get(fieldContent))
 	if err != nil {
 		return Completion{}, err
 	}
 
-	model, _ := root.Get("model").Text()
+	model, _ := root.Get(fieldModel).Text()
 
 	c := Completion{Output: []byte(output), Model: model, InputTokens: -1, OutputTokens: -1}
 
@@ -276,7 +282,7 @@ func decodeMessagesCompletion(ctx context.Context, raw []byte) (Completion, erro
 		return Completion{}, err
 	}
 
-	if err := readMessagesUsage(&c, raw, root.Get("usage")); err != nil {
+	if err := readMessagesUsage(&c, raw, root.Get(fieldUsage)); err != nil {
 		return Completion{}, err
 	}
 
@@ -325,7 +331,7 @@ func signBedrock(req *http.Request, payload []byte, o MessagesOptions, now time.
 
 	headers := map[string]string{
 		"host":                 req.URL.Host,
-		"content-type":         req.Header.Get("Content-Type"),
+		"content-type":         req.Header.Get(netpolicy.HeaderContentType),
 		"x-amz-date":           stamp,
 		"x-amz-content-sha256": hashBytes(payload),
 	}
@@ -333,7 +339,7 @@ func signBedrock(req *http.Request, payload []byte, o MessagesOptions, now time.
 		headers["x-amz-security-token"] = o.SessionToken
 	}
 
-	if v := req.Header.Get("Accept"); v != "" {
+	if v := req.Header.Get(netpolicy.HeaderAccept); v != "" {
 		headers["accept"] = v
 	}
 
@@ -363,24 +369,24 @@ func signBedrock(req *http.Request, payload []byte, o MessagesOptions, now time.
 	k = hmac256(k, o.Region)
 	k = hmac256(k, bedrockSigningService)
 	k = hmac256(k, "aws4_request")
-	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+o.AccessKeyID+"/"+scope+", SignedHeaders="+signed+", Signature="+hex.EncodeToString(hmac256(k, text)))
+	req.Header.Set(netpolicy.HeaderAuthorization, "AWS4-HMAC-SHA256 Credential="+o.AccessKeyID+"/"+scope+", SignedHeaders="+signed+", Signature="+hex.EncodeToString(hmac256(k, text)))
 }
 
 func messagesText(content *jsonconfig.Node) (string, error) {
-	if content == nil || content.Kind != jsonconfig.KindArray || len(content.Elements) == 0 || len(content.Elements) > 16 {
+	if content == nil || content.Kind != jsonconfig.KindArray || len(content.Elements) == 0 || len(content.Elements) > maxMessagesContentBlocks {
 		return "", transportError("invalid_envelope")
 	}
 
 	var output strings.Builder
 
 	for _, n := range content.Elements {
-		if aliases(n, "type", "text") {
+		if aliases(n, fieldType, fieldText) {
 			return "", transportError("ambiguous_envelope")
 		}
 
-		t, _ := n.Get("type").Text()
+		t, _ := n.Get(fieldType).Text()
 
-		s, ok := n.Get("text").Text()
+		s, ok := n.Get(fieldText).Text()
 		if t != "text" || !ok {
 			return "", transportError("tool_call_refused")
 		}

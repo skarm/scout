@@ -61,9 +61,11 @@ func humanSummary(out *bytes.Buffer, document Document, md bool) {
 	severities := map[Severity]int{}
 	retained, approved := 0, 0
 
-	approvals := map[string]bool{}
+	type occurrence struct{ target, finding string }
+
+	approvals := map[occurrence]bool{}
 	for _, approval := range document.Evaluation.Suppressed {
-		approvals[approval.TargetID+"\x00"+approval.FindingID] = true
+		approvals[occurrence{approval.TargetID, approval.FindingID}] = true
 	}
 
 	for _, target := range document.Run.Targets {
@@ -73,7 +75,7 @@ func humanSummary(out *bytes.Buffer, document Document, md bool) {
 				retained++
 
 				severities[finding.Severity]++
-				if approvals[target.ID+"\x00"+finding.ID] {
+				if approvals[occurrence{target.ID, finding.ID}] {
 					approved++
 				}
 			}

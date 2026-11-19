@@ -8,6 +8,23 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	// ShellEval marks an observed eval command in a shell finding.
+	ShellEval = "shell_eval"
+	// ShellCommandText marks command text passed to a modeled shell execution sink.
+	ShellCommandText = "shell_command_text"
+	// ShellPackageScript marks a shell command supplied by a package script.
+	ShellPackageScript = "shell_package_script"
+	// ShellHostEnvironment marks a write to a host-sourced shell environment file.
+	ShellHostEnvironment = "shell_host_environment"
+	// ShellHostUpdatedInput marks shell command text returned in hook output.
+	ShellHostUpdatedInput = "shell_host_updated_input"
+	// RegistryAssertion marks evidence inferred from a registry claim.
+	RegistryAssertion = "registry_assertion"
+	// EvidenceUnavailable marks a registry claim whose evidence could not be inspected.
+	EvidenceUnavailable = "evidence_unavailable"
+)
+
 // Match refers to original file bytes. Bounds are half-open. No source text is
 // returned, preventing accidental credential disclosure through reports.
 type Match struct {

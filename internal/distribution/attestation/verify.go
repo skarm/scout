@@ -22,6 +22,33 @@ import (
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 )
 
+const (
+	fieldDsseEnvelope  = "dsseEnvelope"
+	fieldPayloadType   = "payloadType"
+	fieldPayload       = "payload"
+	fieldSignatures    = "signatures"
+	fieldSig           = "sig"
+	fieldType          = "_type"
+	fieldSubject       = "subject"
+	fieldName          = "name"
+	fieldDigest        = "digest"
+	fieldSHA256        = "sha256"
+	fieldPredicateType = "predicateType"
+	fieldPredicate     = "predicate"
+)
+
+const (
+	// MaxTrustedKeyBytes bounds the trusted public key input.
+	MaxTrustedKeyBytes        = 64 << 10
+	maxArtifactNameBytes      = 4096
+	maxEnvelopeSignatures     = 64
+	maxEnvelopeSignatureBytes = 8192
+	maxStatementSubjects      = 256
+	minRSAKeyBits             = 2048
+	maxRSAKeyBits             = 8192
+	minRSAExponent            = 65537
+)
+
 type (
 	Artifact struct{ Name, SHA256 string }
 	result   struct {
@@ -47,7 +74,7 @@ func Verify(ctx context.Context, trustedKey, envelope []byte, artifact Artifact)
 		ArtifactSHA256:    artifact.SHA256,
 		SubjectNameSHA256: digest([]byte(artifact.Name)),
 	}
-	if ctx == nil || len(trustedKey) > 64<<10 || artifact.Name == "" || len(artifact.Name) > 4096 || len(artifact.SHA256) != 64 {
+	if ctx == nil || len(trustedKey) > MaxTrustedKeyBytes || artifact.Name == "" || len(artifact.Name) > maxArtifactNameBytes || len(artifact.SHA256) != 64 {
 		return out, errors.New("invalid attestation input")
 	}
 
@@ -107,16 +134,16 @@ func parseEnvelope(ctx context.Context, envelope []byte) (signedEnvelope, error)
 		return out, errors.New("invalid attestation envelope")
 	}
 
-	if nested := root.Get("dsseEnvelope"); nested != nil {
+	if nested := root.Get(fieldDsseEnvelope); nested != nil {
 		root = nested
 	}
 
-	kind, ok := root.Get("payloadType").Text()
+	kind, ok := root.Get(fieldPayloadType).Text()
 	if !ok || kind != "application/vnd.in-toto+json" {
 		return out, errors.New("unsupported attestation payload type")
 	}
 
-	encoded, ok := root.Get("payload").Text()
+	encoded, ok := root.Get(fieldPayload).Text()
 	if !ok {
 		return out, errors.New("attestation payload required")
 	}
@@ -126,19 +153,19 @@ func parseEnvelope(ctx context.Context, envelope []byte) (signedEnvelope, error)
 		return out, errors.New("invalid attestation payload")
 	}
 
-	signatures := root.Get("signatures")
-	if signatures == nil || signatures.Kind != jsonconfig.KindArray || len(signatures.Elements) < 1 || len(signatures.Elements) > 64 {
+	signatures := root.Get(fieldSignatures)
+	if signatures == nil || signatures.Kind != jsonconfig.KindArray || len(signatures.Elements) < 1 || len(signatures.Elements) > maxEnvelopeSignatures {
 		return out, errors.New("invalid attestation signature inventory")
 	}
 
 	for _, entry := range signatures.Elements {
-		encoded, ok := entry.Get("sig").Text()
+		encoded, ok := entry.Get(fieldSig).Text()
 		if !ok {
 			return out, errors.New("invalid attestation signature")
 		}
 
 		sig, err := decode(encoded)
-		if err != nil || len(sig) > 8192 {
+		if err != nil || len(sig) > maxEnvelopeSignatureBytes {
 			return out, errors.New("invalid attestation signature encoding")
 		}
 
@@ -156,7 +183,7 @@ func matchesSubject(ctx context.Context, payload []byte, artifact Artifact) (boo
 		return false, errors.New("invalid signed statement")
 	}
 
-	kind, ok := statement.Get("_type").Text()
+	kind, ok := statement.Get(fieldType).Text()
 	if !ok || kind != "https://in-toto.io/Statement/v1" && kind != "https://in-toto.io/Statement/v0.1" {
 		return false, errors.New("unsupported signed statement")
 	}
@@ -165,8 +192,8 @@ func matchesSubject(ctx context.Context, payload []byte, artifact Artifact) (boo
 		return false, errors.New("invalid signed predicate declaration")
 	}
 
-	subjects := statement.Get("subject")
-	if subjects == nil || subjects.Kind != jsonconfig.KindArray || len(subjects.Elements) > 256 {
+	subjects := statement.Get(fieldSubject)
+	if subjects == nil || subjects.Kind != jsonconfig.KindArray || len(subjects.Elements) > maxStatementSubjects {
 		return false, errors.New("invalid signed subjects")
 	}
 
@@ -174,13 +201,13 @@ func matchesSubject(ctx context.Context, payload []byte, artifact Artifact) (boo
 	names := make(map[string]bool)
 
 	for _, subject := range subjects.Elements {
-		name, ok := subject.Get("name").Text()
+		name, ok := subject.Get(fieldName).Text()
 		if !validSubject(subject) || kind == "https://in-toto.io/Statement/v0.1" && (!ok || name == "" || names[name]) {
 			return false, errors.New("invalid signed subject")
 		}
 
 		names[name] = true
-		hash, _ := subject.Get("digest").Get("sha256").Text()
+		hash, _ := subject.Get(fieldDigest).Get(fieldSHA256).Text()
 
 		if name != artifact.Name {
 			continue
@@ -200,7 +227,7 @@ func matchesSubject(ctx context.Context, payload []byte, artifact Artifact) (boo
 // policy. Its required type declaration and optional object still belong to
 // both supported versions of the signed Statement, not to an extension.
 func validPredicate(statement *jsonconfig.Node) bool {
-	typ, ok := statement.Get("predicateType").Text()
+	typ, ok := statement.Get(fieldPredicateType).Text()
 	if !ok || typ == "" {
 		return false
 	}
@@ -210,7 +237,7 @@ func validPredicate(statement *jsonconfig.Node) bool {
 		return false
 	}
 
-	if predicate := statement.Get("predicate"); predicate != nil && predicate.Kind != jsonconfig.KindObject {
+	if predicate := statement.Get(fieldPredicate); predicate != nil && predicate.Kind != jsonconfig.KindObject {
 		return false
 	}
 
@@ -222,11 +249,11 @@ func validSubject(subject *jsonconfig.Node) bool {
 		return false
 	}
 
-	if name := subject.Get("name"); name != nil && name.Kind != jsonconfig.KindString {
+	if name := subject.Get(fieldName); name != nil && name.Kind != jsonconfig.KindString {
 		return false
 	}
 
-	digests := subject.Get("digest")
+	digests := subject.Get(fieldDigest)
 	if digests == nil || digests.Kind != jsonconfig.KindObject || len(digests.Members) == 0 {
 		return false
 	}
@@ -261,7 +288,7 @@ func parseKey(data []byte) (crypto.PublicKey, []byte, error) {
 			return key, block.Bytes, nil
 		}
 	case *rsa.PublicKey:
-		if key.N.BitLen() >= 2048 && key.N.BitLen() <= 8192 && key.E >= 65537 {
+		if key.N.BitLen() >= minRSAKeyBits && key.N.BitLen() <= maxRSAKeyBits && key.E >= minRSAExponent {
 			return key, block.Bytes, nil
 		}
 	}

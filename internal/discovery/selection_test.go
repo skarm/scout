@@ -53,7 +53,7 @@ func TestSelectionRejectsInvalidFiltersAndCancellation(t *testing.T) {
 }
 
 func TestSelectionPathAliasesFollowFilesystemSemantics(t *testing.T) {
-	for _, names := range [][2]string{{"Skill", "SKILL"}, {"caf\u00e9", "cafe\u0301"}} {
+	for _, names := range [][2]string{{"first", "different"}, {"Skill", "SKILL"}, {"caf\u00e9", "cafe\u0301"}} {
 		t.Run(names[0], func(t *testing.T) {
 			base, err := filepath.EvalSymlinks(t.TempDir())
 			if err != nil {
@@ -77,15 +77,19 @@ func TestSelectionPathAliasesFollowFilesystemSemantics(t *testing.T) {
 				t.Fatal(err)
 			}
 			snapshot := discovery.Snapshot{Targets: []string{root}}
+			wantIncluded, wantExcluded := 0, 1
+			if same {
+				wantIncluded, wantExcluded = 1, 0
+			}
 			for _, excluded := range []string{alias, filepath.Join(alias, "not-yet-created")} {
 				selected, err := discovery.Select(t.Context(), snapshot, discovery.Filters{ExcludePaths: []string{excluded}})
-				if err != nil || (len(selected.Targets) == 0) != same {
+				if err != nil || len(selected.Targets) != wantExcluded {
 					t.Fatalf("filesystem alias=%t exclusion=%q targets=%v error=%v", same, excluded, selected.Targets, err)
 				}
 			}
 			for _, included := range []string{alias, filepath.Join(alias, "not-yet-created")} {
 				selected, err := discovery.Select(t.Context(), snapshot, discovery.Filters{IncludePaths: []string{included}})
-				if err != nil || (len(selected.Targets) == 1) != same {
+				if err != nil || len(selected.Targets) != wantIncluded {
 					t.Fatalf("filesystem alias=%t inclusion=%q targets=%v error=%v", same, included, selected.Targets, err)
 				}
 			}
@@ -117,5 +121,47 @@ func TestSelectionResolvesExistingAncestorsOfMissingFilters(t *testing.T) {
 				t.Fatalf("unresolvable path filter was silently ignored: %s", name)
 			}
 		}
+	}
+}
+
+func TestCodexMalformedEnablementRetainsPartialInventory(t *testing.T) {
+	for _, tc := range []struct {
+		name, text string
+		complete   bool
+		settings   int
+	}{
+		{name: "absent", complete: true},
+		{name: "empty containers", text: "plugins={}\n[skills]\nconfig=[]\n", complete: true},
+		{name: "plugin without switch", text: "[plugins.helper]\nother='metadata'\n", complete: true},
+		{name: "valid switches", text: "[plugins.helper]\nenabled=false\n[[skills.config]]\npath='/metadata/only'\nenabled=true\n", complete: true, settings: 2},
+		{name: "plugin container", text: "plugins=true\n"},
+		{name: "plugin entry", text: "[plugins]\nhelper=true\n"},
+		{name: "plugin switch", text: "[plugins.helper]\nenabled='SECRET_BAD_TYPE'\n"},
+		{name: "skill container", text: "skills=true\n"},
+		{name: "skill configuration list", text: "[skills]\nconfig=true\n"},
+		{name: "skill configuration entry", text: "[skills]\nconfig=[false]\n"},
+		{name: "retained plugin switch", text: "[plugins.bad]\nenabled='SECRET_BAD_TYPE'\n[plugins.good]\nenabled=true\n", settings: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := canonicalTemp(t)
+			write(t, home, ".codex/config.toml", tc.text+"\n[mcp_servers.retained]\nenabled=false\n")
+			o := options(home)
+			o.Agent = "codex"
+			snapshot, err := discovery.Discover(t.Context(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if snapshot.Complete != tc.complete || hasIssue(snapshot, "invalid_enablement") == tc.complete {
+				t.Fatalf("wrong completeness: %+v", snapshot)
+			}
+			if len(snapshot.Enablement) != tc.settings || len(snapshot.Components) != 1 || len(snapshot.Sources) != 1 || len(snapshot.Targets) != 1 {
+				t.Fatalf("lost inventory: %+v", snapshot)
+			}
+			for _, issue := range snapshot.Issues {
+				if issue.Code != "invalid_enablement" || issue.Path != snapshot.Sources[0].Path {
+					t.Fatalf("unexpected diagnostic: %+v", issue)
+				}
+			}
+		})
 	}
 }

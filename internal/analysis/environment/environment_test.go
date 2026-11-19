@@ -71,7 +71,11 @@ func TestCapabilityPairsRespectScopesAndBudgets(t *testing.T) {
 				}}
 				targets := []report.TargetResult{{ID: "root", State: report.RunComplete}}
 				out := environment.Build(t.Context(), []environment.Surface{surface}, targets, 10, 100)
-				if (len(out.Observations) == 1) != (tc.want && !same) || out.Completeness != report.Complete {
+				want := 0
+				if tc.want && !same {
+					want = 1
+				}
+				if len(out.Observations) != want || out.Completeness != report.Complete {
 					t.Fatalf("scope=%t incorrect relationship: %+v", same, out)
 				}
 			}

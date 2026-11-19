@@ -15,6 +15,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxDependencyDistanceBytes = 64
+)
+
 //nolint:gochecknoglobals // Immutable package-name dictionaries shared by concurrent scans.
 var (
 	popularPython    = strings.Fields("requests numpy pandas flask django pytest sqlalchemy pillow cryptography boto3 pyyaml beautifulsoup4 scipy matplotlib setuptools urllib3 certifi click fastapi pydantic aiohttp httpx rich typer openai anthropic langchain transformers torch tensorflow")
@@ -100,7 +104,7 @@ func (a dependencySignal) matchesDependencyName(ecosystem, name string) bool {
 }
 
 func editDistance(a, b string) int {
-	if len(a) > 64 || len(b) > 64 {
+	if len(a) > maxDependencyDistanceBytes || len(b) > maxDependencyDistanceBytes {
 		return 65
 	}
 

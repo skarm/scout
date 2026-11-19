@@ -65,6 +65,43 @@ func TestReplayEvidenceRejectsFalseCompletionAndMutation(t *testing.T) {
 	}
 }
 
+func TestJSONLVerificationHashesTheBytesItParses(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "replay.jsonl")
+	prefix := "{}\n" + strings.Repeat(" ", 128<<10)
+	if err := os.WriteFile(path, []byte(prefix+"{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	expected, err := artifactIdentity(t.Context(), root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lines := 0
+	_, err = walkJSONL(t.Context(), root, expected, func(_ []byte) error {
+		lines++
+		if lines != 1 {
+			return nil
+		}
+		// The next record is beyond the scanner's initial read buffer.
+		file, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = file.WriteAt([]byte("[]"), int64(len(prefix))); err != nil {
+			t.Fatal(err)
+		}
+		if err = file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return nil
+	})
+	if err == nil {
+		t.Fatal("parsed bytes differed from the recorded digest but were accepted")
+	}
+}
+
 func TestComparisonCannotHideChangedObservations(t *testing.T) {
 	id := "input"
 	before := replayEvidence{
@@ -172,7 +209,7 @@ func TestChangedReplayRequiresBoundAdjudicationAndExistingRegression(t *testing.
 	if verifyComparisonArtifact(t.Context(), root, write("comparison.json", comparison), after, observed, true) == nil {
 		t.Fatal("unadjudicated change accepted")
 	}
-	if err := os.WriteFile(filepath.Join(root, "evidence_test.go"), []byte("package fixture\nfunc TestFixedRegression() {}\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "evidence_test.go"), []byte("package fixture\nimport \"testing\"\nfunc TestFixedRegression(t *testing.T) {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	comparison.Changes[0].Adjudication = &adjudication{
@@ -191,7 +228,7 @@ func TestChangedReplayRequiresBoundAdjudicationAndExistingRegression(t *testing.
 	if err := verifyComparisonArtifact(t.Context(), root, write("comparison.json", comparison), after, observed, true); err == nil {
 		t.Fatal("explicit checkout audit accepted a missing regression test")
 	}
-	if err := os.WriteFile(filepath.Join(root, "evidence_test.go"), []byte("package fixture\nfunc TestFixedRegression() {}\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "evidence_test.go"), []byte("package fixture\nimport \"testing\"\nfunc TestFixedRegression(t *testing.T) {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, reference := range []string{"wrong", "../outside_test.go:TestFixedRegression", "evidence_test.go:not_a_test", "missing_test.go:TestFixedRegression", "evidence_test.go:TestMissing"} {
@@ -205,5 +242,41 @@ func TestChangedReplayRequiresBoundAdjudicationAndExistingRegression(t *testing.
 	bad.After.SHA256 = strings.Repeat("0", 64)
 	if verifyComparisonArtifact(context.Background(), root, write("comparison.json", bad), after, observed, true) == nil {
 		t.Fatal("changed current binding accepted")
+	}
+}
+
+func TestAdjudicationRequiresAnActualFunctionDeclaration(t *testing.T) {
+	for _, tc := range []struct {
+		name, source string
+		valid        bool
+	}{
+		{name: "function", source: "package fixture\nimport \"testing\"\nfunc TestRegression(t *testing.T) {}\n", valid: true},
+		{name: "aliased import", source: "package fixture\nimport test \"testing\"\nfunc TestRegression(*test.T) {}\n", valid: true},
+		{name: "no parameters", source: "package fixture\nfunc TestRegression() {}\n"},
+		{name: "wrong parameter", source: "package fixture\nfunc TestRegression(n int) {}\n"},
+		{name: "two parameters", source: "package fixture\nimport \"testing\"\nfunc TestRegression(a, b *testing.T) {}\n"},
+		{name: "returns value", source: "package fixture\nimport \"testing\"\nfunc TestRegression(t *testing.T) int { return 0 }\n"},
+		{name: "generic", source: "package fixture\nimport \"testing\"\nfunc TestRegression[V any](t *testing.T) {}\n"},
+		{name: "line-comment", source: "package fixture\n// func TestRegression() {}\n"},
+		{name: "block-comment", source: "package fixture\n/* func TestRegression() {} */\n"},
+		{name: "string", source: "package fixture\nconst example = `func TestRegression() {}`\n"},
+		{name: "method", source: "package fixture\ntype suite struct{}\nfunc (suite) TestRegression() {}\n"},
+		{name: "missing", source: "package fixture\nfunc TestDifferentRegression() {}\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "regression_test.go"), []byte(tc.source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			entry := change{ID: "fixture", Adjudication: &adjudication{
+				Reason: "regression covered", Test: "regression_test.go:TestRegression",
+			}}
+			if err := verifyAdjudication(root, entry, true); (err == nil) != tc.valid {
+				t.Fatalf("checkout regression reference: error=%v, want valid=%t", err, tc.valid)
+			}
+			if err := verifyAdjudication(root, entry, false); err != nil {
+				t.Fatalf("historical evidence unexpectedly depends on current source: %v", err)
+			}
+		})
 	}
 }

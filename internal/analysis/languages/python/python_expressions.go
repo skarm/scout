@@ -41,7 +41,7 @@ func (w *pyWalker) expr(n *frontend.Node, s *pyState, depth int) pyValue {
 		return literalValue(v, ok, pyTruth(n, s, 0))
 	case frontend.Name:
 		if v, ok := s.lookup(n.String(frontend.ID)); ok {
-			return pyContents(v)
+			return w.contents(v)
 		}
 
 		return namedValue(s.resolve(n.String(frontend.ID)))
@@ -66,7 +66,7 @@ func (w *pyWalker) evaluatedExpr(n *frontend.Node, s *pyState, depth int) pyValu
 
 func (w *pyWalker) unknownExpr(n *frontend.Node, s *pyState, depth int) pyValue {
 	// Retain visible observations without committing speculative child effects.
-	child := s.fork()
+	child := w.forkState(s)
 	for _, x := range n.Children() {
 		w.expr(x, child, depth+1)
 	}
@@ -97,12 +97,12 @@ func (w *pyWalker) transformedExpr(n *frontend.Node, s *pyState, depth int) pyVa
 
 func (w *pyWalker) sequenceExpr(n *frontend.Node, s *pyState, depth int) pyValue {
 	items := n.List(frontend.Elts)
-	values := make([]pyValue, 0, min(len(items), 64))
+	values := make([]pyValue, 0, min(len(items), maxSequenceItems))
 
-	complete := len(items) <= 64
+	complete := len(items) <= maxSequenceItems
 	for _, item := range items {
 		v := w.expr(item, s, depth+1)
-		if len(values) < 64 {
+		if len(values) < maxSequenceItems {
 			values = append(values, v)
 		}
 
@@ -126,16 +126,16 @@ func (w *pyWalker) dictionaryExpr(n *frontend.Node, s *pyState, depth int) pyVal
 	entries := map[string]pyValue{}
 	vs := make([]pyValue, 0)
 
-	complete := len(keys) <= 64 && len(keys) == len(values)
+	complete := len(keys) <= maxDictionaryEntries && len(keys) == len(values)
 	for i, key := range keys {
 		if i >= len(values) {
 			break
 		}
 
-		w.expr(key, s, depth+1)
+		keyValue := w.expr(key, s, depth+1)
 		v := w.expr(values[i], s, depth+1)
 
-		vs = append(vs, v)
+		vs = append(vs, keyValue, v)
 		if key == nil && v.mapping() != nil {
 			maps.Copy(entries, v.mapping().entries)
 		} else if k, ok := nodeLiteral(key); ok {
@@ -144,7 +144,7 @@ func (w *pyWalker) dictionaryExpr(n *frontend.Node, s *pyState, depth int) pyVal
 			complete = false
 		}
 
-		if len(entries) > 64 {
+		if len(entries) > maxDictionaryEntries {
 			complete = false
 		}
 	}
@@ -152,7 +152,7 @@ func (w *pyWalker) dictionaryExpr(n *frontend.Node, s *pyState, depth int) pyVal
 	v := transformed(joinPy(vs...), n)
 	if complete {
 		v.meaning = &pyMapping{entries: entries}
-		v = pyContents(v)
+		v = w.contents(v)
 	} else {
 		w.limited = true
 	}
@@ -161,7 +161,7 @@ func (w *pyWalker) dictionaryExpr(n *frontend.Node, s *pyState, depth int) pyVal
 }
 
 func (w *pyWalker) comprehensionExpr(n *frontend.Node, s *pyState, depth int) pyValue {
-	child := s.fork()
+	child := w.forkState(s)
 	for _, g := range n.List(frontend.Generators) {
 		// The first iterable is read before binding the comprehension target.
 		iter := w.expr(g.Child(frontend.Iter), child, depth+1)
@@ -189,16 +189,16 @@ func (w *pyWalker) booleanExpr(n *frontend.Node, s *pyState, depth int) pyValue 
 
 	v := w.expr(values[0], s, depth+1)
 	for _, item := range values[1:] {
-		if n.String(frontend.Op) == "And" && v.truth == 1 || n.String(frontend.Op) == "Or" && v.truth == 2 {
+		if n.String(frontend.Op) == frontend.OpAnd && v.truth == 1 || n.String(frontend.Op) == frontend.OpOr && v.truth == 2 {
 			return v
 		}
 
 		if v.truth == 0 {
-			branch := s.fork()
+			branch := w.forkState(s)
 			next := w.expr(item, branch, depth+1)
-			mergePyBranches(s, s, branch)
+			w.mergeBranches(s, s, branch)
 
-			v = mergePyValue(v, next)
+			v = w.mergeValues(v, next)
 		} else {
 			v = w.expr(item, s, depth+1)
 		}
@@ -217,11 +217,11 @@ func (w *pyWalker) conditionalExpr(n *frontend.Node, s *pyState, depth int) pyVa
 		return w.expr(n.Child(frontend.Orelse), s, depth+1)
 	}
 
-	a, b := s.fork(), s.fork()
+	a, b := w.forkState(s), w.forkState(s)
 	x, y := w.expr(n.Child(frontend.Body), a, depth+1), w.expr(n.Child(frontend.Orelse), b, depth+1)
-	mergePyBranches(s, a, b)
+	w.mergeBranches(s, a, b)
 
-	return mergePyValue(x, y)
+	return w.mergeValues(x, y)
 }
 
 func (w *pyWalker) attributeExpr(n *frontend.Node, s *pyState, depth int) pyValue {
@@ -277,7 +277,7 @@ func (w *pyWalker) subscriptExpr(n *frontend.Node, s *pyState, depth int) pyValu
 	}
 
 	if known && v.mapping() != nil {
-		return transformed(pyContents(v.mapping().entries[key]), n)
+		return transformed(w.contents(v.mapping().entries[key]), n)
 	}
 
 	switch v.meaning.(type) {
@@ -290,10 +290,17 @@ func (w *pyWalker) subscriptExpr(n *frontend.Node, s *pyState, depth int) pyValu
 
 func (w *pyWalker) lambdaExpr(n *frontend.Node, s *pyState, depth int) pyValue {
 	f := w.defineFunction(n, s, depth+1)
-	child := s.fork().scope()
+
+	child := w.forkState(s).scope()
+	if !w.prebind([]*frontend.Node{n.Child(frontend.Body)}, child) {
+		return functionValue(f)
+	}
+
 	w.bindArgs(n.Child(frontend.Args), child)
 
-	maps.Copy(child.names, child.defaultsFor(f))
+	if !w.copyDefaults(child, child.defaultsFor(f)) {
+		return functionValue(f)
+	}
 
 	w.expr(n.Child(frontend.Body), child, depth+1)
 	// Defining a function does not evaluate its body or return its value.

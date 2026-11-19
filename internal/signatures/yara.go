@@ -16,6 +16,16 @@ import (
 	_ "embed"
 )
 
+const (
+	defaultSignatureFileBytes  = 1 << 20
+	defaultSignatureTotalBytes = 8 << 20
+	defaultSignatureFiles      = 64
+	maxSignatureTotalBytes     = 256 << 20
+	maxSignatureRuleNameBytes  = 128
+	maxSignatureMatches        = 32
+	maxSignatureMatchSpans     = 8
+)
+
 //go:embed rules/agent_skills.yar
 var agentRules string
 
@@ -90,23 +100,37 @@ type signatureScan struct {
 	fatal       string
 }
 
+// DefaultTimeout is the default deadline for a native signature scan.
+const DefaultTimeout = 3 * time.Second
+
+const (
+	// MaxFiles is the supported upper bound for the number of signature inputs.
+	MaxFiles = 4096
+	// MaxFileBytes is the supported upper bound for a single signature input.
+	MaxFileBytes = 4 << 20
+	// MaxTimeout is the longest supported deadline for one signature scan.
+	MaxTimeout = 10 * time.Second
+	// MaxExtraRuleBytes bounds extra signature rule text.
+	MaxExtraRuleBytes = 256 << 10
+)
+
 func DefaultOptions() Options {
-	return Options{Timeout: 3 * time.Second, MaxFileBytes: 1 << 20, MaxTotalBytes: 8 << 20, MaxFiles: 64}
+	return Options{Timeout: DefaultTimeout, MaxFileBytes: defaultSignatureFileBytes, MaxTotalBytes: defaultSignatureTotalBytes, MaxFiles: defaultSignatureFiles}
 }
 
 func BuiltinRulesSHA256() string { return hash([]byte(builtinRules)) }
 
 func Check(ctx context.Context, inputs []Input, o Options) (Report, error) {
-	return check(ctx, inputs, o, nil, true)
+	return check(ctx, inputs, o, nil, true, "")
 }
 
 func (o Options) Validate() error {
 	for _, budget := range []struct{ value, min, max int64 }{
-		{value: int64(o.Timeout), min: 1, max: int64(10 * time.Second)},
-		{value: int64(o.MaxFiles), min: 1, max: 4096},
-		{value: int64(o.MaxFileBytes), min: 1, max: 4 << 20},
-		{value: int64(o.MaxTotalBytes), min: int64(o.MaxFileBytes), max: 256 << 20},
-		{value: int64(len(o.ExtraRules)), min: 0, max: 256 << 10},
+		{value: int64(o.Timeout), min: 1, max: int64(MaxTimeout)},
+		{value: int64(o.MaxFiles), min: 1, max: MaxFiles},
+		{value: int64(o.MaxFileBytes), min: 1, max: MaxFileBytes},
+		{value: int64(o.MaxTotalBytes), min: int64(o.MaxFileBytes), max: maxSignatureTotalBytes},
+		{value: int64(len(o.ExtraRules)), min: 0, max: MaxExtraRuleBytes},
 	} {
 		if budget.value < budget.min || budget.value > budget.max {
 			return errors.New("invalid YARA-X budgets")
@@ -130,11 +154,11 @@ func (o Options) Validate() error {
 	return nil
 }
 
-func checkCompiled(ctx context.Context, inputs []Input, o Options, engine compiledEngine) (Report, error) {
-	return check(ctx, inputs, o, engine, false)
+func selectedRules(o Options) string {
+	return builtinRules + "\n" + string(o.ExtraRules)
 }
 
-func check(ctx context.Context, inputs []Input, o Options, engine compiledEngine, ownsEngine bool) (Report, error) {
+func check(ctx context.Context, inputs []Input, o Options, engine compiledEngine, ownsEngine bool, rulesDigest string) (Report, error) {
 	r := Report{
 		Enabled:      o.Enabled,
 		Rulepack:     cloneRulepack(o.Rulepack),
@@ -161,11 +185,15 @@ func check(ctx context.Context, inputs []Input, o Options, engine compiledEngine
 		return r, nil
 	}
 
-	rules := builtinRules + "\n" + string(o.ExtraRules)
+	var rules string
+	if ownsEngine {
+		rules = selectedRules(o)
+		rulesDigest = hash([]byte(rules))
+	}
 
-	r.RulesSHA256 = hash([]byte(rules))
-
+	r.RulesSHA256 = rulesDigest
 	state := signatureScan{engine: engine, ownsEngine: ownsEngine, rules: rules, options: o, backend: r.Engine}
+
 	defer state.close()
 
 	for _, input := range inputs {
@@ -207,7 +235,7 @@ func validateReply(r reply, size int) error {
 		return errors.New("invalid YARA-X status")
 	}
 
-	if len(r.Matches) > 32 {
+	if len(r.Matches) > maxSignatureMatches {
 		return errors.New("YARA-X match budget")
 	}
 
@@ -230,7 +258,7 @@ func validateMatch(m Match, size int) error {
 		return errors.New("invalid signature severity")
 	}
 
-	if !textmatch.Identifier(m.Rule, 128) || len(m.Spans) == 0 || len(m.Spans) > 8 {
+	if !textmatch.Identifier(m.Rule, maxSignatureRuleNameBytes) || len(m.Spans) == 0 || len(m.Spans) > maxSignatureMatchSpans {
 		return errors.New("invalid YARA-X match")
 	}
 

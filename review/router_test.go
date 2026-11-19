@@ -68,6 +68,19 @@ func TestExplicitModeRoutingWithoutFallback(t *testing.T) {
 	}
 }
 
+func TestRouterPreservesRequestCancellation(t *testing.T) {
+	calls := 0
+	router, err := review.NewRouter(routedProvider{name: "fixture", n: &calls}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := router.Complete(ctx, []byte(`{"mode":"discovery"}`)); !errors.Is(err, context.Canceled) || calls != 0 {
+		t.Fatalf("cancelled request: calls=%d, err=%v", calls, err)
+	}
+}
+
 type routedProvider struct {
 	name string
 	n    *int

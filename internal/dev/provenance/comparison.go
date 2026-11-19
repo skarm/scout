@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"reflect"
-	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/skarm/scout/internal/textmatch"
 )
@@ -190,15 +193,50 @@ func verifyAdjudication(root string, change change, currentSources bool) error {
 		return nil
 	}
 
+	if unicode.IsLower(rune(name[len("Test")])) {
+		return errors.New("adjudication regression test does not exist")
+	}
+
 	data, err := readJSONSource(root, path)
 	if err != nil {
 		return err
 	}
 
-	if !regexp.MustCompile(`func\s+` + regexp.QuoteMeta(name) + `\s*\(`).Match(data) {
-		return errors.New("adjudication regression test does not exist")
+	parsed, err := parser.ParseFile(token.NewFileSet(), path, data, parser.SkipObjectResolution)
+	if err != nil {
+		return fmt.Errorf("invalid adjudication regression source: %w", err)
 	}
 
-	return nil
+	for _, declaration := range parsed.Decls {
+		if function, ok := declaration.(*ast.FuncDecl); ok && function.Name.Name == name && isRegressionTest(function) {
+			return nil
+		}
+	}
+
+	return errors.New("adjudication regression test does not exist")
 }
+
+// isRegressionTest checks the Go test declaration shape without loading or
+// running the referenced package. The parameter may use an import alias.
+func isRegressionTest(fn *ast.FuncDecl) bool {
+	if fn.Recv != nil || fn.Body == nil || fn.Type.TypeParams.NumFields() != 0 ||
+		fn.Type.Results.NumFields() != 0 || fn.Type.Params.NumFields() != 1 {
+		return false
+	}
+
+	pointer, ok := fn.Type.Params.List[0].Type.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+
+	switch name := pointer.X.(type) {
+	case *ast.Ident:
+		return name.Name == "T"
+	case *ast.SelectorExpr:
+		return name.Sel.Name == "T"
+	default:
+		return false
+	}
+}
+
 func readJSONSource(root, path string) ([]byte, error) { return readJSONFile(root, path) }

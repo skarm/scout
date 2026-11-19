@@ -163,6 +163,17 @@ func TestHTTPAuthOriginLifecycle(t *testing.T) {
 	if w = call(`{"jsonrpc":"2.0","id":3,"method":"tools/list"}`, id, "", auth); w.Code != 200 || !strings.Contains(w.Body.String(), "scan_skill") {
 		t.Fatalf("failed reinitialization destroyed the active session: %d %s", w.Code, w.Body)
 	}
+	get := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://localhost/mcp", nil)
+	get.Header.Set("Authorization", auth)
+	get.Header.Set("Accept", "text/event-stream")
+	get.Header.Set("Mcp-Session-Id", id)
+	get.Header.Set("Mcp-Protocol-Version", mcp.ProtocolVersion)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, get)
+	if w.Code != http.StatusMethodNotAllowed || w.Header().Get("Allow") != "POST, DELETE" {
+		t.Fatalf("GET for active session without SSE: HTTP %d, headers %v", w.Code, w.Header())
+	}
+
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "http://localhost/mcp", nil)
 	r.Header.Set("Authorization", auth)
 	r.Header.Set("Mcp-Session-Id", id)
@@ -170,6 +181,11 @@ func TestHTTPAuthOriginLifecycle(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != 204 {
 		t.Fatal(w.Code)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, get)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("GET for terminated session returned HTTP %d, want 404", w.Code)
 	}
 	if w = call(readyMessage, id, "", auth); w.Code != 404 {
 		t.Fatal(w.Code)
@@ -568,7 +584,7 @@ func TestHTTPAdmissionAndFailedInitialization(t *testing.T) {
 			accept:  "text/plain",
 			version: "",
 			body:    strings.NewReader(initMessage),
-			status:  415,
+			status:  http.StatusNotAcceptable,
 		},
 		{
 			name:    "version",
@@ -587,7 +603,7 @@ func TestHTTPAdmissionAndFailedInitialization(t *testing.T) {
 			media:  "application/json",
 			accept: "application/json;q=0.",
 			body:   strings.NewReader(initMessage),
-			status: http.StatusUnsupportedMediaType,
+			status: http.StatusNotAcceptable,
 		},
 		{
 			name:    "body",
@@ -597,7 +613,7 @@ func TestHTTPAdmissionAndFailedInitialization(t *testing.T) {
 			accept:  "application/json",
 			version: "",
 			body:    brokenBody{},
-			status:  413,
+			status:  http.StatusBadRequest,
 		},
 		{
 			name:    "limit",
@@ -627,7 +643,13 @@ func TestHTTPAdmissionAndFailedInitialization(t *testing.T) {
 			accept:  "application/json",
 			version: "",
 			body:    strings.NewReader(`{"jsonrpc":"2.0","method":"ping","id":1}`),
-			status:  404,
+			status:  http.StatusBadRequest,
+		},
+		{
+			name:   "delete_missing_session",
+			method: http.MethodDelete,
+			path:   "/mcp",
+			status: http.StatusBadRequest,
 		},
 		{
 			name:    "failed_init",
@@ -912,6 +934,23 @@ func mcpDocument(t *testing.T, result map[string]any) report.Document {
 	encoded, err := json.Marshal(result["structuredContent"])
 	if err != nil {
 		t.Fatal(err)
+	}
+	content, ok := result["content"].([]any)
+	if !ok || len(content) != 1 {
+		t.Fatal("expected one text block")
+	}
+	block, ok := content[0].(map[string]any)
+	if !ok || block["type"] != "text" {
+		t.Fatal("expected a text block")
+	}
+	text, ok := block["text"].(string)
+	var fallback map[string]any
+	if !ok || json.Unmarshal([]byte(text), &fallback) != nil {
+		t.Fatal("text block is not a serialized report")
+	}
+	fallbackJSON, err := json.Marshal(fallback)
+	if err != nil || !bytes.Equal(fallbackJSON, encoded) {
+		t.Fatal("text fallback and structured report differ", err)
 	}
 	var document report.Document
 	if err := json.Unmarshal(encoded, &document); err != nil {

@@ -132,6 +132,7 @@ func FuzzIndex(f *testing.F) {
 		{text: "abc", offset: 3},           // EOF after ordinary characters.
 		{text: "🙂\r\nПривет\n", offset: 5}, // Between CR and LF.
 		{text: "🙂\r\nПривет\n", offset: 8}, // After a multibyte character on the second line.
+		{text: "🙂\r\nПривет\n", offset: 1},
 		{text: "a\nb\nc", offset: 4},
 		{text: "a\rb\rc", offset: 4},
 	} {
@@ -142,20 +143,25 @@ func FuzzIndex(f *testing.F) {
 			return
 		}
 		at := int(offset) % (len(text) + 1)
+		line, column, err := source.NewIndex(text).Position(at)
 		if at < len(text) && !utf8.RuneStart(text[at]) {
+			if err == nil {
+				t.Fatalf("Position(%d) accepted the middle of a UTF-8 rune in %q: %d:%d", at, text, line, column)
+			}
 			return
 		}
-		line, column, err := source.NewIndex(text).Position(at)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("Position(%d) in %q: %v", at, text, err)
 		}
 		// Mark complete CRLF pairs before converting bare CR. When the
 		// queried offset is inside a CRLF pair, CR still occupies a column.
 		normalized := strings.ReplaceAll(text, "\r\n", "\x00\n")
 		normalized = strings.ReplaceAll(normalized, "\r", "\n")
 		prefix := normalized[:at]
-		if line != strings.Count(prefix, "\n")+1 || column != utf8.RuneCountInString(prefix[strings.LastIndexByte(prefix, '\n')+1:])+1 {
-			t.Fatal("coordinate mismatch")
+		wantLine := strings.Count(prefix, "\n") + 1
+		wantColumn := utf8.RuneCountInString(prefix[strings.LastIndexByte(prefix, '\n')+1:]) + 1
+		if line != wantLine || column != wantColumn {
+			t.Fatalf("Position(%d) in %q = %d:%d; want %d:%d", at, text, line, column, wantLine, wantColumn)
 		}
 	})
 }

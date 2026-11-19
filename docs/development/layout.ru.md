@@ -5,54 +5,14 @@
 Scout использует один Go-модуль. Публичные пакеты: `scout`, `report`, `policy`,
 `baseline`, `review`, `fetch`, `osv`, `knowledge`, `rulepack`, `mcp`.
 
-```text
-scout/
-├── *.go                         # Scanner API; scan_test.go checks private helpers
-│   └── doc.go                   # package documentation
-├── cmd/{scout,scout-dev}/        # entrypoints
-├── report/                      # independent public contract
-├── policy/                      # policy evaluation of a sealed Run
-├── baseline/                    # trusted approvals
-├── review/                      # public provider protocols
-├── fetch/                       # public download configuration
-├── osv/                         # OSV and offline cache
-├── knowledge/{data,prompts,sources}/
-├── rulepack/                    # публичный формат доверенных rulepack-артефактов
-├── mcp/                         # public server API
-├── internal/
-│   ├── buildinfo/               # module versions embedded in the running binary
-│   ├── capture/                 # ingest, artifact, rootfs, archives, extraction, external
-│   ├── syntax/                  # parsers, frontend, language/filetype, source maps
-│   ├── analysis/
-│   │   ├── languages/{golang,python,shell,javascript,sql,literals}/
-│   │   ├── analyzer/            # common catalog and cross-language checks
-│   │   ├── check/               # Analyzer, Match, Facts and binding contract
-│   │   ├── sourcepolicy/        # offline default package-source predicates
-│   │   ├── document/            # prepared source views
-│   │   ├── engine/              # orchestration and budgets
-│   │   ├── environment/         # явный совместный анализ фактов компонентов
-│   │   └── other analysis packages
-│   ├── signatures/{rules,testdata}/
-│   ├── distribution/{integrations,skills,registry,attestation}/
-│   ├── discovery/               # пассивный инвентарь конфигураций и компонентов агентов
-│   ├── commands/{cli,config,devcli,output}/
-│   ├── dev/                     # builddeps, evaluation, maintenance, provenance,
-│   │                            # releasecheck, releasepack, replay, replaywire, treeparsecheck
-│   ├── nativecheck/
-│   ├── nativecontract/
-│   ├── netpolicy/
-│   ├── promptguard/             # общий guard для литеральных и нативных проверок
-│   ├── textmatch/
-│   ├── architecture/
-│   └── scantest/scenarios/
-├── tests/{api,scan,languages,regression,acceptance,performance}/
-├── testdata/                    # inputs, acceptance captures and provenance receipts
-├── docs/{user,development,reference}/
-├── licenses/
-├── .github/workflows/
-├── bin/                         # ignored: default build output; configurable with BIN_DIR
-└── .work/                       # ignored: temporary artifacts, coverage and metrics
-```
+- `cmd/scout` и `cmd/scout-dev` содержат точки входа пользователя и разработчика.
+- `internal/capture` формирует инвентарь. `internal/syntax` разбирает захваченные исходники и определяет их координаты.
+- `internal/analysis` управляет проверками и лимитами. `internal/signatures` отвечает за нативные сигнатуры.
+- `internal/commands` разбирает аргументы CLI и конфигурацию и формирует вывод. `internal/discovery` собирает инвентарь установленных компонентов.
+- `internal/distribution` отвечает за экспорт интеграций, снимки реестра и проверку аттестаций.
+- `internal/dev` содержит инструменты сборки, измерения, replay и выпуска.
+
+[Архитектура и границы доверия](architecture.ru.md)
 
 ## Владение кодом
 
@@ -81,12 +41,6 @@ CLI tests принадлежат адаптеру команды, host adapter t
 
 ## Документация и рабочие данные
 
-Английские руководства используют `.md`, русские — `.ru.md`.
-Комментарии GoDoc пишутся на английском. См. [соглашения](documentation.ru.md).
+Руководства находятся в `docs/user`, `docs/reference` и `docs/development`. Для английского, русского и GoDoc используйте [соглашения документации](documentation.ru.md).
 
-`bin/` — каталог бинарников по умолчанию; другой путь задаётся через `BIN_DIR`.
-`make install` копирует Scout в `PREFIX/bin` (по умолчанию `~/.local/bin`). `.work/`
-хранит временные отчёты, coverage и metrics. `make clean` удаляет бинарники сборки
-и `.work/`, сохраняя установленные копии. Captures приёмки находятся в
-`testdata/acceptance/`, replay и receipts — в `testdata/provenance/`.
-Нативные зависимости используют пользовательский кеш.
+В `bin/` находятся сборки, в `.work/` временные отчёты и метрики. Настройка путей и очистка описаны в [руководстве по сборке](native-build.ru.md#установка-и-пути-сборки). Входы приёмки и записи происхождения находятся в `testdata/`.

@@ -29,15 +29,16 @@ type File struct {
 // NewFile copies data into immutable storage, classifies text versus binary
 // and hashes the complete bytes.
 func NewFile(name string, data []byte, executable bool) File {
-	kind := "text"
+	kind := report.FileKindText
 	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
-		kind = "binary"
+		kind = report.FileKindBinary
 	}
 
 	return File{
 		meta: report.File{
 			Path: name, Size: int64(len(data)), SHA256: Hash(data),
 			Executable: executable, Kind: kind, Status: report.CaptureCaptured,
+			UTF8BOM: kind == report.FileKindText && bytes.HasPrefix(data, []byte("\ufeff")),
 		},
 		data: string(data), // Copy: callers cannot mutate bytes after capture.
 	}
@@ -152,7 +153,7 @@ func (s Snapshot) Metadata() report.Artifact {
 	skills := make([]string, 0)
 
 	for _, f := range s.files {
-		if path.Base(f.meta.Path) == "SKILL.md" {
+		if path.Base(f.meta.Path) == SkillManifest {
 			skills = append(skills, f.meta.Path)
 		}
 	}

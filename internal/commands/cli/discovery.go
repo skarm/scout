@@ -15,6 +15,11 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	defaultDiscoveryTimeout = 10 * time.Second
+	maxDiscoveryTimeout     = 2 * time.Minute
+)
+
 type discoveryArguments struct {
 	options         discovery.Options
 	format, output  string
@@ -71,7 +76,7 @@ func (a discoveryArguments) publishInventory(ctx context.Context, snapshot disco
 		snapshot.Complete = false
 	}
 
-	publish, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	publish, stop := context.WithTimeout(context.WithoutCancel(ctx), reportPublicationTimeout)
 	defer stop()
 
 	write := func(w io.Writer) error { return writeInventory(w, snapshot, a.format) }
@@ -96,7 +101,7 @@ func (a discoveryArguments) publishInventory(ctx context.Context, snapshot disco
 }
 
 func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArguments, error) {
-	a := discoveryArguments{options: discovery.DefaultOptions(""), timeout: 10 * time.Second, format: "text"}
+	a := discoveryArguments{options: discovery.DefaultOptions(""), timeout: defaultDiscoveryTimeout, format: "text"}
 	fs := flag.NewFlagSet("discover", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.StringVar(&a.options.Agent, "agent", a.options.Agent, "agent to inventory: all, codex or claude-code")
@@ -127,7 +132,7 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 	})
 
 	a.scanArgs = fs.Args()
-	if a.timeout <= 0 || a.timeout > 2*time.Minute || a.format != "text" && a.format != "json" ||
+	if a.timeout <= 0 || a.timeout > maxDiscoveryTimeout || a.format != "text" && a.format != "json" ||
 		a.noProject && len(a.projects) > 0 || !a.scan && len(a.scanArgs) > 0 || a.scan && a.explicitOutput {
 		return a, errors.New("invalid discovery arguments; scan options belong after --")
 	}

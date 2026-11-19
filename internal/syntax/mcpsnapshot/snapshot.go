@@ -13,8 +13,22 @@ import (
 )
 
 const (
-	Schema   = "scout.mcp-snapshot/v1"
-	MaxTools = 256
+	fieldInitialize      = "initialize"
+	fieldTools           = "tools"
+	fieldSource          = "source"
+	fieldSchema          = "schema"
+	fieldServerInfo      = "serverInfo"
+	fieldVersion         = "version"
+	fieldProtocolVersion = "protocolVersion"
+	fieldNextCursor      = "nextCursor"
+	fieldResultType      = "resultType"
+	fieldName            = "name"
+)
+
+const (
+	Schema         = "scout.mcp-snapshot/v1"
+	MaxTools       = 256
+	maxSourceBytes = 1024
 )
 
 // Document retains nodes in one bounded parsed snapshot, with original spans.
@@ -31,7 +45,7 @@ func Create(ctx context.Context, source string, capture []byte) (json.RawMessage
 		return nil, err
 	}
 
-	if source == "" || len(source) > 1024 || !utf8.ValidString(source) || !onlyFields(root, "initialize", "tools") {
+	if source == "" || len(source) > maxSourceBytes || !utf8.ValidString(source) || !onlyFields(root, "initialize", "tools") {
 		return nil, errors.New("invalid MCP capture or source identity")
 	}
 
@@ -39,7 +53,7 @@ func Create(ctx context.Context, source string, capture []byte) (json.RawMessage
 		return nil, err
 	}
 
-	initialize, tools := root.Get("initialize"), root.Get("tools")
+	initialize, tools := root.Get(fieldInitialize), root.Get(fieldTools)
 
 	out, err := json.Marshal(struct {
 		Schema     string          `json:"schema"`
@@ -67,9 +81,9 @@ func Create(ctx context.Context, source string, capture []byte) (json.RawMessage
 // protocol extension fields remain available for hashing; envelope fields are exact.
 // This is not JSON Schema validation, authentication or a runtime completeness proof.
 func Inspect(root *jsonconfig.Node) (Document, error) {
-	d := Document{Root: root, Source: root.Get("source"), Initialize: root.Get("initialize"), List: root.Get("tools")}
+	d := Document{Root: root, Source: root.Get(fieldSource), Initialize: root.Get(fieldInitialize), List: root.Get(fieldTools)}
 	if !onlyFields(root, "schema", "source", "initialize", "tools") ||
-		!stringValue(root.Get("schema"), Schema) || !nonemptyString(d.Source) || len(d.Source.String) > 1024 {
+		!stringValue(root.Get(fieldSchema), Schema) || !nonemptyString(d.Source) || len(d.Source.String) > maxSourceBytes {
 		return d, errors.New("invalid MCP snapshot envelope")
 	}
 
@@ -77,39 +91,39 @@ func Inspect(root *jsonconfig.Node) (Document, error) {
 }
 
 func validateCapture(root *jsonconfig.Node) error {
-	initialize, list := root.Get("initialize"), root.Get("tools")
+	initialize, list := root.Get(fieldInitialize), root.Get(fieldTools)
 	if initialize == nil || initialize.Kind != jsonconfig.KindObject || list == nil || list.Kind != jsonconfig.KindObject {
 		return errors.New("MCP capture requires initialize and tools results")
 	}
 
-	info := initialize.Get("serverInfo")
-	if info == nil || info.Kind != jsonconfig.KindObject || !requiredKind(info, "name", jsonconfig.KindString) ||
-		!requiredKind(info, "version", jsonconfig.KindString) || !nonemptyString(initialize.Get("protocolVersion")) ||
+	info := initialize.Get(fieldServerInfo)
+	if info == nil || info.Kind != jsonconfig.KindObject || !requiredKind(info, fieldName, jsonconfig.KindString) ||
+		!requiredKind(info, fieldVersion, jsonconfig.KindString) || !nonemptyString(initialize.Get(fieldProtocolVersion)) ||
 		!optionalKind(initialize, "instructions", jsonconfig.KindString) ||
 		!requiredKind(initialize, "capabilities", jsonconfig.KindObject) {
 		return errors.New("invalid MCP initialize result")
 	}
 
-	tools := list.Get("tools")
-	if tools == nil || tools.Kind != jsonconfig.KindArray || len(tools.Elements) > MaxTools || list.Get("nextCursor") != nil ||
-		list.Get("resultType") != nil && !stringValue(list.Get("resultType"), "complete") {
+	tools := list.Get(fieldTools)
+	if tools == nil || tools.Kind != jsonconfig.KindArray || len(tools.Elements) > MaxTools || list.Get(fieldNextCursor) != nil ||
+		list.Get(fieldResultType) != nil && !stringValue(list.Get(fieldResultType), "complete") {
 		return errors.New("MCP tools list is invalid, paginated or exceeds the tool limit")
 	}
 
 	names := map[string]bool{}
 	for _, tool := range tools.Elements {
-		if !validTool(tool) || names[tool.Get("name").String] {
+		if !validTool(tool) || names[tool.Get(fieldName).String] {
 			return errors.New("invalid or duplicate MCP tool declaration")
 		}
 
-		names[tool.Get("name").String] = true
+		names[tool.Get(fieldName).String] = true
 	}
 
 	return nil
 }
 
 func validTool(tool *jsonconfig.Node) bool {
-	return tool != nil && tool.Kind == jsonconfig.KindObject && nonemptyString(tool.Get("name")) &&
+	return tool != nil && tool.Kind == jsonconfig.KindObject && nonemptyString(tool.Get(fieldName)) &&
 		requiredKind(tool, "inputSchema", jsonconfig.KindObject) &&
 		optionalKind(tool, "title", jsonconfig.KindString) && optionalKind(tool, "description", jsonconfig.KindString) &&
 		optionalKind(tool, "outputSchema", jsonconfig.KindObject) && optionalKind(tool, "annotations", jsonconfig.KindObject)

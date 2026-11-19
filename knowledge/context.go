@@ -2,6 +2,11 @@ package knowledge
 
 import "strings"
 
+const (
+	maxContextWindowLines = 3
+	maxContextWindowBytes = 2048
+)
+
 // ContextSignals adapts SkillSpector common.is_code_example as NON-SUPPRESSING
 // hints. A hostile author can plant these words, so no score, severity or policy
 // is changed. Windows are bounded, and returned strings never contain source data.
@@ -38,11 +43,11 @@ func ContextSignals(text string, start, end int) []string {
 // The hint window is bounded independently in bytes and newline count on each
 // side of the occurrence. end is validated above but does not extend the hint.
 func contextWindow(text string, start int) (int, int) {
-	lo, hi := start, min(len(text), start+2048)
-	for lines := 0; lo > 0 && start-lo < 2048; lo-- {
+	lo, hi := start, min(len(text), start+maxContextWindowBytes)
+	for lines := 0; lo > 0 && start-lo < maxContextWindowBytes; lo-- {
 		if text[lo-1] == '\n' {
 			lines++
-			if lines > 3 {
+			if lines > maxContextWindowLines {
 				break
 			}
 		}
@@ -51,7 +56,7 @@ func contextWindow(text string, start int) (int, int) {
 	for i, lines := start, 0; i < hi; i++ {
 		if text[i] == '\n' {
 			lines++
-			if lines > 3 {
+			if lines > maxContextWindowLines {
 				hi = i
 				break
 			}

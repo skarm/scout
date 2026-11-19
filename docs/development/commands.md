@@ -55,16 +55,19 @@ results and runtime faults are counted separately. The input must be a regular
 JSONL or gzip file; FIFOs and devices are refused before reading. Use fresh output
 directories.
 
+Replay applies the full `--case-timeout` duration. The saved `budget_seconds`
+field records whole seconds rounded down. Use a whole-second timeout when the
+saved row must identify the exact budget for a later replay.
+
+Materialized file type, size and executable bits must match the capture. If the
+filesystem cannot preserve them (including executable bits on Windows), the
+record receives `replay_capture_error` and is not scanned with altered metadata.
+
 ## Source-bound provenance
 
-The recorded receipt is `testdata/provenance/scout-current-review.json`.
-Ordinary verification checks its saved artifacts without comparing today's source
-files. Code edits do not require a new receipt. Use `provenance verify --current-sources`
-only to audit whether that measurement describes the current checkout; the output's
-`current_sources_checked` field distinguishes this audit from recorded-evidence verification.
+`make acceptance` checks saved measurement artifacts. Use `provenance verify --current-sources` to compare the receipt with this checkout. The output distinguishes that audit with `current_sources_checked`. See [acceptance](validation.md#binary-and-recorded-evidence).
 
-Evidence inputs must be bounded regular files. Symlinks within the selected root
-remain supported; links escaping it, FIFOs and devices are rejected before reading.
+Evidence requires bounded regular files under the project root. Symlinks must resolve within that root.
 
 When intentionally recording a new measurement, stage new runs in `.work/`; replace `testdata/provenance/current/` when accepted.
 Set `SCOUT_EVIDENCE_DIR` to the replay and release-check directory:
@@ -90,13 +93,7 @@ adjudication with a reason and regression-test reference before generating a rec
 Acceptance uses `testdata/acceptance/upstream-inputs.jsonl.gz`.
 Explicit `--input-mode pinned` is available for separate checks without that capture.
 
-The receipt's `engine_version` identifies the measured build; before the first
-release, a commit SHA is sufficient. Verification requires replay and binary
-selftests to match that recorded identifier. Exact current source hashes are checked
-only with `--current-sources`. The verifier itself may have a different tag or
-commit-derived version.
-Use `provenance verify --expected-version BUILD_ID` to require a particular
-measured identifier as an additional check.
+`engine_version` identifies the measured build. Replay and binary self-tests must match that identity. Use `--expected-version BUILD_ID` to require a specific value.
 
 ## Tree-sitter memory checks
 

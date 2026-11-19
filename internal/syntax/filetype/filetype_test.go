@@ -25,10 +25,10 @@ func TestContentHints(t *testing.T) {
 		{name: ".cache/a.py", data: "#!/bin/sh\ntrue", format: "text", category: "source-or-config", conflict: true},
 		{name: "a.js", data: "const a = 1;", format: "text", category: "source-or-config", conflict: false},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name+"/"+tc.format, func(t *testing.T) {
 			d := filetype.Inspect(tc.name, tc.data, false)
 			if d.Format != tc.format || d.Category != tc.category || d.Conflict != tc.conflict {
-				t.Fatalf("got %+v", d)
+				t.Fatalf("Inspect(%q) = %+v; want format=%q category=%q conflict=%v", tc.name, d, tc.format, tc.category, tc.conflict)
 			}
 		})
 	}

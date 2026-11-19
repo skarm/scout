@@ -1,5 +1,8 @@
 package javascript
 
+// HookShellCommandRule identifies the JavaScript subprocess check.
+const HookShellCommandRule = ruleJS001
+
 // Stable check identities shared by metadata, dispatch and evidence emission.
 const (
 	ruleJS001 = "JS001"

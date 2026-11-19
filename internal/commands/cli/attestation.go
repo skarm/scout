@@ -10,6 +10,11 @@ import (
 	"github.com/skarm/scout/internal/distribution/attestation"
 )
 
+const (
+	maxAttestationEnvelopeFileBytes = 256 << 10
+	maxAttestationArtifactFileBytes = 32 << 20
+)
+
 func attestationCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "verify" {
 		return usageError(stderr, "attestation verify required")
@@ -30,17 +35,17 @@ func attestationCommand(ctx context.Context, args []string, stdout, stderr io.Wr
 		return usageError(stderr, "--public-key, --envelope, --artifact and --subject are required")
 	}
 
-	trusted, err := readTrusted(*key, []string{*envelope, *artifact}, 64<<10)
+	trusted, err := readTrusted(*key, []string{*envelope, *artifact}, attestation.MaxTrustedKeyBytes)
 	if err != nil {
 		return usageError(stderr, "cannot read explicit trusted key outside inputs")
 	}
 
-	raw, err := readTrusted(*envelope, nil, 256<<10)
+	raw, err := readTrusted(*envelope, nil, maxAttestationEnvelopeFileBytes)
 	if err != nil {
 		return usageError(stderr, "cannot read envelope")
 	}
 
-	bytes, err := readTrusted(*artifact, nil, 32<<20)
+	bytes, err := readTrusted(*artifact, nil, maxAttestationArtifactFileBytes)
 	if err != nil {
 		return usageError(stderr, "cannot read artifact bytes")
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -67,6 +68,23 @@ func TestUpdateRejectsInvalidOptions(t *testing.T) {
 	}
 	if _, err := update.Build(nil, report.Analysis{}, report.Analysis{}, report.DefaultUpdateOptions()); err == nil {
 		t.Fatal("nil context accepted")
+	}
+}
+
+func TestUpdateCancellationMarksEmptyComparisonPartial(t *testing.T) {
+	input := report.Analysis{
+		SchemaVersion: "fixture",
+		Artifact:      report.Artifact{InventoryComplete: true},
+		Metadata:      report.MetadataReport{Completeness: report.Complete},
+	}
+	if change, err := update.Build(t.Context(), input, input, report.DefaultUpdateOptions()); err != nil || change.Completeness != report.Complete {
+		t.Fatalf("uncancelled comparison: %+v, err=%v", change, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	change, err := update.Build(ctx, input, input, report.DefaultUpdateOptions())
+	if !errors.Is(err, context.Canceled) || change.Completeness != report.Partial || !slices.Contains(change.Issues, "comparison_cancelled") {
+		t.Fatalf("cancelled comparison: %+v, err=%v", change, err)
 	}
 }
 
@@ -401,7 +419,11 @@ func TestUpdateIncompleteDependencyInventoryCannotProveAbsence(t *testing.T) {
 	empty := scanText(t, "requirements.txt", "")
 	populated := scanText(t, "requirements.txt", "requests==2.32.3\n")
 	for _, status := range []string{"partial", "cancelled", "failed", "unsupported", "parse_error", "evidence_mapping_failed", ""} {
-		t.Run(status, func(t *testing.T) {
+		name := status
+		if name == "" {
+			name = "missing_status"
+		}
+		t.Run(name, func(t *testing.T) {
 			incomplete := empty
 			incomplete.Dependencies.Manifests = append([]report.DependencyManifest(nil), empty.Dependencies.Manifests...)
 			incomplete.Dependencies.Manifests[0].Status = status

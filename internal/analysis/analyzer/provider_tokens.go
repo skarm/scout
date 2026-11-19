@@ -57,7 +57,7 @@ func (providerTokenCheck) AppliesTo(document.File) bool { return true }
 func (a providerTokenCheck) Find(ctx context.Context, d document.File, budget int) (Result, error) {
 	matcher := familyAnalyzer{
 		patterns: []*regexp.Regexp{a.expression},
-		exempt:   literals.ProviderTokenExempt, candidateLimit: 65536,
+		exempt:   literals.ProviderTokenExempt, candidateLimit: maxDensePatternCandidates,
 	}
 	if a.hint != nil {
 		matcher.patternHints = []patternLiteralFilter{*a.hint}

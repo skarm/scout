@@ -13,6 +13,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxPolicyIDBytes = 128
+)
+
 // Options are operator-owned policy settings. A report's stored policy or
 // suppression records never substitute for these explicitly supplied approvals.
 type Options struct {
@@ -131,7 +135,7 @@ func (g *Gate) Evaluate(run report.Run, now time.Time) report.Evaluation {
 
 	if run.Environment != nil {
 		for _, observation := range run.Environment.Observations {
-			if observation.Kind != "skill_reference" {
+			if observation.Kind != report.EnvironmentSkillReference {
 				result.review("environment_observations_require_review")
 			}
 		}
@@ -267,7 +271,7 @@ func (o Options) normalized() (Options, error) {
 		o.ID = "strict-v1"
 	}
 
-	if len(o.ID) > 128 || o.FailAt.Rank() < 0 {
+	if len(o.ID) > maxPolicyIDBytes || o.FailAt.Rank() < 0 {
 		return Options{}, errors.New("invalid policy ID or blocking threshold")
 	}
 
@@ -280,7 +284,7 @@ func copyApprovals(document baseline.Document, allowGlobs bool) (baseline.Docume
 	}
 
 	for _, entry := range document.Entries {
-		if entry.Kind == "glob" && !allowGlobs {
+		if entry.Kind == baseline.KindGlob && !allowGlobs {
 			return baseline.Document{}, errors.New("glob approvals require explicit permission")
 		}
 	}

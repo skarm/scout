@@ -31,7 +31,11 @@ func TestDependencyManifestInventoryCompletion(t *testing.T) {
 		{status: "future_status", complete: false},
 		{status: "", complete: false},
 	} {
-		t.Run(tc.status, func(t *testing.T) {
+		name := tc.status
+		if name == "" {
+			name = "missing_status"
+		}
+		t.Run(name, func(t *testing.T) {
 			manifest := report.DependencyManifest{Status: tc.status}
 			if got := manifest.InventoryComplete(); got != tc.complete {
 				t.Fatalf("inventory complete=%v, want %v", got, tc.complete)

@@ -13,7 +13,12 @@ import (
 	"github.com/skarm/scout/internal/textmatch"
 )
 
-const MaxLabelReviewBytes = 2 << 20
+const (
+	maxLabelReviews      = 4096
+	maxLabelReviewerIDs  = 32
+	maxLabelEvidenceRefs = 8
+	MaxLabelReviewBytes  = 2 << 20
+)
 
 // LabelReviewDocument is a separately supplied operator-trusted record. Its
 // independence and reviewer identities are declarations, not authentication.
@@ -102,7 +107,7 @@ func ValidateLabelReview(corpusData, reviewData []byte, trusted []string, now ti
 		return nil, errors.New("label review does not match the exact corpus bytes")
 	}
 
-	if document.Independent && corpus.Kind == "authored_regression_not_holdout" {
+	if document.Independent && corpus.Kind == corpusAuthoredRegression {
 		return nil, errors.New("an authored regression corpus cannot become independent through a label review")
 	}
 
@@ -138,7 +143,7 @@ func parseLabelReview(data []byte) (LabelReviewDocument, error) {
 		return document, errors.New("invalid label review document")
 	}
 
-	if document.Schema != "scout.corpus-review/v1" || !textmatch.LowerHex(document.CorpusSHA256, 64) || len(document.Reviews) == 0 || len(document.Reviews) > 4096 {
+	if document.Schema != "scout.corpus-review/v1" || !textmatch.LowerHex(document.CorpusSHA256, 64) || len(document.Reviews) == 0 || len(document.Reviews) > maxLabelReviews {
 		return document, errors.New("invalid label review identity or case count")
 	}
 
@@ -146,7 +151,7 @@ func parseLabelReview(data []byte) (LabelReviewDocument, error) {
 }
 
 func labelReviewers(ids []string) (map[string]bool, error) {
-	if len(ids) == 0 || len(ids) > 32 {
+	if len(ids) == 0 || len(ids) > maxLabelReviewerIDs {
 		return nil, errors.New("label review requires 1..32 explicitly trusted reviewer IDs")
 	}
 
@@ -206,7 +211,7 @@ func (r CaseLabelReview) validate(now time.Time) error {
 		return errors.New("label review requires a nonfuture RFC3339 review time")
 	}
 
-	if len(r.Evidence) == 0 || len(r.Evidence) > 8 {
+	if len(r.Evidence) == 0 || len(r.Evidence) > maxLabelEvidenceRefs {
 		return errors.New("label review requires 1..8 evidence URLs per case")
 	}
 
@@ -244,9 +249,9 @@ func (r *LabelReview) apply(corpus Corpus, data []byte) (Corpus, *LabelReviewSum
 	}
 
 	if r.summary.Independent {
-		corpus.Kind = "independent_labelled_corpus"
-	} else if corpus.Kind != "authored_regression_not_holdout" {
-		corpus.Kind = "external_labelled_corpus"
+		corpus.Kind = corpusIndependentLabelled
+	} else if corpus.Kind != corpusAuthoredRegression {
+		corpus.Kind = corpusExternalLabelled
 	}
 
 	summary := r.summary

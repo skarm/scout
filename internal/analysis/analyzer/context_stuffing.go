@@ -18,21 +18,30 @@ type contextRepetition struct {
 	emit          func(int, int) bool
 }
 
+const (
+	minContextPayloadBytes = 256
+	textScanCheckBytes     = 4096
+)
+
 func repeatedContext(ctx context.Context, text string, emit func(int, int) bool) bool {
 	runes := []rune(text)
 
-	offsets := make([]int, 0, len(runes)+1)
-	for at := range text {
-		offsets = append(offsets, at)
-	}
+	// Single-byte runes already use byte offsets, including invalid UTF-8 bytes.
+	var offsets []int
+	if len(runes) != len(text) {
+		offsets = make([]int, 0, len(runes)+1)
+		for at := range text {
+			offsets = append(offsets, at)
+		}
 
-	offsets = append(offsets, len(text))
+		offsets = append(offsets, len(text))
+	}
 
 	for period := 2; period <= min(20, len(runes)/21); period++ {
 		repetition := contextRepetition{runes: runes, offsets: offsets, period: period, emit: emit}
 
 		for i := period; i < len(runes); i++ {
-			if i%4096 == 0 && ctx.Err() != nil {
+			if i%textScanCheckBytes == 0 && ctx.Err() != nil {
 				return true
 			}
 
@@ -58,10 +67,19 @@ func (r contextRepetition) flush(end int) bool {
 		return true
 	}
 
-	meaningful := end-r.start > 256
+	meaningful := end-r.start > minContextPayloadBytes
 	for _, char := range r.runes[r.start:min(end, r.start+r.period)] {
 		meaningful = meaningful || unicode.IsLetter(char) || unicode.IsDigit(char)
 	}
 
-	return !meaningful || r.emit(r.offsets[r.start], r.offsets[end])
+	if !meaningful {
+		return true
+	}
+
+	start := r.start
+	if r.offsets != nil {
+		start, end = r.offsets[start], r.offsets[end]
+	}
+
+	return r.emit(start, end)
 }

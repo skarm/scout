@@ -8,6 +8,11 @@ import (
 	"github.com/skarm/scout/internal/syntax/frontend"
 )
 
+const (
+	maxOutputNameDepth = 32
+	maxOutputNameNodes = 8192
+)
+
 //nolint:gochecknoglobals // Read-only Python semantic classification tables are shared by scans.
 var pythonOutputNames = map[string]bool{
 	"response":   true,
@@ -49,7 +54,7 @@ func pythonOutputArgument(name string, call *frontend.Node) bool {
 
 func (s *pythonOutputSearch) hasName(n *frontend.Node, depth int) bool {
 	s.count++
-	if n == nil || depth > 32 || s.count > 8192 {
+	if n == nil || depth > maxOutputNameDepth || s.count > maxOutputNameNodes {
 		return false
 	}
 

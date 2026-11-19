@@ -9,6 +9,10 @@ import (
 	scanreport "github.com/skarm/scout/report"
 )
 
+const (
+	maxSignatureWorkers = 32
+)
+
 // ErrClosed means a native runtime no longer accepts new checks.
 var errClosed = errors.New("YARA-X runtime is closed")
 
@@ -16,14 +20,15 @@ var errClosed = errors.New("YARA-X runtime is closed")
 // Each file has exclusive use of one scanner; runs never share mutable native
 // scan state. Close waits for admitted checks, including checks awaiting a slot.
 type Runtime struct {
-	options    Options
-	parent     compiledEngine
-	sessions   []compiledEngine
-	available  chan compiledEngine
-	mu         sync.Mutex
-	closed     bool
-	active     sync.WaitGroup
-	closedDone chan struct{}
+	options     Options
+	rulesSHA256 string
+	parent      compiledEngine
+	sessions    []compiledEngine
+	available   chan compiledEngine
+	mu          sync.Mutex
+	closed      bool
+	active      sync.WaitGroup
+	closedDone  chan struct{}
 }
 
 // Open validates and compiles trusted rules once. The constructor context is
@@ -35,7 +40,8 @@ func Open(ctx context.Context, options Options, workers int) (*Runtime, error) {
 
 	options.ExtraRules = slices.Clone(options.ExtraRules)
 	options.Rulepack = cloneRulepack(options.Rulepack)
-	parent, err := compileRules(ctx, builtinRules+"\n"+string(options.ExtraRules))
+	rules := selectedRules(options)
+	parent, err := compileRules(ctx, rules)
 
 	parent, err = checkedEngine(parent, err, "YARA-X compiler returned no engine")
 	if err != nil {
@@ -44,8 +50,9 @@ func Open(ctx context.Context, options Options, workers int) (*Runtime, error) {
 
 	runtime := &Runtime{
 		options: options, parent: parent,
-		available:  make(chan compiledEngine, workers),
-		closedDone: make(chan struct{}),
+		rulesSHA256: hash([]byte(rules)),
+		available:   make(chan compiledEngine, workers),
+		closedDone:  make(chan struct{}),
 	}
 	if err := runtime.prepareSessions(ctx, workers); err != nil {
 		_ = runtime.Close() // Release compiled sessions; preserve the initialization error.
@@ -73,18 +80,22 @@ func (r *Runtime) Check(ctx context.Context, inputs []Input) (Report, error) {
 
 	select {
 	case <-ctx.Done():
-		return checkCompiled(ctx, inputs, r.options, nil)
+		return r.checkCompiled(ctx, inputs, nil)
 	case session := <-r.available:
 		defer func() { r.available <- session }()
-		return checkCompiled(ctx, inputs, r.options, session)
+		return r.checkCompiled(ctx, inputs, session)
 	}
 }
 
+func (r *Runtime) checkCompiled(ctx context.Context, inputs []Input, engine compiledEngine) (Report, error) {
+	return check(ctx, inputs, r.options, engine, false, r.rulesSHA256)
+}
+
 func (r *Runtime) checkParallel(ctx context.Context, inputs []Input) (Report, error) {
-	result, err := checkCompiled(ctx, nil, r.options, nil)
+	result, err := r.checkCompiled(ctx, nil, nil)
 	if err != nil {
 		// Even an already cancelled call retains an outcome for each input.
-		return checkCompiled(ctx, inputs, r.options, nil)
+		return r.checkCompiled(ctx, inputs, nil)
 	}
 
 	result.Outcomes = make([]Outcome, len(inputs))
@@ -259,7 +270,7 @@ func validateRuntime(ctx context.Context, options Options, workers int) error {
 		return errors.New("YARA-X runtime requires enabled signatures")
 	}
 
-	if workers < 1 || workers > 32 {
+	if workers < 1 || workers > maxSignatureWorkers {
 		return errors.New("YARA-X runtime workers must be in 1..32")
 	}
 

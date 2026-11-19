@@ -11,6 +11,10 @@ import (
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 )
 
+const (
+	maxCertificateBlocks = 64
+)
+
 type omsProjector struct {
 	operation *operation
 	count     int
@@ -100,7 +104,7 @@ func (p *omsProjector) certificate(decoded []byte) error {
 	}
 
 	p.count++
-	if p.count > 64 {
+	if p.count > maxCertificateBlocks {
 		return errBudget
 	}
 

@@ -7,25 +7,25 @@ type pythonParameters struct {
 
 func (b *pythonNormalizer) nodeFunctionDefinition(n *pythonSyntax, depth int, typ NodeKind) *Node {
 	out := b.make(n, typ)
-	b.set(out, FieldName, StringValue(b.textOf(n.field("name"))))
-	b.set(out, Body, nodesValue(b.list(n.field("body"), depth)))
+	b.set(out, FieldName, StringValue(b.textOf(n.field(pyFieldName))))
+	b.set(out, Body, nodesValue(b.list(n.field(pyFieldBody), depth)))
 	b.set(out, DecoratorList, nodesValue([]*Node{}))
 
 	if typ == FunctionDef {
-		b.set(out, Args, childValue(b.parameters(n.field("parameters"), depth+1)))
-		b.set(out, Returns, childValue(b.node(n.field("return_type"), depth+1)))
+		b.set(out, Args, childValue(b.parameters(n.field(pyFieldParameters), depth+1)))
+		b.set(out, Returns, childValue(b.node(n.field(pyFieldReturnType), depth+1)))
 	} else {
 		var (
 			bases    []*Node
 			keywords []*Node
 		)
 
-		for _, x := range n.field("superclasses").named() {
-			if x.Kind == "keyword_argument" || x.Kind == "dictionary_splat" {
+		for _, x := range n.field(pyFieldSuperclasses).named() {
+			if x.Kind == pyKindKeywordArgument || x.Kind == pyKindDictionarySplat {
 				k := b.make(x, Keyword)
-				if x.Kind == "keyword_argument" {
-					b.set(k, FieldArg, StringValue(b.textOf(x.field("name"))))
-					b.set(k, FieldValue, childValue(b.node(x.field("value"), depth+1)))
+				if x.Kind == pyKindKeywordArgument {
+					b.set(k, FieldArg, StringValue(b.textOf(x.field(pyFieldName))))
+					b.set(k, FieldValue, childValue(b.node(x.field(pyFieldValue), depth+1)))
 				} else {
 					b.set(k, FieldArg, NullValue())
 					b.set(k, FieldValue, childValue(b.node(x.first(), depth+1)))
@@ -42,9 +42,9 @@ func (b *pythonNormalizer) nodeFunctionDefinition(n *pythonSyntax, depth int, ty
 	}
 	// PEP-695 type parameters require scope semantics not implemented here.
 	// Retain expressions for independent observations; never silently omit them.
-	if n.field("type_parameters") != nil {
+	if n.field(pyFieldTypeParameters) != nil {
 		b.partial = true
-		b.set(out, TypeParams, nodesValue(b.list(n.field("type_parameters"), depth+1)))
+		b.set(out, TypeParams, nodesValue(b.list(n.field(pyFieldTypeParameters), depth+1)))
 	}
 
 	return out
@@ -79,9 +79,9 @@ func (b *pythonNormalizer) parameters(n *pythonSyntax, depth int) *Node {
 
 func (b *pythonNormalizer) parameterName(item *pythonSyntax) string {
 	switch item.Kind {
-	case "default_parameter", "typed_default_parameter":
-		return b.textOf(item.field("name"))
-	case "list_splat_pattern", "dictionary_splat_pattern":
+	case pyKindDefaultParameter, pyKindTypedDefaultParameter:
+		return b.textOf(item.field(pyFieldName))
+	case pyKindListSplatPattern, pyKindDictionarySplatPattern:
 		return b.textOf(item.first())
 	default:
 		return b.textOf(item)
@@ -90,16 +90,16 @@ func (b *pythonNormalizer) parameterName(item *pythonSyntax) string {
 
 func (p *pythonParameters) append(b *pythonNormalizer, out *Node, x *pythonSyntax, depth int) {
 	switch x.Kind {
-	case "positional_separator":
+	case pyKindPositionalSeparator:
 		p.posonly, p.args = p.args, []*Node{}
 		return
-	case "keyword_separator":
+	case pyKindKeywordSeparator:
 		p.keyword = true
 		return
 	}
 
 	item := x
-	if item.Kind == "typed_parameter" {
+	if item.Kind == pyKindTypedParameter {
 		item = item.first()
 	}
 
@@ -109,17 +109,17 @@ func (p *pythonParameters) append(b *pythonNormalizer, out *Node, x *pythonSynta
 
 	a := b.make(x, Arg)
 	b.set(a, FieldArg, StringValue(b.parameterName(item)))
-	b.set(a, Annotation, childValue(b.node(x.field("type"), depth+1)))
+	b.set(a, Annotation, childValue(b.node(x.field(pyFieldType), depth+1)))
 
 	switch item.Kind {
-	case "list_splat_pattern":
+	case pyKindListSplatPattern:
 		b.set(out, Vararg, childValue(a))
 
 		p.keyword = true
-	case "dictionary_splat_pattern":
+	case pyKindDictionarySplatPattern:
 		b.set(out, Kwarg, childValue(a))
-	case "identifier", "default_parameter", "typed_default_parameter":
-		p.regular(a, b.node(item.field("value"), depth+1))
+	case pyKindIdentifier, pyKindDefaultParameter, pyKindTypedDefaultParameter:
+		p.regular(a, b.node(item.field(pyFieldValue), depth+1))
 	default:
 		b.partial = true
 	}

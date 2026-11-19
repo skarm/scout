@@ -2,9 +2,22 @@
 package review
 
 import (
+	"context"
+	"errors"
 	"regexp"
 	"testing"
+	"time"
 )
+
+func TestResponseDecodersPreserveExpiredDeadline(t *testing.T) {
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+	for _, decode := range []func(context.Context, []byte) (Completion, error){decodeChatCompletion, decodeMessagesCompletion} {
+		if _, err := decode(ctx, []byte(`{}`)); !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("lost response deadline: %v", err)
+		}
+	}
+}
 
 func FuzzAWSRegion(f *testing.F) {
 	old := regexp.MustCompile(`^[a-z]{2}(?:-[a-z]+){1,3}-[0-9]$`)

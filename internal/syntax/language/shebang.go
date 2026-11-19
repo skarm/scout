@@ -5,6 +5,28 @@ import (
 	"strings"
 )
 
+const (
+	ExecutablePowerShell        = "powershell"
+	ExecutablePowerShellExe     = "powershell.exe"
+	ExecutablePowerShellCore    = "pwsh"
+	ExecutablePowerShellCoreExe = "pwsh.exe"
+	ExecutableSh                = "sh"
+	ExecutableBash              = "bash"
+	ExecutableDash              = "dash"
+	ExecutableZsh               = "zsh"
+	ExecutableKsh               = "ksh"
+	BinSh                       = "/bin/sh"
+	BinBash                     = "/bin/bash"
+	BinDash                     = "/bin/dash"
+	BinZsh                      = "/bin/zsh"
+	BinKsh                      = "/bin/ksh"
+	UserBinSh                   = "/usr/bin/sh"
+	UserBinBash                 = "/usr/bin/bash"
+	UserBinDash                 = "/usr/bin/dash"
+	UserBinZsh                  = "/usr/bin/zsh"
+	UserBinKsh                  = "/usr/bin/ksh"
+)
+
 // Shebang classifies the selected interpreter in a first line. It does not
 // infer a language from arguments to an unknown executable.
 func Shebang(text string) (Hint, bool) {
@@ -44,7 +66,7 @@ func shebangLanguage(exe string) string {
 	}
 
 	switch exe {
-	case "sh", "bash", "dash", "zsh", "ksh":
+	case ExecutableSh, ExecutableBash, ExecutableDash, ExecutableZsh, ExecutableKsh:
 		return Shell
 	case "Rscript":
 		return r

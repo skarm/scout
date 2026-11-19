@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/languages/literals"
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
+	"github.com/skarm/scout/internal/syntax/source"
 )
 
 var errShellFileBudget = errors.New("shell file provenance budget exceeded")
@@ -17,13 +19,13 @@ var errShellFileBudget = errors.New("shell file provenance budget exceeded")
 // Globs, brace expansions and mixed dynamic words remain unresolved.
 func (a *shellWalk) homePath(word *shellsyntax.Word, state *shellState) (shellValue, bool) {
 	if !word.Expands || len(word.Parts) == 0 || word.Parts[0].Quoted ||
-		word.Parts[0].Kind != "literal" || !strings.HasPrefix(word.Parts[0].Text, "~/") {
+		word.Parts[0].Kind != shellsyntax.PartLiteral || !strings.HasPrefix(word.Parts[0].Text, "~/") {
 		return shellValue{}, false
 	}
 
 	var text strings.Builder
 	for _, part := range word.Parts {
-		if !a.step() || part.Kind != "literal" || !part.Quoted && strings.ContainsAny(part.Text, "*?[{}") ||
+		if !a.step() || part.Kind != shellsyntax.PartLiteral || !part.Quoted && strings.ContainsAny(part.Text, "*?[{}") ||
 			len(part.Text) > literals.MaxStaticStringBytes-text.Len() {
 			return shellValue{}, false
 		}
@@ -100,6 +102,10 @@ func (a *shellWalk) writeFile(s *shellState, target shellValue, origin *shellOri
 		return
 	}
 
+	a.writeFileKey(s, key, origin)
+}
+
+func (a *shellWalk) writeFileKey(s *shellState, key string, origin *shellOrigin) {
 	if origin == nil {
 		if !s.mayWrite {
 			delete(s.files, key)
@@ -116,21 +122,79 @@ func (a *shellWalk) writeFile(s *shellState, target shellValue, origin *shellOri
 	s.files[key] = origin
 }
 
-func (a *shellWalk) writeRedirected(c *shellsyntax.Command, s *shellState, out shellValue) {
-	for _, r := range c.Redirects {
-		spec := shellRedirects[r.Op]
-		if !spec.output || !spec.applies(r.FD) {
-			continue
-		}
+// File redirections are opened before invoking the command. Only the final
+// stdout destination receives the command's output; earlier opens still truncate
+// their files. Keep resolved keys so cd and argument expansion cannot move them.
+type shellFileRedirect struct {
+	key        string
+	span       source.Span
+	unresolved bool
+}
 
-		target := a.word(r.Target, s)
-		// Appending known local bytes cannot erase a downloaded prefix.
-		if r.Op == ">>" && out.download == nil {
-			continue
+func (a *shellWalk) fileRedirect(r *shellsyntax.Redirect, value shellValue, s *shellState, fds map[string]shellFileRedirect) {
+	fd := r.FD
+	if fd == "" {
+		fd = "1"
+		if strings.HasPrefix(r.Op, "<") {
+			fd = "0"
 		}
-
-		a.writeFile(s, target, a.via(out.download, r.Span))
 	}
+
+	fd = generatedFD(fd)
+	combined := r.Op == shellsyntax.RedirectBoth || r.Op == shellsyntax.RedirectAppendBoth
+
+	switch r.Op {
+	case shellsyntax.RedirectDuplicateOutput, shellsyntax.RedirectDuplicateInput:
+		number, move := strings.CutSuffix(value.text, "-")
+		if value.known && number != "" && strings.Trim(number, "0123456789") == "" {
+			from := generatedFD(number)
+
+			fds[fd] = fds[from]
+			if move && from != fd {
+				delete(fds, from)
+			}
+
+			return
+		}
+
+		if !value.known || value.text == "-" || r.Op != shellsyntax.RedirectDuplicateOutput || fd != "1" {
+			fds[fd] = shellFileRedirect{unresolved: !value.known}
+			return
+		}
+
+		combined = true
+	case shellsyntax.RedirectOutput, shellsyntax.RedirectClobber, shellsyntax.RedirectAppend, shellsyntax.RedirectBoth, shellsyntax.RedirectAppendBoth, shellsyntax.RedirectReadWrite:
+	default:
+		delete(fds, fd)
+		return
+	}
+
+	if r.Op != shellsyntax.RedirectAppend && r.Op != shellsyntax.RedirectAppendBoth && r.Op != shellsyntax.RedirectReadWrite {
+		a.writeFile(s, value, nil)
+	}
+
+	destination := shellFileRedirect{key: s.fileKey(value), span: r.Span, unresolved: !value.known || value.text != "-"}
+	if combined {
+		fds["1"], fds["2"] = destination, destination
+	} else {
+		fds[fd] = destination
+	}
+}
+
+func (a *shellWalk) writeRedirected(s *shellState, destination shellFileRedirect, out shellValue) {
+	if out.download == nil {
+		return
+	}
+
+	if destination.key == "" {
+		if destination.unresolved {
+			a.gap = errors.New("downloaded file destination is unresolved")
+		}
+
+		return
+	}
+
+	a.writeFileKey(s, destination.key, a.via(out.download, destination.span))
 }
 
 func (a *shellWalk) copyFile(s *shellState, args []shellValue, move bool) {
@@ -154,7 +218,7 @@ func (a *shellWalk) fileExecution(c *shellsyntax.Command, s *shellState, name st
 	var file shellValue
 
 	switch name {
-	case "sh", "bash", "dash", "zsh", "ksh":
+	case language.ExecutableSh, language.ExecutableBash, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh:
 		file = shellScriptFile(args)
 	case "source", ".":
 		if len(args) > 0 {

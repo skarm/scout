@@ -44,14 +44,14 @@ func validateCachedMetadata(v ID, cache Cache) error {
 }
 
 func validCacheMetadataShape(root *jsonconfig.Node, version int) bool {
-	for _, record := range root.Get("records").Elements {
-		values := record.Get("vulnerabilities")
+	for _, record := range root.Get(fieldRecords).Elements {
+		values := record.Get(fieldVulnerabilities)
 		if values == nil || values.Kind != jsonconfig.KindArray {
 			return false
 		}
 
 		for _, v := range values.Elements {
-			kind, source := v.Get("kind"), v.Get("source")
+			kind, source := v.Get(fieldKind), v.Get(fieldSource)
 			if version == 1 && (kind != nil || source != nil) {
 				return false
 			}

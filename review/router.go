@@ -83,7 +83,7 @@ func (r *Router) Complete(ctx context.Context, b []byte) (Completion, error) {
 
 	tree, e := jsonconfig.Parse(ctx, string(b))
 	if e != nil {
-		return Completion{}, errors.New("ambiguous routed request")
+		return Completion{}, reviewJSONError(e, errors.New("ambiguous routed request"))
 	}
 
 	mode, ok := tree.Get("mode").Text()

@@ -6,11 +6,15 @@
 package python
 
 import (
-	"maps"
 	"slices"
 	"sort"
 
 	"github.com/skarm/scout/internal/syntax/frontend"
+)
+
+const (
+	maxPythonBaseClasses = 32
+	maxPythonMROEntries  = 128
 )
 
 type pyFunction struct {
@@ -113,7 +117,16 @@ func (w *pyWalker) invoke(value pyValue, call *frontend.Node, pos []pyValue, kw 
 	}
 
 	s := lexical.scope()
-	w.prebind(f.node.List(frontend.Body), s)
+
+	body := f.node.List(frontend.Body)
+	if f.node.Kind() == frontend.Lambda {
+		body = []*frontend.Node{f.node.Child(frontend.Body)}
+	}
+
+	if !w.prebind(body, s) {
+		return pyValue{}
+	}
+
 	args := f.node.Child(frontend.Args)
 	w.bindArgs(args, s)
 
@@ -121,7 +134,10 @@ func (w *pyWalker) invoke(value pyValue, call *frontend.Node, pos []pyValue, kw 
 		pos = append([]pyValue{*value.bound()}, pos...)
 	}
 
-	maps.Copy(s.names, caller.defaultsFor(f))
+	if !w.copyDefaults(s, caller.defaultsFor(f)) {
+		return pyValue{}
+	}
+
 	w.bindInvocation(f, call, args, pos, kw, s)
 
 	frame := invocationFrame(f, value, pos)
@@ -270,7 +286,7 @@ func (w *pyWalker) inspectClassMethods(c *pyClass, n *frontend.Node, s *pyState,
 	// need not be called by the module to contain an observable source/sink.
 	receiver := instanceValue(&pyInstance{typ: c, fields: map[string]pyValue{}})
 	if init, ok := pyMember(receiver, "__init__", s); ok && init.function() != nil {
-		w.invoke(init, n, nil, nil, s.fork(), depth+1)
+		w.invoke(init, n, nil, nil, w.forkState(s), depth+1)
 	}
 
 	keys := make([]string, 0, len(c.attrs))
@@ -283,10 +299,10 @@ func (w *pyWalker) inspectClassMethods(c *pyClass, n *frontend.Node, s *pyState,
 	sort.Strings(keys)
 
 	for _, key := range keys {
-		isolated := s.fork()
+		isolated := w.forkState(s)
 		isolated.names["__scout_receiver__"] = receiver
 
-		isolated = isolated.fork()
+		isolated = w.forkState(isolated)
 		if method, ok := pyMember(isolated.names["__scout_receiver__"], key, isolated); ok && method.function() != nil {
 			w.invoke(method, n, nil, nil, isolated, depth+1)
 		}
@@ -299,7 +315,7 @@ func (w *pyWalker) beginInvocation(f *pyFunction) bool {
 		w.active = map[*pyFunction]bool{}
 	}
 
-	if f.dynamic || w.active[f] || len(w.frames) > 16 || w.calls > 4096 {
+	if f.dynamic || w.active[f] || len(w.frames) > maxCallFrames || w.calls > maxCalls {
 		w.limited = true
 		return false
 	}
@@ -376,7 +392,8 @@ func pyMember(base pyValue, name string, state *pyState) (pyValue, bool) {
 
 	class := base.class()
 	if instance := base.instance(); instance != nil {
-		if v, ok := instance.fields[name]; ok {
+		// super searches the MRO after its owner, bypassing instance fields.
+		if v, ok := instance.fields[name]; ok && after == nil {
 			return v, true
 		}
 
@@ -410,7 +427,7 @@ func (v pyValue) bindMember(base pyValue, class *pyClass) pyValue {
 }
 
 func pyMRO(c *pyClass, bases []*pyClass) []*pyClass {
-	if len(bases) > 32 {
+	if len(bases) > maxPythonBaseClasses {
 		return nil
 	}
 
@@ -422,7 +439,7 @@ func pyMRO(c *pyClass, bases []*pyClass) []*pyClass {
 	seqs = append(seqs, append([]*pyClass(nil), bases...))
 
 	out := []*pyClass{c}
-	for len(out) < 128 {
+	for len(out) < maxPythonMROEntries {
 		candidate, remaining := nextMROHead(seqs)
 
 		if !remaining {

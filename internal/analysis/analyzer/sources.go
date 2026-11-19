@@ -21,6 +21,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxSourceMetadataDepth = 32
+)
+
 type sourceRedirection struct{ declarations map[string]*check.Facts }
 
 func (sourceRedirection) Rule() report.Rule {
@@ -53,7 +57,7 @@ func (a sourceRedirection) Find(ctx context.Context, f document.File, budget int
 			return out, err
 		}
 	} else {
-		out.Truncated = shell.SourceDeclarations(ctx, f, emit, nil)
+		out.Truncated = shell.SourceDeclarations(ctx, f, emit, nil) || out.Truncated
 	}
 
 	out.Truncated = derivedSourceDeclarations(ctx, f, emit) || out.Truncated
@@ -170,7 +174,7 @@ func inspectSourceTree(ctx context.Context, name, filePath string, root *jsoncon
 }
 
 func checkYarnSources(ctx context.Context, n *jsonconfig.Node, depth int, mark func(*jsonconfig.Node)) {
-	if n == nil || depth > 32 || ctx.Err() != nil {
+	if n == nil || depth > maxSourceMetadataDepth || ctx.Err() != nil {
 		return
 	}
 
@@ -228,7 +232,7 @@ func checkPackageSources(root *jsonconfig.Node, mark func(*jsonconfig.Node)) {
 }
 
 func checkResolvedSources(ctx context.Context, n *jsonconfig.Node, depth int, mark func(*jsonconfig.Node)) {
-	if n == nil || depth > 32 || ctx.Err() != nil {
+	if n == nil || depth > maxSourceMetadataDepth || ctx.Err() != nil {
 		return
 	}
 

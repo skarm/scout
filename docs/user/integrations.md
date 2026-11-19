@@ -41,9 +41,20 @@ base64 content. Decoded upload content is limited to 128 KiB.
 arbitrary paths or change the configured profile, provider or approvals.
 Without named targets, stdio supports uploads only.
 
+Reports include the same JSON in `structuredContent` and in a text block when
+both fit in the 8 MiB JSON-RPC response limit (excluding the trailing newline).
+If only the structured report fits, the text block is a summary, not a partial
+JSON document. If the structured report with the summary cannot fit, the server
+returns a JSON-RPC error; no approval is inferred.
+
 The CLI HTTP transport requires a numeric loopback bind and an explicit bearer secret of
 32–512 bytes. Browser origins are denied unless allowed through `--origin`.
 The server supports JSON responses, without SSE or GET streaming.
+After initialization, include the returned `Mcp-Session-Id` on subsequent
+requests. POST and DELETE without it return HTTP 400, except for the initial
+POST. An expired or terminated session returns HTTP 404 on POST, GET or DELETE;
+GET without an ID or with an active session ID returns HTTP 405 because SSE is
+not available.
 
 The server negotiates MCP `2025-06-18` over JSON-RPC 2.0. Request parameter names
 are case-sensitive; request metadata belongs in an optional `_meta` object within `params`.

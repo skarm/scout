@@ -16,6 +16,10 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+const (
+	shellExitStatusRange = 256
+)
+
 // GeneratedScripts recovers scripts from a document's prepared shell units.
 func GeneratedScripts(ctx context.Context, doc document.File) (views []source.View, limited bool) {
 	units := doc.Units()
@@ -155,12 +159,12 @@ func (s *generatedShellScan) walk(tree *shellsyntax.File, scope *scriptScope, fl
 			return false
 		}
 
-		if successChain && stmt.Next != "&&" {
+		if successChain && stmt.Next != shellsyntax.AndThen {
 			// The following statement can also run after a failed operand.
 			flow.reset()
 		}
 
-		successChain = stmt.Next == "&&"
+		successChain = stmt.Next == shellsyntax.AndThen
 		conditional = shellConditionalLinks[stmt.Next]
 	}
 
@@ -169,12 +173,12 @@ func (s *generatedShellScan) walk(tree *shellsyntax.File, scope *scriptScope, fl
 
 func (s *generatedShellScan) walkStatement(stmt *shellsyntax.Statement, scope *scriptScope, flow *generatedShellFlow, conditional bool) bool {
 	pipeline := len(stmt.Commands) > 1
-	background := stmt.Next == "&"
+	background := stmt.Next == shellsyntax.Background
 	forked := pipeline || background
 	isolated := forked || shellBranchLinks[stmt.Next] || conditional
 	fileFlow := flow
 
-	if forked || stmt.Next == "||" || stmt.Negated || scope.trapUnsafe {
+	if forked || stmt.Next == shellsyntax.OrElse || stmt.Negated || scope.trapUnsafe {
 		flow.reset()
 
 		fileFlow = nil
@@ -198,12 +202,12 @@ func (s *generatedShellScan) walkStatement(stmt *shellsyntax.Statement, scope *s
 
 		if scope.functionBody && !forked && !conditional && !stmt.Negated {
 			if status, returns := current.plainFunctionReturn(c); returns {
-				scope.returned, scope.failedReturn = true, status%256 != 0
+				scope.returned, scope.failedReturn = true, status%shellExitStatusRange != 0
 				return true
 			}
 		}
 
-		mergesStderr := i < len(stmt.Pipes) && stmt.Pipes[i] == "|&"
+		mergesStderr := i < len(stmt.Pipes) && stmt.Pipes[i] == shellsyntax.PipeWithStderr
 		if !s.visitGeneratedCommand(c, current, fileFlow, mergesStderr, i+1 < len(stmt.Commands), !isolated) {
 			return false
 		}
@@ -684,18 +688,6 @@ func scriptIsolatedTrees(c *shellsyntax.Command) iter.Seq[*shellsyntax.File] {
 				return
 			}
 		}
-
-		for _, a := range c.Assignments {
-			if a.Value == nil {
-				continue
-			}
-
-			for _, part := range a.Value.Parts {
-				if part.Tree != nil && !yield(part.Tree) {
-					return
-				}
-			}
-		}
 	}
 }
 
@@ -797,7 +789,7 @@ func scriptHeredoc(c *shellsyntax.Command, vars map[string]string, stdoutPiped b
 	}
 
 	input, output := generatedWriterRedirects(c.Redirects)
-	if input == nil || output != nil && output.Op == ">>" {
+	if input == nil || output != nil && output.Op == shellsyntax.RedirectAppend {
 		return generatedHeredocWrite{}
 	}
 
@@ -848,11 +840,11 @@ func generatedWriterName(word *shellsyntax.Word) (name string, absolute bool) {
 func generatedWriterRedirects(redirects []*shellsyntax.Redirect) (input, output *shellsyntax.Redirect) {
 	for _, r := range redirects {
 		switch {
-		case input == nil && (r.FD == "" || r.FD == "0") && (r.Op == "<<" || r.Op == "<<-"):
+		case input == nil && (r.FD == "" || r.FD == shellsyntax.StdinFD) && (r.Op == shellsyntax.RedirectHereDoc || r.Op == shellsyntax.RedirectStripHereDoc):
 			input = r
-		case output == nil && (r.FD == "" || r.FD == "1") && (r.Op == ">" || r.Op == ">|" || r.Op == ">>"):
+		case output == nil && (r.FD == "" || r.FD == shellsyntax.StdoutFD) && (r.Op == shellsyntax.RedirectOutput || r.Op == shellsyntax.RedirectClobber || r.Op == shellsyntax.RedirectAppend):
 			output = r
-		case r.FD == "2" && r.Op == ">" && literalWordEquals(r.Target, "/dev/null"):
+		case r.FD == shellsyntax.StderrFD && r.Op == shellsyntax.RedirectOutput && literalWordEquals(r.Target, "/dev/null"):
 		default:
 			return nil, nil
 		}
@@ -887,7 +879,7 @@ func scriptPathWord(word *shellsyntax.Word, vars map[string]string) (string, boo
 	}
 
 	for _, part := range word.Parts {
-		if part.Kind == "parameter" && !part.Quoted {
+		if part.Kind == shellsyntax.PartParameter && !part.Quoted {
 			return "", false
 		}
 	}
@@ -918,7 +910,7 @@ func scriptHeredocView(parent source.View, input *shellsyntax.Redirect, vars map
 		}
 	}
 
-	if input.Op == "<<-" {
+	if input.Op == shellsyntax.RedirectStripHereDoc {
 		view, reason = stripHeredocTabs(view)
 		if reason != "" {
 			return source.View{}, reason

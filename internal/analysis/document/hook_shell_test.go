@@ -111,6 +111,11 @@ func TestHookShellRequiresCommandHandlerAndStaticPayload(t *testing.T) {
 		{"command lookup only", `{"type":"command","command":"command -v bash -c 'printf ready'"}`, 1, false},
 		{"local function named bash", `{"type":"command","command":"bash() { :; }; bash -c 'printf ready'"}`, 1, true},
 		{"dynamic payload", `{"type":"command","command":"bash -c \"$PAYLOAD\""}`, 1, true},
+		{"quoted plugin script", `{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/hooks/start.sh\""}`, 1, false},
+		{"unquoted plugin script", `{"type":"command","command":"bash ${CLAUDE_PLUGIN_ROOT}/hooks/start.sh"}`, 1, false},
+		{"unquoted plugin script with dynamic suffix", `{"type":"command","command":"bash ${CLAUDE_PLUGIN_ROOT}/hooks/$NAME.sh"}`, 1, true},
+		{"plugin path as command text", `{"type":"command","command":"bash -c \"${CLAUDE_PLUGIN_ROOT}/hooks/start.sh\""}`, 1, true},
+		{"unquoted plugin path as command text", `{"type":"command","command":"bash -c ${CLAUDE_PLUGIN_ROOT}/hooks/start.sh"}`, 1, true},
 		{"NUL", `{"type":"command","command":"echo \u0000"}`, 0, true},
 		{"argv is not shell syntax", `{"type":"command","command":"echo","args":["bash -c 'printf ready'"]}`, 0, false},
 	} {
@@ -135,6 +140,56 @@ func TestHookShellRequiresCommandHandlerAndStaticPayload(t *testing.T) {
 			}
 			if event := doc.HookEvent(source.Span{Start: strings.Index(input, "SessionStart"), End: len(prefix)}); event != "" {
 				t.Fatalf("event key is not command evidence: %q", event)
+			}
+		})
+	}
+}
+
+func TestHookSourceShellHonorsSharedUnitLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		count     int
+		auxiliary bool
+	}{
+		{name: "exact ordinary limit", count: document.MaxRegions - 1},
+		{name: "ordinary limit exhausted", count: document.MaxRegions},
+		{name: "exact auxiliary limit", count: document.MaxRegions - 1, auxiliary: true},
+		{name: "auxiliary limit exhausted", count: document.MaxRegions, auxiliary: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := strings.Repeat("```text\nx\n```\n", tc.count)
+			if tc.auxiliary {
+				text = "echo ready\n"
+			}
+			original := document.Prepare(t.Context(), artifact.NewFile("hooks/payload", []byte(text), false))
+			if tc.auxiliary {
+				spans := make([]source.Span, tc.count)
+				for i := range spans {
+					spans[i].End = len(text)
+				}
+				original = original.WithShellCandidates(t.Context(), spans, false)
+			}
+			candidates, limited := original.ShellCandidates()
+			if limited || len(original.Units())+len(candidates) != tc.count {
+				t.Fatal("fixture did not fill the expected units")
+			}
+			prepared := original.WithHookSourceShell(t.Context())
+			units := prepared.Units()
+			candidates, limited = prepared.ShellCandidates()
+			wantAdded := tc.count < document.MaxRegions
+			want := tc.count
+			if wantAdded {
+				want++
+			}
+			if limited || len(units)+len(candidates) != want || has(prepared, "analysis_unit_limit") == wantAdded {
+				t.Fatalf("hook admission: units=%d candidates=%d diagnostics=%+v", len(units), len(candidates), prepared.Diagnostics())
+			}
+			hookSource := false
+			for _, u := range units {
+				hookSource = hookSource || u.HookSource && u.Language == "shell" && u.Origin == "file"
+			}
+			if hookSource != wantAdded || has(original, "analysis_unit_limit") {
+				t.Fatal("hook source admission or original snapshot changed")
 			}
 		})
 	}

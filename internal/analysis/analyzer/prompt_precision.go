@@ -10,6 +10,10 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+const (
+	maxFormattingHeadingBytes = 16384
+)
+
 var (
 	formatRulesHeading      = regexp.MustCompile(`(?i)^[\t ]{0,3}#{1,6}[\t ]+(?:(?:json|html|markdown|csv|xml|yaml|report)[\t ]+)?output[\t ]+(?:rules|instructions)(?:[\t ]+\((?:both[\t ]+modes|offline[- ]safe|formatting|report)\))?[\t ]*#*[\t ]*$`)
 	rawPromptTarget         = regexp.MustCompile(`(?i)\b(?:prompts|prompt|instructions|instruction|rules|rule|guidelines|guideline|directives|directive)\b`)
@@ -34,7 +38,7 @@ func promptPrecision(d document.File, m Match) bool {
 
 func formattingRulesHeading(text string, line source.Span) bool {
 	content := text[line.Start:line.End]
-	if strings.HasPrefix(content, "\t") || !formatRulesHeading.MatchString(content) || !headingFormat.MatchString(content) || len(text) > 16384 {
+	if strings.HasPrefix(content, "\t") || !formatRulesHeading.MatchString(content) || !headingFormat.MatchString(content) || len(text) > maxFormattingHeadingBytes {
 		return false
 	}
 

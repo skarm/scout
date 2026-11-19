@@ -13,6 +13,7 @@ import (
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/internal/scantest"
 	scenario "github.com/skarm/scout/internal/scantest/scenarios"
+	"github.com/skarm/scout/internal/syntax/frontend"
 	"github.com/skarm/scout/report"
 	"github.com/skarm/scout/review"
 )
@@ -99,22 +100,30 @@ func TestModelDisagreementCannotRemoveStaticEvidence(t *testing.T) {
 	if got.Validation.Completeness != "complete" {
 		t.Fatalf("ledger %v", got.Validation.Issues)
 	}
-	found := false
+	var parentID string
 	for _, task := range got.Validation.Tasks {
 		if task.Kind == "semantic_review" {
-			found = true
-			if !task.Required {
-				t.Fatal("enabled review not required")
+			if parentID != "" || task.ID == "" || !task.Required {
+				t.Fatalf("expected exactly one required semantic parent with an ID; got task %+v after ID %q", task, parentID)
 			}
-			for _, o := range got.Validation.Outcomes {
-				if o.TaskID == task.ID && o.Status != "completed" {
-					t.Fatal("semantic parent not completed")
-				}
-			}
+			parentID = task.ID
 		}
 	}
-	if !found {
+	if parentID == "" {
 		t.Fatal("semantic task absent")
+	}
+	var outcomes int
+	for _, outcome := range got.Validation.Outcomes {
+		if outcome.TaskID != parentID {
+			continue
+		}
+		outcomes++
+		if outcome.Status != report.OutcomeCompleted {
+			t.Errorf("semantic task %q status = %q; want %q", parentID, outcome.Status, report.OutcomeCompleted)
+		}
+	}
+	if outcomes != 1 {
+		t.Errorf("semantic task %q has %d outcomes; want exactly one", parentID, outcomes)
 	}
 }
 
@@ -342,4 +351,77 @@ func semanticConfig(p review.Provider) scantest.Config {
 	c.Scanner.Review.Settings.Enabled = true
 	c.Scanner.Review.Settings.AllowSourceUpload = true
 	return c
+}
+
+func TestToolConsistencyUsesPreparedFrontmatter(t *testing.T) {
+	for _, tc := range []struct {
+		name, fields string
+		yaml         bool
+		wantCalls    int
+	}{
+		{"quoted key", "name: format\n\"description\": Format local text only.", true, 1},
+		{"escaped key", "name: format\n\"descr\\u0069ption\": Format local text only.", true, 1},
+		{"multiline plain", "name: format\ndescription:\n  Format local text only.", true, 1},
+		{"flow mapping", "{name: format, description: Format local text only.}", true, 1},
+		{"literal", "name: format\ndescription: |\n  Format local text only.", true, 1},
+		{"folded", "name: format\ndescription: >-\n  Format local text only.", true, 1},
+		{"nested", "name: format\nmetadata:\n  description: Not a tool description.", true, 0},
+		{"empty", "name: format\ndescription: ''", true, 0},
+		{"whitespace", "name: format\ndescription: '  '", true, 0},
+		{"number", "name: format\ndescription: 1", true, 0},
+		{"null", "name: format\ndescription: null", true, 0},
+		{"array", "name: format\ndescription: [local]", true, 0},
+		{"invalid", "name: format\ndescription: [", true, 0},
+		{"duplicate", "name: format\ndescription: Local text.\ndescription: Different text.", true, 0},
+		{"yaml disabled quoted", "name: format\n\"description\": Format local text only.", false, 0},
+		{"yaml disabled lexical", "name: format\ndescription: Format local text only.", false, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.yaml && !frontend.BackendFor("yaml").Available {
+				t.Skip("YAML frontend is not linked; disabled-parser cases still run")
+			}
+			root := t.TempDir()
+			declaration := "---\n" + tc.fields + "\n---\nBody."
+			const code = "package handler\nfunc Run() {}\n"
+			scenario.WriteFile(t, root, "SKILL.md", declaration)
+			scenario.WriteFile(t, root, "handler.go", code)
+			calls := 0
+			provider := scanReviewProvider{run: func(_ context.Context, req review.Request) (review.Response, error) {
+				if req.Mode == "tool_consistency" {
+					calls++
+					seenDeclaration, seenCode := false, false
+					for _, ex := range req.Excerpts {
+						seenDeclaration = seenDeclaration || ex.ContentKind == "tool_declaration" && ex.Text == declaration
+						seenCode = seenCode || ex.ContentKind == "code" && ex.Text == code
+					}
+					if !seenDeclaration || !seenCode {
+						t.Fatal("tool consistency lost original declaration or implementation")
+					}
+				}
+				return cleanResponse(req), nil
+			}}
+			config := semanticConfig(provider)
+			config.Scanner.Checks.YAML = tc.yaml
+			got, err := scenario.Scanner(t, config).Scan(t.Context(), root)
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
+			}
+			if calls != tc.wantCalls || got.Semantic.Completeness != report.Complete {
+				t.Fatalf("tool consistency calls=%d, want %d; semantic=%+v", calls, tc.wantCalls, got.Semantic)
+			}
+			if tc.yaml && tc.wantCalls == 1 && got.Metadata.Completeness != report.Complete {
+				t.Fatalf("fixture is not accepted canonical metadata: %+v", got.Metadata)
+			}
+			if !tc.yaml {
+				for _, file := range got.Metadata.Files {
+					if file.Parser != "" {
+						t.Fatal("semantic planning implicitly enabled the YAML parser")
+					}
+				}
+			}
+			if err := got.Validate(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }

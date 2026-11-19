@@ -9,6 +9,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+const (
+	stdinPipePollInterval = time.Millisecond
+)
+
 func readStdinFile(ctx context.Context, file *os.File, p []byte) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
@@ -70,7 +74,7 @@ func readStdinFile(ctx context.Context, file *os.File, p []byte) (int, error) {
 }
 
 func cancelStdinRead(handle, thread windows.Handle, cancelIO *windows.LazyProc, done <-chan struct{}) {
-	ticker := time.NewTicker(time.Millisecond)
+	ticker := time.NewTicker(stdinPipePollInterval)
 	defer ticker.Stop()
 
 	for {

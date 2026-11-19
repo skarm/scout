@@ -5,23 +5,26 @@ import (
 	"errors"
 	"maps"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/literals"
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
-
 	"github.com/skarm/scout/report"
 )
 
 const (
-	MaxShellOperations = 65536
-	MaxShellBindings   = 256
-	MaxShellTraceSteps = 6
+	maxActiveShellFunctions  = 16
+	maxShellInvocationLayers = 4
+	MaxShellOperations       = 65536
+	MaxShellBindings         = 256
+	MaxShellTraceSteps       = 6
 )
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
@@ -94,19 +97,21 @@ type shellState struct {
 }
 
 type shellWalk struct {
-	ctx               context.Context
-	view              source.View
-	kind              string
-	limit, operations int
-	result            result
-	err               error
-	gap               error
-	activeFunctions   map[*shellsyntax.File]bool
-	outputs           map[string]*check.Facts
-	observeNetwork    func(string, source.Span)
-	observeSecret     func(source.Span)
-	observeDNS        func(string, source.Span, *shellOrigin)
-	observeCapability func(string, source.Span)
+	ctx                context.Context
+	view               source.View
+	kind               string
+	limit, operations  int
+	result             result
+	err                error
+	gap                error
+	activeFunctions    map[*shellsyntax.File]bool
+	outputs            map[string]*check.Facts
+	observeNetwork     func(string, source.Span)
+	observeSecret      func(source.Span)
+	observeDNS         func(string, source.Span, *shellOrigin)
+	observeCapability  func(string, source.Span)
+	commandTextPending bool
+	hookShell          bool
 }
 
 type shellRedirectKind uint8
@@ -173,6 +178,7 @@ func (a shellCheck) Rule() report.Rule {
 		r.Title, r.Category, r.Severity = "Sensitive data reaches a supported curl request argument", "credential-egress", report.High
 	case ruleSH003:
 		r.Title, r.Category = "Shell evaluates text or sources a file", "dynamic-execution"
+		r.Version = "7"
 	case ruleSH004:
 		r.Title, r.Category = "Shell command reads a sensitive credential path", "credential-access"
 	}
@@ -182,8 +188,16 @@ func (a shellCheck) Rule() report.Rule {
 	return r
 }
 
-func (shellCheck) AppliesTo(f document.File) bool {
+func (a shellCheck) AppliesTo(f document.File) bool {
+	if a.kind == ruleSH003 && len(f.TracedShellCommands()) > 0 {
+		return true
+	}
+
 	for _, u := range f.Units() {
+		if a.kind == ruleSH003 && u.HookCommandText {
+			return true
+		}
+
 		if t, ok := u.Tree.(parse.ShellTree); ok && executionShellTree(u, t) != nil {
 			return true
 		}
@@ -208,6 +222,7 @@ func (a shellCheck) Find(ctx context.Context, f document.File, limit int) (resul
 	walk := shellWalk{ctx: ctx, kind: a.kind, limit: limit}
 
 	walk.units(f.Units())
+	walk.tracedCommands(f)
 
 	return walk.result, errors.Join(walk.err, walk.gap, ctx.Err())
 }
@@ -217,7 +232,12 @@ func (a shellCheck) WithLanguageFacts(facts check.LanguageFacts) analyzer {
 	return a
 }
 
-func (s *shellState) clone() *shellState {
+func (a *shellWalk) cloneState(s *shellState) *shellState {
+	// The file table is shared. The new scope and every copied binding are local work.
+	if !a.charge(1 + len(s.vars) + len(s.functions)) {
+		return nil
+	}
+
 	n := &shellState{
 		vars:      make(map[string]shellValue, len(s.vars)),
 		functions: map[string]*shellsyntax.File{},
@@ -268,12 +288,11 @@ func (v *shellValue) appendPart(x shellValue) {
 func (a *shellWalk) units(units []document.Unit) {
 	for _, u := range units {
 		t, ok := u.Tree.(parse.ShellTree)
-		if !ok {
+		if !ok && !u.HookCommandText {
 			continue
 		}
 
-		a.view = u.View
-		a.list(executionShellTree(u, t), newShellState())
+		a.unit(u, executionShellTree(u, t))
 
 		if a.err != nil || a.result.Truncated {
 			break
@@ -281,7 +300,21 @@ func (a *shellWalk) units(units []document.Unit) {
 	}
 }
 
-func (a *shellWalk) step() bool {
+func (a *shellWalk) unit(unit document.Unit, tree *shellsyntax.File) {
+	a.view = unit.View
+	a.commandTextPending = unit.HookCommandText
+	a.hookShell = unit.HookSource || unit.Origin == document.OriginHookShell
+	a.list(tree, newShellState())
+
+	if a.commandTextPending {
+		a.commandTextPending = false
+		a.emit(ruleSH003, source.Span{End: len(unit.View.Text())}, nil, check.ShellCommandText)
+	}
+}
+
+func (a *shellWalk) step() bool { return a.charge(1) }
+
+func (a *shellWalk) charge(units int) bool {
 	if a.err != nil || a.result.Truncated {
 		return false
 	}
@@ -291,8 +324,8 @@ func (a *shellWalk) step() bool {
 		return false
 	}
 
-	a.operations++
-	if a.operations > MaxShellOperations || !analysisbudget.Consume(a.ctx, 1) {
+	a.operations += units
+	if units < 0 || a.operations > MaxShellOperations || !analysisbudget.Consume(a.ctx, uint64(units)) {
 		a.err = errors.New("shell analysis operation budget exceeded")
 		return false
 	}
@@ -300,9 +333,17 @@ func (a *shellWalk) step() bool {
 	return true
 }
 
-func (a *shellWalk) emit(kind string, s source.Span, origin *shellOrigin) {
+func (a *shellWalk) emit(kind string, s source.Span, origin *shellOrigin, signals ...string) {
 	if !a.beginEmission(kind) {
 		return
+	}
+
+	if kind == ruleSH003 && a.commandTextPending && s.Start == 0 && s.End == len(a.view.Text()) {
+		a.commandTextPending = false
+
+		if !slices.Contains(signals, check.ShellCommandText) {
+			signals = append(signals, check.ShellCommandText)
+		}
 	}
 
 	m, err := a.view.Original(s)
@@ -311,7 +352,7 @@ func (a *shellWalk) emit(kind string, s source.Span, origin *shellOrigin) {
 		return
 	}
 
-	match := match{Start: m.Start, End: m.End}
+	match := match{Start: m.Start, End: m.End, ContextSignals: signals}
 
 	if origin != nil {
 		match.Trace, err = a.sourceTrace(origin, s)
@@ -321,11 +362,31 @@ func (a *shellWalk) emit(kind string, s source.Span, origin *shellOrigin) {
 		}
 	}
 
+	a.record(kind, match)
+}
+
+func (a *shellWalk) tracedCommands(doc document.File) {
+	for _, command := range doc.TracedShellCommands() {
+		if !a.beginEmission(ruleSH003) {
+			return
+		}
+
+		signals := []string{check.ShellCommandText}
+		if command.HostUpdatedInput {
+			signals = append(signals, check.ShellHostUpdatedInput)
+		}
+
+		a.record(ruleSH003, match{Start: command.Span.Start, End: command.Span.End, ContextSignals: signals})
+	}
+}
+
+func (a *shellWalk) record(kind string, match match) {
 	if a.outputs != nil {
 		a.outputs[kind].Add(match)
-	} else {
-		a.result.Matches = append(a.result.Matches, match)
+		return
 	}
+
+	a.result.Matches = append(a.result.Matches, match)
 }
 
 func (a *shellWalk) beginEmission(kind string) bool {
@@ -431,17 +492,44 @@ func (a *shellWalk) wordPart(part shellsyntax.Part, s *shellState) shellValue {
 	x := shellValue{known: true}
 
 	switch part.Kind {
-	case "literal":
+	case shellsyntax.PartLiteral:
 		x.text = part.Text
-	case "parameter":
+	case shellsyntax.PartParameter, shellsyntax.PartParameterDefaultDot:
 		x = s.parameter(part)
-	case "substitution":
-		x = a.list(part.Tree, s.clone())
+		if part.Kind == shellsyntax.PartParameterDefaultDot && x.known && x.text == "" {
+			x.text = "."
+		}
+	case shellsyntax.PartParameterReplaceAll, shellsyntax.PartParameterScriptDir:
+		x = s.parameter(part)
+		x.known = false
+	case shellsyntax.PartSubstitution:
+		x = a.list(part.Tree, a.cloneState(s))
+		x.known = false
+	case shellsyntax.PartProcessSubstitution:
+		a.list(part.Tree, a.cloneState(s))
+
+		x.known = false
+	case shellsyntax.PartArithmetic:
+		for _, operand := range part.ArithmeticOperands {
+			nested := a.cloneState(s)
+			if nested == nil {
+				break
+			}
+
+			a.word(operand, nested)
+		}
+
+		x.known = false
+	case shellsyntax.PartParameterValue:
+		a.word(part.Operand, a.cloneState(s))
+
+		x.known = false
+	default:
 		x.known = false
 	}
 	// Unquoted known expansions can split/glob into multiple arguments.
 	// Do not reinterpret a value such as "echo /bin/curl" as one executable.
-	if part.Kind != "literal" && !part.Quoted && x.known && strings.ContainsAny(x.text, " \t\n*?[") {
+	if part.Kind != shellsyntax.PartLiteral && !part.Quoted && x.known && strings.ContainsAny(x.text, " \t\n*?[") {
 		x.known = false
 	}
 
@@ -471,18 +559,21 @@ func (a *shellWalk) list(f *shellsyntax.File, s *shellState) shellValue {
 
 func (a *shellWalk) listInput(f *shellsyntax.File, s *shellState, incoming shellValue) shellValue {
 	var out shellValue
-	if f == nil {
+	if f == nil || s == nil {
 		return out
 	}
 
 	conditional := false
 
-	for _, st := range f.Statements {
+	for i, st := range f.Statements {
 		if !a.step() {
 			break
 		}
 
 		branch := conditional || shellBranchLinks[st.Next]
+		if a.hookShell && !branch && i+3 < len(f.Statements) {
+			a.optionalTimeoutCommand(f.Statements[i:i+4], s)
+		}
 
 		previousMayWrite := s.mayWrite
 		if branch {
@@ -516,8 +607,11 @@ func (a *shellWalk) pipeline(st *shellsyntax.Statement, s *shellState, incoming 
 
 	for _, cmd := range st.Commands {
 		state := s
-		if len(st.Commands) > 1 || st.Next == "&" {
-			state = s.clone()
+		if len(st.Commands) > 1 || st.Next == shellsyntax.Background {
+			state = a.cloneState(s)
+			if state == nil {
+				return input
+			}
 		}
 
 		input = a.command(cmd, state, input)
@@ -531,9 +625,13 @@ func (a *shellWalk) command(c *shellsyntax.Command, s *shellState, input shellVa
 		return shellValue{}
 	}
 
+	for _, operand := range c.ExpansionWords {
+		a.word(operand, s)
+	}
+
 	if c.FunctionName != "" {
 		s.functions[c.FunctionName] = c.FunctionBody
-		a.function(c.FunctionBody, s.clone(), shellValue{})
+		a.function(c.FunctionBody, a.cloneState(s), shellValue{})
 
 		return shellValue{}
 	}
@@ -548,7 +646,6 @@ func (a *shellWalk) command(c *shellsyntax.Command, s *shellState, input shellVa
 		}
 
 		a.redirects(c, s, input)
-		a.writeRedirected(c, s, shellValue{})
 
 		return shellValue{}
 	}
@@ -557,7 +654,7 @@ func (a *shellWalk) command(c *shellsyntax.Command, s *shellState, input shellVa
 }
 
 func (a *shellWalk) compoundCommand(c *shellsyntax.Command, s *shellState, input shellValue) shellValue {
-	input, redirected := a.redirects(c, s, input)
+	input, redirected, _ := a.redirects(c, s, input)
 
 	out := shellValue{}
 	if c.Group != nil {
@@ -566,7 +663,12 @@ func (a *shellWalk) compoundCommand(c *shellsyntax.Command, s *shellState, input
 		a.list(c.Prelude, s)
 
 		for _, branch := range c.Alternatives {
-			out = mergeShellValue(out, a.listInput(branch, s.clone(), input))
+			nested := a.cloneState(s)
+			if nested == nil {
+				break
+			}
+
+			out = mergeShellValue(out, a.listInput(branch, nested, input))
 		}
 
 		s.barrier()
@@ -591,9 +693,9 @@ func (a *shellWalk) simpleCommand(c *shellsyntax.Command, s *shellState, input s
 		values[i] = a.word(w, s)
 	}
 
-	input, outputRedirect := a.redirects(c, s, input)
+	input, outputRedirect, destination := a.redirects(c, s, input)
 	if c.Subshell != nil {
-		out := a.list(c.Subshell, s.clone())
+		out := a.list(c.Subshell, a.cloneState(s))
 
 		if outputRedirect {
 			return shellValue{}
@@ -619,7 +721,7 @@ func (a *shellWalk) simpleCommand(c *shellsyntax.Command, s *shellState, input s
 		out.output = true
 	}
 
-	a.writeRedirected(c, s, out)
+	a.writeRedirected(s, destination, out)
 
 	if outputRedirect {
 		return shellValue{}
@@ -861,7 +963,7 @@ func (a *shellWalk) executionCommand(c *shellsyntax.Command, s *shellState, inpu
 
 	switch name {
 	case "eval":
-		a.emit(ruleSH003, c.Span, nil)
+		a.emit(ruleSH003, c.Span, nil, check.ShellEval)
 
 		for _, v := range args {
 			if v.download != nil {
@@ -873,35 +975,97 @@ func (a *shellWalk) executionCommand(c *shellsyntax.Command, s *shellState, inpu
 	case "source", ".":
 		a.emit(ruleSH003, c.Span, nil)
 		s.barrier()
-	case "sh", "bash", "dash", "zsh", "ksh":
+	case language.ExecutableSh, language.ExecutableBash, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh:
 		a.interpreterExecution(c, input, args)
+	case "exec", "nohup":
+		a.execCommandText(c, input, args)
+		s.barrier()
+	case "npm":
+		if a.hookShell && npmRunsScript(args) {
+			a.emit(ruleSH003, c.Span, nil, check.ShellCommandText, check.ShellPackageScript)
+		}
+
+		s.barrier()
 	case "true", "false", ":":
 	default:
+		a.powerShellCommandText(c, name, args)
 		s.barrier() // unknown builtins/functions can mutate shell state
 	}
 }
 
+func npmRunsScript(args []shellValue) bool {
+	if len(args) < 2 || !args[0].known || (args[0].text != "run" && args[0].text != "run-script") {
+		return false
+	}
+
+	for _, arg := range args[1:] {
+		if !arg.known {
+			return false
+		}
+
+		switch arg.text {
+		case "--silent", "-s", "--if-present":
+		default:
+			// The built-in env command can list environment data instead.
+			return arg.text != "" && arg.text != "env" && !strings.HasPrefix(arg.text, "-")
+		}
+	}
+
+	return false
+}
+
 func (a *shellWalk) interpreterExecution(c *shellsyntax.Command, input shellValue, args []shellValue) {
-	commandText, readsInput := shellExecution(args)
+	commandText, _ := shellsyntax.CommandTextIndex(len(args), func(i int) (string, bool) {
+		return args[i].text, args[i].known
+	}, true)
 	if commandText >= 0 {
-		a.emit(ruleSH003, c.Span, nil)
+		if code := args[commandText]; !code.known || strings.TrimSpace(code.text) != "" {
+			a.emit(ruleSH003, c.Span, nil, check.ShellCommandText)
+		}
 
 		if args[commandText].download != nil {
 			a.emit(ruleSH001, c.Span, args[commandText].download)
 		}
 	}
 
+	_, readsInput := shellExecution(args)
 	if readsInput && input.download != nil {
 		a.emit(ruleSH001, c.Span, input.download)
 	}
 }
 
+func (a *shellWalk) execCommandText(c *shellsyntax.Command, input shellValue, argv []shellValue) {
+	name, args, ok := shellInvocation(stripShellDoubleDash(argv))
+	if !ok {
+		return
+	}
+
+	switch name {
+	case language.ExecutableSh, language.ExecutableBash, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh:
+		a.interpreterExecution(c, input, args)
+	default:
+		a.powerShellCommandText(c, name, args)
+	}
+}
+
+func (a *shellWalk) powerShellCommandText(c *shellsyntax.Command, name string, args []shellValue) {
+	if shellsyntax.IsPowerShell(name) && shellsyntax.PowerShellCommandIndex(len(args), func(i int) (string, bool) {
+		return args[i].text, args[i].known
+	}) >= 0 {
+		a.emit(ruleSH003, c.Span, nil, check.ShellCommandText)
+	}
+}
+
 func (a *shellWalk) function(body *shellsyntax.File, s *shellState, input shellValue) shellValue {
+	if s == nil {
+		return shellValue{}
+	}
+
 	if a.activeFunctions == nil {
 		a.activeFunctions = map[*shellsyntax.File]bool{}
 	}
 
-	if body == nil || a.activeFunctions[body] || len(a.activeFunctions) >= 16 {
+	if body == nil || a.activeFunctions[body] || len(a.activeFunctions) >= maxActiveShellFunctions {
 		s.barrier()
 		return shellValue{}
 	}
@@ -912,11 +1076,20 @@ func (a *shellWalk) function(body *shellsyntax.File, s *shellState, input shellV
 	return a.listInput(body, s, input)
 }
 
-func (a *shellWalk) redirects(c *shellsyntax.Command, s *shellState, input shellValue) (shellValue, bool) {
+func (a *shellWalk) redirects(c *shellsyntax.Command, s *shellState, input shellValue) (shellValue, bool, shellFileRedirect) {
+	if len(c.Redirects) == 0 {
+		return input, false, shellFileRedirect{}
+	}
+
 	output := false
+	fds := make(map[string]shellFileRedirect)
+
+	var inputFile *shellValue
 
 	for _, redirect := range c.Redirects {
 		value := a.word(redirect.Target, s)
+
+		a.fileRedirect(redirect, value, s, fds)
 
 		spec := shellRedirects[redirect.Op]
 		if spec.kind == shellHereDocument {
@@ -924,7 +1097,7 @@ func (a *shellWalk) redirects(c *shellsyntax.Command, s *shellState, input shell
 		}
 
 		switch redirect.Op {
-		case ">", ">>", ">|", ">&", "&>", "&>>", "<>":
+		case shellsyntax.RedirectOutput, shellsyntax.RedirectAppend, shellsyntax.RedirectClobber, shellsyntax.RedirectDuplicateOutput, shellsyntax.RedirectBoth, shellsyntax.RedirectAppendBoth, shellsyntax.RedirectReadWrite:
 			a.fileCapability(redirect.Op, value, redirect.Span)
 		}
 
@@ -937,16 +1110,23 @@ func (a *shellWalk) redirects(c *shellsyntax.Command, s *shellState, input shell
 		}
 
 		if spec.input {
+			inputFile = nil
 			input = a.redirectedInput(spec.kind, value, redirect.Span)
 			input.fixedInput = a.observeCapability != nil && shellFixedInputRedirect(redirect)
 
 			if spec.kind == shellReadFile {
-				input.download = s.fileOrigin(value)
+				inputFile = &value
 			}
 		}
 	}
 
-	return input, output
+	// Opening stdin does not snapshot bytes: a later output redirection may
+	// truncate the same file before the command reads it.
+	if inputFile != nil {
+		input.download = s.fileOrigin(*inputFile)
+	}
+
+	return input, output, fds["1"]
 }
 
 func (a *shellWalk) redirectedInput(kind shellRedirectKind, value shellValue, span source.Span) shellValue {
@@ -981,7 +1161,7 @@ func mergeShellValue(x, y shellValue) shellValue {
 }
 
 func shellInvocation(values []shellValue) (string, []shellValue, bool) {
-	for layers := 0; len(values) > 0 && layers < 4; layers++ {
+	for layers := 0; len(values) > 0 && layers < maxShellInvocationLayers; layers++ {
 		if !values[0].known || values[0].text == "" {
 			return "", nil, false
 		}

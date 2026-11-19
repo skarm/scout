@@ -125,7 +125,7 @@ report and exit code. Declaration states do not establish component activation.
   `standard` selects all static checks; `review` also requires a configured reviewer;
   `custom` permits explicit check selection. CLI aliases: `extended` = `standard`,
   `semantic` = `review`, `basic` = `custom` with all optional static checks disabled.
-- `--harness auto|claude-code|codex|agent-skills`: interpretation of agent/plugin
+- `--harness auto|claude-code|codex|gemini-cli|agent-skills`: interpretation of agent/plugin
   declarations; default `auto`.
 - `--input -`: read one input from stdin; unset by default. Only `-` is supported.
 - `--name RELATIVE_PATH`: required with `--input -`; the input's relative filename,
@@ -272,8 +272,7 @@ unless an explicit numeric loopback exception applies.
   enables the service. Version 1 covers ordinary vulnerability IDs; version 2
   also selects `MAL001` for explicitly classified malicious-package records.
   Fresh version-2 cache answers take precedence over ordinary network queries.
-  Currently, `--vuln=false` does not override a
-  nonempty cache path.
+  A nonempty cache path also takes precedence over `--vuln=false`.
 - `--osv-cache-max-age DURATION`: maximum cache age; default `168h` (7 days),
   range `1m`..`8760h`.
 - `--osv-endpoint URL`: query endpoint; default `https://api.osv.dev/v1/querybatch`.

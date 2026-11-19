@@ -7,17 +7,7 @@ in [NOTICE](../../NOTICE); full third-party texts are in [licenses](../../licens
 
 ## Go modules
 
-[go.mod](../../go.mod) and [go.sum](../../go.sum) pin these versions:
-
-- YARA-X Go: 1.22.0.
-- `go-toml/v2`: 2.4.3; `go.yaml.in/yaml/v3`: 3.0.5.
-- `go-tree-sitter`, Python and JavaScript grammars: 0.25.0; TypeScript: 0.23.2.
-- `mvdan.cc/sh/v3`: 3.14.1, BSD-3-Clause; syntax parser without the interpreter.
-- `goldmark`: 1.8.7, MIT; CommonMark block parsing without rendering or extensions.
-- `x/mod`: 0.42.0; `x/sys`: 0.49.0.
-- Indirect: `go-pointer`: 0.0.1; protobuf: 1.36.12.
-
-`make deps` downloads and verifies modules. Minimum Go version is 1.26.0.
+Pinned modules and checksums are listed in [go.mod](../../go.mod) and [go.sum](../../go.sum). Run `make deps` to download and verify them. Scout requires Go 1.26+. `mvdan.cc/sh/v3` uses BSD-3-Clause. Goldmark uses MIT.
 
 ## Native dependencies
 

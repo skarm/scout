@@ -11,10 +11,12 @@ import (
 	yrx "github.com/VirusTotal/yara-x/go"
 )
 
+const metadataContextBytes = 1024
+
 func strongAssessmentPattern(rule, pattern string) bool {
 	if p1BaseSeverity(rule) != "" {
 		return strings.HasPrefix(pattern, "$attack_") || rule == ransomwareRule &&
-			(pattern == "$ransom_note" || pattern == "$payment_then_context" || pattern == contextPaymentPattern || pattern == "$explicit_ransom_payment")
+			(pattern == "$ransom_note" || pattern == paymentThenContextPattern || pattern == contextPaymentPattern || pattern == explicitRansomPaymentPattern)
 	}
 
 	return rule == remoteBootstrapRule && strings.HasPrefix(pattern, "$execute_") ||
@@ -59,7 +61,7 @@ func (s nativeSource) assessRule(rule string, patterns []yrx.Pattern) (report.Se
 
 		for _, hit := range pattern.Matches() {
 			count++
-			if count > 4096 {
+			if count > maxNativeAssessedMatches {
 				return builtinSeverity(rule, strong), strong || weak, true, nil
 			}
 
@@ -89,7 +91,7 @@ func (s nativeSource) metadataProhibited(span Span) bool {
 
 	// Treat a metadata scalar's label and quotes as boundaries, retaining the
 	// surrounding anti-reversal context used by the shared prohibition guard.
-	left, right := max(0, span.Start-1024), min(len(s.text), span.End+1024)
+	left, right := max(0, span.Start-metadataContextBytes), min(len(s.text), span.End+metadataContextBytes)
 	start, end := span.Start-left, span.End-left
 	window := []byte(s.text[left:right])
 

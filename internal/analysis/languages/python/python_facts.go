@@ -44,7 +44,7 @@ func (facts *pythonFacts) beginUnit() {
 	}
 }
 
-func (facts *pythonFacts) emit(id string, node *frontend.Node, origin *pyOrigin, unit document.Unit) {
+func (facts *pythonFacts) emit(id string, node *frontend.Node, origin *pyOrigin, unit document.Unit, signals ...string) {
 	rule := facts.outputs[id]
 	if rule == nil || rule.Done() || node == nil || node.Start >= node.End {
 		return
@@ -67,6 +67,7 @@ func (facts *pythonFacts) emit(id string, node *frontend.Node, origin *pyOrigin,
 	}
 
 	rule.seen[key] = true
+	match.ContextSignals = signals
 	rule.Add(match)
 }
 

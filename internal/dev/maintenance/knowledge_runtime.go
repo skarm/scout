@@ -17,11 +17,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/skarm/scout/internal/netpolicy"
 	"github.com/skarm/scout/knowledge"
 	scanreport "github.com/skarm/scout/report"
 )
 
-const fixtureModel = "scripted-fixture-no-live-model"
+const (
+	knowledgeCallTimeout         = time.Minute
+	maxKnowledgeRequestBodyBytes = 256 << 10
+	maxFixtureRequestBytes       = 256 << 10
+	fixtureModel                 = "scripted-fixture-no-live-model"
+)
 
 type knowledgeCase struct {
 	ID, Label, Topic, Path, Content string
@@ -133,7 +139,7 @@ func newFixtureReviewer(ctx context.Context, binary string, pack object) (*fixtu
 }
 
 func invokeCLI(ctx context.Context, binary string, args ...string) ([]byte, int, error) {
-	call, cancel := context.WithTimeout(ctx, time.Minute)
+	call, cancel := context.WithTimeout(ctx, knowledgeCallTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(call, binary, args...) //nolint:gosec // G204: explicitly selected trusted Scout binary; scanned artifact bytes are never executed.
@@ -182,7 +188,7 @@ func (s *fixtureReviewer) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(netpolicy.HeaderContentType, netpolicy.JSONMediaType)
 
 	if err = json.NewEncoder(w).Encode(body); err != nil {
 		s.err = err
@@ -401,7 +407,7 @@ func knowledgeScan(ctx context.Context, o options, binary, target, name string, 
 		return nil, code, err
 	}
 
-	if err = os.WriteFile(filepath.Join(o.get("output"), name), data, 0o600); err != nil {
+	if err = os.WriteFile(filepath.Join(o.get("output"), name), data, privateFileMode); err != nil {
 		return nil, code, err
 	}
 
@@ -512,12 +518,12 @@ func validateCLIStderr(stdout, stderr []byte, args []string, code int) error {
 }
 
 func decodeFixtureRequest(r *http.Request) (object, object, error) {
-	if r.Method != http.MethodPost || r.ContentLength <= 0 || r.ContentLength >= 256<<10 {
+	if r.Method != http.MethodPost || r.ContentLength <= 0 || r.ContentLength >= maxFixtureRequestBytes {
 		return nil, nil, errors.New("unexpected fixture request")
 	}
 
 	var body object
-	if err := json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxKnowledgeRequestBodyBytes)).Decode(&body); err != nil {
 		return nil, nil, err
 	}
 
@@ -545,11 +551,11 @@ func prepareKnowledgeInput(folder string, tc knowledgeCase) (string, error) {
 		return "", err
 	}
 
-	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err = os.MkdirAll(filepath.Dir(path), privateDirectoryMode); err != nil {
 		return "", err
 	}
 
-	if err = os.WriteFile(path, []byte(tc.Content), 0o600); err != nil {
+	if err = os.WriteFile(path, []byte(tc.Content), privateFileMode); err != nil {
 		return "", err
 	}
 

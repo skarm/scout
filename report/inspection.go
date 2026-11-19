@@ -27,6 +27,8 @@ type InspectionPlan struct {
 	Requirements []string `json:"requirements"`
 	// Limits records the applicable resource ceilings.
 	Limits *ExecutionLimits `json:"limits,omitempty"`
+	// ShellHookRoot records an operator assumption used in static analysis.
+	ShellHookRoot ShellHookRoot `json:"shell_hook_root,omitzero"`
 }
 
 // ExecutionLimits records units and scope without service credentials or runtime

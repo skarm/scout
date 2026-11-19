@@ -2,6 +2,7 @@ package check_test
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/check"
@@ -159,8 +160,8 @@ func TestFactsConsumersOwnMutableEvidence(t *testing.T) {
 		ContextSignals: []string{"declared"},
 	})
 	facts.Finish(nil, false)
-	for range 8 {
-		t.Run("consumer", func(t *testing.T) {
+	for consumer := range 8 {
+		t.Run("consumer_"+strconv.Itoa(consumer), func(t *testing.T) {
 			t.Parallel()
 			first, err := facts.Result(8)
 			if err != nil || len(first.Matches) != 1 {

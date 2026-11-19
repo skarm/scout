@@ -13,7 +13,28 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/skarm/scout/internal/netpolicy"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+)
+
+const (
+	fieldJSONRPC   = "jsonrpc"
+	fieldMethod    = "method"
+	fieldID        = "id"
+	fieldParams    = "params"
+	fieldMeta      = "_meta"
+	fieldName      = "name"
+	fieldVersion   = "version"
+	fieldRequestID = "requestId"
+)
+
+const (
+	maxMethodBytes        = 128
+	maxNumericIDBytes     = 128
+	maxStringIDBytes      = 96
+	maxClientNameBytes    = 256
+	maxClientVersionBytes = 128
+	maxAcceptHeaderBytes  = 4096
 )
 
 var (
@@ -50,7 +71,7 @@ func failure(id json.RawMessage, code int, msg string) response {
 		id = json.RawMessage("null")
 	}
 
-	return response{JSONRPC: "2.0", ID: id, Error: &rpcError{Code: code, Message: msg}}
+	return response{JSONRPC: jsonRPCVersion, ID: id, Error: &rpcError{Code: code, Message: msg}}
 }
 
 func parseRequest(data []byte) (request, error) {
@@ -69,19 +90,19 @@ func parseRequest(data []byte) (request, error) {
 		return r, errInvalidRequest
 	}
 
-	r.JSONRPC, _ = n.Get("jsonrpc").Text()
+	r.JSONRPC, _ = n.Get(fieldJSONRPC).Text()
 
-	r.Method, _ = n.Get("method").Text()
-	if r.JSONRPC != "2.0" || r.Method == "" || len(r.Method) > 128 {
+	r.Method, _ = n.Get(fieldMethod).Text()
+	if r.JSONRPC != jsonRPCVersion || r.Method == "" || len(r.Method) > maxMethodBytes {
 		return r, errInvalidRequest
 	}
 
-	r.ID, r.key, err = requestID(n.Get("id"), data)
+	r.ID, r.key, err = requestID(n.Get(fieldID), data)
 	if err != nil {
 		return r, err
 	}
 
-	r.Params, err = requestParams(n.Get("params"), data)
+	r.Params, err = requestParams(n.Get(fieldParams), data)
 
 	return r, err
 }
@@ -93,7 +114,7 @@ func requestObject(n *jsonconfig.Node) bool {
 
 	for _, field := range n.Members {
 		switch field.Key {
-		case "jsonrpc", "id", "method", "params":
+		case fieldJSONRPC, fieldID, fieldMethod, fieldParams:
 		default:
 			return false
 		}
@@ -109,14 +130,14 @@ func requestID(n *jsonconfig.Node, data []byte) (json.RawMessage, requestKey, er
 		return nil, requestKey{}, nil
 	}
 
-	if n.Span.End-n.Span.Start > 128 {
+	if n.Span.End-n.Span.Start > maxNumericIDBytes {
 		return nil, requestKey{}, errors.New("invalid request ID")
 	}
 
 	key := requestKey{kind: n.Kind, value: n.String}
 	switch n.Kind {
 	case jsonconfig.KindString:
-		if len(n.String) > 96 {
+		if len(n.String) > maxStringIDBytes {
 			return nil, requestKey{}, errors.New("invalid request ID")
 		}
 	case jsonconfig.KindNumber:
@@ -133,6 +154,10 @@ func requestID(n *jsonconfig.Node, data []byte) (json.RawMessage, requestKey, er
 	return bytes.Clone(data[n.Span.Start:n.Span.End]), key, nil
 }
 
+const (
+	maxIDExponent = 256
+)
+
 // JSON integers are values, not a restriction on decimal/exponent spelling.
 // Bound the exponent before big.Rat allocation and keep the existing int64 range.
 func integerID(raw string) (int64, bool) {
@@ -143,7 +168,7 @@ func integerID(raw string) (int64, bool) {
 	mantissa, exponent, hasExponent := strings.Cut(strings.ToLower(raw), "e")
 	if hasExponent {
 		e, err := strconv.Atoi(exponent)
-		if err != nil || e < -256 || e > 256 {
+		if err != nil || e < -maxIDExponent || e > maxIDExponent {
 			return 0, strings.Trim(mantissa, "-+.0") == ""
 		}
 	}
@@ -165,7 +190,7 @@ func requestParams(n *jsonconfig.Node, data []byte) (json.RawMessage, error) {
 		return nil, errInvalidParams
 	}
 
-	if meta := n.Get("_meta"); meta != nil && meta.Kind != jsonconfig.KindObject {
+	if meta := n.Get(fieldMeta); meta != nil && meta.Kind != jsonconfig.KindObject {
 		return nil, errInvalidParams
 	}
 
@@ -197,7 +222,7 @@ func strictParams(raw []byte, v any, names ...string) error {
 
 func requestFailure(r request, err error) *response {
 	if errors.Is(err, errInvalidJSON) {
-		return rpcFailure(nil, -32700, "Invalid JSON")
+		return rpcFailure(nil, rpcParseError, "Invalid JSON")
 	}
 
 	if errors.Is(err, errInvalidParams) {
@@ -205,20 +230,56 @@ func requestFailure(r request, err error) *response {
 			return nil // A notification never has a JSON-RPC response.
 		}
 
-		return rpcFailure(r.ID, -32602, "Invalid parameters")
+		return rpcFailure(r.ID, rpcInvalidParams, "Invalid parameters")
 	}
 
-	return rpcFailure(nil, -32600, "Invalid JSON-RPC request")
+	return rpcFailure(nil, rpcInvalidRequest, "Invalid JSON-RPC request")
 }
 
 func encodeResponse(r *response) []byte {
-	data, err := json.Marshal(r)
+	data, err := marshalResponse(r)
 	if err != nil || len(data) > MaxResponseBytes {
-		x := failure(r.ID, -32000, "Report exceeds transport limit; no approval inferred")
+		x := failure(r.ID, rpcServerError, "Report exceeds transport limit; no approval inferred")
 		data, _ = json.Marshal(x)
 	}
 
 	return append(data, '\n')
+}
+
+func marshalResponse(r *response) ([]byte, error) {
+	result, ok := r.Result.(toolResult)
+	if !ok || result.StructuredContent == nil {
+		return json.Marshal(r)
+	}
+
+	document, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		return nil, err
+	}
+
+	result.StructuredContent = json.RawMessage(document)
+	wire := *r
+	wire.Result = result
+
+	base, err := json.Marshal(wire)
+	if err != nil || len(base) > MaxResponseBytes {
+		return base, err
+	}
+
+	summary, err := json.Marshal(result.Content[0].Text)
+	if err != nil || len(document)+2 > MaxResponseBytes-len(base)+len(summary) {
+		return base, err
+	}
+
+	result.Content[0].Text = string(document)
+	wire.Result = result
+
+	withFallback, err := json.Marshal(wire)
+	if err != nil || len(withFallback) > MaxResponseBytes {
+		return base, err
+	}
+
+	return withFallback, nil
 }
 
 func validClientInfo(capabilities, info []byte) bool {
@@ -232,21 +293,21 @@ func validClientInfo(capabilities, info []byte) bool {
 		return false
 	}
 
-	name, ok := i.Get("name").Text()
-	version, vok := i.Get("version").Text()
+	name, ok := i.Get(fieldName).Text()
+	version, vok := i.Get(fieldVersion).Text()
 
-	return ok && vok && name != "" && len(name) <= 256 && len(version) <= 128
+	return ok && vok && name != "" && len(name) <= maxClientNameBytes && len(version) <= maxClientVersionBytes
 }
 
 // Parse exact media types; a substring such as application/json-bogus is not JSON.
 func acceptsJSON(h string) bool {
-	if len(h) > 4096 {
+	if len(h) > maxAcceptHeaderBytes {
 		return false
 	}
 
 	for entry := range httpFieldList(h) {
 		media, params, err := mime.ParseMediaType(strings.TrimSpace(entry))
-		if err != nil || media != "application/json" {
+		if err != nil || media != netpolicy.JSONMediaType {
 			continue
 		}
 

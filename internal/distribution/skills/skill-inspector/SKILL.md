@@ -105,10 +105,12 @@ hooks/links can matter even when handler source did not change.
 
 ### 3. Read and retain the report even for nonzero exit codes
 
-Read `policy.decision`, `coverage.completeness`, the artifact digest, rule versions,
-findings and their evidence/trace, component links, validation outcomes, parser/engine
-capabilities, dependency information, and every limit or gap. For an update also read
-its top-level completeness and both scans. Numeric risk is advisory.
+Read the `scout.report/v1` document: `evaluation.decision` is the policy decision,
+`run.state` is the execution state, and each `run.targets[].analysis` contains
+`coverage.completeness`, the artifact digest, findings and their evidence/trace,
+component links, validation outcomes, dependencies, and limits or gaps. Read the
+selected checks and capabilities in `run.plan` and rule versions in the analysis.
+For an update also read `run.comparison` and both target analyses. Numeric risk is advisory.
 
 Exit `0` means complete + allow for the selected scanner profile. Exit `1` means complete
 + review/block. Exit `2` means incomplete/failed or invocation error and can accompany a

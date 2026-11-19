@@ -2,6 +2,11 @@ package report
 
 import "errors"
 
+const (
+	defaultUpdateChanges = 4096
+	maxUpdateChanges     = 20000
+)
+
 // UpdateOptions limits retained deltas, independently of each scan's input limits.
 // The update workflow always rescans both local targets using one Scanner config.
 type UpdateOptions struct {
@@ -223,12 +228,12 @@ type ManifestSignal struct {
 
 // DefaultUpdateOptions returns the standard ceiling for retained update
 // changes.
-func DefaultUpdateOptions() UpdateOptions { return UpdateOptions{MaxChanges: 4096} }
+func DefaultUpdateOptions() UpdateOptions { return UpdateOptions{MaxChanges: defaultUpdateChanges} }
 
 // Validate checks that MaxChanges is within the supported range of 1 through
 // 20000.
 func (o UpdateOptions) Validate() error {
-	if o.MaxChanges < 1 || o.MaxChanges > 20000 {
+	if o.MaxChanges < 1 || o.MaxChanges > maxUpdateChanges {
 		return errors.New("max update changes must be in 1..20000")
 	}
 

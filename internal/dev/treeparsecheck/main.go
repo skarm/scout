@@ -16,6 +16,10 @@ import (
 	"strings"
 )
 
+const (
+	maxLifecycleRounds = 100000
+)
+
 type options struct {
 	sanitizer, output, adapter, compiler string
 	rounds                               int
@@ -108,7 +112,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 		return opts, errors.New("--sanitizer must be address, thread, or none")
 	}
 
-	if opts.output == "" || opts.compiler == "" || opts.rounds < 1 || opts.rounds > 100000 {
+	if opts.output == "" || opts.compiler == "" || opts.rounds < 1 || opts.rounds > maxLifecycleRounds {
 		return opts, errors.New("--output and --cc are required; --rounds must be 1..100000")
 	}
 

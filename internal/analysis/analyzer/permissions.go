@@ -13,15 +13,20 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/skarm/scout/internal/syntax/language"
-
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hookpolicy"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/report"
+)
+
+const (
+	maxPermissionWordsPerDeclaration = 128
+	maxPermissionScopes              = 1024
+	maxPermissionOperations          = 500000
 )
 
 //nolint:gochecknoglobals // Immutable lookup data shared by concurrent scans; initialized once to avoid rebuilding it per input.
@@ -289,7 +294,7 @@ func permissionScopeCandidates(ctx context.Context, docs []document.File, addres
 			continue
 		}
 
-		if len(scopes) >= 1024 {
+		if len(scopes) >= maxPermissionScopes {
 			return nil, false
 		}
 
@@ -302,9 +307,9 @@ func permissionScopeCandidates(ctx context.Context, docs []document.File, addres
 }
 
 func permissionScopeFor(d document.File, addr permissionAddress) (*permissionScope, bool) {
-	isSkill := path.Base(addr.Name) == "SKILL.md"
+	isSkill := path.Base(addr.Name) == artifact.SkillManifest
 
-	isPlugin := strings.HasSuffix(addr.Name, ".claude-plugin/plugin.json") || strings.HasSuffix(addr.Name, ".codex-plugin/plugin.json")
+	isPlugin := strings.HasSuffix(addr.Name, artifact.ClaudePluginManifest) || strings.HasSuffix(addr.Name, artifact.CodexPluginManifest)
 	if !isSkill && !isPlugin {
 		return nil, false
 	}
@@ -347,7 +352,7 @@ func observePermissionScopes(ctx context.Context, docs []document.File, addresse
 
 		for i := range scopes {
 			ops++
-			if ops > 500000 {
+			if ops > maxPermissionOperations {
 				return false
 			}
 
@@ -401,7 +406,7 @@ func collectPermissionDeclarations(root *jsonconfig.Node, r *permissionRecord) {
 		r.present = true
 
 		for _, value := range configurationStrings(n) {
-			for _, word := range permissionWords.FindAllString(strings.ToLower(value), 128) {
+			for _, word := range permissionWords.FindAllString(strings.ToLower(value), maxPermissionWordsPerDeclaration) {
 				r.wild = r.wild || wildcardPermissions[word]
 				if category, ok := permissionCategories[word]; ok {
 					r.declared[category] = true

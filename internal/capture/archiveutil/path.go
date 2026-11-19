@@ -9,6 +9,10 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	maxNamespaceBytes = 8 << 20
+)
+
 // Namespace catches duplicate paths, case-fold collisions, and file/directory
 // prefix conflicts before any archive payload is accepted.
 type Namespace struct {
@@ -101,7 +105,7 @@ func (i *Namespace) addNode(prefix, key string, directory, explicit bool) error 
 
 func (i *Namespace) allocateNode(prefix, key string) error {
 	// Parent directories consume the same bounded namespace metadata inventory.
-	if (i.MaxNodes > 0 && len(i.nodes) >= i.MaxNodes) || i.bytes+len(prefix)+len(key) > 8<<20 {
+	if (i.MaxNodes > 0 && len(i.nodes) >= i.MaxNodes) || i.bytes+len(prefix)+len(key) > maxNamespaceBytes {
 		return errors.New("expanded namespace metadata budget exceeded")
 	}
 

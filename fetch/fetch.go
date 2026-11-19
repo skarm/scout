@@ -21,6 +21,19 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	gitCommitHexBytes      = 40
+	sha256HexBytes         = 64
+	downloadUserAgent      = "scout-offline-first-mvp"
+	maxRepositoryPartBytes = 128
+	// MaxDownloadTimeout is the maximum supported download deadline.
+	MaxDownloadTimeout     = 2 * time.Minute
+	defaultDownloadBytes   = 32 << 20
+	defaultDownloadTimeout = 30 * time.Second
+	maxDownloadBytes       = 128 << 20
+	maxDownloadURLBytes    = 4096
+)
+
 // Options configures explicitly permitted remote acquisition. Defaults keep
 // network access disabled.
 type Options struct {
@@ -76,7 +89,9 @@ type (
 
 // DefaultOptions returns bounded download settings with network permission
 // disabled.
-func DefaultOptions() Options { return Options{MaxBytes: 32 << 20, Timeout: 30 * time.Second} }
+func DefaultOptions() Options {
+	return Options{MaxBytes: defaultDownloadBytes, Timeout: defaultDownloadTimeout}
+}
 
 // IsRemote reports whether s contains a URL scheme separator. It does not
 // validate the URL or authorize network access.
@@ -150,8 +165,8 @@ func Get(ctx context.Context, raw string, o Options) (Payload, error) {
 		return out, fail("invalid_request")
 	}
 
-	req.Header.Set("User-Agent", "scout-offline-first-mvp")
-	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("User-Agent", downloadUserAgent)
+	req.Header.Set(netpolicy.HeaderAcceptEncoding, netpolicy.IdentityEncoding)
 
 	data, err := downloadResponse(ctx, req, o)
 	if err != nil {
@@ -174,8 +189,8 @@ func (o Options) Validate() error {
 		max   int64
 		code  string
 	}{
-		{value: o.MaxBytes, min: 1, max: 128 << 20, code: "invalid_byte_budget"},
-		{value: int64(o.Timeout), min: 1, max: int64(2 * time.Minute), code: "invalid_timeout"},
+		{value: o.MaxBytes, min: 1, max: maxDownloadBytes, code: "invalid_byte_budget"},
+		{value: int64(o.Timeout), min: 1, max: int64(MaxDownloadTimeout), code: "invalid_timeout"},
 	} {
 		if budget.value < budget.min || budget.value > budget.max {
 			return fail(budget.code)
@@ -187,8 +202,8 @@ func (o Options) Validate() error {
 		length int
 		code   string
 	}{
-		{value: o.Revision, length: 40, code: "revision_must_be_full_commit_sha"},
-		{value: o.ExpectedSHA256, length: 64, code: "invalid_expected_checksum"},
+		{value: o.Revision, length: gitCommitHexBytes, code: "revision_must_be_full_commit_sha"},
+		{value: o.ExpectedSHA256, length: sha256HexBytes, code: "invalid_expected_checksum"},
 	} {
 		if pin.value != "" && !isHex(pin.value, pin.length) {
 			return fail(pin.code)
@@ -255,12 +270,14 @@ func hash(s []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-func repoPart(s string) bool { return s != "." && s != ".." && textmatch.Token(s, 128, "_.-") }
+func repoPart(s string) bool {
+	return s != "." && s != ".." && textmatch.Token(s, maxRepositoryPartBytes, "_.-")
+}
 
 func safeName(s string) bool { return repoPart(s) && !strings.HasPrefix(s, ".") }
 
 func parseURL(raw string, loopback bool) (*url.URL, error) {
-	u, err := netpolicy.ParseURL(raw, netpolicy.URLPolicy{MaxBytes: 4096, AllowLoopback: loopback})
+	u, err := netpolicy.ParseURL(raw, netpolicy.URLPolicy{MaxBytes: maxDownloadURLBytes, AllowLoopback: loopback})
 	if e, ok := errors.AsType[*netpolicy.Error](err); ok {
 		return nil, fail(e.Code)
 	}

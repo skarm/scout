@@ -13,6 +13,12 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	pngInflateBufferBytes = 2048
+	pngChunkOverheadBytes = 12
+	maxPNGKeywordBytes    = 79
+)
+
 type noTailReader struct {
 	r    io.Reader
 	tail *strings.Reader
@@ -24,7 +30,7 @@ type latinStream struct {
 	r       io.Reader
 	pending []byte
 	err     error
-	buf     [2048]byte
+	buf     [pngInflateBufferBytes]byte
 }
 
 type pngChunk struct {
@@ -104,12 +110,12 @@ func extractPNG(o *operation) error {
 }
 
 func readPNGChunk(data string, at int, first bool) (pngChunk, error) {
-	if len(data)-at < 12 {
+	if len(data)-at < pngChunkOverheadBytes {
 		return pngChunk{}, errFormat
 	}
 
 	size := uint64(binary.BigEndian.Uint32([]byte(data[at : at+4])))
-	if size > math.MaxInt || size > uint64(max(0, len(data)-at-12)) {
+	if size > math.MaxInt || size > uint64(max(0, len(data)-at-pngChunkOverheadBytes)) {
 		return pngChunk{}, errFormat
 	}
 
@@ -155,7 +161,7 @@ func (c pngChunk) extract(o *operation, data string, at int) (bool, error) {
 
 func pngText(o *operation, typ, data string, span *report.ByteRange) error {
 	separator := strings.IndexByte(data, 0)
-	if separator < 1 || separator > 79 {
+	if separator < 1 || separator > maxPNGKeywordBytes {
 		return errFormat
 	}
 

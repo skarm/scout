@@ -2,6 +2,10 @@ package report
 
 import "sync"
 
+const (
+	maxCanonicalBufferCapacity = 16 << 20
+)
+
 //nolint:gochecknoglobals // Scratch buffers contain no DTO references and are exclusively borrowed.
 var canonicalBuffers sync.Pool
 
@@ -15,7 +19,7 @@ func borrowCanonicalBuffer() *[]byte {
 
 func releaseCanonicalBuffer(buffer *[]byte) {
 	// Large one-off reports must not enlarge the idle working set indefinitely.
-	if cap(*buffer) > 16<<20 {
+	if cap(*buffer) > maxCanonicalBufferCapacity {
 		return
 	}
 

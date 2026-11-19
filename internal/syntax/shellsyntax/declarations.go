@@ -13,16 +13,21 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+const (
+	maxProjectedArrayItems = 8
+)
+
 type contextReader struct {
 	ctx    context.Context
 	reader io.Reader
 }
 
 type declarationProjection struct {
-	ctx   context.Context
-	text  string
-	nodes int
-	err   error
+	ctx              context.Context
+	text             string
+	nodes            int
+	err              error
+	omittedExecution bool
 }
 
 func ParseDeclarations(ctx context.Context, text string) (*File, error) {
@@ -63,6 +68,7 @@ func ParseDeclarations(ctx context.Context, text string) (*File, error) {
 
 	p := declarationProjection{ctx: ctx, text: text}
 	out := p.list(tree.Stmts, 0)
+	out.OmittedExecution = p.omittedExecution
 
 	return out, p.err
 }
@@ -114,7 +120,7 @@ func (p *declarationProjection) statement(s *syntax.Stmt, depth int) []*Statemen
 
 	next := ""
 	if s.Background {
-		next = "&"
+		next = Background
 	}
 
 	return []*Statement{{
@@ -147,6 +153,11 @@ func (p *declarationProjection) declarationAssignments(c *Command, n *syntax.Dec
 		if a.Name == nil && a.Value != nil {
 			word := p.word(a.Value, depth+1)
 
+			// A word operand may expand into more than one declaration argument.
+			if c.Declaration == "local" {
+				c.ComplexLocal = true
+			}
+
 			if value, ok := declarationValue(a, word); ok {
 				c.Assignments = append(c.Assignments, value)
 			} else {
@@ -156,7 +167,25 @@ func (p *declarationProjection) declarationAssignments(c *Command, n *syntax.Dec
 			continue
 		}
 
-		if a.Name == nil || a.Naked {
+		if a.Name == nil {
+			continue
+		}
+
+		if c.Declaration == "local" {
+			switch {
+			case a.Append || a.Index != nil:
+				c.ComplexLocal = true
+			case a.Naked:
+				c.Assignments = append(c.Assignments, Assignment{Name: a.Name.Value, Span: declarationSpan(a)})
+			}
+		}
+
+		if a.Naked {
+			if a.Index != nil || a.Array != nil {
+				p.omittedExecution = true
+				c.Invalidates = []string{"*"}
+			}
+
 			continue
 		}
 
@@ -169,7 +198,7 @@ func (p *declarationProjection) declarationAssignments(c *Command, n *syntax.Dec
 }
 
 func declarationValue(a *syntax.Assign, value *Word) (Assignment, bool) {
-	if len(value.Parts) == 0 || value.Parts[0].Kind != "literal" {
+	if len(value.Parts) == 0 || value.Parts[0].Kind != PartLiteral {
 		return Assignment{}, false
 	}
 
@@ -222,23 +251,293 @@ func (p *declarationProjection) projectControl(c *Command, cmd syntax.Command, d
 
 	case *syntax.WhileClause:
 		c.Loop = true
+		c.Until = n.Until
 		c.Prelude = p.list(n.Cond, depth+1)
 		c.Alternatives = []*File{p.list(n.Do, depth+1), {}}
+
+		if !n.Until {
+			c.WhileAssignments = whileAssignmentNames(c.Prelude, c.Alternatives[0])
+		}
 	case *syntax.ForClause:
 		c.Loop = true
+
 		if loop, ok := n.Loop.(*syntax.WordIter); ok && loop.Name != nil {
 			c.Invalidates = []string{loop.Name.Value}
+			p.projectForList(c, loop, depth)
 		}
 
+		p.omittedExecution = p.omittedExecution || c.ForFileGlob == nil && c.ForArguments == ""
 		c.Alternatives = []*File{p.list(n.Do, depth+1), {}}
 	case *syntax.CaseClause:
-		c.Alternatives = []*File{{}}
-		for _, item := range n.Items {
-			c.Alternatives = append(c.Alternatives, p.list(item.Stmts, depth+1))
+		p.projectCase(c, n, depth)
+	case *syntax.TestClause:
+		c.ReadOnlyTest = p.readOnlyTest(c, n.X, depth+1)
+		if c.ReadOnlyTest {
+			c.DecimalGuard = p.decimalGuard(n.X, depth+1)
+			c.PositionalNonempty = p.positionalNonemptyTest(n.X)
+			c.NonemptyParameter = p.nonemptyParameterTest(n.X)
+		} else {
+			p.omittedExecution = true
+			c.Invalidates = []string{"*"}
+		}
+	case *syntax.ArithmCmd:
+		if !n.Unsigned {
+			c.ArithmeticUpdate = arithmeticUpdate(n.X)
+		}
+
+		if c.ArithmeticUpdate != "" {
+			// Generic consumers have no proof of the operand's contents.
+			c.Invalidates = []string{"*"}
+			break
+		}
+
+		c.ReadOnlyTest = !n.Unsigned && p.arithmeticPredicate(c, n.X, depth+1)
+		if !c.ReadOnlyTest {
+			p.omittedExecution = true
+			c.Invalidates = []string{"*"}
 		}
 	default:
 		// Unsupported execution effects form an explicit variable barrier.
+		p.omittedExecution = true
 		c.Invalidates = []string{"*"}
+	}
+}
+
+func whileAssignmentNames(cond, body *File) []string {
+	if len(cond.Statements) != 1 || len(body.Statements) == 0 {
+		return nil
+	}
+
+	predicate := plainLoopCommand(cond.Statements[0])
+	if predicate == nil || !predicate.ReadOnlyTest || predicate.RegexTest || len(predicate.NumericTest) != 0 || len(predicate.IndirectTest) != 0 {
+		return nil
+	}
+
+	var names []string
+
+	for _, stmt := range body.Statements {
+		cmd := plainLoopCommand(stmt)
+		if cmd == nil || cmd.Declaration != "" || len(cmd.Assignments) == 0 {
+			return nil
+		}
+
+		for _, assignment := range cmd.Assignments {
+			if assignment.Value == nil || !sideEffectFreeWord(assignment.Value) {
+				return nil
+			}
+
+			names = append(names, assignment.Name)
+		}
+	}
+
+	return names
+}
+
+func plainLoopCommand(stmt *Statement) *Command {
+	if stmt.Background || len(stmt.Commands) != 1 || stmt.Next == Background || stmt.Next == AndThen || stmt.Next == OrElse || stmt.Negated {
+		return nil
+	}
+
+	cmd := stmt.Commands[0]
+	if len(cmd.Words) != 0 || len(cmd.Redirects) != 0 || cmd.Subshell != nil || cmd.Group != nil || len(cmd.Alternatives) != 0 || cmd.FunctionName != "" {
+		return nil
+	}
+
+	return cmd
+}
+
+func (p *declarationProjection) projectCase(c *Command, n *syntax.CaseClause, depth int) {
+	selection := &CaseSelection{Word: p.word(n.Word, depth+1)}
+	if !projectControlOperand(c, selection.Word) {
+		p.omittedExecution = true
+	}
+
+	for _, item := range n.Items {
+		c.Alternatives = append(c.Alternatives, p.list(item.Stmts, depth+1))
+		if item.OpPos.IsValid() && item.Op != syntax.Break {
+			selection = nil
+			p.omittedExecution = true
+		}
+
+		if selection != nil {
+			patterns := make([]*Word, 0, len(item.Patterns))
+			for _, pattern := range item.Patterns {
+				word := p.word(pattern, depth+1)
+				p.omittedExecution = p.omittedExecution || !sideEffectFreeWord(word)
+				patterns = append(patterns, word)
+			}
+
+			selection.Patterns = append(selection.Patterns, patterns)
+		}
+	}
+
+	// Keep the conservative no-match path for rules that only inspect bodies.
+	c.Alternatives = append(c.Alternatives, &File{})
+
+	// Other analyzers may still inspect all bodies. The hook walker uses
+	// patterns only where each match stops after its own arm.
+	c.Case = selection
+}
+
+func (p *declarationProjection) readOnlyTest(c *Command, test syntax.TestExpr, depth int) bool {
+	if !p.step(depth) {
+		return false
+	}
+
+	switch n := test.(type) {
+	case *syntax.BinaryTest:
+		switch n.Op {
+		case syntax.TsMatchShort, syntax.TsMatch, syntax.TsNoMatch, syntax.TsReMatch, syntax.TsBefore, syntax.TsAfter, syntax.TsNewer, syntax.TsOlder, syntax.TsDevIno, syntax.AndTest, syntax.OrTest:
+			c.RegexTest = c.RegexTest || n.Op == syntax.TsReMatch
+
+			return p.readOnlyTest(c, n.X, depth+1) && p.readOnlyTest(c, n.Y, depth+1)
+		case syntax.TsEql, syntax.TsNeq, syntax.TsLss, syntax.TsLeq, syntax.TsGtr, syntax.TsGeq:
+			return p.numericTestOperand(c, n.X, depth+1) && p.numericTestOperand(c, n.Y, depth+1)
+		}
+	case *syntax.UnaryTest:
+		switch n.Op {
+		case syntax.TsNot, syntax.TsEmpStr, syntax.TsNempStr, syntax.TsDirect, syntax.TsExists, syntax.TsRegFile, syntax.TsRead, syntax.TsWrite, syntax.TsExec, syntax.TsNoEmpty, syntax.TsSmbLink:
+			return p.readOnlyTest(c, n.X, depth+1)
+		case syntax.TsFdTerm:
+			word, ok := n.X.(*syntax.Word)
+			if ok {
+				fd, literal := p.word(word, depth+1).Literal()
+				return literal && digits(fd)
+			}
+		}
+	case *syntax.ParenTest:
+		return p.readOnlyTest(c, n.X, depth+1)
+	case *syntax.Word:
+		return projectControlOperand(c, p.word(n, depth+1))
+	}
+
+	return false
+}
+
+func (p *declarationProjection) numericTestOperand(c *Command, expr syntax.TestExpr, depth int) bool {
+	word, ok := expr.(*syntax.Word)
+	if !ok {
+		return false
+	}
+
+	value := p.word(word, depth)
+	if text, literal := value.Literal(); literal && digits(text) {
+		return true
+	}
+
+	if !value.Writes && len(value.Parts) == 1 {
+		part := value.Parts[0]
+		if part.Kind == PartParameterLength || part.Kind == PartParameter && (part.Text == "?" || part.Text == "#") {
+			return true
+		}
+	}
+
+	if value.Expands || value.Writes || len(value.Parts) != 1 || value.Parts[0].Kind != PartParameter ||
+		!shellIdentifier(value.Parts[0].Text) {
+		return false
+	}
+
+	c.NumericTest = append(c.NumericTest, value)
+
+	return true
+}
+
+func (p *declarationProjection) positionalNonemptyTest(expr syntax.TestExpr) bool {
+	test, ok := expr.(*syntax.BinaryTest)
+	if !ok || test.Op != syntax.TsGtr {
+		return false
+	}
+
+	left := p.text[test.X.Pos().Offset():test.X.End().Offset()]
+	right := p.text[test.Y.Pos().Offset():test.Y.End().Offset()]
+
+	return (left == "$#" || left == "${#}" || left == `"$#"` || left == `"${#}"`) && right == "0"
+}
+
+func (p *declarationProjection) nonemptyParameterTest(expr syntax.TestExpr) string {
+	test, ok := expr.(*syntax.UnaryTest)
+	if !ok || test.Op != syntax.TsNempStr {
+		return ""
+	}
+
+	raw := p.text[test.X.Pos().Offset():test.X.End().Offset()]
+	parameter, ok := strings.CutPrefix(raw, `"$`)
+	name, quoted := strings.CutSuffix(parameter, `"`)
+
+	if !ok || !quoted {
+		return ""
+	}
+
+	if inner, braced := strings.CutPrefix(name, "{"); braced {
+		var closed bool
+
+		name, closed = strings.CutSuffix(inner, "}")
+		if !closed {
+			return ""
+		}
+	}
+
+	if !shellIdentifier(name) {
+		return ""
+	}
+
+	return name
+}
+
+func projectControlOperand(c *Command, word *Word) bool {
+	if len(word.Parts) == 1 && word.Parts[0].Kind == PartParameterIndirect {
+		c.IndirectTest = append(c.IndirectTest, word.Parts[0].Text)
+		return true
+	}
+
+	hasSubstitution, safe := readOnlyExpansion(word, false)
+	if safe && hasSubstitution {
+		c.ExpansionWords = append(c.ExpansionWords, word)
+	}
+
+	return safe
+}
+
+func readOnlyExpansion(word *Word, allowArray bool) (hasSubstitution, safe bool) {
+	if word.Writes {
+		return false, false
+	}
+
+	for _, part := range word.Parts {
+		if part.Tree != nil || part.Operand != nil {
+			hasSubstitution = true
+			continue
+		}
+
+		if !sideEffectFreePart(part.Kind) && !(allowArray && (part.Kind == PartParameterArrayAll || part.Kind == PartParameterArrayAllDefaultEmpty)) {
+			return false, false
+		}
+	}
+
+	return hasSubstitution, true
+}
+
+func sideEffectFreeWord(word *Word) bool {
+	if word.Writes {
+		return false
+	}
+
+	for _, part := range word.Parts {
+		if !sideEffectFreePart(part.Kind) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func sideEffectFreePart(kind string) bool {
+	switch kind {
+	case PartLiteral, PartParameter, PartParameterDefaultDot, PartParameterDefaultEmpty, PartParameterTrimNewline,
+		PartParameterScriptDir, PartParameterReplaceAll, PartParameterBashSource, PartParameterValue, PartParameterLength, partParameterArrayJoin:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -263,7 +562,7 @@ func (p *declarationProjection) projectRedirect(r *syntax.Redirect, depth int) *
 				Span:   raw.Span,
 				Quoted: quoted,
 				Parts: []Part{{
-					Kind:   "literal",
+					Kind:   PartLiteral,
 					Text:   delim,
 					Span:   raw.Span,
 					Quoted: quoted,
@@ -325,12 +624,12 @@ func (p *declarationProjection) wordPart(out *Word, x syntax.WordPart, quoted bo
 	part := Part{Span: declarationSpan(x), Quoted: quoted}
 	switch n := x.(type) {
 	case *syntax.Lit:
-		part.Kind = "literal"
+		part.Kind = PartLiteral
 		part.Text = declarationLiteral(n.Value, quoted, out)
 	case *syntax.SglQuoted:
 		out.Quoted = true
 		part.Quoted = true
-		part.Kind = "literal"
+		part.Kind = PartLiteral
 
 		part.Text = n.Value
 		if n.Dollar {
@@ -342,35 +641,284 @@ func (p *declarationProjection) wordPart(out *Word, x syntax.WordPart, quoted bo
 
 		return nil
 	case *syntax.ParamExp:
+		if p.projectIndirectParameter(n, &part, depth) {
+			out.Writes = true // Requires a proof of the referent at runtime.
+			break
+		}
+
+		if p.projectReadOnlyReplacement(n, &part) {
+			break
+		}
+
 		p.parameterPart(out, n, &part)
-		// Compound expansions may contain an assignment in a subscript or
-		// operand, even when their outer operation only reads a variable.
-		out.Writes = out.Writes || n.Index != nil || n.Exp != nil || n.Slice != nil || n.Repl != nil
+
+		if !p.readOnlyParameter(n, &part, depth) {
+			out.Writes = true
+			p.omittedExecution = true
+		}
+
+		out.Writes = out.Writes || part.ArrayIndex != nil
 	case *syntax.ArithmExp:
 		out.Expands, out.Writes = true, true
 
+		cmd := Command{NumericTest: []*Word{}}
+		if !n.Unsigned && p.arithmeticPredicate(&cmd, n.X, depth+1) {
+			part.Kind, part.ArithmeticOperands = PartArithmetic, cmd.NumericTest
+		} else {
+			p.omittedExecution = true
+		}
+
+	case *syntax.ProcSubst:
+		out.Expands = true
+		part.Kind = PartProcessSubstitution
+		part.Tree = p.list(n.Stmts, depth+1)
 	case *syntax.CmdSubst:
-		part.Kind = "substitution"
+		if n.TempFile || n.ReplyVar {
+			out.Expands, out.Writes = true, true
+			p.omittedExecution = true
+
+			break
+		}
+
+		part.Kind = PartSubstitution
 		part.Tree = p.list(n.Stmts, depth+1)
 	default:
 		out.Expands = true
+		p.omittedExecution = true
 	}
 
 	return &part
 }
 
+// These replacements read shell data without evaluating arithmetic or commands.
+// Their values still depend on runtime data or locale.
+func (p *declarationProjection) projectReadOnlyReplacement(n *syntax.ParamExp, part *Part) bool {
+	if !part.Quoted || n.Param == nil || !shellIdentifier(n.Param.Value) || n.Repl == nil || n.Index != nil || n.Excl {
+		return false
+	}
+
+	raw := p.text[part.Span.Start:part.Span.End]
+	if raw == "${"+n.Param.Value+"//[[:space:]]/}" {
+		part.Kind, part.Text, part.SingleField = PartParameterValue, n.Param.Value, true
+		return true
+	}
+
+	tail, prefix := strings.CutPrefix(raw, "${"+n.Param.Value+`/#\~/$`)
+
+	replacement, closed := strings.CutSuffix(tail, "}")
+	if !prefix || !closed || !shellIdentifier(replacement) {
+		return false
+	}
+
+	part.Kind, part.Text, part.SingleField = PartParameterValue, n.Param.Value, true
+
+	return true
+}
+
+func (p *declarationProjection) readOnlyParameter(n *syntax.ParamExp, part *Part, depth int) bool {
+	if n.Excl {
+		return false
+	}
+
+	if n.Index != nil {
+		if !p.readOnlyArrayParameter(n, *part) {
+			if !plainIndexedParameter(n) {
+				return false
+			}
+
+			part.ArrayIndex = p.simpleArithmeticIndex(n.Index, depth+1)
+			part.Kind = partParameterIndex
+
+			return part.ArrayIndex != nil
+		}
+	}
+
+	if n.Repl != nil {
+		return part.Replacement != nil
+	}
+
+	if n.Slice != nil {
+		return p.literalSliceIndex(n.Slice.Offset) && p.literalSliceIndex(n.Slice.Length)
+	}
+
+	if n.Exp == nil || part.Kind != PartParameter {
+		return true
+	}
+
+	switch n.Exp.Op {
+	case syntax.DefaultUnset, syntax.DefaultUnsetOrNull, syntax.AlternateUnset, syntax.AlternateUnsetOrNull,
+		syntax.RemSmallSuffix, syntax.RemLargeSuffix, syntax.RemSmallPrefix, syntax.RemLargePrefix:
+		operand := p.word(n.Exp.Word, depth+1)
+
+		hasSubstitution, safe := readOnlyExpansion(operand, false)
+		if !safe {
+			return false
+		}
+
+		part.Kind = PartParameterValue
+		part.TrimPrefix = literalParameterPrefix(n.Exp.Op, operand)
+		part.SingleField = singleFieldParameterOperand(n, operand)
+
+		part.DefaultIfUnset = n.Index == nil && (n.Exp.Op == syntax.DefaultUnset || n.Exp.Op == syntax.DefaultUnsetOrNull)
+		if hasSubstitution {
+			part.Operand = operand
+		}
+
+		return true
+	case syntax.UpperAll, syntax.LowerAll:
+		return n.Exp.Word == nil || len(n.Exp.Word.Parts) == 0
+	default:
+		return false
+	}
+}
+
+func literalParameterPrefix(op syntax.ParExpOperator, word *Word) string {
+	if op != syntax.RemSmallPrefix {
+		return ""
+	}
+
+	prefix, known := word.Literal()
+	if !known || strings.Trim(prefix, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._=-/") != "" {
+		return ""
+	}
+
+	return prefix
+}
+
+func singleFieldParameterOperand(n *syntax.ParamExp, operand *Word) bool {
+	if n.Index != nil || n.Param == nil || n.Param.Value == "@" || n.Param.Value == "*" {
+		return false
+	}
+
+	for _, part := range operand.Parts {
+		switch part.Kind {
+		case PartLiteral, PartSubstitution, PartParameterDefaultDot, PartParameterDefaultEmpty, PartParameterScriptDir, PartParameterBashSource:
+		case PartParameter:
+			if part.Text == "@" || part.Text == "*" || operand.Expands {
+				return false
+			}
+		case PartParameterValue:
+			if !part.SingleField {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
+func (p *declarationProjection) readOnlyArrayParameter(n *syntax.ParamExp, part Part) bool {
+	index, ok := n.Index.(*syntax.Word)
+	if !ok || n.Param == nil || n.Repl != nil || n.Slice != nil {
+		return false
+	}
+
+	if part.Kind == PartParameterArrayAll || part.Kind == PartParameterArrayAllDefaultEmpty ||
+		part.Kind == partParameterArrayJoin || part.Kind == PartParameterLength || part.Kind == PartParameterBashSource {
+		return true
+	}
+
+	if !digits(p.text[index.Pos().Offset():index.End().Offset()]) {
+		return false
+	}
+
+	return n.Param.Value == "BASH_REMATCH" && n.Exp == nil ||
+		n.Param.Value == "BASH_VERSINFO" && (n.Exp == nil || n.Exp.Op == syntax.DefaultUnsetOrNull && p.literalSliceIndex(n.Exp.Word))
+}
+
+func (p *declarationProjection) literalSliceIndex(expr syntax.ArithmExpr) bool {
+	if expr == nil {
+		return true
+	}
+
+	word, ok := expr.(*syntax.Word)
+
+	return ok && (word == nil || digits(p.text[word.Pos().Offset():word.End().Offset()]))
+}
+
 func (p *declarationProjection) parameterPart(out *Word, n *syntax.ParamExp, part *Part) {
-	part.Kind = "parameter"
+	part.Kind = PartParameter
 	if n.Param != nil {
 		part.Text = n.Param.Value
 
 		raw := p.text[part.Span.Start:part.Span.End]
-		if raw != "$"+part.Text && raw != "${"+part.Text+"}" {
-			out.Expands = true
+
+		if shellIdentifier(part.Text) && (raw == "${#"+part.Text+"}" || raw == "${#"+part.Text+"[@]}" || raw == "${#"+part.Text+"[*]}") {
+			part.Kind, out.Expands = PartParameterLength, true
+			return
 		}
+
+		if replacement := literalReplacement(n, raw); replacement != nil {
+			part.Kind, part.Replacement = PartParameterReplaceAll, replacement
+			out.Expands = out.Expands || !part.Quoted
+
+			return
+		}
+
+		if part.Quoted {
+			switch {
+			case raw == "${BASH_SOURCE[0]}" || raw == "${BASH_SOURCE[0]:-$0}":
+				part.Kind = PartParameterBashSource
+				return
+			case raw == "${"+part.Text+"[@]}" && shellIdentifier(part.Text):
+				part.Kind, out.Expands = PartParameterArrayAll, true
+				return
+			case raw == "${"+part.Text+"[@]:-}" && shellIdentifier(part.Text):
+				part.Kind, out.Expands = PartParameterArrayAllDefaultEmpty, true
+				return
+			case raw == "${"+part.Text+"[*]}" && shellIdentifier(part.Text):
+				part.Kind, part.SingleField = partParameterArrayJoin, true
+				return
+			case raw == "${"+part.Text+":-.}":
+				part.Kind = PartParameterDefaultDot
+				return
+			case raw == "${"+part.Text+":-}":
+				part.Kind = PartParameterDefaultEmpty
+				return
+			case raw == "${"+part.Text+`%$'\n'}`:
+				part.Kind = PartParameterTrimNewline
+				return
+			}
+
+			if suffix, ok := strings.CutPrefix(raw, "${0"); ok && suffix != "" && scriptDirectorySuffix(suffix) == suffix {
+				part.Kind = PartParameterScriptDir
+				return
+			}
+		}
+
+		part.PlainParameter = raw == "$"+part.Text || raw == "${"+part.Text+"}"
+		out.Expands = out.Expands || !part.PlainParameter
 	} else {
 		out.Expands = true
 	}
+}
+
+// Project the shape, not the effect. The referenced parameter name may
+// contain an arithmetic index until the hook walk proves a plain identifier.
+func (p *declarationProjection) projectIndirectParameter(n *syntax.ParamExp, part *Part, depth int) bool {
+	if !part.Quoted || !n.Excl || n.Param == nil || !shellIdentifier(n.Param.Value) || n.Index != nil || n.Slice != nil ||
+		n.Repl != nil || n.Length || n.NestedParam != nil {
+		return false
+	}
+
+	var fallback *Word
+
+	if n.Exp != nil {
+		if n.Exp.Op != syntax.DefaultUnsetOrNull {
+			return false
+		}
+
+		fallback = p.word(n.Exp.Word, depth+1)
+		if !sideEffectFreeWord(fallback) {
+			return false
+		}
+	}
+
+	part.Kind, part.Text, part.Operand = PartParameterIndirect, n.Param.Value, fallback
+
+	return true
 }
 
 func declarationLiteral(value string, quoted bool, out *Word) string {
@@ -486,7 +1034,7 @@ func declarationSpan(n syntax.Node) source.Span {
 
 func (p *declarationProjection) binaryStatement(s *syntax.Stmt, b *syntax.BinaryCmd, depth int) []*Statement {
 	x, y := p.statement(b.X, depth+1), p.statement(b.Y, depth+1)
-	if b.Op.String() == "|" || b.Op.String() == "|&" {
+	if b.Op == syntax.Pipe || b.Op == syntax.PipeAll {
 		if len(x) == 1 && len(y) == 1 {
 			x[0].Commands = append(x[0].Commands, y[0].Commands...)
 			x[0].Pipes = append(append(x[0].Pipes, b.Op.String()), y[0].Pipes...)
@@ -494,7 +1042,7 @@ func (p *declarationProjection) binaryStatement(s *syntax.Stmt, b *syntax.Binary
 
 			x[0].Negated = x[0].Negated || s.Negated
 			if s.Background {
-				x[0].Background, x[0].Next = true, "&"
+				x[0].Background, x[0].Next = true, Background
 			}
 
 			return x
@@ -510,7 +1058,7 @@ func (p *declarationProjection) binaryStatement(s *syntax.Stmt, b *syntax.Binary
 		}
 
 		if len(x) > 0 {
-			x[len(x)-1].Next = "&"
+			x[len(x)-1].Next = Background
 		}
 	}
 
@@ -528,12 +1076,73 @@ func (p *declarationProjection) projectAssignments(c *Command, assignments []*sy
 }
 
 func (p *declarationProjection) assignmentWord(a *syntax.Assign, depth int) *Word {
+	if a.Array != nil && a.Index == nil {
+		value := p.arrayAssignmentWord(a.Array, depth)
+		value.IndexedArray = !a.Append && !value.Writes
+		value.ArrayAppend = a.Append && !value.Writes
+
+		return value
+	}
+
 	value := p.word(a.Value, depth+1)
 	if a.Append || a.Index != nil || a.Array != nil {
-		return &Word{Span: declarationSpan(a), Expands: true, Writes: a.Index != nil || a.Array != nil || value.Writes}
+		p.omittedExecution = p.omittedExecution || a.Index != nil || a.Array != nil
+		value.Expands = true
+		value.Writes = a.Index != nil || a.Array != nil || value.Writes
+
+		for i := range value.Parts {
+			value.Parts[i].ArithmeticOperands = nil
+		}
 	}
 
 	return value
+}
+
+func (p *declarationProjection) arrayAssignmentWord(arr *syntax.ArrayExpr, depth int) *Word {
+	value := &Word{Span: declarationSpan(arr), Expands: true, DecimalElements: true, FixedArraySize: len(arr.Elems) + 1}
+	for _, element := range arr.Elems {
+		if !p.step(depth) || element.Index != nil || element.Value == nil {
+			value.Writes, p.omittedExecution = true, true
+			break
+		}
+
+		part := p.word(element.Value, depth+1)
+		if len(arr.Elems) <= maxProjectedArrayItems {
+			value.ArrayWords = append(value.ArrayWords, part)
+		}
+
+		literal, known := part.Literal()
+		value.DecimalElements = value.DecimalElements && known && digits(literal)
+
+		if !known && !fixedArrayElement(part) {
+			value.FixedArraySize = 0
+		}
+
+		for i := range part.Parts {
+			part.Parts[i].ArithmeticOperands = nil
+		}
+
+		value.Writes = value.Writes || part.Writes
+		value.Parts = append(value.Parts, part.Parts...)
+	}
+
+	p.omittedExecution = p.omittedExecution || value.Writes
+
+	return value
+}
+
+func fixedArrayElement(word *Word) bool {
+	if word.Writes || word.Expands || len(word.Parts) == 0 {
+		return false
+	}
+
+	for _, part := range word.Parts {
+		if part.Kind != PartLiteral && (part.Kind != PartParameter || !part.Quoted || !shellIdentifier(part.Text)) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (p *declarationProjection) projectConditional(c *Command, n *syntax.IfClause, depth int) {

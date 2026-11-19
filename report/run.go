@@ -603,19 +603,26 @@ func runDigest(run Run) (string, error) {
 	buffer := borrowCanonicalBuffer()
 	defer releaseCanonicalBuffer(buffer)
 
+	hash := sha256.New()
+	flush := func(data []byte) []byte {
+		_, _ = hash.Write(data)
+
+		return data[:0]
+	}
+
 	data, err := canonicalValue((*buffer)[:0], reflect.ValueOf(struct {
 		Operation Operation `json:"operation"`
 		Run       Run       `json:"run"`
-	}{Operation: run.Operation, Run: run}), "")
+	}{Operation: run.Operation, Run: run}), "", flush)
 	*buffer = data
 
 	if err != nil {
 		return "", err
 	}
 
-	digest := sha256.Sum256(data)
+	flush(data)
 
-	return "sha256:" + hex.EncodeToString(digest[:]), nil
+	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func unorderedCollection(field string) bool {

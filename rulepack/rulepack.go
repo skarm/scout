@@ -16,6 +16,11 @@ import (
 )
 
 const (
+	maxRulepackIDBytes      = 160
+	maxRulepackVersionBytes = 64
+)
+
+const (
 	// Schema identifies the strict JSON artifact format.
 	Schema = "scout.rulepack/v1"
 	// MaxBytes bounds an encoded artifact, including escaped source bytes.
@@ -49,7 +54,7 @@ type source struct {
 func Create(id, version string, rules []byte) ([]byte, error) {
 	// Bound caller-owned metadata before the JSON encoder can copy or escape it.
 	// The full token/ABI validation remains shared with artifact parsing.
-	if len(id) == 0 || len(id) > 160 || len(version) == 0 || len(version) > 64 {
+	if len(id) == 0 || len(id) > maxRulepackIDBytes || len(version) == 0 || len(version) > maxRulepackVersionBytes {
 		return nil, errors.New("invalid rulepack metadata size")
 	}
 

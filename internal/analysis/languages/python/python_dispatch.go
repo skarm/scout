@@ -86,7 +86,7 @@ func (w *pyWalker) callArguments(n *frontend.Node, s *pyState, depth int) ([]pyV
 		if k.String(frontend.FieldArg) == "" {
 			if v.mapping() != nil {
 				for key, item := range v.mapping().entries {
-					keywords[key] = pyContents(item)
+					keywords[key] = w.contents(item)
 				}
 			} else {
 				w.limited = true

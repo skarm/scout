@@ -11,9 +11,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/knowledge"
+	"github.com/skarm/scout/report"
 	"github.com/skarm/scout/review"
 )
 
@@ -68,11 +71,10 @@ func (p *planner) toolScopes(addresses map[string]toolAddress) ([]toolScope, boo
 		}
 
 		f := p.files[name]
-		text := f.Content()
 		base := path.Base(addr.name)
-		isSkill := strings.EqualFold(base, "SKILL.md")
+		isSkill := strings.EqualFold(base, artifact.SkillManifest)
 
-		isPlugin := strings.HasSuffix(addr.name, ".claude-plugin/plugin.json") || strings.HasSuffix(addr.name, ".codex-plugin/plugin.json")
+		isPlugin := strings.HasSuffix(addr.name, artifact.ClaudePluginManifest) || strings.HasSuffix(addr.name, artifact.CodexPluginManifest)
 		if !isSkill && !isPlugin {
 			continue
 		}
@@ -88,20 +90,55 @@ func (p *planner) toolScopes(addresses map[string]toolAddress) ([]toolScope, boo
 			file:      f,
 			address:   addr,
 			root:      root,
-			described: p.toolDescriptionDeclared(text, isSkill),
+			described: p.toolDescriptionDeclared(f, isSkill),
 		})
 	}
 
 	return scopes, true
 }
 
-func (p *planner) toolDescriptionDeclared(text string, isSkill bool) bool {
+func preparedDescriptions(docs []document.File) map[string]bool {
+	descriptions := make(map[string]bool)
+
+	for _, doc := range docs {
+		for _, unit := range doc.Units() {
+			if unit.Origin != "frontmatter" {
+				continue
+			}
+
+			name := doc.Artifact().Metadata().Path
+			descriptions[name] = false
+
+			if tree, ok := unit.Tree.(parse.JSONTree); ok && tree.Root != nil && tree.Root.Kind == jsonconfig.KindObject {
+				text, valid := tree.Root.Get("description").Text()
+				descriptions[name] = valid && strings.TrimSpace(text) != ""
+			}
+		}
+	}
+
+	return descriptions
+}
+
+func (p *planner) toolDescriptionDeclared(file artifact.File, isSkill bool) bool {
+	text := file.Content()
 	if isSkill {
+		if described, prepared := p.descriptions[file.Metadata().Path]; prepared {
+			return described
+		}
+		// Without a selected YAML parser (or prepared documents in standalone
+		// Run), retain the bounded lexical subset; this is not YAML semantics.
 		trim := strings.TrimPrefix(text, "\ufeff")
 		if strings.HasPrefix(trim, "---\n") || strings.HasPrefix(trim, "---\r\n") {
 			body := trim[strings.IndexByte(trim, '\n')+1:]
-			if before, _, ok := strings.Cut(body, "\n---"); ok {
-				return descriptionField.MatchString(before)
+			at := 0
+
+			for line := range strings.SplitAfterSeq(body, "\n") {
+				delimiter := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+				if delimiter == "---" || delimiter == "..." {
+					return descriptionField.MatchString(body[:at])
+				}
+
+				at += len(line)
 			}
 		}
 
@@ -118,7 +155,7 @@ func (p *planner) toolDescriptionDeclared(text string, isSkill bool) bool {
 
 func (p *planner) planCodeConsistency(name string, addr toolAddress, scopes toolScopeIndex) {
 	f := p.files[name]
-	if f.Metadata().Kind != "text" || contentKind(name, f.Content()) != "code" {
+	if f.Metadata().Kind != report.FileKindText || contentKind(name, f.Content()) != "code" {
 		return
 	}
 
@@ -182,7 +219,7 @@ func (p *planner) toolAddresses() map[string]toolAddress {
 	addresses := map[string]toolAddress{}
 
 	for name := range p.files {
-		if !strings.HasPrefix(name, "scout-object://") {
+		if !strings.HasPrefix(name, report.ObjectPathPrefix) {
 			addresses[name] = toolAddress{namespace: "snapshot", name: name}
 		}
 	}

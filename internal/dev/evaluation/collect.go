@@ -16,7 +16,10 @@ import (
 	"github.com/skarm/scout/internal/textmatch"
 )
 
-const MaxCollectionManifestBytes = 256 << 10
+const (
+	maxCollectedFiles          = 4096
+	MaxCollectionManifestBytes = 256 << 10
+)
 
 type CollectionManifest struct {
 	Schema  string           `json:"schema"`
@@ -91,7 +94,7 @@ func (m CollectionManifest) validate() error {
 	for _, tc := range m.Cases {
 		for _, file := range tc.Files {
 			files++
-			if files > 4096 || !textmatch.LowerHex(file.SHA256, 64) || (file.URL == "") == (file.Local == "") {
+			if files > maxCollectedFiles || !textmatch.LowerHex(file.SHA256, 64) || (file.URL == "") == (file.Local == "") {
 				return errors.New("collection requires at most 4096 files, each with one source and a lowercase SHA-256 pin")
 			}
 

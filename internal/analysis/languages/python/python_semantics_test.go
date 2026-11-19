@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/syntax/frontend"
 	"github.com/skarm/scout/internal/syntax/source"
 )
@@ -414,6 +416,18 @@ func TestUnknownStatementRetainsObservationsAndInvalidatesBindings(t *testing.T)
 	}
 }
 
+func TestDictionaryPreservesKeyOriginsWithoutGuessingTheirValues(t *testing.T) {
+	w, state := semanticWalker(t), newPyState()
+	state.set("key", pyValue{origins: []pyOrigin{{kind: "environment", start: 1, end: 2}}})
+	dictionary := semanticNode(t, frontend.Dict,
+		frontend.NodesField(frontend.Keys, []*frontend.Node{semanticName(t, "key")}),
+		frontend.NodesField(frontend.Values, []*frontend.Node{semanticNode(t, frontend.Constant, frontend.LiteralField(frontend.StringValue("public")))}))
+	value := w.expr(dictionary, state, 0)
+	if value.mapping() != nil || !w.limited || len(value.origins) != 1 || value.origins[0].kind != "environment" || value.origins[0].start != 1 {
+		t.Fatalf("dynamic dictionary key lost its source or became an exact mapping: %+v", value)
+	}
+}
+
 func TestWithAliasesBindBeforeBodyAndDeleteClearsTheTarget(t *testing.T) {
 	w, s := semanticWalker(t), semanticState()
 	item := semanticNode(t, frontend.WithItem, frontend.ChildField(frontend.ContextExpr, semanticName(t, "left")), frontend.ChildField(frontend.OptionalVars, semanticName(t, "stream")))
@@ -465,4 +479,167 @@ func semanticState() *pyState {
 	s.set("left", literalValue("left", true, 2))
 	s.set("right", literalValue("right", true, 2))
 	return s
+}
+
+func TestPrebindHonorsTheAnalysisBudgetAndCancellation(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		walker, state := semanticWalker(t), newPyState().scope()
+		if canceled {
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			walker.ctx = ctx
+		} else {
+			walker.ctx = analysisbudget.WithLimit(t.Context(), 1)
+		}
+		assignment := semanticAssign(t, "exec", semanticName(t, "value"))
+		walker.prebind([]*frontend.Node{semanticNode(t, frontend.Expr, frontend.ChildField(frontend.FieldValue, assignment))}, state)
+		if canceled {
+			if !errors.Is(walker.err, context.Canceled) {
+				t.Fatalf("cancellation lost: %v", walker.err)
+			}
+		} else if !walker.truncated {
+			t.Fatal("prebinding ignored the operation budget")
+		}
+		if state.locals["exec"] {
+			t.Fatal("prebinding continued after cancellation or exhaustion")
+		}
+	}
+}
+
+func TestLocalDeclarationsShadowBuiltinsBeforeTheirStatement(t *testing.T) {
+	name := func() *frontend.Node { return semanticName(t, "exec") }
+	star := semanticNode(t, frontend.Starred, frontend.ChildField(frontend.FieldValue, name()))
+	for _, node := range []*frontend.Node{
+		semanticNode(t, frontend.Assign, frontend.NodesField(frontend.Targets, []*frontend.Node{star})),
+		semanticNode(t, frontend.Delete, frontend.NodesField(frontend.Targets, []*frontend.Node{name()})),
+		semanticNode(t, frontend.NamedExpr, frontend.ChildField(frontend.Target, name())),
+		semanticNode(t, frontend.With, frontend.NodesField(frontend.Items, []*frontend.Node{
+			semanticNode(t, frontend.WithItem, frontend.ChildField(frontend.OptionalVars, name())),
+		})),
+		semanticNode(t, frontend.AsyncWith, frontend.NodesField(frontend.Items, []*frontend.Node{
+			semanticNode(t, frontend.WithItem, frontend.ChildField(frontend.OptionalVars, name())),
+		})),
+	} {
+		t.Run(node.Kind().String(), func(t *testing.T) {
+			walker, state := semanticWalker(t), newPyState().scope()
+			walker.prebind([]*frontend.Node{node}, state)
+			if got := state.resolve("exec"); got != "" {
+				t.Fatalf("local declaration resolves to builtin %q before execution", got)
+			}
+		})
+	}
+}
+
+func TestStarredAssignmentShadowsWithoutInventingUnpackedValue(t *testing.T) {
+	walker, state := semanticWalker(t), newPyState()
+	target := semanticNode(t, frontend.Starred, frontend.ChildField(frontend.FieldValue, semanticName(t, "exec")))
+	walker.assign(target, namedValue("eval"), state, target)
+	if got := state.resolve("exec"); got != "" || !walker.limited {
+		t.Fatalf("starred assignment resolves to %q, limited=%v", got, walker.limited)
+	}
+}
+
+func TestNamedExpressionDeclarationsRespectNestedScopes(t *testing.T) {
+	assignment := semanticAssign(t, "exec", semanticName(t, "value"))
+	defaults := semanticNode(t, frontend.Arguments, frontend.NodesField(frontend.Defaults, []*frontend.Node{assignment}))
+	for _, tc := range []struct {
+		name  string
+		node  *frontend.Node
+		local bool
+	}{
+		{"expression", semanticNode(t, frontend.Expr, frontend.ChildField(frontend.FieldValue, assignment)), true},
+		{"lambda body", semanticNode(t, frontend.Lambda, frontend.ChildField(frontend.Body, assignment)), false},
+		{"lambda default", semanticNode(t, frontend.Lambda, frontend.ChildField(frontend.Args, defaults)), true},
+		{"function body", semanticNode(t, frontend.FunctionDef, frontend.TextField(frontend.FieldName, "inner"), frontend.NodesField(frontend.Body, []*frontend.Node{assignment})), false},
+		{"function default", semanticNode(t, frontend.FunctionDef, frontend.TextField(frontend.FieldName, "inner"), frontend.ChildField(frontend.Args, defaults)), true},
+		{"class body", semanticNode(t, frontend.ClassDef, frontend.TextField(frontend.FieldName, "Inner"), frontend.NodesField(frontend.Body, []*frontend.Node{assignment})), false},
+		{"class base", semanticNode(t, frontend.ClassDef, frontend.TextField(frontend.FieldName, "Inner"), frontend.NodesField(frontend.Bases, []*frontend.Node{assignment})), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			walker, state := semanticWalker(t), newPyState().scope()
+			walker.prebind([]*frontend.Node{tc.node}, state)
+			want := "exec"
+			if tc.local {
+				want = ""
+			}
+			if got := state.resolve("exec"); got != want {
+				t.Fatalf("resolved %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestRecursiveContentsRespectWorkBudget(t *testing.T) {
+	for _, kind := range []string{"mapping", "handler"} {
+		for _, mode := range []string{"limited", "complete", "cancelled"} {
+			t.Run(kind+"/"+mode, func(t *testing.T) {
+				state := newPyState()
+				value := contentsBudgetValue(kind)
+				state.set("data", value)
+				walk := semanticWalker(t)
+				walk.facts.outputs[ruleAST1].Add(check.Match{Start: 1, End: 2})
+				limit := uint64(8)
+				if mode == "complete" {
+					limit = 4096
+				}
+				walk.ctx = analysisbudget.WithLimit(t.Context(), limit)
+				if mode == "cancelled" {
+					ctx, cancel := context.WithCancel(t.Context())
+					defer cancel()
+					walk.ctx = &stateCancelContext{Context: ctx, cancel: cancel, remaining: 8}
+				}
+				var got pyValue
+				if kind == "mapping" {
+					got = walk.expr(semanticName(t, "data"), state, 0)
+				} else {
+					got = walk.callResult(pyCall{name: "urllib.request.build_opener", values: []pyValue{value}})
+				}
+				switch mode {
+				case "limited":
+					if !walk.truncated || !analysisbudget.Exhausted(walk.ctx) || analysisbudget.Used(walk.ctx) > limit {
+						t.Fatal("recursive contents bypassed the quota")
+					}
+				case "cancelled":
+					if !errors.Is(walk.err, context.Canceled) || walk.truncated {
+						t.Fatal("recursive contents ignored cancellation")
+					}
+				case "complete":
+					if walk.err != nil || walk.truncated || len(got.origins) != 1 || got.origins[0].kind != "fixture" {
+						t.Fatal("admitted refresh lost its content origin")
+					}
+				}
+				if mode != "complete" && (got.meaning != nil || len(got.origins) != 0) {
+					t.Fatal("interrupted refresh published a partial value")
+				}
+				if state.names["data"].meaning != value.meaning {
+					t.Fatal("refresh changed the original container")
+				}
+				walk.facts.finish(walk.err, walk.truncated)
+				result, err := walk.facts.result(ruleAST1, 32)
+				if len(result.Matches) != 1 || result.Matches[0].Start != 1 || result.Matches[0].End != 2 || result.Truncated != (mode == "limited") || errors.Is(err, context.Canceled) != (mode == "cancelled") {
+					t.Fatalf("refresh lost prior facts or completion state: %+v / %v", result, err)
+				}
+			})
+		}
+	}
+}
+
+func contentsBudgetValue(kind string) pyValue {
+	groups := map[string]pyValue{}
+	for i := range 4 {
+		entries := map[string]pyValue{}
+		for j := range 16 {
+			entries[strconv.Itoa(j)] = literalValue("ordinary", true, 2)
+		}
+		entries["marker"] = pyValue{origins: []pyOrigin{{kind: "fixture", start: 3, end: 4}}}
+		if kind == "mapping" {
+			groups[strconv.Itoa(i)] = pyValue{meaning: &pyMapping{entries: entries}}
+		} else {
+			groups[strconv.Itoa(i)] = instanceValue(&pyInstance{fields: entries})
+		}
+	}
+	if kind == "mapping" {
+		return pyValue{meaning: &pyMapping{entries: groups}}
+	}
+	return instanceValue(&pyInstance{fields: groups})
 }

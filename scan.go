@@ -100,7 +100,7 @@ func (s *Scanner) validateTargets(ctx context.Context, targets []Target) error {
 		return ErrClosed
 	}
 
-	if ctx == nil || len(targets) == 0 || len(targets) > 32 {
+	if ctx == nil || len(targets) == 0 || len(targets) > MaxScanTargets {
 		return &Error{Code: "invalid_request", Cause: ErrInvalidInput}
 	}
 
@@ -419,7 +419,8 @@ func (o *targetSettings) allocateServices(quota targetQuota) {
 		services++
 	}
 
-	if o.Vulnerabilities != nil {
+	advisoryNetwork := o.Vulnerabilities != nil && o.Vulnerabilities.AllowNetwork
+	if advisoryNetwork {
 		services++
 	}
 
@@ -439,7 +440,7 @@ func (o *targetSettings) allocateServices(quota targetQuota) {
 		}
 	}
 
-	if o.Vulnerabilities != nil {
+	if advisoryNetwork {
 		v := min(o.Vulnerabilities.MaxRequests, requests)
 		o.vulnerabilityQuota = &v
 	}
@@ -525,8 +526,14 @@ func captureRemote(ctx context.Context, target Target, options Options) (artifac
 	}
 
 	download := *options.Download
-	download.Revision = target.pin.Revision
-	download.ExpectedSHA256 = target.pin.SHA256
+	if target.pin.Revision != "" {
+		download.Revision = target.pin.Revision
+	}
+
+	if target.pin.SHA256 != "" {
+		download.ExpectedSHA256 = target.pin.SHA256
+	}
+
 	download.MaxBytes = min(download.MaxBytes, max(options.Limits.Capture.MaxFileBytes, options.Limits.Capture.MaxArchiveBytes), options.Limits.Capture.MaxTotalBytes)
 
 	payload, err := fetch.Get(ctx, target.name, download)

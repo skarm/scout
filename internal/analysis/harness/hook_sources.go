@@ -2,6 +2,7 @@ package harness
 
 import (
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -16,53 +17,126 @@ import (
 )
 
 const (
-	maxHookSourceDepth = 6
-	pluginRootValue    = "\x00scout-plugin-root"
-	pluginRootMarker   = pluginRootValue + "/"
+	maxHookVariableValues = 128
+)
+
+const (
+	maxHookSourceDepth   = 6
+	maxHookSourceValue   = 4096
+	maxLiteralPrintBytes = 512
+	maxHookArguments     = 32
+	pluginRootValue      = "\x00scout-plugin-root"
+	pluginRootMarker     = pluginRootValue + "/"
+	bashExecutable       = "\x00scout-bash"
+)
+
+const (
+	envPath           = "PATH"
+	envCDPath         = "CDPATH"
+	envIFS            = "IFS"
+	envShellOpts      = "SHELLOPTS"
+	envShellStartup   = "ENV"
+	envGlobIgnore     = "GLOBIGNORE"
+	envFuncNest       = "FUNCNEST"
+	envPosixlyCorrect = "POSIXLY_CORRECT"
+	envOptInd         = "OPTIND"
+)
+
+const (
+	envBashStartup     = "BASH_ENV"
+	envBashShebang     = "/usr/bin/env bash"
+	builtinNoop        = ":"
+	builtinTrue        = "true"
+	builtinFalse       = "false"
+	builtinEcho        = "echo"
+	builtinPrintf      = "printf"
+	builtinTest        = "test"
+	builtinBracketTest = "["
+	builtinEval        = "eval"
+	builtinTrap        = "trap"
 )
 
 // HookSources holds bounded static paths and their unresolved edges.
 type HookSources struct {
 	Paths       []HookSourcePath
 	Diagnostics []report.Diagnostic
+	Commands    []HookSourceCommand
+}
+
+type HookSourceCommand struct {
+	report.SourceRef
+	FileArgv bool // traced file invocation with no outer shell text
 }
 
 type HookSourcePath struct {
-	Target  string
-	Event   string
-	Steps   []report.SourceRef
-	Scope   source.Span
-	Exclude []source.Span
+	Target     string
+	Event      string
+	HostOutput bool
+	Language   string
+	Steps      []report.SourceRef
+	Scope      source.Span
+	Exclude    []source.Span
 }
 
 type hookSourceWalk struct {
-	plugin          *plugin
-	event           string
-	active          map[string]bool
-	activeFunctions map[hookFunctionKey]bool
-	origins         map[string]*document.File
+	plugin            *plugin
+	config            *entry
+	active            map[string]bool
+	activeFunctions   map[hookFunctionKey]bool
+	origins           map[string]*document.File
+	rootLaunch        *shellsyntax.Command
+	event             string
+	boundedArrayDepth int
+	bashFallback      bool
+	splitNumericCase  bool
+	tracingLoop       bool
 }
 
-func (p *plugin) inspectHookSources(e *entry, hook *jsonconfig.Node, event string) {
-	if !hookevent.Known(event) {
+func (p *plugin) inspectHookSources(e *entry, hook *jsonconfig.Node, event, matcher string) {
+	if p.host == report.HostGeminiCLI {
+		if !hookevent.Gemini(event) {
+			p.issue("plugin_hook_event_unverified", e.meta.Path, report.OutcomePartial)
+			return
+		}
+	} else if !hookevent.Known(event) {
 		return
 	}
 
-	if mode := hook.Get("shell"); mode != nil && mode.String != "bash" && mode.String != "sh" {
+	mode, _ := hook.Get("shell").Text()
+	if hook.Get("shell") != nil && mode != language.ExecutableBash && mode != language.ExecutableSh {
 		return
 	}
 
 	command := hook.Get("command")
+	commandText, _ := command.Text()
 
 	initial := ref(e, command.Span)
 	if initial == nil {
 		return
 	}
 
-	walk := hookSourceWalk{plugin: p, event: event, active: map[string]bool{}, origins: map[string]*document.File{e.meta.Path: e.doc}}
-	if args := hook.Get("args"); args != nil {
-		walk.argv(e, command, args, *initial)
+	if len(p.b.hookSourceCommands) >= p.b.r.Limits.References {
+		p.issue("hook_source_command_limit", e.meta.Path, report.OutcomePartial)
+		return
 	}
+
+	walk := hookSourceWalk{
+		plugin: p, config: e, event: event, active: map[string]bool{}, origins: map[string]*document.File{e.meta.Path: e.doc},
+		bashFallback: mode == language.ExecutableBash && hook.Get("args") == nil,
+	}
+
+	args := hook.Get("args")
+
+	if p.host == report.HostGeminiCLI && strings.Contains(commandText, geminiExtensionPath) {
+		p.b.hookSourceCommands = append(p.b.hookSourceCommands, HookSourceCommand{SourceRef: *initial})
+		walk.geminiLaunch(commandText, args, *initial)
+
+		return
+	}
+
+	fileArgv := args != nil && walk.argv(e, command, args, *initial)
+
+	p.b.hookSourceCommands = append(p.b.hookSourceCommands, HookSourceCommand{SourceRef: *initial, FileArgv: fileArgv})
 
 	for _, unit := range e.doc.Units() {
 		if unit.Origin != document.OriginHookShell || unit.Span.Start < hook.Span.Start || unit.Span.End > hook.Span.End {
@@ -70,33 +144,71 @@ func (p *plugin) inspectHookSources(e *entry, hook *jsonconfig.Node, event strin
 		}
 
 		if tree, ok := unit.Tree.(parse.ShellTree); ok {
-			walk.commands(e, unit.View, hookSourceTree(tree), hookSourceState{}, nil, true)
+			shell := hookSourceTree(tree)
+			walk.rootLaunch = nil
+
+			if p.assumesShellHookRoot() && args == nil && unit.View.Text() == commandText &&
+				shell != nil && !shell.OmittedExecution {
+				// The supplied root is made up of shell inert characters.
+				// Only use it in a single entry command, before shell state can
+				// change. Captured files still need their own expansion proof.
+				if launch, simple := simpleShellCommand(shell); simple {
+					walk.rootLaunch = launch
+				}
+			}
+
+			state := walk.initialHookSourceState(shell, hook, matcher, args == nil && unit.View.Text() == commandText)
+			walk.commands(e, unit.View, shell, state, nil, true)
 		}
 	}
 }
 
-func (w *hookSourceWalk) argv(e *entry, command, args *jsonconfig.Node, initial report.SourceRef) {
+func (p *plugin) assumesShellHookRoot() bool {
+	host := p.b.shellHookRoot.Host
+
+	return host != "" && (host == p.host || host == report.HostAuto &&
+		(pluginRootParameters[p.host] != "" || p.host == report.HostGeminiCLI))
+}
+
+func (p *plugin) seedHookLocale(state *hookSourceState) {
+	if locale := p.b.shellHookRoot.LCAll; locale != "" && p.assumesShellHookRoot() {
+		state.bindValue("LC_ALL", locale, true)
+	}
+}
+
+func (w *hookSourceWalk) argv(e *entry, command, args *jsonconfig.Node, initial report.SourceRef) bool {
+	if args.Kind != jsonconfig.KindArray {
+		return false
+	}
+
+	for _, arg := range args.Elements {
+		value, text := arg.Text()
+		if !text || strings.IndexByte(value, 0) >= 0 {
+			return false
+		}
+	}
+
 	name, _ := command.Text()
-	prefix := "${" + pluginRootParameters[w.plugin.host] + "}/"
 	direct := !hookSourceInterpreter(name)
 	operand, span := name, command.Span
+	firstArgument := 0
 
 	if !direct {
-		if len(args.Elements) == 0 {
-			return
+		index := shellsyntax.FileArgumentIndex(len(args.Elements), func(i int) (string, bool) { return args.Elements[i].Text() })
+		if index < 0 {
+			return false
 		}
 
-		arg := args.Elements[0]
-		if flag, _ := arg.Text(); flag == "--" && len(args.Elements) > 1 {
-			arg = args.Elements[1]
-		}
+		arg := args.Elements[index]
 
 		operand, _ = arg.Text()
 		span = arg.Span
+		firstArgument = index + 1
 	}
 
-	if !strings.HasPrefix(operand, prefix) {
-		return
+	suffix, rooted := literalRootSuffix(operand, w.plugin.host, true)
+	if !rooted {
+		return false
 	}
 
 	span.Start = min(span.Start, initial.ByteStart)
@@ -106,29 +218,72 @@ func (w *hookSourceWalk) argv(e *entry, command, args *jsonconfig.Node, initial 
 		initial = *at
 	}
 
-	if rel, reason := w.resolveFile(pluginRootMarker+strings.TrimPrefix(operand, prefix), ""); reason == "" {
-		w.follow(rel, hookSourceState{}, []report.SourceRef{initial}, direct)
-	} else {
+	value := pluginRootMarker + suffix
+	rel, reason := w.resolveFile(value, "")
+
+	if reason != "" {
 		w.gap(initial, reason, "A shell source path could not be resolved within the captured plugin.")
+		return false
 	}
+
+	steps := []report.SourceRef{initial}
+	state := hookSourceState{
+		scriptPath: value, sourcePath: value, explicitBash: w.knownLaunchBash(rel, steps, name, direct),
+		positional: w.fileArgv(args.Elements[firstArgument:]),
+	}
+	w.seedHostEnvironment(&state)
+	w.plugin.seedHookLocale(&state)
+	_, checked := w.follow(rel, state, steps, direct)
+
+	return checked
+}
+
+func (w *hookSourceWalk) fileArgv(words []*jsonconfig.Node) hookSourceArguments {
+	args := make([]hookSourceArgument, 0, min(len(words), maxHookArguments))
+	for _, word := range words {
+		if len(args) == maxHookArguments {
+			return hookSourceArguments{values: args}
+		}
+
+		value, _ := word.Text()
+		if strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}") && rootParameter(w.plugin.host, value[2:len(value)-1], true) {
+			args = append(args, hookSourceArgument{value: pluginRootValue, known: true})
+		} else {
+			args = append(args, hookSourceArgument{value: value, known: !strings.ContainsRune(value, '$')})
+		}
+	}
+
+	return hookSourceArguments{values: args, exact: true}
 }
 
 type hookSourceState struct {
-	vars               map[string]string
-	ambiguousFunctions map[string]bool
-	returns            *hookSourceState
-	functions          map[string]hookSourceFunction
-	cwd                string
-	positional         []hookSourceArgument
-	canReturn          bool
-	lookupUnknown      bool
-	rootUnknown        bool
-	returned           bool
-	exited             bool
+	work          *builder
+	vars          map[string]string
+	kinds         map[string]hookVariableFact
+	locals        map[string]hookSourceLocal
+	readonly      map[string]bool // some reachable path locked this variable
+	returns       *hookSourceState
+	functions     map[string][]hookSourceFunction // present with no candidates means the definition is unknown
+	cwd           string
+	positional    hookSourceArguments
+	scriptPath    string
+	sourcePath    string
+	explicitBash  bool
+	canReturn     bool
+	lookupUnknown bool
+	rootUnknown   bool
+	noglob        bool
+	hookOutput    bool
+	trapCommands  hookTrapCommands
+	trapFunctions map[string]bool
+	returned      bool
+	exited        bool
+	traceBlocked  bool
 }
 
 func (w *hookSourceWalk) commands(e *entry, view source.View, tree *shellsyntax.File, state hookSourceState, chain []report.SourceRef, entrypoint bool) hookSourceState {
-	if tree == nil {
+	state.work = w.plugin.b
+	if tree == nil || state.traceBlocked {
 		return state
 	}
 
@@ -136,11 +291,19 @@ func (w *hookSourceWalk) commands(e *entry, view source.View, tree *shellsyntax.
 		stmts := tree.Statements[i:]
 
 		if !w.plugin.b.step() {
-			return state.opaque()
+			return state.blockTrace()
 		}
 
 		end := hookAndOrEnd(stmts)
-		if end != 0 {
+		if end == 0 {
+			if next, split := w.numericCaseContinuation(e, view, stmts, state, chain, entrypoint); split {
+				return next
+			}
+		}
+
+		if end != 0 && stmts[end].Next == shellsyntax.Background {
+			w.traceBackgroundList(e, view, stmts[:end+1], state, chain, entrypoint)
+		} else if end != 0 {
 			out := w.andOr(e, view, stmts[:end+1], state, chain, entrypoint)
 
 			state = *out.merged()
@@ -158,14 +321,35 @@ func (w *hookSourceWalk) commands(e *entry, view source.View, tree *shellsyntax.
 }
 
 func (s hookSourceState) opaque() hookSourceState {
-	s.cwd, s.vars, s.positional = "", nil, nil
-	s.functions, s.ambiguousFunctions = nil, nil
+	s.cwd, s.vars, s.positional, s.scriptPath = "", nil, hookSourceArguments{}, ""
+	s.sourcePath = ""
+	s.kinds = nil
+	s.locals = nil
+	s.readonly = nil
+	s.explicitBash = false
+	s.noglob = false
+	s.functions = nil
 	s.rootUnknown, s.lookupUnknown = true, true
 
 	return s
 }
 
+func (s hookSourceState) blockTrace() hookSourceState {
+	s = s.opaque()
+	s.traceBlocked = true
+
+	return s
+}
+
 func (w *hookSourceWalk) value(word *shellsyntax.Word, state hookSourceState, assignment bool) (string, bool) {
+	if value, known := w.knownPluginDefaultPath(word, state); known {
+		return value, true
+	}
+
+	if value, known := hookTrimmedPrefix(word, state, assignment); known {
+		return value, true
+	}
+
 	if word == nil || word.Expands {
 		return "", false
 	}
@@ -174,19 +358,33 @@ func (w *hookSourceWalk) value(word *shellsyntax.Word, state hookSourceState, as
 
 	for _, part := range word.Parts {
 		switch part.Kind {
-		case "literal":
+		case shellsyntax.PartLiteral:
 			b.WriteString(part.Text)
-		case "parameter":
-			if !assignment && !part.Quoted {
+		case shellsyntax.PartParameterReplaceAll:
+			value, ok := w.replaceAll(part, state)
+			if !ok {
 				return "", false
 			}
 
-			if part.Text != "" && part.Text == pluginRootParameters[w.plugin.host] && !state.rootUnknown {
+			b.WriteString(value)
+		case shellsyntax.PartSubstitution:
+			value, ok := w.hookPathSubstitution(part, state, assignment)
+			if !ok {
+				return "", false
+			}
+
+			b.WriteString(value)
+		case shellsyntax.PartParameter, shellsyntax.PartParameterDefaultDot, shellsyntax.PartParameterDefaultEmpty, shellsyntax.PartParameterScriptDir, shellsyntax.PartParameterBashSource:
+			if (!assignment && !part.Quoted) || part.Text == "@" || part.Text == "*" {
+				return "", false
+			}
+
+			if rootParameter(w.plugin.host, part.Text, true) && !state.rootUnknown {
 				b.WriteString(pluginRootValue)
 				continue
 			}
 
-			value, ok := state.parameter(part.Text)
+			value, ok := state.expandParameter(part)
 			if !ok {
 				return "", false
 			}
@@ -196,7 +394,7 @@ func (w *hookSourceWalk) value(word *shellsyntax.Word, state hookSourceState, as
 			return "", false
 		}
 
-		if b.Len() > 4096 {
+		if b.Len() > maxHookSourceValue {
 			return "", false
 		}
 	}
@@ -206,94 +404,473 @@ func (w *hookSourceWalk) value(word *shellsyntax.Word, state hookSourceState, as
 
 func (w *hookSourceWalk) bind(cmd *shellsyntax.Command, state *hookSourceState) {
 	for _, assignment := range cmd.Assignments {
-		if assignment.Name == pluginRootParameters[w.plugin.host] {
+		if rootParameter(w.plugin.host, assignment.Name, true) {
 			state.rootUnknown = true
 			delete(state.vars, assignment.Name)
+			delete(state.kinds, assignment.Name)
 
-			continue
-		}
-
-		if assignment.Name == "PATH" || assignment.Name == "CDPATH" || assignment.Name == "IFS" {
-			*state = state.opaque()
 			continue
 		}
 
 		value, known := w.value(assignment.Value, *state, true)
-		if _, exists := state.vars[assignment.Name]; !known || !exists && len(state.vars) >= 128 {
-			delete(state.vars, assignment.Name)
+		if hookAssignmentAffectsLookup(assignment.Name) && !hookSystemPathAssignment(assignment.Name, value, known) &&
+			!(assignment.Name == envIFS && hookLiteralAssignmentWord(assignment.Value)) {
+			*state = state.opaque()
 			continue
 		}
 
-		if state.vars == nil {
-			state.vars = make(map[string]string)
+		kind := w.assignmentKind(assignment.Value, *state)
+		if state.explicitBash && state.kinds[assignment.Name].indexedArray() && assignment.Value != nil && assignment.Value.ArrayAppend {
+			state.forgetAppendedArray(assignment.Name)
+			continue
 		}
 
-		state.vars[assignment.Name] = value
+		state.bindValue(assignment.Name, value, known)
+
+		if kind != 0 && hookLocalVariable(assignment.Name, pluginRootParameters[w.plugin.host]) {
+			state.markAssignmentKind(assignment, kind)
+		}
 	}
 }
 
+func hookSystemPathAssignment(name, value string, known bool) bool {
+	if name != envPath || !known || value == "" {
+		return false
+	}
+
+	for dir := range strings.SplitSeq(value, ":") {
+		if dir != "/bin" && dir != "/usr/bin" {
+			return false
+		}
+	}
+
+	return true
+}
+
+func hookAssignmentAffectsLookup(name string) bool {
+	switch name {
+	case envPath, envCDPath, envIFS, envBashStartup, envShellStartup:
+		return true
+	default:
+		return strings.HasPrefix(name, "LD_") || strings.HasPrefix(name, "DYLD_")
+	}
+}
+
+func (s *hookSourceState) bindValue(name, value string, known bool) {
+	delete(s.kinds, name)
+
+	if _, exists := s.vars[name]; s.readonly[name] || !known || !exists && len(s.vars) >= maxHookVariableValues {
+		delete(s.vars, name)
+		return
+	}
+
+	if s.vars == nil {
+		s.vars = make(map[string]string)
+	}
+
+	s.vars[name] = value
+}
+
 func (w *hookSourceWalk) statement(e *entry, view source.View, stmt *shellsyntax.Statement, chain []report.SourceRef, entrypoint bool, state *hookSourceState) bool {
-	if stmt.Negated || stmt.Background || len(stmt.Commands) != 1 || stmt.Next == "&" {
+	if stmt.Negated {
+		// An and/or list handles the inverted status separately. A
+		// standalone negation still executes its operand and its effects.
+		operand := *stmt
+		operand.Negated = false
+		stmt = &operand
+	}
+
+	if len(stmt.Commands) == 1 && hookReadOnlyBracket(stmt.Commands[0], *state) {
+		w.traceSubstitutions(e, view, stmt.Commands[0], *state, chain)
+		return true
+	}
+
+	if w.hookReadOnlyPredicate(stmt, state) {
+		w.traceSubstitutions(e, view, stmt.Commands[0], *state, chain)
+		return true
+	}
+
+	if hookReadOnlyPipeline(stmt, *state) {
+		for _, cmd := range stmt.Commands {
+			w.traceSubstitutions(e, view, cmd, *state, chain)
+		}
+
+		return true
+	}
+
+	if w.traceExplicitSubshell(e, view, stmt, *state, chain) {
+		return true
+	}
+
+	if w.traceForkedStatement(e, view, stmt, state, chain, entrypoint) {
+		return true
+	}
+
+	if len(stmt.Commands) != 1 {
 		w.skipStatement(e, view, stmt, entrypoint, state)
 
 		return true
 	}
 
+	return w.command(e, view, stmt, chain, entrypoint, state)
+}
+
+func (w *hookSourceWalk) traceExplicitSubshell(e *entry, view source.View, stmt *shellsyntax.Statement, state hookSourceState, chain []report.SourceRef) bool {
+	if len(stmt.Commands) != 1 {
+		return false
+	}
+
 	cmd := stmt.Commands[0]
-	if cmd.ExclusiveBranches && len(cmd.Words) == 0 && len(cmd.Redirects) == 0 && len(cmd.Assignments) == 0 && len(cmd.Invalidates) == 0 {
-		*state = w.conditional(e, view, cmd, *state, chain, entrypoint)
-		return !state.returned && !state.exited
+	if cmd.Subshell == nil || len(cmd.Words) != 0 || len(cmd.Assignments) != 0 ||
+		hookCommandWritesDuringExpansion(cmd) {
+		return false
+	}
+
+	lock := hookAppendLockSubshell(cmd, state)
+	if !lock {
+		for _, redirect := range cmd.Redirects {
+			if !hookDiscardedOutput(redirect) {
+				return false
+			}
+		}
+	}
+
+	w.traceSubstitutions(e, view, cmd, state, chain)
+	child := state.child()
+	child.hookOutput = state.hookOutput && (lock || hookKeepsOutput(cmd.Redirects))
+	w.commands(e, view, cmd.Subshell, child, chain, true)
+
+	return true
+}
+
+func (w *hookSourceWalk) command(e *entry, view source.View, stmt *shellsyntax.Statement, chain []report.SourceRef, entrypoint bool, state *hookSourceState) bool {
+	cmd := stmt.Commands[0]
+	if len(cmd.NumericTest) != 0 {
+		return w.unverifiedCommand(e, view, cmd, state, "Shell arithmetic operands could not be verified.")
+	}
+
+	if len(cmd.IndirectTest) != 0 {
+		return w.unverifiedCommand(e, view, cmd, state, "An indirect shell test operand has no verified scalar referent.")
+	}
+
+	if cmd.ArithmeticUpdate != "" {
+		return w.updateArithmeticBinding(e, view, cmd, state)
+	}
+
+	if w.applyLoop(e, view, cmd, state, chain) {
+		return !state.exited && !state.returned && !state.traceBlocked
+	}
+
+	if hookPlainCompound(cmd) && cmd.Case != nil {
+		*state = w.caseStatement(e, view, cmd, *state, chain, entrypoint)
+		return !state.returned && !state.exited && !state.traceBlocked
+	}
+
+	if (cmd.Group != nil || cmd.ExclusiveBranches) && hookPlainCompound(cmd) {
+		if cmd.Group != nil {
+			*state = w.commands(e, view, cmd.Group, *state, chain, entrypoint)
+		} else {
+			*state = w.conditional(e, view, cmd, *state, chain, entrypoint)
+		}
+
+		return !state.returned && !state.exited && !state.traceBlocked
 	}
 
 	if cmd.FunctionName != "" && cmd.FunctionBody != nil && len(cmd.Redirects) == 0 {
-		w.defineFunction(e, view, cmd, chain, state)
-		return true
+		return w.bindFunction(e, view, cmd, chain, state)
 	}
 
-	if hookCommandWritesDuringExpansion(cmd) {
+	if w.hasUnverifiedExpansion(cmd, *state) {
 		return w.unverifiedCommand(e, view, cmd, state, "Shell expansions can change bindings used by further source commands.")
 	}
 
-	if len(cmd.Assignments) > 0 && len(cmd.Words) == 0 && len(cmd.Redirects) == 0 && hookSourceAssignment(cmd, *state) {
-		w.bind(cmd, state)
+	w.traceSubstitutions(e, view, cmd, *state, chain)
+
+	return w.applySimpleCommand(e, view, cmd, chain, entrypoint, state)
+}
+
+func (w *hookSourceWalk) applySimpleCommand(e *entry, view source.View, cmd *shellsyntax.Command, chain []report.SourceRef, entrypoint bool, state *hookSourceState) bool {
+	if w.traceHostEnvironmentWrite(e, view, cmd, *state) {
+		return true
+	}
+
+	if replaces, traced := w.traceRuntimeLaunch(e, view, cmd, *state, chain); traced {
+		state.exited = replaces
+		return !replaces
+	}
+
+	if replaces, traced := w.traceRuntimeInline(e, view, cmd, *state, chain); traced {
+		state.exited = replaces
+		return !replaces
+	}
+
+	w.noteUnverifiedRuntimeLaunch(e, view, cmd, *state, chain)
+
+	if w.traceTerminalNotifier(e, view, cmd, *state) {
+		return true
+	}
+
+	if w.traceHostUpdatedInput(e, view, cmd, *state) {
+		return true
+	}
+
+	if w.bindAssignment(cmd, state) {
+		return true
+	}
+
+	if hookBareExport(cmd, *state) || hookLiteralNoop(cmd, *state) || hookRedirectedIO(cmd, *state) || w.forgetReadDestinations(cmd, state) {
 		return true
 	}
 
 	if len(cmd.Words) == 0 || len(cmd.Redirects) != 0 || len(cmd.Assignments) != 0 {
-		return w.modifiedStatement(e, view, cmd, entrypoint, state)
+		return w.modifiedStatement(e, view, cmd, chain, entrypoint, state)
 	}
 
-	return w.simpleStatement(e, view, stmt, chain, entrypoint, state)
+	return w.simpleStatement(e, view, cmd, chain, entrypoint, state)
+}
+
+func (w *hookSourceWalk) bindAssignment(cmd *shellsyntax.Command, state *hookSourceState) bool {
+	if len(cmd.Words) != 0 || len(cmd.Assignments) == 0 {
+		return false
+	}
+
+	ordinary := hookSourceAssignment(cmd, *state)
+	if len(cmd.Redirects) == 0 {
+		if ordinary {
+			w.bind(cmd, state)
+			return true
+		}
+
+		return w.bindShellDeclaration(cmd, state)
+	}
+
+	if state.lookupUnknown || !ordinary || slices.ContainsFunc(cmd.Redirects, func(r *shellsyntax.Redirect) bool {
+		return !hookDiscardedOutput(r)
+	}) {
+		return false
+	}
+
+	// A failed redirect can leave the previous assignment intact.
+	before := state.clone()
+	w.bind(cmd, state)
+	*state = state.join(before)
+
+	return true
+}
+
+func (w *hookSourceWalk) updateArithmeticBinding(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState) bool {
+	counter := cmd.ArithmeticUpdate
+	if !state.explicitBash || len(cmd.Redirects) != 0 || !w.decimalBinding(counter, *state) {
+		return w.unverifiedCommand(e, view, cmd, state, "The shell arithmetic update may evaluate an unverified value.")
+	}
+
+	state.bindValue(counter, "", false)
+	state.markDecimal(counter)
+
+	return true
+}
+
+func (w *hookSourceWalk) bindFunction(e *entry, view source.View, cmd *shellsyntax.Command, chain []report.SourceRef, state *hookSourceState) bool {
+	if state.trapCommands&hookTrapCommand(cmd.FunctionName) != 0 || state.trapFunctions[cmd.FunctionName] {
+		return w.unverifiedCommand(e, view, cmd, state, "A function definition can change a registered shell trap.")
+	}
+
+	w.defineFunction(e, view, cmd, chain, state)
+
+	return true
+}
+
+func hookPlainCompound(cmd *shellsyntax.Command) bool {
+	return len(cmd.Words) == 0 && len(cmd.Redirects) == 0 && len(cmd.Assignments) == 0 && len(cmd.Invalidates) == 0
+}
+
+func hookBareExport(cmd *shellsyntax.Command, state hookSourceState) bool {
+	return cmd.Declaration == "export" && len(cmd.DeclarationArgs) == 0 && len(cmd.Assignments) == 0 &&
+		len(cmd.Words) == 0 && len(cmd.Redirects) == 0 && len(cmd.Invalidates) == 0 &&
+		!state.lookupUnknown && !state.hasFunction("export")
+}
+
+func hookRedirectedIO(cmd *shellsyntax.Command, state hookSourceState) bool {
+	if state.lookupUnknown || len(cmd.Words) == 0 || len(cmd.Redirects) == 0 || len(cmd.Assignments) != 0 {
+		return false
+	}
+
+	// A single command with discarded output has the same binding proof
+	// as a pipeline stage. A redirected grep predicate preserves bindings.
+	if hookPipelineStage(cmd, state) {
+		return true
+	}
+
+	name, _ := cmd.Words[0].Literal()
+	if state.hasFunction(name) {
+		return false
+	}
+
+	if name == "cat" && len(cmd.Words) == 1 {
+		return hookCatHereDocument(cmd.Redirects)
+	}
+
+	if name != "echo" && (name != "printf" || hookPrintfMayWrite(cmd.Words[1:])) {
+		return false
+	}
+
+	for _, redirect := range cmd.Redirects {
+		switch redirect.Op {
+		case shellsyntax.RedirectOutput, shellsyntax.RedirectAppend, shellsyntax.RedirectDuplicateOutput:
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
+func hookCatHereDocument(redirects []*shellsyntax.Redirect) bool {
+	input := false
+
+	for _, redirect := range redirects {
+		if (redirect.Op == shellsyntax.RedirectHereDoc || redirect.Op == shellsyntax.RedirectStripHereDoc) && (redirect.FD == "" || redirect.FD == shellsyntax.StdinFD) && redirect.BodyVerified {
+			if input {
+				return false
+			}
+
+			input = true
+		} else if !hookDiscardedOutput(redirect) {
+			return false
+		}
+	}
+
+	return input
+}
+
+func (s *hookSourceState) applyWhileAssignments(names []string, root string) bool {
+	if len(names) == 0 || s.lookupUnknown {
+		return false
+	}
+
+	for _, name := range names {
+		if !hookOrdinaryVariable(name, root) {
+			return false
+		}
+	}
+
+	for _, name := range names {
+		delete(s.vars, name)
+		delete(s.kinds, name)
+	}
+
+	return true
+}
+
+func hookOrdinaryVariable(name, root string) bool {
+	if root == pluginRootParameters[report.HostCodex] && name == codexHookRootAlias {
+		return false
+	}
+
+	switch name {
+	case root, envPath, envCDPath, envIFS, envShellOpts, envShellStartup, envGlobIgnore, envFuncNest, envPosixlyCorrect, envOptInd:
+		return false
+	default:
+		return !strings.HasPrefix(name, "BASH") && !strings.HasPrefix(name, "LD_") && !strings.HasPrefix(name, "DYLD_")
+	}
+}
+
+func hookLiteralNoop(cmd *shellsyntax.Command, state hookSourceState) bool {
+	if len(cmd.Words) != 1 || len(cmd.Assignments) != 0 || len(cmd.Redirects) != 1 || state.lookupUnknown || state.hasFunction(":") {
+		return false
+	}
+
+	name, _ := cmd.Words[0].Literal()
+	redirect := cmd.Redirects[0]
+
+	return name == ":" && redirect.Op == shellsyntax.RedirectHereDoc && (redirect.FD == "" || redirect.FD == shellsyntax.StdinFD) && redirect.QuotedDelimiter && redirect.BodyVerified
+}
+
+func (w *hookSourceWalk) hookReadOnlyPredicate(stmt *shellsyntax.Statement, state *hookSourceState) bool {
+	if len(stmt.Commands) != 1 {
+		return false
+	}
+
+	cmd := stmt.Commands[0]
+	if w.hookSafeTest(cmd, *state) {
+		if cmd.RegexTest && !stmt.Background && stmt.Next != shellsyntax.Background {
+			delete(state.vars, "BASH_REMATCH")
+			delete(state.kinds, "BASH_REMATCH")
+		}
+
+		return true
+	}
+
+	return hookGitProbe(cmd, *state) || hookCommandLookupProbe(cmd, *state)
+}
+
+func hookCommandLookupProbe(cmd *shellsyntax.Command, state hookSourceState) bool {
+	if state.lookupUnknown || state.hasFunction("command") {
+		return false
+	}
+
+	if len(cmd.Words) != 3 || len(cmd.Assignments) != 0 || hookCommandWritesDuringExpansion(cmd) {
+		return false
+	}
+
+	for _, redirect := range cmd.Redirects {
+		if !hookDiscardedOutput(redirect) {
+			return false
+		}
+	}
+
+	name, _ := cmd.Words[0].Literal()
+	option, _ := cmd.Words[1].Literal()
+	operand := hookTestOperand(cmd.Words[2])
+
+	return name == "command" && (option == "-v" || option == "-V") && operand
+}
+
+func hookDiscardedOutput(redirect *shellsyntax.Redirect) bool {
+	target, known := redirect.Target.Literal()
+	if !known {
+		return false
+	}
+
+	if redirect.Op == shellsyntax.RedirectDuplicateOutput {
+		return redirect.FD == shellsyntax.StderrFD && target == "1" || (redirect.FD == "" || redirect.FD == shellsyntax.StdoutFD) && target == "2"
+	}
+
+	return target == "/dev/null" && (redirect.Op == shellsyntax.RedirectOutput || redirect.Op == shellsyntax.RedirectBoth) &&
+		(redirect.FD == "" || redirect.FD == shellsyntax.StdoutFD || redirect.FD == shellsyntax.StderrFD)
 }
 
 func hookSourceAssignment(cmd *shellsyntax.Command, state hookSourceState) bool {
 	return cmd.Declaration == "" || cmd.Declaration == "export" && len(cmd.DeclarationArgs) == 0 && !state.hasFunction("export")
 }
 
-func (w *hookSourceWalk) simpleStatement(e *entry, view source.View, stmt *shellsyntax.Statement, chain []report.SourceRef, entrypoint bool, state *hookSourceState) bool {
-	cmd := stmt.Commands[0]
-
+func (w *hookSourceWalk) simpleStatement(e *entry, view source.View, cmd *shellsyntax.Command, chain []report.SourceRef, entrypoint bool, state *hookSourceState) bool {
 	name, literal := cmd.Words[0].Literal()
-	if state.ambiguousFunctions[name] {
-		w.commandGap(e, view, cmd.Span, "hook_source_function_unverified", "Shell branches leave the function called here ambiguous.")
-
-		*state = state.opaque()
-
-		return false
+	if continued, handled := w.dispatchKnownCommand(e, view, cmd, chain, state, name, literal); handled {
+		return continued
 	}
 
-	if fn, ok := state.functions[name]; ok && !state.lookupUnknown {
-		return w.callFunction(e, view, cmd, fn, chain, state)
+	if name == "exec" {
+		if w.execShell(e, view, cmd, *state, chain) {
+			state.exited = true
+			return false
+		}
+
+		return w.unverifiedExec(e, view, cmd, state)
 	}
 
-	if !literal && (!entrypoint || !w.directLaunch(e, view, cmd, state, chain)) {
+	if !literal && !w.directLaunch(e, view, cmd, state, chain) {
 		return w.unverifiedCommand(e, view, cmd, state, "An expanded shell command name prevents resolving further source commands.")
 	}
 
-	if hookSourceHasRuntimeExpansion(cmd) && hookHasSourceCommand(cmd, entrypoint) {
+	if hookLiteralLocalLaunch(name, literal, *state) {
+		return w.linkCommand(e, view, cmd, name, state, chain)
+	}
+
+	if hookHasSourceCommand(cmd, entrypoint) && w.runtimeSourceOperand(cmd, name, *state) {
 		w.commandGap(e, view, cmd.Span, "hook_source_dynamic", "Shell expansions prevent resolving this source command.")
 
-		*state = state.opaque()
+		*state = state.blockTrace()
 
 		return false
 	}
@@ -301,22 +878,35 @@ func (w *hookSourceWalk) simpleStatement(e *entry, view source.View, stmt *shell
 	if w.rootChanged(cmd) {
 		state.rootUnknown = true
 		state.vars = nil
+		state.kinds = nil
 	}
 
 	switch name {
-	case "exit", "return":
-		if state.lookupUnknown || !w.knownExitStatus(cmd.Words[1:], *state) || name == "return" && !state.canReturn {
-			return w.unverifiedCommand(e, view, cmd, state, "An unverified shell exit or return prevents resolving further source commands.")
+	case "break", "continue":
+		if w.boundedArrayDepth > 0 || w.tracingLoop {
+			return w.unverifiedCommand(e, view, cmd, state, "A control transfer in the shell loop is unverified.")
 		}
-
-		state.returned = name == "return"
-
-		state.exited = name == "exit"
-
-		return false
+	case "exit", "return":
+		return w.exitOrReturn(e, view, cmd, state, name)
 	case "shift":
-		state.positional = nil
+		state.shift(cmd)
 		return true
+	case "set":
+		if w.replaceArguments(cmd.Words[1:], state) || state.applyShellOptions(cmd.Words[1:]) {
+			return true
+		}
+	case "shopt":
+		if hookKnownGlobOptions(cmd.Words[1:], *state) {
+			return true
+		}
+	case "trap":
+		if w.applyHookTrap(cmd.Words[1:], state) {
+			return true
+		}
+	case "unset":
+		if state.unsetScalars(cmd.Words[1:], pluginRootParameters[w.plugin.host]) {
+			return true
+		}
 	case "cd":
 		if state.lookupUnknown {
 			state.cwd = ""
@@ -328,11 +918,11 @@ func (w *hookSourceWalk) simpleStatement(e *entry, view source.View, stmt *shell
 		return true
 	}
 
-	if hookSourceOpaqueCommand(name) {
+	if w.hasOpaqueEffects(name, cmd.Words[1:], *state) {
 		return w.unverifiedCommand(e, view, cmd, state, "Shell command effects prevent resolving further source commands.")
 	}
 
-	if literal && (name == "source" || name == "." || entrypoint && hookSourceLaunch(name)) {
+	if literal && hookHasSourceCommand(cmd, entrypoint) {
 		return w.linkCommand(e, view, cmd, name, state, chain)
 	}
 
@@ -343,9 +933,124 @@ func (w *hookSourceWalk) simpleStatement(e *entry, view source.View, stmt *shell
 	return true
 }
 
-func (w *hookSourceWalk) directLaunch(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState, chain []report.SourceRef) bool {
+func (w *hookSourceWalk) unverifiedExec(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState) bool {
+	if !state.lookupUnknown && len(cmd.Words) > 2 {
+		if value, known := w.value(cmd.Words[2], *state, false); known {
+			rel, reason := w.resolveFile(value, state.cwd)
+			if candidate := w.plugin.entry(rel); reason == "" && candidate != nil && candidate.doc != nil {
+				w.commandGap(e, view, cmd.Words[1].Span, "hook_source_exec_runtime_unverified",
+					"Exec has a captured file argument, but its executable and dispatch are unverified.")
+
+				*state = state.blockTrace()
+
+				return false
+			}
+		}
+	}
+
+	return w.unverifiedCommand(e, view, cmd, state, "Shell command effects prevent resolving further source commands.")
+}
+
+func (w *hookSourceWalk) dispatchKnownCommand(e *entry, view source.View, cmd *shellsyntax.Command, chain []report.SourceRef, state *hookSourceState, name string, literal bool) (bool, bool) {
+	if state.lookupUnknown {
+		return false, false
+	}
+
+	if literal {
+		if state.hasFunction(name) {
+			return w.callFunctions(e, view, cmd, name, chain, state), true
+		}
+
+		return false, false
+	}
+
 	value, known := w.value(cmd.Words[0], *state, false)
-	if !known || !strings.HasPrefix(value, pluginRootMarker) {
+	if !known {
+		return false, false
+	}
+
+	switch {
+	case state.hasFunction(value):
+		return w.callFunctions(e, view, cmd, value, chain, state), true
+	case hookSourceInterpreter(value) && len(hookSourceOperands(cmd.Words, value)) > 0:
+		return w.linkCommand(e, view, cmd, value, state, chain), true
+	default:
+		return false, false
+	}
+}
+
+func (w *hookSourceWalk) exitOrReturn(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState, name string) bool {
+	args := cmd.Words[1:]
+
+	status, maySplit := hookPreviousStatus(args)
+	if state.lookupUnknown || name == "return" && !state.canReturn || !status && !w.knownExitStatus(args, *state) {
+		return w.unverifiedCommand(e, view, cmd, state, "An unverified shell exit or return prevents resolving further source commands.")
+	}
+
+	if maySplit {
+		// An inherited IFS may split an unquoted status into multiple operands.
+		// Keep the path where Bash rejects extra operands and resumes.
+		stopped := state.clone()
+		stopped.returned, stopped.exited = name == "return", name == "exit"
+		*state = state.join(stopped)
+
+		return true
+	}
+
+	state.returned = name == "return"
+	state.exited = name == "exit"
+
+	return false
+}
+
+func hookKnownGlobOptions(args []*shellsyntax.Word, state hookSourceState) bool {
+	if !state.explicitBash || state.lookupUnknown || len(args) < 2 {
+		return false
+	}
+
+	flag, _ := args[0].Literal()
+	if flag != "-s" && flag != "-u" {
+		return false
+	}
+
+	// Unrestricted lists already allow any number of iterations. The
+	// captured-file walker visits dotfiles and guards launches with -f, so
+	// these two options cannot add a target outside its candidate set.
+	return !slices.ContainsFunc(args[1:], func(word *shellsyntax.Word) bool {
+		name, _ := word.Literal()
+		return name != "dotglob" && name != "nullglob"
+	})
+}
+
+func hookPreviousStatus(args []*shellsyntax.Word) (status, maySplit bool) {
+	if len(args) != 1 || args[0].Writes || len(args[0].Parts) != 1 {
+		return false, false
+	}
+
+	part := args[0].Parts[0]
+	if part.Kind != shellsyntax.PartParameter || part.Text != "?" || !part.PlainParameter {
+		return false, false
+	}
+
+	return true, !part.Quoted
+}
+
+func (w *hookSourceWalk) hasOpaqueEffects(name string, args []*shellsyntax.Word, state hookSourceState) bool {
+	switch name {
+	case "eval":
+		return !w.isLiteralPrint(args, state)
+	default:
+		return hookSourceOpaqueCommand(name)
+	}
+}
+
+func (w *hookSourceWalk) directLaunch(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState, chain []report.SourceRef) bool {
+	if state.lookupUnknown {
+		return false
+	}
+
+	value, known := w.value(cmd.Words[0], *state, false)
+	if (!known || !hookLocalLaunchPath(value, state.cwd)) && !w.unquotedPluginPath(cmd.Words[0], *state) {
 		return false
 	}
 
@@ -354,19 +1059,87 @@ func (w *hookSourceWalk) directLaunch(e *entry, view source.View, cmd *shellsynt
 	return true
 }
 
+func hookLiteralLocalLaunch(name string, literal bool, state hookSourceState) bool {
+	return literal && strings.HasPrefix(name, "./") && state.cwd != "" && !state.lookupUnknown
+}
+
+func hookLocalLaunchPath(value, cwd string) bool {
+	return strings.HasPrefix(value, pluginRootMarker) || cwd != "" && strings.HasPrefix(value, "./")
+}
+
+func hookTrimmedPrefix(word *shellsyntax.Word, state hookSourceState, assignment bool) (string, bool) {
+	if word == nil || word.Writes || len(word.Parts) != 1 {
+		return "", false
+	}
+
+	part := word.Parts[0]
+	if part.TrimPrefix == "" || !assignment && !part.Quoted {
+		return "", false
+	}
+
+	value, known := state.parameter(part.Text)
+	if !known || strings.IndexByte(value, 0) >= 0 {
+		return "", false
+	}
+
+	return strings.TrimPrefix(value, part.TrimPrefix), true
+}
+
+func (w *hookSourceWalk) knownPluginDefault(part shellsyntax.Part, state hookSourceState) bool {
+	return !state.rootUnknown && part.Quoted && part.Kind == shellsyntax.PartParameterValue && part.DefaultIfUnset &&
+		rootParameter(w.plugin.host, part.Text, true)
+}
+
+func (w *hookSourceWalk) knownPluginDefaultPath(word *shellsyntax.Word, state hookSourceState) (string, bool) {
+	if word == nil || word.Writes || len(word.Parts) == 0 || !w.knownPluginDefault(word.Parts[0], state) {
+		return "", false
+	}
+
+	var value strings.Builder
+	value.WriteString(pluginRootValue)
+
+	for _, part := range word.Parts[1:] {
+		if part.Kind != shellsyntax.PartLiteral || !part.Quoted || strings.ContainsRune(part.Text, '\\') || value.Len()+len(part.Text) > maxHookSourceValue {
+			return "", false
+		}
+
+		value.WriteString(part.Text)
+	}
+
+	return value.String(), true
+}
+
 func (w *hookSourceWalk) unverifiedCommand(e *entry, view source.View, cmd *shellsyntax.Command, state *hookSourceState, message string) bool {
 	w.commandGap(e, view, cmd.Span, "hook_source_command_unverified", message)
 
-	*state = state.opaque()
+	*state = state.blockTrace()
 
 	return false
 }
 
-func (w *hookSourceWalk) modifiedStatement(e *entry, view source.View, cmd *shellsyntax.Command, entrypoint bool, state *hookSourceState) bool {
+func (w *hookSourceWalk) modifiedStatement(e *entry, view source.View, cmd *shellsyntax.Command, chain []report.SourceRef, entrypoint bool, state *hookSourceState) bool {
+	if w.traceRedirectedGroup(e, view, cmd, state, chain, entrypoint) {
+		return !state.exited && !state.returned && !state.traceBlocked
+	}
+
+	if w.traceTemporaryEnvLaunch(e, view, cmd, *state, chain) {
+		return true
+	}
+
+	if w.hookTraceableRedirectedLaunch(cmd, *state, entrypoint) {
+		before := state.clone()
+		state.hookOutput = state.hookOutput && hookKeepsOutput(cmd.Redirects)
+		w.simpleStatement(e, view, cmd, chain, entrypoint, state)
+		state.hookOutput = before.hookOutput
+		*state = state.join(before)
+
+		return !state.exited
+	}
+
 	if cmd.Group != nil || cmd.Prelude != nil || cmd.Subshell != nil || len(cmd.Alternatives) > 0 || len(cmd.Invalidates) > 0 {
 		w.commandGap(e, view, cmd.Span, "hook_source_control_unverified", "Shell control flow prevents resolving further source commands.")
 
-		*state = state.opaque()
+		*state = state.blockTrace()
 
 		return false
 	}
@@ -385,7 +1158,13 @@ func (w *hookSourceWalk) modifiedStatement(e *entry, view source.View, cmd *shel
 		state.rootUnknown = true
 	}
 
-	state.cwd, state.vars, state.positional = "", nil, nil
+	if hookFileOperationWithoutShellWrites(cmd, *state) {
+		state.forgetFileBindings()
+		return true
+	}
+
+	state.cwd, state.vars, state.positional = "", nil, hookSourceArguments{}
+	state.kinds = nil
 
 	if len(cmd.Words) > 0 {
 		name, literal := cmd.Words[0].Literal()
@@ -397,16 +1176,142 @@ func (w *hookSourceWalk) modifiedStatement(e *entry, view source.View, cmd *shel
 	return true
 }
 
+func (s *hookSourceState) forgetFileBindings() {
+	s.cwd = ""
+
+	// Filesystem operations leave the caller's arithmetic values and locale intact.
+	for name, value := range s.vars {
+		if name != "LC_ALL" && value != hostEnvironmentMarker && value != "false" && value != "true" && !decimalDigits(value) {
+			delete(s.vars, name)
+		}
+	}
+
+	for name, fact := range s.kinds {
+		if fact.kind != hookDecimalScalar && !fact.indexedArray() {
+			delete(s.kinds, name)
+		}
+	}
+}
+
+func hookFileOperationWithoutShellWrites(cmd *shellsyntax.Command, state hookSourceState) bool {
+	if hookDirectoryOperation(cmd, state, "mkdir") || hookDirectoryOperation(cmd, state, "rmdir") {
+		return true
+	}
+
+	if state.lookupUnknown || len(cmd.Assignments) != 0 || len(cmd.Words) < 2 || len(cmd.Redirects) == 0 {
+		return false
+	}
+
+	name, _ := cmd.Words[0].Literal()
+	if state.hasFunction(name) {
+		return false
+	}
+
+	if name == "cat" || name == "tail" {
+		return hookFileOutputReader(name, cmd)
+	}
+
+	if name == "grep" && !hookCommandWritesDuringExpansion(cmd) {
+		return !slices.ContainsFunc(cmd.Redirects, func(r *shellsyntax.Redirect) bool {
+			return !hookDiscardedOutput(r) && !hookGroupFileOutput(r) && !hookProcessFileOutput(r, state)
+		})
+	}
+
+	if len(cmd.Words) != 3 {
+		return false
+	}
+
+	if name == "cut" {
+		option, _ := cmd.Words[1].Literal()
+		fields, _ := cmd.Words[2].Literal()
+
+		return strings.HasPrefix(option, "-d") && len(option) == 3 && strings.HasPrefix(fields, "-f") &&
+			decimalDigits(strings.TrimPrefix(fields, "-f")) && hookKnownFileOutput(cmd.Redirects)
+	}
+
+	return hookQuietFileOperation(name, cmd)
+}
+
+func hookQuietFileOperation(name string, cmd *shellsyntax.Command) bool {
+	if slices.ContainsFunc(cmd.Redirects, func(r *shellsyntax.Redirect) bool { return !hookDiscardedOutput(r) }) {
+		return false
+	}
+
+	first, _ := cmd.Words[1].Literal()
+	second, _ := cmd.Words[2].Literal()
+
+	switch name {
+	case "mkdir":
+		return first == "-p" && hookSingleBracketWord(cmd.Words[2])
+	case "cp":
+		return hookTestOperand(cmd.Words[1]) && hookTestOperand(cmd.Words[2])
+	case "mv":
+		return first != "" && !strings.HasPrefix(first, "-") && second != "" && !strings.HasPrefix(second, "-")
+	default:
+		return false
+	}
+}
+
+func hookDirectoryOperation(cmd *shellsyntax.Command, state hookSourceState, name string) bool {
+	if state.lookupUnknown || state.hasFunction(name) || len(cmd.Assignments) != 0 || len(cmd.Words) != 3 {
+		return false
+	}
+
+	head, _ := cmd.Words[0].Literal()
+	separator, _ := cmd.Words[1].Literal()
+
+	return head == name && separator == "--" && hookTestOperand(cmd.Words[2]) &&
+		!slices.ContainsFunc(cmd.Redirects, func(r *shellsyntax.Redirect) bool { return !hookDiscardedOutput(r) })
+}
+
+func hookProcessFileOutput(r *shellsyntax.Redirect, state hookSourceState) bool {
+	if !state.explicitBash || r.Op != shellsyntax.RedirectOutput || (r.FD != "" && r.FD != shellsyntax.StdoutFD && r.FD != shellsyntax.StderrFD) ||
+		r.Target == nil || r.Target.Writes || r.Target.Expands || len(r.Target.Parts) != 2 {
+		return false
+	}
+
+	prefix, id := r.Target.Parts[0], r.Target.Parts[1]
+
+	// Field splitting may make the redirect fail, but a literal absolute
+	// prefix followed by the process ID cannot mutate shell bindings.
+	return prefix.Kind == shellsyntax.PartLiteral && strings.HasPrefix(prefix.Text, "/") &&
+		id.Kind == shellsyntax.PartParameter && id.PlainParameter && id.Text == "$"
+}
+
+func hookFileOutputReader(name string, cmd *shellsyntax.Command) bool {
+	if !hookKnownFileOutput(cmd.Redirects) {
+		return false
+	}
+
+	if name == "cat" {
+		return len(cmd.Words) == 2 && hookSingleBracketWord(cmd.Words[1])
+	}
+
+	if len(cmd.Words) != 4 {
+		return false
+	}
+
+	option, _ := cmd.Words[1].Literal()
+
+	return option == "-n" && hookSingleBracketWord(cmd.Words[2]) && hookSingleBracketWord(cmd.Words[3])
+}
+
+func hookKnownFileOutput(redirects []*shellsyntax.Redirect) bool {
+	return !slices.ContainsFunc(redirects, func(r *shellsyntax.Redirect) bool {
+		return !hookDiscardedOutput(r) && !hookGroupFileOutput(r)
+	})
+}
+
 func (w *hookSourceWalk) skipStatement(e *entry, view source.View, stmt *shellsyntax.Statement, entrypoint bool, state *hookSourceState) {
 	for _, cmd := range stmt.Commands {
-		if hookHasSourceCommand(cmd, entrypoint) {
+		if hookHasSourceCommand(cmd, entrypoint) || cmd.Group != nil || cmd.Subshell != nil || cmd.Prelude != nil || len(cmd.Alternatives) != 0 {
 			w.commandGap(e, view, cmd.Span, "hook_source_control_unverified", "Shell control flow prevents resolving this source command.")
 		}
 	}
 
-	// Background jobs and pipelines have no modeled in-shell effects. A
-	// negated command or an OR list may still modify the current shell.
-	if !stmt.Background && stmt.Next != "&" {
+	// Background jobs run in a separate scope. An unverified foreground
+	// statement may modify the current shell.
+	if !stmt.Background && stmt.Next != shellsyntax.Background {
 		*state = state.opaque()
 	}
 }
@@ -433,13 +1338,20 @@ func hookCommandWritesDuringExpansion(cmd *shellsyntax.Command) bool {
 	return false
 }
 
-func hookSourceHasRuntimeExpansion(cmd *shellsyntax.Command) bool {
-	for _, word := range cmd.Words {
-		for _, part := range word.Parts {
-			if part.Kind == "substitution" || part.Tree != nil {
-				return true
-			}
-		}
+func (w *hookSourceWalk) runtimeSourceOperand(cmd *shellsyntax.Command, name string, state hookSourceState) bool {
+	args := hookSourceOperands(cmd.Words, name)
+	if len(args) == 0 || !hookWordHasSubstitution(args[0]) {
+		return false
+	}
+
+	_, known := w.value(args[0], state, false)
+
+	return !known
+}
+
+func hookWordHasSubstitution(word *shellsyntax.Word) bool {
+	for range word.Substitutions() {
+		return true
 	}
 
 	return false
@@ -452,13 +1364,13 @@ func hookHasSourceCommand(cmd *shellsyntax.Command, entrypoint bool) bool {
 
 	name, literal := cmd.Words[0].Literal()
 
-	return name == "source" || name == "." || entrypoint && literal && hookSourceLaunch(name)
+	return name == "source" || name == "." || literal && (entrypoint && hookSourceLaunch(name) ||
+		hookSourceInterpreter(name) && len(hookSourceOperands(cmd.Words, name)) > 0)
 }
 
 func (w *hookSourceWalk) rootChanged(cmd *shellsyntax.Command) bool {
-	name := pluginRootParameters[w.plugin.host]
 	for _, assignment := range cmd.Assignments {
-		if assignment.Name == name {
+		if rootParameter(w.plugin.host, assignment.Name, true) {
 			return true
 		}
 	}
@@ -476,10 +1388,7 @@ func (w *hookSourceWalk) rootChanged(cmd *shellsyntax.Command) bool {
 	case "export", "read", "mapfile", "readarray", "getopts", "let":
 		return true
 	case "printf":
-		if len(cmd.Words) > 1 {
-			option, known := cmd.Words[1].Literal()
-			return !known || strings.HasPrefix(option, "-v")
-		}
+		return hookPrintfMayWrite(cmd.Words[1:])
 	}
 
 	return false
@@ -502,9 +1411,102 @@ func hookSourceOpaqueCommand(name string) bool {
 	}
 }
 
+// A literal empty action ignores SIGPIPE without installing shell code.
+func hookIgnoresPipe(args []*shellsyntax.Word) bool {
+	if len(args) != 2 {
+		return false
+	}
+
+	action, literal := args[0].Literal()
+	signal, _ := args[1].Literal()
+
+	return literal && action == "" && (signal == "PIPE" || signal == "SIGPIPE")
+}
+
+func (w *hookSourceWalk) isLiteralPrint(args []*shellsyntax.Word, state hookSourceState) bool {
+	if len(args) != 1 || state.lookupUnknown || state.hasFunction("printf") {
+		return false
+	}
+
+	text, known := w.value(args[0], state, false)
+	if !known || len(text) > maxLiteralPrintBytes {
+		return false
+	}
+
+	tree, err := shellsyntax.Parse(w.plugin.b.ctx, text)
+
+	cmd, simple := simpleShellCommand(tree)
+	if err != nil || !simple || tree.Statements[0].Negated || len(cmd.Words) < 2 {
+		return false
+	}
+
+	name, literal := cmd.Words[0].Literal()
+
+	format, constant := cmd.Words[1].Literal()
+	if !literal || name != "printf" || !constant || format != "%s" && format != `%s\n` {
+		return false
+	}
+
+	for _, word := range cmd.Words[2:] {
+		if _, known := word.Literal(); !known {
+			return false
+		}
+	}
+
+	return true
+}
+
+// These options do not change which file a later explicit source names.
+func (s *hookSourceState) applyShellOptions(words []*shellsyntax.Word) bool {
+	if s.lookupUnknown || len(words) == 0 {
+		return false
+	}
+
+	noglob := s.noglob
+
+	for i := 0; i < len(words); i++ {
+		option, known := words[i].Literal()
+		switch {
+		case !known:
+			return false
+		case option == "+f":
+			noglob = false
+			continue
+		case option == "+e":
+			continue
+		}
+
+		if len(option) < 2 || option[0] != '-' || strings.Trim(option[1:], "eECfuoxv") != "" {
+			return false
+		}
+
+		noglob = noglob || strings.ContainsRune(option, 'f')
+		if strings.ContainsRune(option, 'o') {
+			i++
+			if i >= len(words) || option[len(option)-1] != 'o' {
+				return false
+			}
+
+			switch name, _ := words[i].Literal(); name {
+			case "noglob":
+				noglob = true
+			case "pipefail":
+			default:
+				return false
+			}
+		}
+	}
+
+	s.noglob = noglob
+
+	return true
+}
+
 func hookSourceKeepsDirectory(name string) bool {
 	switch name {
-	case ":", "true", "false", "echo", "printf", "test", "[":
+	case builtinNoop, builtinTrue, builtinFalse, builtinEcho, builtinPrintf, builtinTest, builtinBracketTest,
+		language.ExecutableBash, language.ExecutableSh, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh,
+		builtinEval, builtinTrap:
 		return true
 	default:
 		return false
@@ -518,7 +1520,6 @@ func (w *hookSourceWalk) linkCommand(e *entry, view source.View, cmd *shellsynta
 
 	next, ok := w.resolveCommand(e, view, cmd, name, *state, chain)
 	if name != "source" && name != "." {
-		state.cwd = ""
 		return true
 	}
 
@@ -528,8 +1529,10 @@ func (w *hookSourceWalk) linkCommand(e *entry, view source.View, cmd *shellsynta
 	}
 
 	next.canReturn = state.canReturn
+
+	next.sourcePath = state.sourcePath
 	if args := hookSourceOperands(cmd.Words, name); len(args) > 1 {
-		next.positional = nil
+		next.positional = hookSourceArguments{}
 		if w.hasFixedArgument(args[1:], *state) {
 			next.positional = state.positional
 		}
@@ -537,10 +1540,14 @@ func (w *hookSourceWalk) linkCommand(e *entry, view source.View, cmd *shellsynta
 
 	*state = next
 
-	return !state.exited
+	return !state.exited && !state.traceBlocked
 }
 
 func (w *hookSourceWalk) resolveCommand(e *entry, view source.View, cmd *shellsyntax.Command, name string, state hookSourceState, chain []report.SourceRef) (hookSourceState, bool) {
+	if w.plugin.b.stopped {
+		return state.blockTrace(), false
+	}
+
 	span, err := view.Original(cmd.Span)
 	if err != nil {
 		return state, false
@@ -552,8 +1559,10 @@ func (w *hookSourceWalk) resolveCommand(e *entry, view source.View, cmd *shellsy
 	}
 
 	args := hookSourceOperands(cmd.Words, name)
+	isSource := name == "source" || name == "."
+
 	if len(args) == 0 {
-		if name == "source" || name == "." {
+		if isSource {
 			w.gap(*at, "hook_source_command_unverified", "Shell source options or operands could not be determined statically.")
 		}
 
@@ -563,8 +1572,22 @@ func (w *hookSourceWalk) resolveCommand(e *entry, view source.View, cmd *shellsy
 	operand := args[0]
 
 	value, known := w.value(operand, state, false)
+	conditionalRoot := false
+
+	if !known && w.unquotedPluginPath(operand, state) {
+		value, known = w.value(operand, state, true)
+
+		assumedLaunch := e == w.config && w.rootLaunch == cmd && (name == "" || hookSourceInterpreter(name))
+		if !assumedLaunch && !w.singleFieldRoot(e, state) {
+			conditionalRoot = true
+
+			w.commandGap(e, view, operand.Parts[0].Span, "hook_source_unquoted_root",
+				hookUnquotedRootMessage)
+		}
+	}
+
 	if !known {
-		if name != "source" && name != "." && !hookSourceInterpreter(name) {
+		if !isSource && !hookSourceInterpreter(name) {
 			return state, false
 		}
 
@@ -588,7 +1611,6 @@ func (w *hookSourceWalk) resolveCommand(e *entry, view source.View, cmd *shellsy
 	steps = append(steps, chain...)
 	steps = append(steps, *at)
 
-	isSource := name == "source" || name == "."
 	direct := !isSource && !hookSourceInterpreter(name)
 	arguments := state.positional
 
@@ -597,13 +1619,65 @@ func (w *hookSourceWalk) resolveCommand(e *entry, view source.View, cmd *shellsy
 	}
 
 	if !isSource {
-		state = hookSourceState{cwd: state.cwd, rootUnknown: state.rootUnknown}
+		child := hookSourceState{cwd: state.cwd, rootUnknown: state.rootUnknown, hookOutput: state.hookOutput && hookKeepsOutput(cmd.Redirects)}
+		w.inheritHostEnvironment(&child, state, cmd.Assignments)
+		state = child
+
+		state.scriptPath = value
+		state.explicitBash = w.knownLaunchBash(rel, steps, name, direct)
+
+		if e == w.config && w.rootLaunch == cmd && len(chain) == 0 {
+			w.plugin.seedHookLocale(&state)
+		}
 	}
 
 	state.canReturn = isSource
+	state.sourcePath = value
 	state.positional = arguments
 
-	return w.follow(rel, state, steps, direct)
+	next, checked := w.follow(rel, state, steps, direct)
+
+	return next, checked && !conditionalRoot
+}
+
+const hookUnquotedRootMessage = "An unquoted plugin root can split or expand before the shell resolves this file. Quote the handler path as a single shell argument."
+
+func (w *hookSourceWalk) unquotedPluginPath(word *shellsyntax.Word, state hookSourceState) bool {
+	host := w.plugin.host
+
+	return !state.rootUnknown && !state.lookupUnknown && (word.HasUnquotedPluginRootPath(pluginRootParameters[host]) ||
+		host == report.HostCodex && word.HasUnquotedPluginRootPath(codexHookRootAlias))
+}
+
+func (w *hookSourceWalk) singleFieldRoot(e *entry, state hookSourceState) bool {
+	ifs, known := state.vars[envIFS]
+	// The host may substitute placeholders in the command template before
+	// the shell starts. These settings only prove shell expansion in files.
+	return e != w.config && state.noglob && known && ifs == ""
+}
+
+func (w *hookSourceWalk) knownLaunchBash(rel string, steps []report.SourceRef, name string, direct bool) bool {
+	if !direct {
+		return name == language.ExecutableBash || name == language.BinBash || name == language.UserBinBash || name == bashExecutable
+	}
+
+	handler := w.plugin.entry(rel)
+
+	if handler == nil || handler.doc == nil {
+		return false
+	}
+
+	firstLine, _, _ := strings.Cut(handler.doc.Artifact().Content(), "\n")
+
+	shebang, ok := strings.CutPrefix(firstLine, "#!")
+	if ok {
+		switch strings.Join(strings.Fields(shebang), " ") {
+		case language.BinBash, language.UserBinBash, envBashShebang:
+			return true
+		}
+	}
+
+	return w.canCheckBashFallback(handler, steps)
 }
 
 func hookSourceOperands(words []*shellsyntax.Word, name string) []*shellsyntax.Word {
@@ -612,6 +1686,15 @@ func hookSourceOperands(words []*shellsyntax.Word, name string) []*shellsyntax.W
 	}
 
 	args := words[1:]
+	if hookSourceInterpreter(name) {
+		index := shellsyntax.FileArgumentIndex(len(args), func(i int) (string, bool) { return args[i].Literal() })
+		if index < 0 {
+			return nil
+		}
+
+		return args[index:]
+	}
+
 	if len(args) > 0 {
 		if flag, _ := args[0].Literal(); flag == "--" {
 			args = args[1:]
@@ -628,31 +1711,119 @@ type hookSourceArgument struct {
 	known bool
 }
 
+type hookSourceArguments struct {
+	values []hookSourceArgument
+	exact  bool
+}
+
+func (s *hookSourceState) shift(cmd *shellsyntax.Command) {
+	if count := hookShiftCount(cmd); !s.lookupUnknown && count > 0 {
+		if count <= len(s.positional.values) {
+			s.positional.values = s.positional.values[count:]
+			return
+		}
+
+		if s.positional.exact {
+			return
+		}
+	}
+
+	s.positional = hookSourceArguments{}
+}
+
+func (s hookSourceState) expandParameter(part shellsyntax.Part) (string, bool) {
+	if part.Kind == shellsyntax.PartParameterBashSource {
+		return s.sourcePath, s.sourcePath != "" && s.explicitBash
+	}
+
+	value, ok := s.parameter(part.Text)
+	if !ok {
+		return "", false
+	}
+
+	if value == "" && part.Kind == shellsyntax.PartParameterDefaultDot {
+		return ".", true
+	}
+
+	if part.Kind == shellsyntax.PartParameterScriptDir {
+		if !strings.HasPrefix(value, pluginRootMarker) {
+			return "", false
+		}
+
+		return path.Dir(value), true
+	}
+
+	return value, true
+}
+
+func (w *hookSourceWalk) replaceAll(part shellsyntax.Part, state hookSourceState) (string, bool) {
+	value, known := state.parameter(part.Text)
+	if !known || rootParameter(w.plugin.host, part.Text, true) && !state.rootUnknown || strings.IndexByte(value, 0) >= 0 {
+		// Symbolic plugin roots and interpreters cannot be substituted as bytes.
+		return "", false
+	}
+
+	r := part.Replacement
+	if len(value)+(len(r.Value)-len(r.Pattern))*strings.Count(value, r.Pattern) > maxHookSourceValue {
+		return "", false
+	}
+
+	return strings.ReplaceAll(value, r.Pattern, r.Value), true
+}
+
 func (s hookSourceState) parameter(name string) (string, bool) {
-	if index, err := strconv.Atoi(name); err == nil && index > 0 && index <= len(s.positional) {
-		arg := s.positional[index-1]
+	if name == "0" {
+		return s.scriptPath, s.scriptPath != ""
+	}
+
+	if value, ok := s.vars[name]; ok {
+		return value, value != hostEnvironmentMarker
+	}
+
+	if name == "BASH" && s.explicitBash {
+		return bashExecutable, true
+	}
+
+	if index, err := strconv.Atoi(name); err == nil && index > 0 && index <= len(s.positional.values) {
+		arg := s.positional.values[index-1]
 		return arg.value, arg.known
 	}
 
-	value, ok := s.vars[name]
-
-	return value, ok
+	return "", false
 }
 
-func (w *hookSourceWalk) arguments(words []*shellsyntax.Word, state hookSourceState) []hookSourceArgument {
-	args := make([]hookSourceArgument, 0, min(len(words), 32))
-	for _, word := range words[:min(len(words), 32)] {
+func (w *hookSourceWalk) arguments(words []*shellsyntax.Word, state hookSourceState) hookSourceArguments {
+	args := make([]hookSourceArgument, 0, min(len(words), maxHookArguments))
+	for _, word := range words {
+		if len(args) == maxHookArguments {
+			return hookSourceArguments{values: args}
+		}
+
+		if hookQuotedPositionalSpread(word) {
+			remaining := min(len(state.positional.values), maxHookArguments-len(args))
+			args = append(args, state.positional.values[:remaining]...)
+
+			if !state.positional.exact || remaining < len(state.positional.values) {
+				return hookSourceArguments{values: args}
+			}
+
+			continue
+		}
+
 		value, known := w.value(word, state, false)
 		if !known && !hookFixedArgument(word) {
-			// Field splitting or pathname expansion can change subsequent
-			// argument positions as well.
-			break
+			// Later arguments can move when this word splits or globs.
+			return hookSourceArguments{values: args}
 		}
 
 		args = append(args, hookSourceArgument{value, known})
 	}
 
-	return args
+	return hookSourceArguments{values: args, exact: true}
+}
+
+func hookQuotedPositionalSpread(word *shellsyntax.Word) bool {
+	return len(word.Parts) == 1 && word.Parts[0].Kind == shellsyntax.PartParameter && word.Parts[0].Text == "@" && word.Parts[0].Quoted
 }
 
 func (w *hookSourceWalk) hasFixedArgument(words []*shellsyntax.Word, state hookSourceState) bool {
@@ -671,7 +1842,7 @@ func hookFixedArgument(word *shellsyntax.Word) bool {
 	}
 
 	for _, part := range word.Parts {
-		if part.Kind != "literal" && (!part.Quoted || part.Text == "@" || part.Text == "*") {
+		if part.Kind != shellsyntax.PartLiteral && (!part.Quoted || part.Text == "@" || part.Text == "*") {
 			return false
 		}
 	}
@@ -681,7 +1852,7 @@ func hookFixedArgument(word *shellsyntax.Word) bool {
 
 func hookSourceInterpreter(name string) bool {
 	switch name {
-	case "bash", "sh", "dash", "zsh", "ksh", "/bin/bash", "/bin/sh", "/usr/bin/bash", "/usr/bin/sh":
+	case language.ExecutableBash, language.ExecutableSh, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh, language.BinBash, language.BinSh, language.UserBinBash, language.UserBinSh, bashExecutable:
 		return true
 	default:
 		return false
@@ -769,6 +1940,11 @@ func (w *hookSourceWalk) resolve(value, cwd string) (string, string) {
 func (w *hookSourceWalk) follow(rel string, state hookSourceState, chain []report.SourceRef, direct bool) (hookSourceState, bool) {
 	p := w.plugin
 
+	state.work = p.b
+	if p.b.stopped {
+		return state.blockTrace(), false
+	}
+
 	last := chain[len(chain)-1]
 	if len(chain) > maxHookSourceDepth || len(p.b.hookSourcePaths) >= p.b.r.Limits.References {
 		w.gap(last, "hook_source_limit", "The shell source path budget was exhausted.")
@@ -786,7 +1962,21 @@ func (w *hookSourceWalk) follow(rel string, state hookSourceState, chain []repor
 		return state, false
 	}
 
-	if direct && !hasShellShebang(e.doc.Artifact().Content()) {
+	text := e.doc.Artifact().Content()
+	if direct && e.meta.Executable {
+		if lang := runtimeShebang(text); lang != "" {
+			var firstArg hookSourceArgument
+			if len(state.positional.values) > 0 {
+				firstArg = state.positional.values[0]
+			}
+
+			w.recordRuntimeScript(e, rel, lang, firstArg, -1, chain)
+
+			return state, true
+		}
+	}
+
+	if direct && !hasShellShebang(text) && !w.canCheckBashFallback(e, chain) {
 		w.gap(last, "hook_source_interpreter_unverified", "The interpreter of a directly launched file could not be verified as shell.")
 		return state, false
 	}
@@ -809,12 +1999,22 @@ func (w *hookSourceWalk) follow(rel string, state hookSourceState, chain []repor
 	}
 
 	root := hookSourceTree(tree)
-	p.b.hookSourcePaths = append(p.b.hookSourcePaths, HookSourcePath{Target: e.meta.Path, Event: w.event, Steps: chain, Exclude: hookFunctionSpans(unit.View, root)})
+	p.b.hookSourcePaths = append(p.b.hookSourcePaths, HookSourcePath{
+		Target: e.meta.Path, Event: w.event, HostOutput: state.hookOutput,
+		Steps: chain, Exclude: hookFunctionSpans(unit.View, root),
+	})
 	w.active[e.meta.Path] = true
 	next := w.commands(e, unit.View, root, state.child(), chain, false).resume(state)
 	delete(w.active, e.meta.Path)
 
 	return next, !partial
+}
+
+func (w *hookSourceWalk) canCheckBashFallback(e *entry, chain []report.SourceRef) bool {
+	// A captured executable text file with no shebang may be read as a shell
+	// script by an explicitly selected Bash. This models only that launch.
+	return w.bashFallback && len(chain) == 1 && e.meta.Executable && e.meta.Kind == report.FileKindText &&
+		!strings.HasPrefix(e.doc.Artifact().Content(), "#!")
 }
 
 func hasShellShebang(text string) bool {
@@ -844,6 +2044,7 @@ func hookSourceUnit(units []document.Unit) (document.Unit, bool) {
 func (w *hookSourceWalk) gap(ref report.SourceRef, code, message string) {
 	b := w.plugin.b
 	if len(b.hookSourceDiagnostics) >= b.r.Limits.References {
+		b.issue("hook_source_diagnostic_limit", "", "", report.OutcomePartial)
 		return
 	}
 

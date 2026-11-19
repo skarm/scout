@@ -27,6 +27,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxReplayWorkers = 8
+)
+
 const errorReplayDeadline = "replay_deadline"
 
 const (
@@ -129,7 +133,7 @@ func validate(ctx context.Context, scanner *scout.Scanner, input io.Reader, outp
 }
 
 func (o Options) validate() error {
-	if o.Workers < 1 || o.Workers > 8 || o.Timeout < time.Second || o.Timeout > time.Minute {
+	if o.Workers < 1 || o.Workers > maxReplayWorkers || o.Timeout < time.Second || o.Timeout > time.Minute {
 		return errors.New("replay workers must be 1..8 and timeout 1s..1m")
 	}
 
@@ -594,10 +598,16 @@ func writeCapturedFile(directory string, file capturedFile) error {
 		writeErr = io.ErrShortWrite
 	}
 
-	err = errors.Join(writeErr, out.Close())
+	info, statErr := out.Stat()
+
+	err = errors.Join(writeErr, statErr, out.Close())
 	if err != nil {
 		return err
 	}
 
-	return err
+	if !info.Mode().IsRegular() || (info.Mode()&0o111 != 0) != file.executable || info.Size() != int64(len(file.data)) {
+		return errors.New("filesystem cannot preserve captured file metadata")
+	}
+
+	return nil
 }

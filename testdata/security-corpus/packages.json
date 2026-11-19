@@ -72,6 +72,33 @@
       ]
     },
     {
+      "id": "shell-hook-eval-branch", "category": "shell_hooks", "label": "signal",
+      "source_id": "hook-source-tuning", "split": "tune", "expected_rules": ["SH003"],
+      "files": [
+        {"path":".claude-plugin/plugin.json","content":"{\"name\":\"shell-hook-eval-regression\"}"},
+        {"path":"hooks/hooks.json","content":"{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cd \\\"$CLAUDE_PLUGIN_ROOT\\\" && bash ./start.sh\"}]}]}}"},
+        {"path":"start.sh","content":"if [ -n \"$MODE\" ]; then eval 'printf %s ready'; fi\n"}
+      ]
+    },
+    {
+      "id": "shell-hook-generated-launch", "category": "shell_hooks", "label": "signal",
+      "source_id": "hook-source-tuning", "split": "tune", "expected_rules": ["SH005"],
+      "files": [
+        {"path":".claude-plugin/plugin.json","content":"{\"name\":\"shell-hook-generated-regression\"}"},
+        {"path":"hooks/hooks.json","content":"{\"hooks\":{\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cd \\\"$CLAUDE_PLUGIN_ROOT\\\" && bash ./start.sh\"}]}]}}"},
+        {"path":"start.sh","content":"cat >./message.sh <<'BODY'\nprintf '%s\\\\n' generated\nBODY\nbash ./message.sh\n"}
+      ]
+    },
+    {
+      "id": "shell-hook-bounded-read", "category": "shell_hooks", "label": "benign",
+      "source_id": "hook-source-tuning", "split": "tune", "expected_rules": [],
+      "files": [
+        {"path":".claude-plugin/plugin.json","content":"{\"name\":\"shell-hook-read-regression\"}"},
+        {"path":"hooks/hooks.json","content":"{\"hooks\":{\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cd \\\"$CLAUDE_PLUGIN_ROOT\\\" && bash ./start.sh\"}]}]}}"},
+        {"path":"start.sh","content":"count=$(printf '%s\\n' \"$lines\" | wc -l)\nwhile IFS= read -r line; do\n  [[ -z \"$line\" ]] && continue\n  if [[ $count -gt 1 ]]; then note=\"$line\"; fi\ndone <<<\"$lines\"\nprintf '%s' \"$note\"\n"}
+      ]
+    },
+    {
       "id": "holdout-static-gap", "category": "contextual_intent", "label": "known_static_gap",
       "source_id": "intent-holdout", "split": "holdout", "expected_rules": [],
       "files": [

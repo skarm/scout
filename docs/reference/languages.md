@@ -22,79 +22,27 @@ Unsupported constructs and unresolved flows remain gaps.
 
 ## Shell
 
-Scout also analyzes command handlers for supported events in `hooks.json`.
-It also accepts captured files with other names when the plugin manifest's
-`hooks` field resolves to them within the same package.
-It maps shell command strings and fixed `bash -c` or `sh -c` arguments, including
-the explicit `command` plus `args` form, back to the JSON bytes. Findings retain
-the hook event and physical file coordinates. An unresolved command string
-argument leaves a coverage diagnostic.
-For simple hook launches, Scout follows local `source` and `.` references within
-the captured package. Relative paths require a known working directory, such as
-after `cd "$PLUGIN_ROOT" &&`. Findings in sourced files retain their own source
-coordinates and a separate path with the hook event and include locations.
-Simple assignments and known working directories carry across a sourced file.
-After `if`/`elif`/`else`, the analyzer keeps values shared by all continuing
-branches. Findings inside a resolved local function also cite the call site.
-Dynamic paths, unknown directories, ambiguous functions, missing files, and
-cycles produce coverage diagnostics at the corresponding command.
+The bounded shell parser checks pipelines, assignments, redirects, substitutions and selected branches. `mvdan.cc/sh/v3/syntax` supplies command and source declarations. `SH001`–`SH004` cover download-to-execution, credentials in requests, execution capabilities and sensitive reads. Dynamic arguments and unsupported control flow leave coverage gaps.
 
-Bounded command trees cover pipelines, assignments, redirects and substitutions.
-`mvdan.cc/sh/v3/syntax` separately supplies command/source declarations.
-SH001–SH004 check download-to-execution, credentials in requests, eval/source/shell
-capabilities and sensitive reads. Selected curl/wget options and saved-file provenance
-are tracked. Dynamic arguments and unsupported control flow limit completeness.
+### Hooks and local handlers
 
-Scout reconstructs `cat` and `tee` heredoc writes to relative paths. Shell
-evidence comes from a `.sh` suffix, a shell shebang, or a later modeled use
-through a shell interpreter, `source`, `.`, or an explicit executable path.
-For direct execution of other filenames, an explicit non-shell shebang prevents
-shell recovery. This works in supported blocks, functions, pipelines with explicit
-stdin, and files captured from archives. The same shebang parser identifies the
-interpreter for ordinary files and generated scripts. It handles a fixed
-interpreter path and simple `env` or `env -S` forms. Scout also analyzes verified
-heredocs read directly by a shell on stdin, including an unchanged `cat | sh`
-pipeline. Scout resolves simple parameters from
-preceding, unambiguous assignments and analyzes up to four nested generations
-under shared limits. Findings retain byte and line coordinates in the
-enclosing captured file or archive member. Substituted text cites the parameter
-reference that produced it. Observed effects from functions, traps, PATH and
-command hash entries can make a writer's identity or its input uncertain.
-Scout evaluates statically resolved local function calls with the bindings and
-lookup state at each call site, including simple temporary assignments and known
-positional arguments such as `$1` and `${10}`. Later
-changes to `PATH` or `hash` do not affect an earlier resolved call. Uncalled
-functions and unresolved calls use conservative file-wide effects. Recursion,
-unresolved expansions, uncertain writers and exhausted limits leave coverage gaps.
+Scout reads supported hook events in `hooks.json`, local hook files referenced by plugin manifests, and Claude project settings in `.claude/settings.json` or `.claude/settings.local.json`. Claude project hooks can be inspected without a plugin manifest. Gemini hooks use `hooks/hooks.json` beside `gemini-extension.json`. [Claude Code hooks](https://code.claude.com/docs/en/hooks) · [Gemini CLI extensions](https://geminicli.com/docs/extensions/reference/)
 
-Recognizable shell writes with unresolved destinations, such as `"${name}.sh"`,
-report `generated_shell_dynamic_path`. Scout combines supported `>>` and
-`tee -a`/`--append` writes with the latest known complete version and maps each
-fragment to its own source bytes. An unknown base or intervening mutation leaves
-`generated_shell_append`. Diagnostics include the original line and column when
-available. Generic recovery gaps include a specific reason. A wholly unknown
-destination with no shell evidence remains outside this detection.
+The tracer follows fixed command strings, explicit interpreter arguments and resolved local launches, including `source` and `.`. It records the hook event, call or include path and original source bytes. Relative paths need a known working directory. Quoted host-root paths can resolve within the captured package. An unquoted root can produce a candidate with `hook_source_unquoted_root`; a Gemini substitution can also leave a gap when the installation path is unknown.
 
-The informational SH005 finding links a recovered write, its body and a later
-`source`, `.`, shell invocation or explicit executable path in the same modeled
-command sequence, including direct local function calls. The trace follows
-resolvable `cd` and simple `mv` renames between two local file paths. It uses the
-latest recovered write and preserves the original write, append, rename and use
-locations. For `if`/`elif`/`else`, a link survives when continuing branches agree
-on the working directory and the file's version and source. Long chains of
-appends and renames can exceed the trace limit while their contents are still
-analyzed. Unresolved directory changes, overwrites and commands with unknown
-effects invalidate earlier links. File paths are lexical and runtime file types,
-permissions and command success are unverified. Use an explicit path with
-`source` or `.` to avoid search-path ambiguity.
+Selected assignments, function calls, branches, loops, substitutions and numeric guards preserve statically known bindings. Ambiguous or dynamic commands, paths, interpreter operands, writes and lookup effects can leave a gap. Supported Bash or POSIX shell command text and PowerShell `-Command` are reported separately from file sourcing. `SH003` also records explicit `npm run` calls from captured hook sources.
+
+### Generated scripts
+
+Scout recovers supported `cat` and `tee` heredoc writes and verified shell stdin. A filename, shebang or modeled shell use can establish that content is shell code. Recovery follows up to four generations within shared limits. Findings map back to the enclosing file or archive member, including substituted text.
+
+`SH005` links a recovered write to a later shell use through supported appends, renames and working-directory changes. It also records supported redirects to `CLAUDE_ENV_FILE` in traced Claude hooks. An unresolved destination or append base can produce `generated_shell_dynamic_path` or `generated_shell_append`. Unknown effects can invalidate earlier links.
 
 ## JavaScript and TypeScript
 
-The full CGO build uses official Tree-sitter grammars. JS001–JS006 check shell APIs,
-dynamic evaluation, credentials in network arguments, dynamic SQL, sensitive files
-and disabled TLS verification. Analysis considers selected ESM/CommonJS aliases,
-destructuring, lexical shadowing, overwrites and branches.
-Unsupported control flow leaves gaps. Core/no-CGO builds report unavailable grammars.
+The full build uses the official Tree-sitter grammars. `JS001`–`JS006` check shell APIs, dynamic evaluation, credentials in network arguments, dynamic SQL, sensitive files and disabled TLS verification. Analysis considers selected ESM and CommonJS imports, aliases, destructuring, shadowing and branches. Unsupported flows leave coverage gaps. Core and non-CGO builds report unavailable grammars.
+
+If a hook resolves to captured source, Scout can link supported Node process calls to the hook. It can also analyze literal `node -e` and `python -c` programs or quoted Python heredocs. Findings cite the embedded program and its hook. Only selected isolated `python3 -I -S` programs, such as a literal JSON transformation with bounded inputs, can complete hook coverage statically. Dynamic module resolution and runtime behavior can leave gaps. [Node child processes](https://nodejs.org/api/child_process.html) · [Python command-line options](https://docs.python.org/3/using/cmdline.html#cmdoption-I)
 
 ## SQL
 

@@ -25,6 +25,17 @@ const (
 	MaxUploadBytes = 128 << 10
 )
 
+const (
+	defaultCallTimeout     = time.Minute
+	defaultConcurrentCalls = 2
+	maxCallTimeout         = 10 * time.Minute
+	maxConcurrentCalls     = 8
+	maxAuthorizedTargets   = 64
+	maxTargetKeyBytes      = 64
+	minBearerBytes         = 32
+	maxBearerBytes         = 512
+)
+
 // Options bounds MCP requests and authorizes named local targets independently
 // of tool arguments.
 type Options struct {
@@ -65,7 +76,7 @@ type session struct {
 // DefaultOptions returns bounded MCP settings with no authorized targets or
 // HTTP bearer secret.
 func DefaultOptions() Options {
-	return Options{Targets: map[string]string{}, Timeout: time.Minute, MaxConcurrent: 2}
+	return Options{Targets: map[string]string{}, Timeout: defaultCallTimeout, MaxConcurrent: defaultConcurrentCalls}
 }
 
 // New validates and copies authorized targets and transport settings. It
@@ -97,7 +108,7 @@ func New(scanner *scout.Scanner, gate *policy.Gate, o Options) (*Server, error) 
 }
 
 func (o Options) validate() error {
-	if o.Timeout <= 0 || o.Timeout > 10*time.Minute || o.MaxConcurrent < 1 || o.MaxConcurrent > 8 || len(o.Targets) > 64 {
+	if o.Timeout <= 0 || o.Timeout > maxCallTimeout || o.MaxConcurrent < 1 || o.MaxConcurrent > maxConcurrentCalls || len(o.Targets) > maxAuthorizedTargets {
 		return errors.New("invalid MCP server configuration")
 	}
 
@@ -112,7 +123,7 @@ func authorizedTargets(targets map[string]string) (map[string]string, error) {
 	copied := map[string]string{}
 
 	for k, p := range targets {
-		if !(textmatch.Token(k, 64, "_.-") && textmatch.Alnum(k[0])) || p == "" || strings.Contains(p, "://") {
+		if !(textmatch.Token(k, maxTargetKeyBytes, "_.-") && textmatch.Alnum(k[0])) || p == "" || strings.Contains(p, "://") {
 			return nil, errors.New("invalid authorized MCP target")
 		}
 
@@ -132,5 +143,5 @@ func newSession() *session {
 }
 
 func validHTTPToken(token string) bool {
-	return len(token) >= 32 && len(token) <= 512 && !strings.ContainsAny(token, "\r\n\t ")
+	return len(token) >= minBearerBytes && len(token) <= maxBearerBytes && !strings.ContainsAny(token, "\r\n\t ")
 }

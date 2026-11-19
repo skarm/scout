@@ -4,6 +4,12 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+
+	"github.com/skarm/scout/internal/netpolicy"
+)
+
+const (
+	maxAPIRequestBytes = 256 << 10
 )
 
 // PostJSON makes an explicitly authorized API call with the same DNS/address,
@@ -32,9 +38,9 @@ func PostJSON(ctx context.Context, endpoint string, body []byte, o Options) ([]b
 		return nil, fail("invalid_request")
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set(netpolicy.HeaderContentType, netpolicy.JSONMediaType)
+	req.Header.Set(netpolicy.HeaderAccept, netpolicy.JSONMediaType)
+	req.Header.Set(netpolicy.HeaderAcceptEncoding, netpolicy.IdentityEncoding)
 
 	data, err := downloadResponse(ctx, req, o)
 	if err != nil {
@@ -61,7 +67,7 @@ func (o Options) validateAPIRequest(bodyBytes int) error {
 		return fail("download_options_not_applicable")
 	}
 
-	if bodyBytes > 256<<10 {
+	if bodyBytes > maxAPIRequestBytes {
 		return fail("request_byte_limit")
 	}
 

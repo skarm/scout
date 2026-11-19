@@ -16,7 +16,10 @@ import (
 	"github.com/skarm/scout/internal/dev/provenance"
 )
 
-const maxSourceBytes = 8 << 20
+const (
+	sourceDownloadTimeout = 30 * time.Second
+	maxSourceBytes        = 8 << 20
+)
 
 type sourceArtifact struct {
 	Path, URL, SHA256 string
@@ -51,7 +54,7 @@ func verifyKnowledgeSources(ctx context.Context, o options, w io.Writer) error {
 	}
 
 	if *o.download {
-		if err := os.MkdirAll(o.get("cache"), 0o700); err != nil {
+		if err := os.MkdirAll(o.get("cache"), privateDirectoryMode); err != nil {
 			return err
 		}
 	}
@@ -131,7 +134,7 @@ func downloadSource(ctx context.Context, address string) ([]byte, error) {
 	req.Header.Set("User-Agent", "scout-knowledge-verifier")
 
 	client := &http.Client{
-		Timeout:       30 * time.Second,
+		Timeout:       sourceDownloadTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("source redirects are not permitted") },
 	}
 
@@ -191,7 +194,7 @@ func verifyCachedArtifact(ctx context.Context, id, cache string, item sourceArti
 	}
 
 	if missing && download {
-		if err := os.WriteFile(path, data, 0o600); err != nil { //nolint:gosec // G703: validated hexadecimal digest fixes the cache-relative filename.
+		if err := os.WriteFile(path, data, privateFileMode); err != nil { //nolint:gosec // G703: validated hexadecimal digest fixes the cache-relative filename.
 			return err
 		}
 	}

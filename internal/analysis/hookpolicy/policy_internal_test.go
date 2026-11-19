@@ -3,7 +3,6 @@ package hookpolicy
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -121,8 +120,8 @@ func TestClosedHookHandlerGrammar(t *testing.T) {
 		{name: "continueOnBlock", valid: `true`, invalid: `[]`},
 		{name: "timeout", valid: `0.25`, invalid: `0`},
 		{name: "timeout", valid: `1`, invalid: `-1`},
-		{name: "timeout", valid: `1`, invalid: `"1"`},
-		{name: "timeout", valid: `1`, invalid: `1e999`},
+		{name: "timeout", invalid: `"1"`},
+		{name: "timeout", invalid: `1e999`},
 		{name: "shell", valid: `"bash"`, invalid: `"zsh"`},
 		{name: "shell", valid: `"powershell"`, invalid: `1`},
 		{name: "allowedEnvVars", valid: `["TOKEN"]`, invalid: `[1]`},
@@ -135,11 +134,14 @@ func TestClosedHookHandlerGrammar(t *testing.T) {
 			if valid {
 				value = field.valid
 			}
-			t.Run(fmt.Sprint(field.name, value), func(t *testing.T) {
+			if value == "" {
+				continue
+			}
+			t.Run(field.name+"/"+value, func(t *testing.T) {
 				h := `{"type":"command","command":"echo hi","` + field.name + `":` + value + `}`
 				n := policyNode(t, `{"disableAllHooks":true,"hooks":{"SessionStart":[{"hooks":[`+h+`]}]}}`)
 				if got := validDisable(n); got != valid {
-					t.Fatalf("%s valid=%v", h, got)
+					t.Fatalf("handler %s: valid=%v, want %v", h, got, valid)
 				}
 			})
 		}

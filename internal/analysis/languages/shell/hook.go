@@ -58,9 +58,9 @@ func hookUploadWord(word *shellsyntax.Word, sensitiveFile func(string) bool) (st
 
 	for _, p := range word.Parts {
 		switch p.Kind {
-		case "literal":
+		case shellsyntax.PartLiteral:
 			b.WriteString(p.Text)
-		case "parameter":
+		case shellsyntax.PartParameter:
 			if p.Text != "HOME" || !symbolicHomePrefixes[b.String()] {
 				return "", false
 			}

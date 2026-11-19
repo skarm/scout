@@ -20,6 +20,15 @@ import (
 	"github.com/skarm/scout/knowledge"
 )
 
+const (
+	minProviderOutputTokens       = 128
+	minProviderResponseBytes      = 1024
+	maxCompletionModelBytes       = 256
+	maxCompletionFingerprintBytes = 256
+	maxReportedTokens             = 1 << 40
+	maxProviderOutputTokens       = 8192
+)
+
 // HTTPOptions selects one operator-approved Chat Completions compatible endpoint.
 // No provider discovery, redirects, ambient proxy, CLI authentication or fallback.
 // HTTP is allowed only to literal loopback addresses with explicit AllowLoopback.
@@ -89,6 +98,8 @@ type chatChoice struct {
 
 // NewHTTP validates an explicit endpoint and creates a bounded Chat
 // Completions transport without sending a request.
+const maxHTTPStatusCode = 599
+
 func NewHTTP(o HTTPOptions) (*HTTPProvider, error) {
 	u, err := validateHTTPOptions(o)
 	if err != nil {
@@ -111,7 +122,7 @@ func ErrorCode(err error) string {
 	if e, ok := errors.AsType[*TransportError](err); ok {
 		switch e.Code {
 		case "http_status":
-			if e.Status >= 100 && e.Status <= 599 {
+			if e.Status >= http.StatusContinue && e.Status <= maxHTTPStatusCode {
 				return "http_status_" + strconv.Itoa(e.Status)
 			}
 		case "redirect_refused", "http_failed", "dns_failed", "connection_failed", "address_not_permitted", "content_type", "content_encoding", "response_limit", "response_read_failed", "invalid_envelope", "ambiguous_envelope", "provider_error", "unexpected_choices", "incomplete_response", "refused", "tool_call_refused", "metadata_limit", "invalid_usage":
@@ -176,11 +187,11 @@ func (p *HTTPProvider) Complete(ctx context.Context, payload []byte) (Completion
 		return Completion{}, transportError("request_failed")
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set(netpolicy.HeaderContentType, netpolicy.JSONMediaType)
+	req.Header.Set(netpolicy.HeaderAccept, netpolicy.JSONMediaType)
 
 	if p.key != "" {
-		req.Header.Set("Authorization", "Bearer "+p.key)
+		req.Header.Set(netpolicy.HeaderAuthorization, netpolicy.BearerScheme+" "+p.key)
 	}
 
 	return p.completeChatRequest(ctx, req)
@@ -198,11 +209,11 @@ func (p *HTTPProvider) completeChatRequest(ctx context.Context, req *http.Reques
 // ValidateMetadata applies the shared passive provider metadata contract.
 // Output byte limits are selected separately by each caller.
 func (c Completion) ValidateMetadata() error {
-	if len(c.Model) > 256 || len(c.Fingerprint) > 256 {
+	if len(c.Model) > maxCompletionModelBytes || len(c.Fingerprint) > maxCompletionFingerprintBytes {
 		return transportError("metadata_limit")
 	}
 
-	if c.InputTokens < -1 || c.OutputTokens < -1 || c.InputTokens > 1<<40 || c.OutputTokens > 1<<40 {
+	if c.InputTokens < -1 || c.OutputTokens < -1 || c.InputTokens > maxReportedTokens || c.OutputTokens > maxReportedTokens {
 		return transportError("invalid_usage")
 	}
 
@@ -272,19 +283,19 @@ func (c chatChoice) validate() error {
 
 func validateHTTPOptions(o HTTPOptions) (*url.URL, error) {
 	if err := validateRanges([]optionRange{
-		{value: int64(o.Timeout), min: 1, max: int64(2 * time.Minute), message: "invalid_timeout"},
-		{value: int64(o.MaxOutputTokens), min: 128, max: 8192, message: "invalid_output_token_budget"},
-		{value: int64(o.MaxResponseBytes), min: 1024, max: jsonconfig.MaxBytes, message: "invalid_response_budget"},
+		{value: int64(o.Timeout), min: 1, max: int64(MaxReviewTimeout), message: "invalid_timeout"},
+		{value: int64(o.MaxOutputTokens), min: minProviderOutputTokens, max: maxProviderOutputTokens, message: "invalid_output_token_budget"},
+		{value: int64(o.MaxResponseBytes), min: minProviderResponseBytes, max: jsonconfig.MaxBytes, message: "invalid_response_budget"},
 	}); err != nil {
 		return nil, transportError(err.Error())
 	}
 
-	if len(o.Endpoint) > 2048 || !credentialBytes(o.APIKey, 0) {
+	if len(o.Endpoint) > maxProviderEndpointBytes || !credentialBytes(o.APIKey, 0) {
 		return nil, transportError("invalid_endpoint_or_authentication")
 	}
 
 	u, err := netpolicy.ParseURL(o.Endpoint, netpolicy.URLPolicy{
-		MaxBytes:      2048,
+		MaxBytes:      maxProviderEndpointBytes,
 		AllowLoopback: o.AllowLoopback,
 		RequirePath:   true,
 	})
@@ -349,7 +360,7 @@ func decodeChatCompletion(ctx context.Context, raw []byte) (Completion, error) {
 	// Reject duplicate/ambiguous JSON and malformed Unicode in the HTTP envelope.
 	root, parseErr := jsonconfig.Parse(ctx, string(raw))
 	if parseErr != nil {
-		return Completion{}, transportError("invalid_envelope")
+		return Completion{}, reviewJSONError(parseErr, transportError("invalid_envelope"))
 	}
 	// encoding/json accepts case-insensitive field aliases. Disallow ambiguous
 	// protocol fields even when their spellings differ only by case.
@@ -375,19 +386,19 @@ func decodeChatCompletion(ctx context.Context, raw []byte) (Completion, error) {
 }
 
 func chatEnvelopeAliases(root *jsonconfig.Node) bool {
-	if aliases(root, "model", "system_fingerprint", "error", "choices", "usage") {
+	if aliases(root, fieldModel, fieldSystemFingerprint, fieldError, fieldChoices, fieldUsage) {
 		return true
 	}
 
-	if choices := root.Get("choices"); choices != nil {
+	if choices := root.Get(fieldChoices); choices != nil {
 		for _, choice := range choices.Elements {
-			if aliases(choice, "index", "finish_reason", "message") || aliases(choice.Get("message"), "role", "content", "refusal", "tool_calls", "function_call") {
+			if aliases(choice, fieldIndex, fieldFinishReason, fieldMessage) || aliases(choice.Get(fieldMessage), fieldRole, fieldContent, fieldRefusal, fieldToolCalls, fieldFunctionCall) {
 				return true
 			}
 		}
 	}
 
-	return aliases(root.Get("usage"), "prompt_tokens", "completion_tokens")
+	return aliases(root.Get(fieldUsage), fieldPromptTokens, fieldCompletionTokens)
 }
 
 func transportError(code string) error { return &TransportError{Code: code} }

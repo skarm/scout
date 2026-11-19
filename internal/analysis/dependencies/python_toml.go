@@ -63,7 +63,7 @@ func (c *tomlCollector) add(pkg, version, kind string, n *jsonconfig.Node, indir
 	}
 }
 
-func (c *tomlCollector) requirement(n *jsonconfig.Node) {
+func (c *tomlCollector) requirement(n *jsonconfig.Node, sources pyprojectSources) {
 	s, ok := n.Text()
 	if !ok {
 		c.partial = true
@@ -79,7 +79,7 @@ func (c *tomlCollector) requirement(n *jsonconfig.Node) {
 	}
 
 	kind := report.VersionUnresolved
-	if m[2] == "==" && exactPyVersion.MatchString(m[3]) && len(m[0]) == len(s) {
+	if m[2] == "==" && exactPyVersion.MatchString(m[3]) && len(m[0]) == len(s) && sources.permits(m[1]) {
 		kind = report.VersionExactDeclaration
 	} else {
 		c.partial = true
@@ -88,7 +88,7 @@ func (c *tomlCollector) requirement(n *jsonconfig.Node) {
 	c.add(m[1], m[3], kind, n, false)
 }
 
-func (c *tomlCollector) list(n *jsonconfig.Node) {
+func (c *tomlCollector) list(n *jsonconfig.Node, sources pyprojectSources) {
 	if n == nil {
 		return
 	}
@@ -99,11 +99,11 @@ func (c *tomlCollector) list(n *jsonconfig.Node) {
 	}
 
 	for _, item := range n.Elements {
-		c.requirement(item)
+		c.requirement(item, sources)
 	}
 }
 
-func (c *tomlCollector) groupedLists(n *jsonconfig.Node) {
+func (c *tomlCollector) groupedLists(n *jsonconfig.Node, sources pyprojectSources) {
 	if n == nil {
 		return
 	}
@@ -114,16 +114,17 @@ func (c *tomlCollector) groupedLists(n *jsonconfig.Node) {
 	}
 
 	for _, member := range n.Members {
-		c.list(member.Value)
+		c.list(member.Value, sources)
 	}
 }
 
 func (c *tomlCollector) pyproject(root *jsonconfig.Node) {
+	sources := pyprojectSourcePolicy(c.ctx, root)
 	project := root.Get("project")
-	c.list(project.Get("dependencies"))
-	c.groupedLists(project.Get("optional-dependencies"))
-	c.groupedLists(root.Get("dependency-groups"))
-	c.list(root.Get("build-system").Get("requires"))
+	c.list(project.Get("dependencies"), sources)
+	c.groupedLists(project.Get("optional-dependencies"), sources)
+	c.groupedLists(root.Get("dependency-groups"), sources)
+	c.list(root.Get("build-system").Get("requires"), sources)
 	// Poetry constraints are not PEP 508 strings; retain unresolved coordinates.
 	for _, table := range []*jsonconfig.Node{root.Get("tool").Get("poetry").Get("dependencies"), root.Get("tool").Get("poetry").Get("dev-dependencies")} {
 		if table == nil {

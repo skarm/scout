@@ -37,7 +37,7 @@ type factIndex struct {
 func Build(ctx context.Context, surfaces []Surface, targets []report.TargetResult, limit int, operations uint64) report.EnvironmentReport {
 	b := builder{ctx: ctx, seen: map[string]bool{}, out: report.EnvironmentReport{
 		Schema: "scout.environment-analysis/v1", Completeness: report.Complete,
-		MaxObservations: min(limit, 4096), MaxOperations: min(operations, 100000),
+		MaxObservations: min(limit, report.MaxEnvironmentObservations), MaxOperations: min(operations, report.MaxEnvironmentOperations),
 		Observations: []report.EnvironmentObservation{}, Issues: []string{},
 		Limitations: []string{
 			"Only explicitly grouped local roots share this declaration space; ScanMany never groups targets automatically.",
@@ -83,13 +83,13 @@ func (b *builder) collect(facts []SurfaceFact, target string, index *factIndex) 
 
 		item := fact{SurfaceFact: f, target: target}
 		switch f.Kind {
-		case "tool_identifier", "mcp_identifier":
+		case report.EnvironmentToolIdentifier, report.EnvironmentMCPIdentifier:
 			if !b.identifiers(item, index) {
 				return false
 			}
 		case "sensitive_read", "network", "untrusted_input", "command_execution", "file_write", "infrastructure_mutation":
 			index.capabilities[f.Kind] = append(index.capabilities[f.Kind], item)
-		case "skill_reference":
+		case report.EnvironmentSkillReference:
 			index.links = append(index.links, item)
 		case "skill":
 			index.skills[item.target+"\x00"+item.Source.Path] = item
@@ -107,9 +107,9 @@ func (b *builder) identifiers(item fact, index *factIndex) bool {
 		}
 
 		if prior.target != item.target || prior.Source.Path != item.Source.Path {
-			kind := "tool_name_collision"
-			if item.Kind == "mcp_identifier" {
-				kind = "mcp_name_collision"
+			kind := report.EnvironmentToolNameCollision
+			if item.Kind == report.EnvironmentMCPIdentifier {
+				kind = report.EnvironmentMCPNameCollision
 			}
 
 			b.emit(kind, prior, item)
@@ -128,7 +128,7 @@ func (b *builder) relate(index factIndex) {
 		}
 
 		if target, ok := index.skills[link.target+"\x00"+link.Value]; ok {
-			b.emit("skill_reference", link, target)
+			b.emit(report.EnvironmentSkillReference, link, target)
 		}
 	}
 
@@ -149,7 +149,7 @@ func (b *builder) relateCapabilities(inputs, effects []fact) bool {
 			}
 
 			if input.target != effect.target || input.Scope != effect.Scope {
-				b.emit("capability_combination", input, effect)
+				b.emit(report.EnvironmentCapabilityCombination, input, effect)
 			}
 		}
 	}

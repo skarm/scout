@@ -16,8 +16,10 @@ import (
 const MaxJSONDepth = 64
 
 type jsonProgress struct {
-	depth, ordinal int
-	finished       bool
+	depth, ordinal   int
+	finished         bool
+	skipped          bool
+	skippedContainer bool
 }
 
 func jsonCandidate(name, data string) bool {
@@ -49,7 +51,7 @@ func extractJSON(o *operation) error {
 
 	state := jsonProgress{}
 
-	for {
+	for !state.finished {
 		if err := o.entry(); err != nil {
 			return err
 		}
@@ -58,20 +60,12 @@ func extractJSON(o *operation) error {
 
 		token, err := decoder.Token()
 		if errors.Is(err, io.EOF) {
-			if !state.finished {
-				return errFormat
-			}
-
-			return nil
+			return errFormat
 		}
 
 		if err != nil {
 			return err
 		}
-
-		if state.finished {
-			return errFormat
-		} // multiple top-level values are not one JSON document
 
 		end := int(decoder.InputOffset())
 
@@ -81,6 +75,19 @@ func extractJSON(o *operation) error {
 
 		state.ordinal++
 	}
+
+	// The document is complete at the final token. EOF or trailing
+	// whitespace does not consume a container entry.
+	if strings.Trim(text[decoder.InputOffset():], " \r\n\t") != "" {
+		return errFormat
+	}
+
+	if state.skipped {
+		o.skippedNonContainers = !state.skippedContainer
+		return errBudget
+	}
+
+	return o.b.ctx.Err()
 }
 
 func (s *jsonProgress) consume(o *operation, token any, span report.ByteRange, raw string) error {
@@ -93,7 +100,11 @@ func (s *jsonProgress) consume(o *operation, token any, span report.ByteRange, r
 			return err
 		}
 	case string:
-		if err = extractJSONString(o, value, s.ordinal, span, raw); err != nil {
+		err = extractJSONString(o, value, s.ordinal, span, raw)
+		if errors.Is(err, errBudget) {
+			s.skipped = true
+			s.skippedContainer = s.skippedContainer || mayDecodeContainer(value)
+		} else if err != nil {
 			return err
 		}
 

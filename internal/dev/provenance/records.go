@@ -42,18 +42,24 @@ type replayEvidence struct {
 type replayRow = replaywire.Record
 
 func walkJSONL(ctx context.Context, root string, artifact artifact, accept func([]byte) error) (string, error) {
-	if err := verifyArtifact(ctx, root, artifact); err != nil {
-		return "", err
-	}
+	var content string
 
-	file, err := openFile(root, artifact.Path)
+	err := readVerifiedArtifact(ctx, root, artifact, func(input io.Reader) error {
+		var err error
+
+		content, err = scanArtifactEvidence(input, strings.HasSuffix(artifact.Path, ".gz"), accept)
+
+		return err
+	})
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = file.Close() }() // The input file is read-only; read failures are handled separately.
 
-	var reader io.Reader = contextReader{ctx: ctx, reader: file}
-	if strings.HasSuffix(artifact.Path, ".gz") {
+	return content, nil
+}
+
+func scanArtifactEvidence(reader io.Reader, gzipInput bool, accept func([]byte) error) (string, error) {
+	if gzipInput {
 		compressed, err := gzip.NewReader(reader)
 		if err != nil {
 			return "", err

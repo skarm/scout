@@ -17,6 +17,11 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxBundleOperations = 100000
+	maxBundleBindings   = 1024
+)
+
 type (
 	analyzer = check.Analyzer
 	match    = check.Match
@@ -256,16 +261,19 @@ func (b *bundleAnalysis) beginEmbedded() bool {
 	return true
 }
 
-func (b *bundleAnalysis) step() bool {
-	if b.err != nil {
+func (b *bundleAnalysis) step() bool { return b.spend(1) }
+
+func (b *bundleAnalysis) spend(units int) bool {
+	if !b.stateReady() {
 		return false
 	}
 
-	b.operations++
-	if b.ctx.Err() != nil || b.operations > 100000 || !analysisbudget.Consume(b.ctx, 1) {
+	if units < 0 || units > maxBundleOperations-b.operations || !analysisbudget.Consume(b.ctx, uint64(units)) {
 		b.err = errors.New("captured bundle analysis budget exceeded")
 		return false
 	}
+
+	b.operations += units
 
 	return true
 }
@@ -329,7 +337,7 @@ func (b *bundleAnalysis) discover(docs []document.File) {
 		name := d.Artifact().Metadata().Path
 
 		addr, ok := b.addresses[name]
-		if !ok || !strings.EqualFold(path.Base(addr.Name), "SKILL.md") {
+		if !ok || !strings.EqualFold(path.Base(addr.Name), artifact.SkillManifest) {
 			continue
 		}
 

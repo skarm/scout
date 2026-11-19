@@ -6,11 +6,128 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/dev/evaluation"
+	"github.com/skarm/scout/report"
 )
+
+func TestMeasureShellHookSignalsMatchesReviewedBehavior(t *testing.T) {
+	corpus := packageCorpus()
+	corpus.Cases = nil
+	const launch = `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"cd \"$CLAUDE_PLUGIN_ROOT\" && bash ./start.sh"}]}]}}`
+	const generated = "cat > ./note.sh <<'NOTE'\n"
+	for _, example := range []struct {
+		id, label, command, helper, signal string
+	}{
+		{"sourced-data", "benign", "if [ -r ./message ]; then source ./message; fi\n", "printf ready\n", ""},
+		{"sourced-eval", "signal", "if [ -r ./message ]; then source ./message; fi\n", "#!/usr/bin/env bash\n\n    eval 'printf ready'\n", "eval"},
+		{"generated-script", "signal", generated + "printf ready\nNOTE\nbash ./note.sh\n", "", "generated_script_execution"},
+		{"generated-data", "benign", generated + "eval 'printf ready'\nNOTE\ncat ./note.sh\n", "", ""},
+		{"missing-source", "benign", "source ./missing\n", "", ""},
+		{"unsupported-execution", "benign", "for ((i=0; i<limit; i++)); do :; done\n", "", ""},
+	} {
+		files := []evaluation.File{
+			{Path: ".claude-plugin/plugin.json", Content: `{"name":"fixture"}`},
+			{Path: "hooks/hooks.json", Content: launch},
+			{Path: "start.sh", Content: example.command},
+			{Path: "unregistered.sh", Content: "eval 'printf unrelated'\n"},
+		}
+		if example.helper != "" {
+			files = append(files, evaluation.File{Path: "message", Content: example.helper})
+		}
+		corpus.Cases = append(corpus.Cases, evaluation.Case{
+			ID: example.id, Category: "shell_hooks", Label: example.label, SourceID: "source-a", Split: "holdout", Files: files,
+		})
+	}
+	data := encodeCorpus(t, corpus)
+	scanner := newScanner(t, offlineOptions())
+	r, err := evaluation.MeasureWithOptions(t.Context(), scanner, data, evaluation.Options{ShellHooks: true})
+	if err != nil || r.ShellHooks == nil || len(r.ShellHooks.Cases) != 6 || r.Overall.FalsePositiveBenign != 4 || r.Overall.Incomplete != 6 {
+		t.Fatalf("shell hook metrics or overall findings lost: %+v %v", r, err)
+	}
+	for i, want := range [][]string{{}, {"eval"}, {"generated_script_execution"}, {}, {}, {}} {
+		got := r.ShellHooks.Cases[i]
+		if got.ID != corpus.Cases[i].ID || !slices.Equal(got.Signals, want) {
+			t.Fatalf("case %s got %v, want %v", got.ID, got.Signals, want)
+		}
+	}
+	m := r.ShellHooks.Metrics
+	if m.DetectedPositive != 2 || m.FalsePositiveBenign != 0 || m.CompleteNegativeBenign != 2 || m.UnresolvedBenign != 2 || m.FalsePositiveRate != nil ||
+		!slices.Contains(r.ShellHooks.Cases[4].Gaps, "hook_source_not_captured") ||
+		!slices.Contains(r.ShellHooks.Cases[5].Gaps, "shell_unit:unsupported_syntax") {
+		t.Fatalf("incorrect shell-specific coverage: %+v", r.ShellHooks)
+	}
+}
+
+func TestMeasureStructuredShellFileArguments(t *testing.T) {
+	const launch = `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash","args":["--","${CLAUDE_PLUGIN_ROOT}/start.sh","${RUNTIME_VALUE}","message"]}]}]}}`
+	corpus := packageCorpus()
+	corpus.Cases = []evaluation.Case{{
+		ID: "structured-file-args", Category: "shell_hooks", Label: "benign", SourceID: "source-a", Split: "holdout",
+		Files: []evaluation.File{
+			{Path: ".claude-plugin/plugin.json", Content: `{"name":"fixture"}`},
+			{Path: "hooks/hooks.json", Content: launch},
+			{Path: "start.sh", Content: "source \"${CLAUDE_PLUGIN_ROOT}/$2\"\n"},
+			{Path: "message", Content: "printf ready\n"},
+		},
+	}}
+
+	r, err := evaluation.MeasureWithOptions(t.Context(), newScanner(t, offlineOptions()), encodeCorpus(t, corpus), evaluation.Options{ShellHooks: true})
+	if err != nil || r.ShellHooks == nil || len(r.ShellHooks.Cases) != 1 {
+		t.Fatalf("wrong shell-hook report: %+v %v", r.ShellHooks, err)
+	}
+
+	result := r.ShellHooks.Cases[0]
+	if result.Completeness != report.Complete || len(result.Signals) != 0 {
+		t.Fatalf("expected complete coverage of the captured file and its source: %+v", result)
+	}
+}
+
+func TestMeasureHookCommandText(t *testing.T) {
+	corpus := packageCorpus()
+	corpus.Cases = nil
+	const prefix = `{"hooks":{"SessionStart":[{"hooks":[{"type":"command",`
+
+	samples := []struct {
+		id, path, handler string
+		signal            bool
+	}{
+		{"shell", "hooks/hooks.json", `"command":"exec bash -c -- 'printf ready'"`, true},
+		{"argv", "hooks/hooks.json", `"command":"bash","args":["-c","printf ready"]`, true},
+		{"nohup", "hooks/hooks.json", `"command":"nohup sh -c 'printf ready' >/dev/null 2>&1 &"`, true},
+		{"powershell", "hooks/hooks.json", `"command":"powershell.exe -NoProfile -Command 'Write-Output ready'"`, true},
+		{"powershell-argv", "hooks/hooks.json", `"command":"pwsh","args":["-NoProfile","-Command","Write-Output ready"]`, true},
+		{"project-settings", ".claude/settings.json", `"command":"sh -c 'printf ready'"`, true},
+		{"ordinary-json", "settings.json", `"command":"sh -c 'printf ready'"`, false},
+		{"syntax-only", "hooks/hooks.json", `"command":"bash -c -n 'printf ready'"`, false},
+		{"file-operand", "hooks/hooks.json", `"command":"pwsh -File ready.ps1 -Command data"`, false},
+	}
+	for _, sample := range samples {
+		corpus.Cases = append(corpus.Cases, evaluation.Case{
+			ID: sample.id, Category: "shell_hooks", Label: "ambiguous", SourceID: "source-a", Split: "holdout",
+			Files: []evaluation.File{{Path: sample.path, Content: prefix + sample.handler + `}]}]}}`}},
+		})
+	}
+
+	r, err := evaluation.MeasureWithOptions(t.Context(), newScanner(t, offlineOptions()), encodeCorpus(t, corpus), evaluation.Options{ShellHooks: true})
+	if err != nil || r.ShellHooks == nil || len(r.ShellHooks.Cases) != len(samples) {
+		t.Fatalf("wrong shell-hook report: %+v %v", r.ShellHooks, err)
+	}
+
+	for i, result := range r.ShellHooks.Cases {
+		want := []string(nil)
+		if samples[i].signal {
+			want = []string{"shell_command_text"}
+		}
+
+		if !slices.Equal(result.Signals, want) {
+			t.Errorf("unexpected command text signals for %s: %v", result.ID, result.Signals)
+		}
+	}
+}
 
 func TestMeasurePackagesAndSelectSplit(t *testing.T) {
 	c := packageCorpus()

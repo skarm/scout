@@ -2,6 +2,7 @@ package frontend_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -285,10 +286,14 @@ func TestPythonLiteralProjection(t *testing.T) {
 		{source: `b'\400'`, want: "", bytes: false, ok: false},
 		{source: `'\xQ0'`, want: "", bytes: false, ok: false},
 	} {
-		t.Run(tc.source, func(t *testing.T) {
+		name := tc.source
+		if name == "" {
+			name = "empty_source"
+		}
+		t.Run(name, func(t *testing.T) {
 			v, b, ok := frontend.PythonLiteralForTest(tc.source)
 			if v != tc.want || b != tc.bytes || ok != tc.ok {
-				t.Fatalf("got %q,%v,%v", v, b, ok)
+				t.Fatalf("projection of %q = (%q, %v, %v); want (%q, %v, %v)", tc.source, v, b, ok, tc.want, tc.bytes, tc.ok)
 			}
 		})
 	}
@@ -367,4 +372,47 @@ func mustIRNode(t *testing.T, kind frontend.NodeKind, start, end int, fields ...
 
 func syn(kind, field string, start, end int, children ...*frontend.TestPythonSyntax) *frontend.TestPythonSyntax {
 	return &frontend.TestPythonSyntax{Kind: kind, Field: field, Start: start, End: end, Named: true, Children: children}
+}
+
+func TestPythonBinaryOperatorOptionalIRField(t *testing.T) {
+	for _, tc := range []struct{ text, op string }{
+		{`{"type":"BinOp","start":0,"end":3,"fields":{"left":null,"right":null}}`, ""},
+		{`{"type":"BinOp","start":0,"end":3,"fields":{"left":null,"right":null,"op":"%"}}`, "%"},
+	} {
+		var node frontend.Node
+		if err := json.Unmarshal([]byte(tc.text), &node); err != nil {
+			t.Fatal(err)
+		}
+		if node.String(frontend.Op) != tc.op {
+			t.Fatal("operator identity lost during decoding")
+		}
+		wire, err := json.Marshal(&node)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var again frontend.Node
+		if err := json.Unmarshal(wire, &again); err != nil || again.String(frontend.Op) != node.String(frontend.Op) {
+			t.Fatal("operator round trip changed", err)
+		}
+	}
+}
+
+func TestStarredBindingPreservesTheTarget(t *testing.T) {
+	const text = "*exec"
+	root := syn("module", "", 0, len(text), syn("list_splat_pattern", "", 0, len(text), syn("identifier", "", 1, len(text))))
+	module, err := frontend.NormalizePythonForTest(t.Context(), text, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(module.List(frontend.Body)) != 1 {
+		t.Fatal("binding missing from module")
+	}
+	node := module.List(frontend.Body)[0]
+	if node.Kind() != frontend.Starred || node.Start != 0 || node.End != len(text) {
+		t.Fatalf("starred target lost its shape or physical span: %+v", node)
+	}
+	name := node.Child(frontend.FieldValue)
+	if name.Kind() != frontend.Name || name.String(frontend.ID) != "exec" || name.Start != 1 || name.End != len(text) {
+		t.Fatalf("binding target lost: %+v", name)
+	}
 }

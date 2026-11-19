@@ -851,7 +851,11 @@ func TestClassifiedCacheExactnessFreshnessAndExport(t *testing.T) {
 			o.Enabled = true
 			o.Offline, _ = json.Marshal(cache)
 			r, err := Check(t.Context(), report.DependencyReport{Declarations: []report.Dependency{dep}}, o, at)
-			if err != nil || (len(r.Matches) == 1) != tc.wantMatch || (r.Completeness == report.Complete) != tc.complete {
+			wantMatches := 0
+			if tc.wantMatch {
+				wantMatches = 1
+			}
+			if err != nil || len(r.Matches) != wantMatches || (r.Completeness == report.Complete) != tc.complete {
 				t.Fatalf("classified query mismatch: %+v %v", r, err)
 			}
 			if !tc.wantMatch {

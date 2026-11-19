@@ -15,11 +15,20 @@ import (
 	"time"
 
 	"github.com/skarm/scout"
+	"github.com/skarm/scout/internal/analysis/check"
+	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/languages/javascript"
+	"github.com/skarm/scout/internal/analysis/languages/python"
+	"github.com/skarm/scout/internal/analysis/languages/shell"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
 )
 
-const MaxCorpusBytes = 8 << 20
+const (
+	upperLatencyPercentile = 95
+	percentileScale        = 100
+	MaxCorpusBytes         = 8 << 20
+)
 
 type Case struct {
 	ID            string   `json:"id"`
@@ -61,23 +70,31 @@ type counts struct {
 }
 type Metrics struct {
 	counts
-	SignalPrecision   *float64 `json:"signal_precision"`
-	SignalRecall      *float64 `json:"signal_recall"`
-	FalsePositiveRate *float64 `json:"false_positive_rate"`
+	SignalPrecision   *float64             `json:"signal_precision"`
+	SignalRecall      *float64             `json:"signal_recall"`
+	FalsePositiveRate *float64             `json:"false_positive_rate"`
+	ExpectedRules     *ExpectedRuleMetrics `json:"expected_rules,omitempty"`
+}
+type ExpectedRuleMetrics struct {
+	CasesMatched int     `json:"cases_matched"`
+	CasesMissed  int     `json:"cases_missed"`
+	MatchRate    float64 `json:"case_match_rate"`
 }
 type Result struct {
-	ID           string                `json:"id"`
-	Category     string                `json:"category"`
-	Label        string                `json:"label"`
-	Rules        []string              `json:"rules"`
-	Decision     string                `json:"decision"`
-	Completeness string                `json:"completeness"`
-	ScanFailed   bool                  `json:"scan_failed"`
-	DurationNS   int64                 `json:"duration_ns"`
-	SourceID     string                `json:"source_id,omitempty"`
-	Split        string                `json:"split,omitempty"`
-	Review       *ReviewResult         `json:"review,omitempty"`
-	Engine       report.EngineIdentity `json:"engine"`
+	ID                   string                `json:"id"`
+	Category             string                `json:"category"`
+	Label                string                `json:"label"`
+	Rules                []string              `json:"rules"`
+	ExpectedRulesMatched *bool                 `json:"expected_rules_matched,omitempty"`
+	Decision             string                `json:"decision"`
+	Completeness         string                `json:"completeness"`
+	ScanFailed           bool                  `json:"scan_failed"`
+	DurationNS           int64                 `json:"duration_ns"`
+	SourceID             string                `json:"source_id,omitempty"`
+	Split                string                `json:"split,omitempty"`
+	Review               *ReviewResult         `json:"review,omitempty"`
+	Engine               report.EngineIdentity `json:"engine"`
+	shellHookCase        ShellHookCase
 }
 type Report struct {
 	SchemaVersion int                   `json:"schema_version"`
@@ -98,6 +115,20 @@ type Report struct {
 	Limitations   []string              `json:"limitations"`
 	Gate          *GateResult           `json:"gate,omitempty"`
 	LabelReview   *LabelReviewSummary   `json:"label_review,omitempty"`
+	ShellHooks    *ShellHookReport      `json:"shell_hooks,omitempty"`
+}
+
+type ShellHookReport struct {
+	Metrics Metrics         `json:"metrics"`
+	Cases   []ShellHookCase `json:"cases"`
+	Root    *ShellHookRoots `json:"root_assumption,omitempty"`
+}
+
+type ShellHookCase struct {
+	ID           string              `json:"id"`
+	Signals      []string            `json:"observed_signals"`
+	Completeness report.Completeness `json:"completeness"`
+	Gaps         []string            `json:"gaps,omitempty"`
 }
 
 func Parse(data []byte) (Corpus, error) {
@@ -161,7 +192,16 @@ func MeasureWithOptions(ctx context.Context, scanner *scout.Scanner, data []byte
 		return Report{}, err
 	}
 
+	if plan.ShellHookRoot != (report.ShellHookRoot{}) {
+		return Report{}, errors.New("the default evaluation scanner cannot assume a shell hook root")
+	}
+
 	if err := options.validate(c); err != nil {
+		return Report{}, err
+	}
+
+	rootCases, err := options.shellHookRootCases(c, plan)
+	if err != nil {
 		return Report{}, err
 	}
 
@@ -200,6 +240,8 @@ func MeasureWithOptions(ctx context.Context, scanner *scout.Scanner, data []byte
 		r.Limitations = append(r.Limitations, "Label review binds exact corpus bytes and explicit reviewer trust. Reviewer identity, independence and label correctness remain operator declarations, not authenticated facts.")
 	}
 
+	r.configureShellHookReport(options)
+
 	durations := make([]int64, 0)
 	defer func() { r.finish(durations) }()
 
@@ -218,25 +260,18 @@ func MeasureWithOptions(ctx context.Context, scanner *scout.Scanner, data []byte
 			return r, err
 		}
 
-		result, err := measureCase(ctx, scanner, gate, tc, options.Reviewer)
+		caseScanner := scanner
+		if rootCases[tc.ID] {
+			caseScanner = options.ShellHookRootScanner
+		}
+
+		result, err := measureCase(ctx, caseScanner, gate, tc, options.Reviewer)
 		if err != nil {
 			return r, err
 		}
 
-		r.Results = append(r.Results, result)
+		r.addCase(tc, result)
 		durations = append(durations, result.DurationNS)
-
-		add(&r.Overall, result)
-		m := r.Categories[tc.Category]
-		add(&m, result)
-		r.Categories[tc.Category] = m
-		m = r.Splits[tc.Split]
-		add(&m, result)
-
-		r.Splits[tc.Split] = m
-		if r.LLM != nil {
-			r.LLM.add(result)
-		}
 	}
 
 	err = ctx.Err()
@@ -245,10 +280,57 @@ func MeasureWithOptions(ctx context.Context, scanner *scout.Scanner, data []byte
 	return r, err
 }
 
+func (r *Report) configureShellHookReport(o Options) {
+	if !o.ShellHooks {
+		return
+	}
+
+	r.ShellHooks = &ShellHookReport{Cases: []ShellHookCase{}}
+	r.Limitations = append(r.Limitations, "Shell hook metrics count observed eval, shell command text and generated script execution linked to captured hooks. Coverage is scoped to those hooks and checks. A benign case without a signal stays unresolved if this scope is incomplete.")
+
+	if o.ShellHookRoots != nil {
+		root := *o.ShellHookRoots
+		root.Cases = slices.Clone(root.Cases)
+		r.ShellHooks.Root = &root
+		r.Limitations = append(r.Limitations, "Selected simple hook commands assume the stated plugin host and shell-safe plugin root. Their coverage does not generalize to other launch environments.")
+
+		if root.LCAll != "" {
+			r.Limitations = append(r.Limitations, "The stated LC_ALL is an additional assumption at entry to the first captured hook script.")
+		}
+	}
+}
+
+func (r *Report) addCase(tc Case, result Result) {
+	r.Results = append(r.Results, result)
+
+	add(&r.Overall, result)
+	m := r.Categories[tc.Category]
+	add(&m, result)
+	r.Categories[tc.Category] = m
+	m = r.Splits[tc.Split]
+	add(&m, result)
+
+	r.Splits[tc.Split] = m
+	if r.ShellHooks != nil && tc.Category == "shell_hooks" {
+		r.ShellHooks.Cases = append(r.ShellHooks.Cases, result.shellHookCase)
+		add(&r.ShellHooks.Metrics, Result{
+			Label: result.Label, Rules: result.shellHookCase.Signals, Completeness: string(result.shellHookCase.Completeness),
+		})
+	}
+
+	if r.LLM != nil {
+		r.LLM.add(result)
+	}
+}
+
 func (r *Report) finish(durations []int64) {
 	finish(&r.Overall)
 	finishGroups(r.Categories)
 	finishGroups(r.Splits)
+
+	if r.ShellHooks != nil {
+		finish(&r.ShellHooks.Metrics)
+	}
 
 	if r.LLM != nil {
 		r.LLM.finish()
@@ -257,11 +339,23 @@ func (r *Report) finish(durations []int64) {
 	if len(durations) > 0 {
 		slices.Sort(durations)
 		r.P50NS = durations[(len(durations)-1)/2]
-		r.P95NS = durations[(95*len(durations)+99)/100-1]
+		r.P95NS = durations[(upperLatencyPercentile*len(durations)+percentileScale-1)/percentileScale-1]
 	}
 }
 
 func add(m *Metrics, r Result) {
+	if r.ExpectedRulesMatched != nil {
+		if m.ExpectedRules == nil {
+			m.ExpectedRules = &ExpectedRuleMetrics{}
+		}
+
+		if *r.ExpectedRulesMatched {
+			m.ExpectedRules.CasesMatched++
+		} else {
+			m.ExpectedRules.CasesMissed++
+		}
+	}
+
 	incomplete := r.ScanFailed || r.Completeness != string(report.Complete)
 	if incomplete {
 		m.Incomplete++
@@ -289,6 +383,10 @@ func add(m *Metrics, r Result) {
 }
 
 func finish(m *Metrics) {
+	if expected := m.ExpectedRules; expected != nil {
+		expected.MatchRate = float64(expected.CasesMatched) / float64(expected.CasesMatched+expected.CasesMissed)
+	}
+
 	if n := m.DetectedPositive + m.FalsePositiveBenign; n > 0 {
 		v := float64(m.DetectedPositive) / float64(n)
 		m.SignalPrecision = &v
@@ -338,9 +436,77 @@ func scanCase(ctx context.Context, scanner *scout.Scanner, gate *policy.Gate, tc
 		}
 	}
 
+	if tc.Category == "shell_hooks" {
+		result.shellHookCase = ShellHookCase{
+			ID: tc.ID, Signals: shellHookSignals(analysis.Findings), Completeness: report.Partial,
+			Gaps: []string{"hook_coverage_unavailable"},
+		}
+		if coverage := analysis.Coverage.ShellHooks; coverage != nil && usableHookCoverage(ctx, run, scanErr) {
+			result.shellHookCase.Completeness = coverage.Completeness
+			result.shellHookCase.Gaps = coverage.Gaps
+		}
+	}
+
 	sort.Strings(result.Rules)
 
+	if len(tc.ExpectedRules) > 0 {
+		matched := !slices.ContainsFunc(tc.ExpectedRules, func(rule string) bool {
+			_, found := slices.BinarySearch(result.Rules, rule)
+			return !found
+		})
+		result.ExpectedRulesMatched = &matched
+	}
+
 	return result, analysis.Semantic
+}
+
+func usableHookCoverage(ctx context.Context, run report.Run, err error) bool {
+	if ctx.Err() != nil || run.Digest == "" || len(run.Targets) != 1 || (err != nil && !errors.Is(err, scout.ErrIncomplete)) {
+		return false
+	}
+
+	state := run.Targets[0].State
+
+	return state == report.RunComplete || state == report.RunIncomplete
+}
+
+func shellHookSignals(findings []report.Finding) []string {
+	var eval, commandText, generated bool
+
+	for _, finding := range findings {
+		if finding.Location.HookEvent == "" && len(finding.HookSources) == 0 {
+			continue
+		}
+
+		switch finding.RuleID {
+		case shell.HookEvalRule:
+			// A reconstructed body may never run. The execution check records
+			// a signal when there is a matching launch of that generated script.
+			if finding.Location.Structure != document.OriginGeneratedShell {
+				eval = eval || slices.Contains(finding.ContextSignals, check.ShellEval)
+				commandText = commandText || slices.Contains(finding.ContextSignals, check.ShellCommandText)
+			}
+		case shell.HookGeneratedExecutionRule:
+			generated = true
+		case javascript.HookShellCommandRule, python.HookShellCommandRule:
+			commandText = commandText || slices.Contains(finding.ContextSignals, check.ShellCommandText)
+		}
+	}
+
+	signals := []string{}
+	if eval {
+		signals = append(signals, "eval")
+	}
+
+	if commandText {
+		signals = append(signals, "shell_command_text")
+	}
+
+	if generated {
+		signals = append(signals, "generated_script_execution")
+	}
+
+	return signals
 }
 
 func finishGroups(groups map[string]Metrics) {

@@ -15,6 +15,26 @@ import (
 
 type sqlCheck struct{ id string }
 
+const (
+	keywordWhere                           = "WHERE"
+	keywordGrant                           = "GRANT"
+	keywordSet                             = "SET"
+	keywordPragma                          = "PRAGMA"
+	keywordCopy                            = "COPY"
+	keywordTo                              = "TO"
+	keywordFrom                            = "FROM"
+	keywordSession                         = "SESSION"
+	keywordLocal                           = "LOCAL"
+	keywordGlobal                          = "GLOBAL"
+	keywordPersist                         = "PERSIST"
+	keywordPersistOnly                     = "PERSIST_ONLY"
+	keywordStatementTimeout                = "STATEMENT_TIMEOUT"
+	keywordLockTimeout                     = "LOCK_TIMEOUT"
+	keywordIdleInTransactionSessionTimeout = "IDLE_IN_TRANSACTION_SESSION_TIMEOUT"
+	keywordMaxExecutionTime                = "MAX_EXECUTION_TIME"
+	keywordBusyTimeout                     = "BUSY_TIMEOUT"
+)
+
 func (a sqlCheck) Rule() report.Rule {
 	title, category := "", ""
 
@@ -97,7 +117,7 @@ func (a sqlCheck) Find(ctx context.Context, f document.File, budget int) (result
 }
 
 func (a sqlCheck) matches(ts []sqlsyntax.Token) bool {
-	if len(ts) == 0 || ts[0].Kind != "word" {
+	if len(ts) == 0 || ts[0].Kind != sqlsyntax.KindWord {
 		return false
 	}
 
@@ -118,50 +138,167 @@ func (a sqlCheck) matches(ts []sqlsyntax.Token) bool {
 }
 
 func sqlDestructive(command string, ts []sqlsyntax.Token) bool {
-	if command == "TRUNCATE" || command == "DROP" {
+	if command == sqlsyntax.KeywordTruncate || command == sqlsyntax.KeywordDrop {
 		return true
 	}
 
-	if command == "DELETE" || command == "UPDATE" {
-		return !sqlWords(ts, "WHERE")
+	if command == sqlsyntax.KeywordDelete || command == sqlsyntax.KeywordUpdate {
+		return !sqlOuterWhere(ts)
 	}
 
-	return command == "WITH" && (sqlWords(ts, "DELETE") || sqlWords(ts, "UPDATE"))
+	return command == sqlsyntax.KeywordWith && (sqlWords(ts, sqlsyntax.KeywordDelete) || sqlWords(ts, sqlsyntax.KeywordUpdate))
+}
+
+func sqlOuterWhere(ts []sqlsyntax.Token) bool {
+	depth := 0
+
+	for _, tok := range ts {
+		switch tok.Kind {
+		case sqlsyntax.KindPunctuation:
+			switch tok.Text {
+			case "(":
+				depth++
+			case ")":
+				depth--
+			}
+		case sqlsyntax.KindWord:
+			if depth == 0 && tok.Text == keywordWhere {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func sqlAuthority(command string, ts []sqlsyntax.Token) bool {
-	if command == "ALTER" || command == "CREATE" {
+	if command == sqlsyntax.KeywordAlter || command == sqlsyntax.KeywordCreate {
 		return sqlWords(ts, "SUPERUSER") || sqlWords(ts, "BYPASSRLS") || sqlWords(ts, "SECURITY", "DEFINER") || sqlWords(ts, "DISABLE", "ROW", "LEVEL", "SECURITY")
 	}
 
-	if command == "GRANT" {
+	if command == keywordGrant {
 		return sqlWords(ts, "ALL") || sqlWords(ts, "PUBLIC") || sqlWords(ts, "SUPERUSER")
 	}
 
-	return command == "SET" && sqlWords(ts, "ROW_SECURITY") && sqlDisabled(ts)
-}
-
-func sqlExternalIO(command string, ts []sqlsyntax.Token) bool {
-	if command == "COPY" && (sqlWords(ts, "PROGRAM") || sqlFileCopy(ts)) {
-		return true
-	}
-
-	return sqlCall(ts, "PG_READ_FILE") || sqlCall(ts, "PG_READ_BINARY_FILE") || sqlCall(ts, "LO_EXPORT") || sqlWords(ts, "EXEC", "XP_CMDSHELL") || sqlWords(ts, "EXECUTE", "XP_CMDSHELL") || sqlWords(ts, "INTO", "OUTFILE") || sqlCall(ts, "LOAD_FILE") || sqlWords(ts, "LOAD", "DATA", "INFILE")
-}
-
-func sqlExecutionLimits(command string, ts []sqlsyntax.Token) bool {
-	if command != "SET" && command != "PRAGMA" {
+	if command != keywordSet {
 		return false
 	}
 
-	setting := sqlWords(ts, "STATEMENT_TIMEOUT") || sqlWords(ts, "LOCK_TIMEOUT") || sqlWords(ts, "IDLE_IN_TRANSACTION_SESSION_TIMEOUT") || sqlWords(ts, "MAX_EXECUTION_TIME") || sqlWords(ts, "BUSY_TIMEOUT")
+	name, disabled := sqlDisabledAssignment(command, ts[1:])
 
-	return setting && sqlDisabled(ts)
+	return name == "ROW_SECURITY" && disabled
+}
+
+func sqlExternalIO(command string, ts []sqlsyntax.Token) bool {
+	if command == keywordCopy && (sqlWords(ts, "PROGRAM") || sqlFileCopy(ts)) {
+		return true
+	}
+
+	return sqlCall(ts, "PG_READ_FILE") || sqlCall(ts, "PG_READ_BINARY_FILE") || sqlCall(ts, "LO_EXPORT") || sqlWords(ts, sqlsyntax.KeywordExec, "XP_CMDSHELL") || sqlWords(ts, sqlsyntax.KeywordExecute, "XP_CMDSHELL") || sqlWords(ts, "INTO", "OUTFILE") || sqlCall(ts, "LOAD_FILE") || sqlWords(ts, "LOAD", "DATA", "INFILE")
+}
+
+func sqlExecutionLimits(command string, ts []sqlsyntax.Token) bool {
+	if command != keywordSet && command != keywordPragma {
+		return false
+	}
+
+	// MySQL permits several assignments in one SET. A value from a different
+	// assignment, or from a nested expression, cannot disable this setting.
+	start, depth := 1, 0
+
+	for i := 1; i < len(ts); i++ {
+		if ts[i].Kind != sqlsyntax.KindPunctuation {
+			continue
+		}
+
+		switch ts[i].Text {
+		case "(":
+			depth++
+		case ")":
+			depth--
+		case ",":
+			if depth == 0 {
+				if sqlLimitAssignment(command, ts[start:i]) {
+					return true
+				}
+
+				start = i + 1
+			}
+		}
+	}
+
+	return sqlLimitAssignment(command, ts[start:])
+}
+
+func sqlLimitAssignment(command string, ts []sqlsyntax.Token) bool {
+	name, disabled := sqlDisabledAssignment(command, ts)
+	return sqlLimitName(name) && disabled
+}
+
+func sqlDisabledAssignment(command string, ts []sqlsyntax.Token) (string, bool) {
+	ts = sqlSettingTarget(command, ts)
+	if len(ts) < 3 || ts[0].Kind != sqlsyntax.KindWord {
+		return "", false
+	}
+
+	value := ts[2:]
+	switch {
+	case ts[1].Kind == sqlsyntax.KindPunctuation && ts[1].Text == "=":
+	case ts[1].Kind == sqlsyntax.KindWord && ts[1].Text == keywordTo:
+	case ts[1].Text == ":" && len(value) > 0 && value[0].Text == "=":
+		value = value[1:]
+	case command == keywordPragma && ts[1].Text == "(" && ts[len(ts)-1].Text == ")":
+		value = value[:len(value)-1]
+	default:
+		return "", false
+	}
+	// Only an isolated disabled literal is proven here. In particular, a zero
+	// operand in an unevaluated expression is not its resulting value.
+	for len(value) >= 3 && value[0].Text == "(" && value[len(value)-1].Text == ")" {
+		value = value[1 : len(value)-1]
+	}
+
+	if len(value) == 2 && (value[0].Text == "+" || value[0].Text == "-") && value[1].Kind == sqlsyntax.KindWord && value[1].Text == "0" {
+		value = value[1:]
+	}
+
+	return ts[0].Text, len(value) == 1 && sqlDisabled(value)
+}
+
+func sqlSettingTarget(command string, ts []sqlsyntax.Token) []sqlsyntax.Token {
+	if command == keywordPragma && len(ts) >= 2 && ts[1].Text == "." {
+		ts = ts[2:]
+	}
+
+	if len(ts) > 0 && ts[0].Kind == sqlsyntax.KindWord {
+		switch ts[0].Text {
+		case keywordSession, keywordLocal, keywordGlobal, keywordPersist, keywordPersistOnly:
+			ts = ts[1:]
+		}
+	}
+
+	if len(ts) >= 2 && ts[0].Text == "@" && ts[1].Text == "@" {
+		ts = ts[2:]
+		if len(ts) >= 2 && ts[1].Text == "." {
+			ts = ts[2:]
+		}
+	}
+
+	return ts
+}
+
+func sqlLimitName(name string) bool {
+	switch name {
+	case keywordStatementTimeout, keywordLockTimeout, keywordIdleInTransactionSessionTimeout, keywordMaxExecutionTime, keywordBusyTimeout:
+		return true
+	default:
+		return false
+	}
 }
 
 func sqlCall(ts []sqlsyntax.Token, name string) bool {
 	for i, t := range ts {
-		if t.Kind == "word" && t.Text == name && i+1 < len(ts) && ts[i+1].Kind == "punctuation" && ts[i+1].Text == "(" {
+		if t.Kind == sqlsyntax.KindWord && t.Text == name && i+1 < len(ts) && ts[i+1].Kind == sqlsyntax.KindPunctuation && ts[i+1].Text == "(" {
 			return true
 		}
 	}
@@ -173,7 +310,7 @@ func sqlWords(ts []sqlsyntax.Token, words ...string) bool {
 	for i := 0; i+len(words) <= len(ts); i++ {
 		matched := true
 		for j, word := range words {
-			matched = matched && ts[i+j].Kind == "word" && ts[i+j].Text == word
+			matched = matched && ts[i+j].Kind == sqlsyntax.KindWord && ts[i+j].Text == word
 		}
 
 		if matched {
@@ -186,7 +323,7 @@ func sqlWords(ts []sqlsyntax.Token, words ...string) bool {
 
 func sqlDisabled(ts []sqlsyntax.Token) bool {
 	for _, t := range ts {
-		if (t.Kind == "word" || t.Kind == "string") && (t.Text == "0" || strings.EqualFold(t.Text, "off") || strings.EqualFold(t.Text, "unlimited") || t.Text == "0ms" || t.Text == "0s") {
+		if (t.Kind == sqlsyntax.KindWord || t.Kind == sqlsyntax.KindString) && (t.Text == "0" || strings.EqualFold(t.Text, "off") || strings.EqualFold(t.Text, "unlimited") || t.Text == "0ms" || t.Text == "0s") {
 			return true
 		}
 	}
@@ -196,7 +333,7 @@ func sqlDisabled(ts []sqlsyntax.Token) bool {
 
 func sqlFileCopy(ts []sqlsyntax.Token) bool {
 	for i, t := range ts {
-		if i+1 < len(ts) && t.Kind == "word" && (t.Text == "TO" || t.Text == "FROM") && ts[i+1].Kind == "string" {
+		if i+1 < len(ts) && t.Kind == sqlsyntax.KindWord && (t.Text == keywordTo || t.Text == keywordFrom) && ts[i+1].Kind == sqlsyntax.KindString {
 			return true
 		}
 	}

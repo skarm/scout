@@ -10,6 +10,11 @@ import (
 	"github.com/skarm/scout/internal/textmatch"
 )
 
+const (
+	maxEnvironmentNameBytes = 128
+	maxCredentialBytes      = 8192
+)
+
 // ProviderSpec is operator configuration before credentials are resolved. It is
 // safe to copy and patch; it never contains credentials or an HTTP client.
 type ProviderSpec struct {
@@ -42,14 +47,19 @@ type ProviderSpec struct {
 	MaxResponseBytes int
 }
 
+const (
+	defaultOutputTokens      = 2048
+	maxProviderEndpointBytes = 2048
+)
+
 // DefaultProviderSpec returns credential-free Chat Completions defaults with
 // bounded response and timeout settings.
 func DefaultProviderSpec() ProviderSpec {
 	return ProviderSpec{
 		Kind:             ProviderChatCompletions,
-		Timeout:          DefaultOptions().Timeout,
-		MaxOutputTokens:  2048,
-		MaxResponseBytes: DefaultOptions().MaxResponseBytes,
+		Timeout:          defaultReviewTimeout,
+		MaxOutputTokens:  defaultOutputTokens,
+		MaxResponseBytes: defaultReviewResponseBytes,
 	}
 }
 
@@ -158,7 +168,7 @@ func (s ProviderSpec) credentials(o *MessagesOptions, lookup func(string) (strin
 	return err
 }
 
-func environmentName(name string) bool { return textmatch.Identifier(name, 128) }
+func environmentName(name string) bool { return textmatch.Identifier(name, maxEnvironmentNameBytes) }
 
 func readCredential(name string, lookup func(string) (string, bool)) (string, error) {
 	if !environmentName(name) || lookup == nil {
@@ -174,5 +184,5 @@ func readCredential(name string, lookup func(string) (string, bool)) (string, er
 }
 
 func credentialBytes(value string, minimum int) bool {
-	return len(value) >= minimum && len(value) <= 8192 && !strings.ContainsAny(value, "\r\n\x00")
+	return len(value) >= minimum && len(value) <= maxCredentialBytes && !strings.ContainsAny(value, "\r\n\x00")
 }

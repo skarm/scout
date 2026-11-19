@@ -15,6 +15,10 @@ import (
 	"github.com/skarm/scout/internal/dev/replay"
 )
 
+const (
+	defaultReplayCaseTimeout = 5 * time.Second
+)
+
 type replayInvocation struct {
 	input, destination string
 	analyzerWorkers    int
@@ -79,7 +83,7 @@ func parseReplay(args []string, diag io.Writer) (replayInvocation, error) {
 	input := fs.String("input", "", "saved captured JSONL or JSONL.gz")
 	destination := fs.String("output", "", "atomic result JSONL destination")
 	workers := fs.Int("workers", 6, "parallel captured inputs, 1..8")
-	timeout := fs.Duration("case-timeout", 5*time.Second, "per input timeout, 1s..1m")
+	timeout := fs.Duration("case-timeout", defaultReplayCaseTimeout, "per input timeout, 1s..1m")
 
 	analyzerWorkers := fs.Int("analyzer-workers", 1, "workers in each scan")
 	if err := fs.Parse(args); err != nil {

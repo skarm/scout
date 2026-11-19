@@ -17,6 +17,12 @@ import (
 	yrx "github.com/VirusTotal/yara-x/go"
 )
 
+const (
+	maxCompilerWarnings      = 32
+	maxCompiledRules         = 2048
+	maxNativeAssessedMatches = 4096
+)
+
 type nativeEngine struct {
 	rules     *yrx.Rules
 	scanner   *yrx.Scanner
@@ -52,7 +58,7 @@ func compileRules(ctx context.Context, source string) (compiledEngine, error) {
 		return nil, e
 	}
 
-	compiler, e := yrx.NewCompiler(yrx.EnableIncludes(false), yrx.BanModule("console", "disabled module", "console output is forbidden in a security scanner"), yrx.MaxWarnings(32), yrx.Globals(map[string]any{longBase64Global: false}))
+	compiler, e := yrx.NewCompiler(yrx.EnableIncludes(false), yrx.BanModule("console", "disabled module", "console output is forbidden in a security scanner"), yrx.MaxWarnings(maxCompilerWarnings), yrx.Globals(map[string]any{longBase64Global: false}))
 	if e != nil {
 		return nil, errors.New("YARA-X compiler initialization failed")
 	}
@@ -84,7 +90,7 @@ func buildNativeRules(compiler *yrx.Compiler) (*yrx.Rules, error) {
 		return nil, errors.New("YARA-X did not build rules")
 	}
 
-	if rules.Count() > 2048 {
+	if rules.Count() > maxCompiledRules {
 		rules.Destroy()
 		return nil, errors.New("YARA-X compiled rule limit")
 	}
@@ -208,7 +214,7 @@ func collectNativeRules(rules []*yrx.Rule, source nativeSource) ([]Match, bool, 
 	truncated := false
 
 	for _, rule := range rules {
-		if len(matches) >= 32 {
+		if len(matches) >= maxSignatureMatches {
 			return matches, true, nil
 		}
 
@@ -318,7 +324,7 @@ func (s nativeSource) promptIdentifiers(patterns []yrx.Pattern) (map[string]bool
 	for _, pattern := range patterns {
 		for _, hit := range pattern.Matches() {
 			count++
-			if count > 4096 {
+			if count > maxNativeAssessedMatches {
 				return identifiers, true, nil
 			}
 

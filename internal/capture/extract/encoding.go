@@ -3,6 +3,7 @@ package extract
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net/url"
 	"path"
@@ -11,6 +12,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/skarm/scout/report"
+)
+
+const (
+	maxDataURIHeaderBytes = 1024
+	minBase64Characters   = 48
 )
 
 //nolint:gochecknoglobals // Read-only format dispatch and encoding grammar shared by extraction runs.
@@ -134,7 +140,13 @@ func wholeBase64(data string) bool {
 		return false
 	}
 
-	count := 0
+	var (
+		last     [4]byte
+		count    int
+		padding  int
+		standard bool
+		url      bool
+	)
 
 	for i := 0; i < len(data); i++ {
 		c := data[i]
@@ -146,10 +158,36 @@ func wholeBase64(data string) bool {
 			return false
 		}
 
+		if c == '=' {
+			padding++
+		} else if padding != 0 {
+			return false
+		}
+
+		standard = standard || c == '+' || c == '/'
+		url = url || c == '-' || c == '_'
+		last[count%len(last)] = c
 		count++
 	}
+
 	// Short identifiers and ordinary words should not become decoding candidates.
-	return count >= 48
+	if count < minBase64Characters || padding > 2 || standard && url {
+		return false
+	}
+
+	// Validate the last quantum strictly. All preceding quanta have a
+	// single alphabet and no padding. An explicit .b64 file or data URI
+	// still reports malformed content as an extraction failure.
+	size := count % len(last)
+	if size == 0 {
+		size = len(last)
+	}
+
+	var decoded [3]byte
+
+	_, err := base64Encoding(url, padding > 0).Decode(decoded[:], last[:size])
+
+	return err == nil
 }
 
 func extractBase64(o *operation) error {
@@ -173,6 +211,8 @@ func extractBase64(o *operation) error {
 }
 
 func extractDataURIs(o *operation, data string) error {
+	var invalid error
+
 	for at := 0; at < len(data); {
 		if err := o.b.ctx.Err(); err != nil {
 			return err
@@ -197,28 +237,42 @@ func extractDataURIs(o *operation, data string) error {
 			return err
 		}
 
-		mime, _, _ := strings.Cut(header, ";")
+		if err := decodeDataURI(o, header, data, start, end); err != nil {
+			if !errors.Is(err, errFormat) {
+				return err
+			}
 
-		name := dataURINames[strings.ToLower(mime)]
-		if name == "" {
-			name = "content.bin"
-		}
-
-		payload, err := url.PathUnescape(data[start:end])
-		if err != nil || !validDataBase64(payload) {
-			return errFormat
-		}
-
-		if err := decodeBase64(o, name, payload, &report.ByteRange{Start: start, End: end}); err != nil {
-			return err
+			// A malformed payload has no effect on later independent URIs.
+			invalid = err
 		}
 	}
 
-	return nil
+	return invalid
+}
+
+func decodeDataURI(o *operation, header, data string, start, end int) error {
+	mime, _, _ := strings.Cut(header, ";")
+
+	name := dataURINames[strings.ToLower(mime)]
+	if name == "" {
+		name = "content.bin"
+	}
+
+	payload, err := url.PathUnescape(data[start:end])
+	if err != nil || !validDataBase64(payload) {
+		return errFormat
+	}
+
+	err = decodeBase64(o, name, payload, &report.ByteRange{Start: start, End: end})
+	if _, corrupt := errors.AsType[base64.CorruptInputError](err); corrupt || errors.Is(err, io.ErrUnexpectedEOF) {
+		return errFormat
+	}
+
+	return err
 }
 
 func dataURIRange(data string, i int) (header string, start, end int, valid bool) {
-	endHeader := min(len(data), i+1024)
+	endHeader := min(len(data), i+maxDataURIHeaderBytes)
 
 	j := strings.Index(data[i:endHeader], ";base64,")
 	if j < 0 {
@@ -281,14 +335,20 @@ func decodeBase64(o *operation, name, data string, span *report.ByteRange) error
 		return errFormat
 	}
 
+	encoding := base64Encoding(strings.ContainsAny(compact, "-_"), strings.Contains(compact, "="))
+
+	return o.emit(name, base64.NewDecoder(encoding, strings.NewReader(compact)), -1, false, span)
+}
+
+func base64Encoding(url, padded bool) *base64.Encoding {
 	encoding := base64.StdEncoding
-	if strings.ContainsAny(compact, "-_") {
+	if url {
 		encoding = base64.URLEncoding
 	}
 
-	if !strings.Contains(compact, "=") {
+	if !padded {
 		encoding = encoding.WithPadding(base64.NoPadding)
 	}
 
-	return o.emit(name, base64.NewDecoder(encoding.Strict(), strings.NewReader(compact)), -1, false, span)
+	return encoding.Strict()
 }

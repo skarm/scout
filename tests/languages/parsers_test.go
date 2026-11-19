@@ -355,6 +355,20 @@ func TestProductionLanguagesThroughPublicScanner(t *testing.T) {
 		},
 		{name: "sql-truncate", file: "report.sql", code: `TRUNCATE private_orders CASCADE;`, rule: "SQL001", want: true},
 		{
+			name: "sql-update-nested-where",
+			file: "report.sql",
+			code: `UPDATE sample_totals SET amount = (SELECT count(*) FROM sample_items WHERE active = 1);`,
+			rule: "SQL001",
+			want: true,
+		},
+		{
+			name: "sql-update-outer-where",
+			file: "report.sql",
+			code: `UPDATE sample_totals SET amount = (SELECT count(*) FROM sample_items WHERE active = 1) WHERE id = 1;`,
+			rule: "SQL001",
+			want: false,
+		},
+		{
 			name: "sql-read-only",
 			file: "report.sql",
 			code: `SELECT count(*) FROM public_totals;`,

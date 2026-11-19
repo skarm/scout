@@ -19,6 +19,7 @@ import (
 type capture struct {
 	ctx         context.Context
 	size, count int
+	text        string
 }
 
 func Available() bool { return true }
@@ -62,7 +63,7 @@ func parse(ctx context.Context, lang, text string) (Tree, error) {
 	}
 	defer tree.Close()
 
-	capture := capture{ctx: ctx, size: len(text)}
+	capture := capture{ctx: ctx, size: len(text), text: text}
 
 	root, err := capture.node(tree.RootNode(), 0, "")
 	if err == nil && tree.RootNode().HasError() {
@@ -89,6 +90,10 @@ func (p *capture) node(n *treeparse.Node, depth int, field string) (*Node, error
 		End:     int(n.EndByte()),
 		Invalid: n.IsError() || n.IsMissing(),
 	}
+	if _, err := IdentifierText(out.Kind, p.text[out.Start:out.End]); err != nil {
+		return nil, err
+	}
+
 	for i := uint(0); i < n.ChildCount(); i++ {
 		child, err := p.node(n.Child(i), depth+1, n.FieldNameForChild(uint32(i)))
 		if err != nil {

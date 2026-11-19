@@ -3,6 +3,7 @@ package python //nolint:testpackage // Tests exercise private fact storage and b
 import (
 	"errors"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/document"
@@ -170,8 +171,8 @@ func TestPythonFactsConcurrentResultsOwnTheirTraces(t *testing.T) {
 	facts := newPythonFacts([]string{"TT1"}, 8)
 	facts.emit("TT1", &frontend.Node{Start: 3, End: 5}, &pyOrigin{start: 0, end: 1}, unit)
 	facts.finish(nil, false)
-	for range 8 {
-		t.Run("consumer", func(t *testing.T) {
+	for consumer := range 8 {
+		t.Run("consumer_"+strconv.Itoa(consumer), func(t *testing.T) {
 			t.Parallel()
 			first, err := facts.result("TT1", 1)
 			if err != nil || len(first.Matches) != 1 || len(first.Matches[0].Trace) != 2 {

@@ -7,11 +7,16 @@ import (
 	"strings"
 )
 
+const (
+	prohibitionWindowBytes    = 512
+	prohibitionQualifierBytes = 256
+)
+
 var (
 	prefix    = regexp.MustCompile(`(?i)^[\t ]*(?:[-*+>][\t ]+)?(?:do[\t ]+not|don't|never|must[\t ]+not)[\t ]+(?:ever[\t ]+)?$`)
 	tail      = regexp.MustCompile(`(?i)^[\t ]*(?:content(?:,[\t ]*memory,[\t ]*or[\t ]*prior[\t ]*conversation)?(?:[\t ]+if[\t ]+the[\t ]+pasted[\t ]+prompt[\t ]+requests[\t ]+it)?)?[\t ]*[.!]?[\t ]*$`)
 	reversal  = regexp.MustCompile(`(?i)\b(?:opposit\w*|invers\w*|invert\w*|revers\w*|contrar\w*|negat\w*|ignore|disregard|override|bypass|suspend|violat\w*)\b`)
-	qualifier = regexp.MustCompile(`(?im)^[\t >*+#0-9.)-]*(?:unless|except|only|until|when|if|instead|however|in|to|for|as)\b`)
+	qualifier = regexp.MustCompile(`(?i)(?:^|[\r\n])[\t >*+#0-9.)-]*(?:unless|except|only|until|when|if|but|instead|however|in|to|for|as)\b`)
 )
 
 func Prohibited(text string, start, end int) bool {
@@ -32,8 +37,8 @@ func Prohibited(text string, start, end int) bool {
 		return false
 	}
 
-	window := text[max(0, left-512):min(len(text), right+256)]
-	if reversal.MatchString(window) || qualifier.MatchString(text[right:min(len(text), right+256)]) {
+	window := text[max(0, left-prohibitionWindowBytes):min(len(text), right+prohibitionQualifierBytes)]
+	if reversal.MatchString(window) || qualifier.MatchString(text[right:min(len(text), right+prohibitionQualifierBytes)]) {
 		return false
 	}
 
@@ -41,14 +46,14 @@ func Prohibited(text string, start, end int) bool {
 }
 
 func prohibitionBounds(text string, start, end int) (int, int, bool) {
-	left := max(0, start-512)
+	left := max(0, start-prohibitionWindowBytes)
 	if at := strings.LastIndexAny(text[left:start], "\r\n.!?;"); at >= 0 {
 		left += at + 1
 	} else if left != 0 {
 		return 0, 0, false
 	}
 
-	right := min(len(text), end+512)
+	right := min(len(text), end+prohibitionWindowBytes)
 	if at := strings.IndexAny(text[end:right], "\r\n"); at >= 0 {
 		right = end + at
 	} else if right < len(text) {

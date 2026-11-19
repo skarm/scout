@@ -45,16 +45,16 @@ func newPyState() *pyState {
 	return s
 }
 
-func (s *pyState) clone() *pyState {
+func (s *pyState) cloneWithin(work *pyStateWork) *pyState {
 	r := newPyState()
 	r.blockedBuiltins = s.blockedBuiltins
 
 	r.parent, r.global, r.forks, r.objects = s.parent, s.global, s.forks, s.objects
-	maps.Copy(r.locals, s.locals)
+	copyPyEntries(r.locals, s.locals, work)
 
-	maps.Copy(r.declarations, s.declarations)
+	copyPyEntries(r.declarations, s.declarations, work)
 
-	maps.Copy(r.names, s.names)
+	copyPyEntries(r.names, s.names, work)
 
 	return r
 }
@@ -145,6 +145,11 @@ func (w *pyWalker) assign(target *frontend.Node, v pyValue, s *pyState, statemen
 		w.assignSubscript(target, v, s, statement)
 	case frontend.Tuple, frontend.List:
 		w.assignSequence(target, v, s, statement)
+	case frontend.Starred:
+		// The target is local even when the collected remainder is not modeled.
+		// Never alias it to the scalar value at the star's positional index.
+		w.limited = true
+		w.assign(target.Child(frontend.FieldValue), pyValue{}, s, statement)
 	default:
 		return
 	}
@@ -172,7 +177,7 @@ func (w *pyWalker) assignSubscript(target *frontend.Node, v pyValue, s *pyState,
 
 	index := w.expr(target.Child(frontend.Slice), s, 0)
 	if mapping := base.mapping(); mapping != nil {
-		if key, ok := reflectionKey(index, target.Child(frontend.Slice)); ok && len(mapping.entries) < 64 {
+		if key, ok := reflectionKey(index, target.Child(frontend.Slice)); ok && len(mapping.entries) < maxDictionaryEntries {
 			mapping.entries[key] = transformed(v, statement)
 		} else {
 			w.limited = true
@@ -184,7 +189,7 @@ func (w *pyWalker) assignSequence(target *frontend.Node, v pyValue, s *pyState, 
 	items := target.List(frontend.Elts)
 	for i, n := range items {
 		item := pyValue{}
-		if len(items) == len(v.elements()) && len(items) <= 64 {
+		if len(items) == len(v.elements()) && len(items) <= maxSequenceItems {
 			item = v.elements()[i]
 		} else {
 			w.limited = true
@@ -212,7 +217,7 @@ func (w *pyWalker) definitionAnnotations(args, returns *frontend.Node, s *pyStat
 
 func (w *pyWalker) annotation(n *frontend.Node, s *pyState, depth int) {
 	if n != nil {
-		w.expr(n, s.fork(), depth)
+		w.expr(n, w.forkState(s), depth)
 	}
 }
 
@@ -236,15 +241,21 @@ func (w *pyWalker) bindArgs(args *frontend.Node, s *pyState) {
 
 // Python local declarations shadow outer bindings throughout their scope, even
 // before their first assignment. This prevents treating a local exec as builtins.exec.
-func (w *pyWalker) prebind(nodes []*frontend.Node, s *pyState) {
+func (w *pyWalker) prebind(nodes []*frontend.Node, s *pyState) bool {
 	w.prebindDeclarations(nodes, s)
 	w.prebindNames(nodes, s)
+
+	return w.err == nil && !w.truncated && !w.facts.exhausted()
 }
 
 func (w *pyWalker) prebindDeclarations(nodes []*frontend.Node, s *pyState) {
 	for _, n := range nodes {
 		if n == nil || pyDefinesScope(n) {
 			continue
+		}
+
+		if !w.charge(0) {
+			return
 		}
 
 		w.prebindDeclaration(n, s)
@@ -277,30 +288,64 @@ func (w *pyWalker) prebindNames(nodes []*frontend.Node, s *pyState) {
 			continue
 		}
 
+		if !w.charge(0) {
+			return
+		}
+
 		if pyDefinesScope(n) {
 			s.prebindName(n.String(frontend.FieldName))
+			w.prebindDefinitionExpressions(n, s)
+
+			continue
+		}
+
+		if n.Kind() == frontend.Lambda {
+			w.prebindDefaults(n.Child(frontend.Args), s)
 			continue
 		}
 
 		w.prebindStatement(n, s)
-
-		for _, body := range pyScopeBodies(n) {
-			w.prebindNames(body, s)
-		}
+		// Named expressions bind the enclosing function, including inside
+		// comprehensions. Their iteration targets belong to the comprehension.
+		w.prebindNames(n.Children(), s)
 	}
+}
+
+func (w *pyWalker) prebindDefinitionExpressions(n *frontend.Node, s *pyState) {
+	// These expressions execute in the defining scope; the nested body does not.
+	for _, field := range []frontend.FieldKind{frontend.DecoratorList, frontend.Bases, frontend.Keywords} {
+		w.prebindNames(n.List(field), s)
+	}
+
+	w.prebindDefaults(n.Child(frontend.Args), s)
+}
+
+func (w *pyWalker) prebindDefaults(args *frontend.Node, s *pyState) {
+	w.prebindNames(args.List(frontend.Defaults), s)
+	w.prebindNames(args.List(frontend.KWDefaults), s)
 }
 
 func (w *pyWalker) prebindStatement(n *frontend.Node, s *pyState) {
 	switch n.Kind() {
-	case frontend.Assign:
+	case frontend.Assign, frontend.Delete:
 		for _, v := range n.List(frontend.Targets) {
 			w.prebindTarget(v, s)
 		}
-	case frontend.AnnAssign, frontend.AugAssign, frontend.For, frontend.AsyncFor:
+	case frontend.AnnAssign, frontend.AugAssign, frontend.For, frontend.AsyncFor, frontend.NamedExpr:
 		w.prebindTarget(n.Child(frontend.Target), s)
+	case frontend.With, frontend.AsyncWith:
+		for _, item := range n.List(frontend.Items) {
+			w.prebindTarget(item.Child(frontend.OptionalVars), s)
+		}
 	case frontend.Import, frontend.ImportFrom:
 		for _, alias := range n.List(frontend.Names) {
 			s.prebindName(pyAliasName(alias))
+		}
+	case frontend.Try, frontend.TryStar:
+		for _, handler := range n.List(frontend.Handlers) {
+			if name := handler.String(frontend.FieldName); name != "" {
+				s.prebindName(name)
+			}
 		}
 	default:
 		return
@@ -324,6 +369,10 @@ func (w *pyWalker) prebindTarget(n *frontend.Node, s *pyState) {
 		for _, x := range n.List(frontend.Elts) {
 			w.prebindTarget(x, s)
 		}
+	}
+
+	if n.Kind() == frontend.Starred {
+		w.prebindTarget(n.Child(frontend.FieldValue), s)
 	}
 }
 
@@ -357,10 +406,18 @@ func pyAliasName(alias *frontend.Node) string {
 }
 
 func mergePy(a, b *pyState, memo map[pyValuePair]pyValue) *pyState {
-	r := a.clone()
+	return mergePyWithin(a, b, &pyMerge{values: memo})
+}
+
+func mergePyWithin(a, b *pyState, memo *pyMerge) *pyState {
+	r := a.cloneWithin(memo.work)
 
 	r.blockedBuiltins = a.blockedBuiltins || b.blockedBuiltins
 	for k, x := range a.names {
+		if !memo.work.step() {
+			return r
+		}
+
 		y, ok := b.names[k]
 		if !ok {
 			y = pyValue{}
@@ -371,6 +428,10 @@ func mergePy(a, b *pyState, memo map[pyValuePair]pyValue) *pyState {
 	}
 
 	for k, y := range b.names {
+		if !memo.work.step() {
+			return r
+		}
+
 		if _, ok := r.names[k]; !ok {
 			r.names[k] = mergePyValueMemo(pyValue{}, y, 0, memo)
 		}

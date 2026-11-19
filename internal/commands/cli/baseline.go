@@ -14,6 +14,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxBaselineInputFileBytes = 16 << 20
+)
+
 type baselineArguments struct {
 	operation, from, destination, reason, expiry string
 	fingerprints                                 repeated
@@ -71,7 +75,7 @@ func baselineCommand(ctx context.Context, args []string, stdout, stderr io.Write
 		return requestError(err, stderr)
 	}
 
-	raw, err := readTrusted(options.from, nil, 16<<20)
+	raw, err := readTrusted(options.from, nil, maxBaselineInputFileBytes)
 	if err != nil {
 		return usageError(stderr, "cannot read baseline source")
 	}

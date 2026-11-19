@@ -1,0 +1,35 @@
+{
+  "schema": "scout.corpus-review/v1",
+  "corpus_sha256": "0ca43384607f2ba54586567e763ed7e9f60786c5ba51af449584490cbfef5b79",
+  "independent": false,
+  "reviews": [
+    {
+      "case_id": "gh-cli",
+      "label": "benign",
+      "reviewer_id": "codex-source-review",
+      "reviewed_at": "2026-11-14T14:13:00Z",
+      "rationale": "The documented GitHub routing policy matches the hook definitions. The hooks emit tool guidance, prepend the bundled gh shim to the session PATH, and clean up the session clone directory using a validated session ID. The shim applies its documented restrictions and forwards arguments to the local gh executable. This label covers the visible behavior under normal host configuration.",
+      "evidence": [
+        "https://github.com/trailofbits/skills/blob/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/README.md#L13-L36",
+        "https://github.com/trailofbits/skills/blob/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/hooks.json",
+        "https://github.com/trailofbits/skills/blob/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/setup-shims.sh#L19-L39",
+        "https://github.com/trailofbits/skills/blob/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/shims/gh#L52-L69",
+        "https://github.com/trailofbits/skills/blob/711af095215ad4ecde5b90cd1d0124b3f1c4ca9e/plugins/gh-cli/hooks/cleanup-clones.sh#L8-L22"
+      ]
+    },
+    {
+      "case_id": "superpowers-session-start",
+      "label": "benign",
+      "reviewer_id": "codex-source-review",
+      "reviewed_at": "2026-11-14T14:13:00Z",
+      "rationale": "The registered SessionStart command passes the fixed session-start script name to the bundled wrapper. That script reads the checked-in using-superpowers skill and emits it as startup context. The skill describes when to invoke workflow skills and defers to user instructions. The label covers this captured hook and referenced skill.",
+      "evidence": [
+        "https://github.com/obra/superpowers/blob/22f0b463e7a5e579904dd6211a520321035526f7/hooks/hooks.json",
+        "https://github.com/obra/superpowers/blob/22f0b463e7a5e579904dd6211a520321035526f7/hooks/run-hook.cmd#L43-L79",
+        "https://github.com/obra/superpowers/blob/22f0b463e7a5e579904dd6211a520321035526f7/hooks/session-start#L20-L49",
+        "https://github.com/obra/superpowers/blob/22f0b463e7a5e579904dd6211a520321035526f7/hooks/session-start#L70-L88",
+        "https://github.com/obra/superpowers/blob/22f0b463e7a5e579904dd6211a520321035526f7/skills/using-superpowers/SKILL.md#L63-L65"
+      ]
+    }
+  ]
+}

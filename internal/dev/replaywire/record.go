@@ -11,6 +11,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	maxReplayBudgetSeconds = 60
+)
+
 //nolint:gochecknoglobals // Read-only accepted replay states shared by wire validators.
 var replayStates = map[report.State]bool{
 	report.RunComplete: true, report.RunIncomplete: false, report.RunFailed: false, report.RunCancelled: false,
@@ -86,7 +90,7 @@ func (r Record) validateIdentity(version string) error {
 		return errors.New("replay engine version differs")
 	}
 
-	if r.BudgetSeconds < 1 || r.BudgetSeconds > 60 {
+	if r.BudgetSeconds < 1 || r.BudgetSeconds > maxReplayBudgetSeconds {
 		return errors.New("invalid replay case budget")
 	}
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"go/ast"
 	"go/token"
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/securitytext"
@@ -57,6 +58,7 @@ type Unit struct {
 	View                                              source.View
 	Tree                                              any
 	HookSource                                        bool
+	HookCommandText                                   bool
 	failureCategory                                   string
 	preparationDiagnostic                             report.Diagnostic
 }
@@ -70,28 +72,30 @@ type ConfigScope struct {
 }
 
 type File struct {
-	foldedASCII         string
-	isASCII             bool
-	securityViews       []source.View
-	configScopes        []ConfigScope
-	file                artifact.File
-	index               source.Index
-	regions             []region
-	units               []Unit
-	classification      filetype.Description
-	registry            parse.Registry
-	diagnostics         []report.Diagnostic
-	budget              *parseBudget
-	derived             []derivedConfig
-	derivedReady        bool
-	derivedGap          bool
-	shellReady          bool
-	shellGap            bool
-	shellUnits          []Unit
-	shellExecutions     []GeneratedShellExecution
-	shellExecutionLimit bool
-	hookShell           []hookShellContext
-	hookShellReady      bool
+	foldedASCII          string
+	isASCII              bool
+	securityViews        []source.View
+	configScopes         []ConfigScope
+	file                 artifact.File
+	index                source.Index
+	regions              []region
+	units                []Unit
+	classification       filetype.Description
+	registry             parse.Registry
+	diagnostics          []report.Diagnostic
+	budget               *parseBudget
+	derived              []derivedConfig
+	derivedReady         bool
+	derivedGap           bool
+	shellReady           bool
+	shellGap             bool
+	shellUnits           []Unit
+	shellExecutions      []GeneratedShellExecution
+	shellExecutionLimit  bool
+	tracedShellCommands  []TracedShellCommand
+	hookShell            []hookShellContext
+	hookShellReady       bool
+	geminiHookShellReady bool
 }
 
 // filePreparation confines mutation to the preparation phase; File values remain snapshots.
@@ -199,8 +203,11 @@ func (f File) Diagnostics() []report.Diagnostic {
 }
 
 func (f File) Context(s source.Span) (kind, lang string) {
-	for i := len(f.units) - 1; i >= 0 && f.units[i].Origin == OriginGeneratedShell; i-- {
-		u := f.units[i]
+	for _, u := range slices.Backward(f.units) {
+		if u.Origin != OriginGeneratedShell && u.Origin != OriginHookInlineRuntime {
+			break
+		}
+
 		if s.Start >= u.Span.Start && s.End <= u.Span.End && u.View.ContainsMappedEndpoints(s) {
 			return u.Origin, u.Language
 		}
@@ -208,6 +215,12 @@ func (f File) Context(s source.Span) (kind, lang string) {
 
 	if f.HookEvent(s) != "" {
 		return OriginHookShell, language.Shell
+	}
+
+	for _, u := range f.units {
+		if u.HookSource && u.Origin == "file" && s.Start >= u.Span.Start && s.End <= u.Span.End {
+			return "source-file", u.Language
+		}
 	}
 
 	for _, r := range f.regions {
@@ -479,7 +492,7 @@ func prepare(ctx context.Context, file artifact.File, budget *parseBudget, regis
 
 	out.foldedASCII, out.isASCII = textmatch.FoldASCII(file.Content())
 
-	if file.Metadata().Kind != "text" {
+	if file.Metadata().Kind != report.FileKindText {
 		return out
 	}
 

@@ -12,12 +12,17 @@ import (
 	"github.com/skarm/scout/internal/nativecheck"
 )
 
+const (
+	defaultSelftestTimeout = 90 * time.Second
+	maxSelftestTimeout     = 2 * time.Minute
+)
+
 func selftest(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("selftest", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	format := fs.String("format", "terminal", "terminal or json")
 
-	timeout := fs.Duration("timeout", 90*time.Second, "cooperative total selftest deadline, <=2m")
+	timeout := fs.Duration("timeout", defaultSelftestTimeout, "cooperative total selftest deadline, <=2m")
 	if e := fs.Parse(args); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
 			return 0
@@ -46,7 +51,7 @@ func selftest(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 }
 
 func validSelftestRequest(ctx context.Context, fs *flag.FlagSet, format string, timeout time.Duration) bool {
-	return fs.NArg() == 0 && (format == "json" || format == "terminal" || format == "text") && timeout > 0 && timeout <= 2*time.Minute && ctx != nil
+	return fs.NArg() == 0 && (format == "json" || format == "terminal" || format == "text") && timeout > 0 && timeout <= maxSelftestTimeout && ctx != nil
 }
 
 func writeSelftest(stdout io.Writer, r nativecheck.Report, format string) error {

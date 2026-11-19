@@ -109,12 +109,48 @@ func (run *execution) prepare() error {
 }
 
 func (run *execution) executeChecks() {
-	type completedCheck struct {
-		index   int
-		outcome outcome
+	var done <-chan struct{}
+	if run.options.Slots != nil {
+		done = run.ctx.Done()
 	}
 
-	completed := make(chan completedCheck, run.engine.workers)
+	var findings sync.Mutex
+
+	execute := func(i int) {
+		out, accepted := run.executeCheck(i, done)
+		if !accepted {
+			return
+		}
+
+		// Workers own disjoint result slots. Merge only findings under the
+		// lock so each worker releases its evidence before running another check.
+		if len(out.findings) > 0 {
+			findings.Lock()
+
+			for _, finding := range out.findings {
+				run.collector.add(finding)
+			}
+
+			findings.Unlock()
+			out.findings = nil
+		}
+
+		run.results[i] = out
+	}
+
+	run.distributeChecks(execute)
+
+	run.fillCancelledChecks()
+}
+
+func (run *execution) distributeChecks(execute func(int)) {
+	if run.engine.workers == 1 {
+		for i := range run.checks {
+			execute(i)
+		}
+
+		return
+	}
 
 	jobs := make(chan int, len(run.checks))
 	for i := range run.checks {
@@ -124,30 +160,18 @@ func (run *execution) executeChecks() {
 	close(jobs)
 
 	var wg sync.WaitGroup
-	for w := 0; w < min(run.engine.workers, len(run.engine.analyzers)); w++ {
+	for range min(run.engine.workers, len(run.checks)) {
 		wg.Go(func() {
 			for i := range jobs {
-				out, accepted := run.executeCheck(i)
-				if !accepted {
-					continue
-				}
-
-				completed <- completedCheck{index: i, outcome: out}
+				execute(i)
 			}
 		})
 	}
 
-	go func() { wg.Wait(); close(completed) }()
+	wg.Wait()
+}
 
-	for result := range completed {
-		for _, finding := range result.outcome.findings {
-			run.collector.add(finding)
-		}
-
-		result.outcome.findings = nil
-		run.results[result.index] = result.outcome
-	}
-
+func (run *execution) fillCancelledChecks() {
 	// Only checks that never acquired a slot need synthetic cancelled coverage.
 	// Executed checks already own their complete per-file result storage.
 	for i := range run.results {
@@ -162,11 +186,11 @@ func (run *execution) executeChecks() {
 }
 
 // executeCheck owns the concurrency slot and the per-check operation budget.
-func (run *execution) executeCheck(i int) (outcome, bool) {
+func (run *execution) executeCheck(i int, done <-chan struct{}) (outcome, bool) {
 	if run.options.Slots != nil {
 		select {
 		case run.options.Slots <- struct{}{}:
-		case <-run.ctx.Done():
+		case <-done:
 			return outcome{}, false
 		}
 	}

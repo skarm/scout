@@ -35,7 +35,7 @@ func acceptRansomwareInstance(identifier string, data []byte, start, end int) bo
 	}
 
 	switch identifier {
-	case "$payment_then_context", contextPaymentPattern, "$explicit_ransom_payment":
+	case paymentThenContextPattern, contextPaymentPattern, explicitRansomPaymentPattern:
 		payments := ransomwarePayment.FindAllIndex(data[start:end], -1)
 		if identifier != contextPaymentPattern && len(payments) > 1 {
 			payments = payments[:1]

@@ -10,3 +10,13 @@ func Known(name string) bool {
 		return false
 	}
 }
+
+// Gemini reports whether a name is a Gemini CLI hook event.
+func Gemini(name string) bool {
+	switch name {
+	case "AfterAgent", "AfterModel", "AfterTool", "BeforeAgent", "BeforeModel", "BeforeTool", "BeforeToolSelection", "Notification", "PreCompress", "SessionEnd", "SessionStart":
+		return true
+	default:
+		return false
+	}
+}

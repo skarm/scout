@@ -71,6 +71,12 @@ type Rule struct {
 	Limitation string `json:"limitation"`
 }
 
+// Source location coordinate representations.
+const (
+	CoordinatesText  = "text"
+	CoordinatesBytes = "bytes"
+)
+
 // Location uses zero-based, half-open original byte offsets. Text locations also
 // use one-based Unicode code-point line/column coordinates. Binary locations have
 // Coordinates="bytes" and zero line/column values. End coordinates are exclusive.
@@ -164,6 +170,13 @@ type HookSourceContext struct {
 	Steps []Location `json:"steps"`
 }
 
+// Roles used by retained evidence traces.
+const (
+	TraceSource    = "source"
+	TraceSink      = "sink"
+	TraceTransform = "transform"
+)
+
 // TraceStep binds one step of an observed flow to its original location and
 // evidence hashes.
 type TraceStep struct {
@@ -201,19 +214,19 @@ const (
 	CaptureAlreadyCaptured = "already_captured"
 )
 
+const (
+	FileKindText   = "text"
+	FileKindBinary = "binary"
+)
+
 // File describes an inventoried object, including entries whose bytes could
 // not be captured.
 type File struct {
 	// Path is the object's path within the captured inventory.
 	Path string `json:"path"`
-	// Size is the inventoried object size in bytes.
-	Size int64 `json:"size"`
 	// SHA256 hashes the complete captured bytes; it is empty when bytes were not
 	// captured.
 	SHA256 string `json:"sha256,omitempty"`
-	// Executable records the inventory's executable flag, without claiming
-	// execution.
-	Executable bool `json:"executable"`
 	// Kind classifies the inventoried entry, including text, binary and unread
 	// filesystem objects.
 	Kind string `json:"kind"`
@@ -221,6 +234,13 @@ type File struct {
 	Status string `json:"status"`
 	// Reason explains why an entry was skipped or could not be captured.
 	Reason string `json:"reason,omitempty"`
+	// Size is the inventoried object size in bytes.
+	Size int64 `json:"size"`
+	// Executable records the inventory's executable flag, without claiming
+	// execution.
+	Executable bool `json:"executable"`
+	// UTF8BOM reports whether the captured text starts with a UTF-8 byte order mark.
+	UTF8BOM bool `json:"utf8_bom,omitempty"`
 }
 
 // Artifact records the captured inventory and the scope of its snapshot
@@ -275,6 +295,15 @@ type Coverage struct {
 	Checks []Check `json:"checks"`
 	// Files contains coverage for each inventoried entry, including unread files.
 	Files []FileCoverage `json:"files"`
+	// ShellHooks records the bounded static coverage of captured shell hooks.
+	ShellHooks *ShellHookCoverage `json:"shell_hooks,omitempty"`
+}
+
+// ShellHookCoverage describes the observed eval and generated-shell analysis
+// on captured hook commands and their traced local files.
+type ShellHookCoverage struct {
+	Completeness Completeness `json:"completeness"`
+	Gaps         []string     `json:"gaps,omitempty"`
 }
 
 // FileCoverage covers every inventoried entry, including unread or unsupported
@@ -480,47 +509,63 @@ func (s Severity) Rank() int {
 	}
 }
 
+const (
+	defaultCaptureEntries      = 8192
+	defaultCaptureFiles        = 4096
+	defaultCaptureFileBytes    = 1 << 20
+	defaultCaptureTotalBytes   = 32 << 20
+	defaultCaptureArchiveBytes = 32 << 20
+	defaultCapturePathBytes    = 1024
+	defaultCaptureDepth        = 32
+	defaultFindings            = 1024
+	maxCaptureFileBytes        = 32 << 20
+	maxCaptureTotalBytes       = 256 << 20
+	maxCaptureArchiveBytes     = 128 << 20
+	maxFindings                = 100000
+	pathBudgetMessage          = "path budget must be in 1..4096 bytes and depth in 1..128"
+)
+
 // DefaultCaptureLimits returns the standard bounded input and finding budgets.
 func DefaultCaptureLimits() CaptureLimits {
 	return CaptureLimits{
-		MaxEntries: 8192, MaxFiles: 4096,
-		MaxFileBytes: 1 << 20, MaxTotalBytes: 32 << 20,
-		MaxArchiveBytes: 32 << 20, MaxPathBytes: 1024,
-		MaxDepth: 32, MaxFindings: 1024,
+		MaxEntries: defaultCaptureEntries, MaxFiles: defaultCaptureFiles,
+		MaxFileBytes: defaultCaptureFileBytes, MaxTotalBytes: defaultCaptureTotalBytes,
+		MaxArchiveBytes: defaultCaptureArchiveBytes, MaxPathBytes: defaultCapturePathBytes,
+		MaxDepth: defaultCaptureDepth, MaxFindings: defaultFindings,
 	}
 }
 
 // Validate applies hard ceilings that also bound allocations before per-entry validation.
 func (l CaptureLimits) Validate() error {
 	return validateBudgets([]budgetRange{
-		{value: int64(l.MaxEntries), min: 1, max: 100000, message: "max entries must be in 1..100000"},
+		{value: int64(l.MaxEntries), min: 1, max: MaxArtifactEntries, message: "max entries must be in 1..100000"},
 		{
 			value:   int64(l.MaxFiles),
 			min:     1,
 			max:     int64(l.MaxEntries),
 			message: "max files must be positive and <= max entries",
 		},
-		{value: l.MaxFileBytes, min: 1, max: 32 << 20, message: "max file bytes must be in 1..33554432"},
+		{value: l.MaxFileBytes, min: 1, max: maxCaptureFileBytes, message: "max file bytes must be in 1..33554432"},
 		{
 			value:   l.MaxTotalBytes,
 			min:     l.MaxFileBytes,
-			max:     256 << 20,
+			max:     maxCaptureTotalBytes,
 			message: "max total bytes must be >= max file bytes and <= 268435456",
 		},
-		{value: l.MaxArchiveBytes, min: 1, max: 128 << 20, message: "max archive bytes must be in 1..134217728"},
+		{value: l.MaxArchiveBytes, min: 1, max: maxCaptureArchiveBytes, message: "max archive bytes must be in 1..134217728"},
 		{
 			value:   int64(l.MaxPathBytes),
 			min:     1,
-			max:     4096,
-			message: "path budget must be in 1..4096 bytes and depth in 1..128",
+			max:     MaxArtifactPathBytes,
+			message: pathBudgetMessage,
 		},
 		{
 			value:   int64(l.MaxDepth),
 			min:     1,
-			max:     128,
-			message: "path budget must be in 1..4096 bytes and depth in 1..128",
+			max:     MaxArtifactPathDepth,
+			message: pathBudgetMessage,
 		},
-		{value: int64(l.MaxFindings), min: 1, max: 100000, message: "max findings must be in 1..100000"},
+		{value: int64(l.MaxFindings), min: 1, max: maxFindings, message: "max findings must be in 1..100000"},
 	})
 }
 

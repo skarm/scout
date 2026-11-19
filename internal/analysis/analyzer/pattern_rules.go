@@ -9,6 +9,10 @@ import (
 )
 
 const (
+	maxDensePatternCandidates = 65536
+)
+
+const (
 	shellTransmission = shell.PatternTransmission
 	shellRemoval      = shell.PatternRemoval
 	shellPersistence  = shell.PatternPersistence
@@ -40,7 +44,7 @@ var patternPolicies = map[string]patternPolicy{
 	ruleEA5: {adapter: func(a familyAnalyzer) Analyzer { return modelSelectionCheck{familyAnalyzer: a} }},
 	ruleP9:  {adapter: func(a familyAnalyzer) Analyzer { return paddingCheck{familyAnalyzer: a} }},
 	ruleP2: {
-		candidates: 65536,
+		candidates: maxDensePatternCandidates,
 		supplement: hiddenCarrierSignals,
 		adapter:    func(a familyAnalyzer) Analyzer { return hiddenCarrierCheck{familyAnalyzer: a} },
 	},
@@ -56,7 +60,7 @@ var patternPolicies = map[string]patternPolicy{
 		supplement: memoryAdoptionSignals,
 		adapter:    func(a familyAnalyzer) Analyzer { return memoryAdoptionCheck{familyAnalyzer: a} },
 	},
-	ruleP6: {filter: promptPrecision}, rulePE3: {filter: credentialPrecision}, ruleSC7: {candidates: 65536},
+	ruleP6: {filter: promptPrecision}, rulePE3: {filter: credentialPrecision}, ruleSC7: {candidates: maxDensePatternCandidates},
 }
 
 // Pattern families describe literal observations. Rules requiring program facts

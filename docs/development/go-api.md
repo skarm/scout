@@ -28,8 +28,10 @@ Custom review providers must support concurrent calls and honor cancellation.
 
 ## Inputs and incomplete results
 
-`Path` selects local input. `Remote` validates an address without downloading it;
-scanning also requires enabled download options. `Compare` rescans two local paths.
+`Path` selects local input. `Remote` validates an address without downloading it.
+Scanning also requires enabled download options. A nonempty revision or checksum
+on a remote target overrides the corresponding default in `Options.Download`.
+`Compare` rescans two local paths.
 `ScanMany` preserves input order and shares aggregate budgets.
 
 Use `ScanEnvironment(ctx, targets)` only when those existing, nonoverlapping local

@@ -4,6 +4,128 @@ import (
 	"context"
 )
 
+// Named child fields in the Python CST.
+const (
+	pyFieldAlias           = "alias"
+	pyFieldAlternative     = "alternative"
+	pyFieldArgument        = "argument"
+	pyFieldArguments       = "arguments"
+	pyFieldAttribute       = "attribute"
+	pyFieldBody            = "body"
+	pyFieldCondition       = "condition"
+	pyFieldConsequence     = "consequence"
+	pyFieldDefinition      = "definition"
+	pyFieldExpression      = "expression"
+	pyFieldFormatSpecifier = "format_specifier"
+	pyFieldFunction        = "function"
+	pyFieldKey             = "key"
+	pyFieldLeft            = "left"
+	pyFieldModuleName      = "module_name"
+	pyFieldName            = "name"
+	pyFieldObject          = "object"
+	pyFieldOperator        = "operator"
+	pyFieldOperators       = "operators"
+	pyFieldParameters      = "parameters"
+	pyFieldReturnType      = "return_type"
+	pyFieldRight           = "right"
+	pyFieldSubscript       = "subscript"
+	pyFieldSuperclasses    = "superclasses"
+	pyFieldType            = "type"
+	pyFieldTypeParameters  = "type_parameters"
+	pyFieldValue           = "value"
+)
+
+// Internal Tree-sitter Python node kinds.
+const (
+	pyKindAliasedImport           = "aliased_import"
+	pyKindAsPattern               = "as_pattern"
+	pyKindAsPatternTarget         = "as_pattern_target"
+	pyKindAssertStatement         = "assert_statement"
+	pyKindAssignment              = "assignment"
+	pyKindAsterisk                = "*"
+	pyKindAttribute               = "attribute"
+	pyKindAugmentedAssignment     = "augmented_assignment"
+	pyKindBinaryOperator          = "binary_operator"
+	pyKindBlock                   = "block"
+	pyKindBooleanOperator         = "boolean_operator"
+	pyKindBreakStatement          = "break_statement"
+	pyKindCall                    = "call"
+	pyKindClassDefinition         = "class_definition"
+	pyKindComment                 = "comment"
+	pyKindComparisonOperator      = "comparison_operator"
+	pyKindConcatenatedString      = "concatenated_string"
+	pyKindConditionalExpression   = "conditional_expression"
+	pyKindContinueStatement       = "continue_statement"
+	pyKindDecoratedDefinition     = "decorated_definition"
+	pyKindDecorator               = "decorator"
+	pyKindDefaultParameter        = "default_parameter"
+	pyKindDeleteStatement         = "delete_statement"
+	pyKindDictionary              = "dictionary"
+	pyKindDictionaryComprehension = "dictionary_comprehension"
+	pyKindDictionarySplat         = "dictionary_splat"
+	pyKindDictionarySplatPattern  = "dictionary_splat_pattern"
+	pyKindDottedName              = "dotted_name"
+	pyKindElifClause              = "elif_clause"
+	pyKindEllipsis                = "ellipsis"
+	pyKindElseClause              = "else_clause"
+	pyKindExceptClause            = "except_clause"
+	pyKindExpressionList          = "expression_list"
+	pyKindExpressionStatement     = "expression_statement"
+	pyKindFalse                   = "false"
+	pyKindFinallyClause           = "finally_clause"
+	pyKindFloat                   = "float"
+	pyKindForInClause             = "for_in_clause"
+	pyKindForStatement            = "for_statement"
+	pyKindFunctionDefinition      = "function_definition"
+	pyKindFutureImportStatement   = "future_import_statement"
+	pyKindGeneratorExpression     = "generator_expression"
+	pyKindGlobalStatement         = "global_statement"
+	pyKindIdentifier              = "identifier"
+	pyKindIfClause                = "if_clause"
+	pyKindIfStatement             = "if_statement"
+	pyKindImportFromStatement     = "import_from_statement"
+	pyKindImportStatement         = "import_statement"
+	pyKindInteger                 = "integer"
+	pyKindInterpolation           = "interpolation"
+	pyKindKeywordArgument         = "keyword_argument"
+	pyKindKeywordSeparator        = "keyword_separator"
+	pyKindLambda                  = "lambda"
+	pyKindList                    = "list"
+	pyKindListComprehension       = "list_comprehension"
+	pyKindListPattern             = "list_pattern"
+	pyKindListSplat               = "list_splat"
+	pyKindListSplatPattern        = "list_splat_pattern"
+	pyKindMatchStatement          = "match_statement"
+	pyKindModule                  = "module"
+	pyKindNamedExpression         = "named_expression"
+	pyKindNone                    = "none"
+	pyKindNonlocalStatement       = "nonlocal_statement"
+	pyKindNotOperator             = "not_operator"
+	pyKindPair                    = "pair"
+	pyKindParenthesizedExpression = "parenthesized_expression"
+	pyKindPassStatement           = "pass_statement"
+	pyKindPatternList             = "pattern_list"
+	pyKindPositionalSeparator     = "positional_separator"
+	pyKindRaiseStatement          = "raise_statement"
+	pyKindReturnStatement         = "return_statement"
+	pyKindSet                     = "set"
+	pyKindSetComprehension        = "set_comprehension"
+	pyKindString                  = "string"
+	pyKindSubscript               = "subscript"
+	pyKindTrue                    = "true"
+	pyKindTryStatement            = "try_statement"
+	pyKindTuple                   = "tuple"
+	pyKindTuplePattern            = "tuple_pattern"
+	pyKindType                    = "type"
+	pyKindTypedDefaultParameter   = "typed_default_parameter"
+	pyKindTypedParameter          = "typed_parameter"
+	pyKindUnaryOperator           = "unary_operator"
+	pyKindWhileStatement          = "while_statement"
+	pyKindWildcardImport          = "wildcard_import"
+	pyKindWithClause              = "with_clause"
+	pyKindWithStatement           = "with_statement"
+)
+
 // pythonSyntax is a bounded, byte-addressed copy of Tree-sitter's CST. This is
 // only a normalizer input, NOT a hand-written parser or a CPython AST claim.
 type pythonSyntax struct {
@@ -24,7 +146,7 @@ type pythonNormalizer struct {
 func normalizePython(ctx context.Context, text string, root *pythonSyntax) (*Node, error) {
 	n := &pythonNormalizer{ctx: ctx, text: text}
 
-	if root == nil || root.Kind != "module" {
+	if root == nil || root.Kind != pyKindModule {
 		return nil, &Failure{Category: "invalid_tree"}
 	}
 
@@ -57,7 +179,7 @@ func (n *pythonSyntax) named() []*pythonSyntax {
 
 	if n != nil {
 		for _, x := range n.Children {
-			if x.Named && x.Kind != "comment" {
+			if x.Named && x.Kind != pyKindComment {
 				out = append(out, x)
 			}
 		}
@@ -125,12 +247,12 @@ func (b *pythonNormalizer) alias(n *pythonSyntax) *Node {
 	out := b.make(n, Alias)
 
 	name, asname := b.textOf(n), ""
-	if n.Kind == "aliased_import" {
-		name = b.textOf(n.field("name"))
-		asname = b.textOf(n.field("alias"))
+	if n.Kind == pyKindAliasedImport {
+		name = b.textOf(n.field(pyFieldName))
+		asname = b.textOf(n.field(pyFieldAlias))
 	}
 
-	if n.Kind == "wildcard_import" {
+	if n.Kind == pyKindWildcardImport {
 		name = "*"
 	}
 
@@ -172,5 +294,5 @@ func (b *pythonNormalizer) accept(n *pythonSyntax, depth int) bool {
 		return false
 	}
 
-	return n.Kind != "comment"
+	return n.Kind != pyKindComment
 }

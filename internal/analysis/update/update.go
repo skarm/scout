@@ -85,7 +85,12 @@ func Build(ctx context.Context, before, after report.Analysis, options report.Up
 	b.manifests()
 	b.mcpSnapshots()
 
-	return b.delta, ctx.Err()
+	err := ctx.Err()
+	if err != nil {
+		b.issue("comparison_cancelled")
+	}
+
+	return b.delta, err
 }
 
 func sameContract(before, after report.Analysis) bool {

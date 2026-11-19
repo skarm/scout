@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/distribution/skills"
 	"github.com/skarm/scout/internal/reviewpack"
 	"github.com/skarm/scout/knowledge"
@@ -35,14 +36,14 @@ var bundleSpecs = map[string]bundleSpec{
 	report.HostClaudeCode: {
 		skillPrefix: skillsPrefix,
 		assets: []bundleAsset{{
-			path:  ".claude-plugin/plugin.json",
+			path:  artifact.ClaudePluginManifest,
 			asset: "assets/claude/plugin.json",
 		}},
 	},
 	report.HostCodex: {
 		skillPrefix: skillsPrefix,
 		assets: []bundleAsset{{
-			path:  ".codex-plugin/plugin.json",
+			path:  artifact.CodexPluginManifest,
 			asset: "assets/codex/plugin.json",
 		}},
 	},

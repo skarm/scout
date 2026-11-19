@@ -45,13 +45,16 @@ type builder struct {
 	stopped               bool
 	prepareHooks          bool
 	hookSourcePaths       []HookSourcePath
+	hookSourceCommands    []HookSourceCommand
 	hookSourceDiagnostics []report.Diagnostic
 	hookSourceSeen        map[report.Diagnostic]bool
+	shellHookRoot         report.ShellHookRoot
 	hooks                 hookpolicy.Policy
 }
 type candidate struct {
 	ns                   *namespace
 	root, host, manifest string
+	projectSettings      bool
 }
 type plugin struct {
 	manifest                   *entry
@@ -61,6 +64,7 @@ type plugin struct {
 	index                      int
 	processedConfigs           map[string]bool
 	rootNode                   string
+	projectSettings            bool
 }
 
 type candidateSet struct {
@@ -69,8 +73,16 @@ type candidateSet struct {
 	values []candidate
 }
 
+const (
+	maxPlugins         = 128
+	maxComponents      = 4096
+	maxEdges           = 8192
+	maxReferences      = 4096
+	maxGraphOperations = 500000
+)
+
 func Limits() report.HarnessLimits {
-	return report.HarnessLimits{Plugins: 128, Components: 4096, Edges: 8192, References: 4096, Operations: 500000}
+	return report.HarnessLimits{Plugins: maxPlugins, Components: maxComponents, Edges: maxEdges, References: maxReferences, Operations: maxGraphOperations}
 }
 
 // Discover reuses whole-file JSON trees from bounded preparation. Fenced JSON is
@@ -128,6 +140,8 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 		return b.r
 	}
 
+	b.shellHookRoot = opts.ShellHookRoot
+
 	b.spaces = namespaces(inventory, docs, extraction)
 
 	b.hooks = hookpolicy.Bind(ctx, docs, extraction)
@@ -151,7 +165,7 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 	b.finish()
 
 	if sources != nil {
-		*sources = HookSources{Paths: b.hookSourcePaths, Diagnostics: b.hookSourceDiagnostics}
+		*sources = HookSources{Paths: b.hookSourcePaths, Diagnostics: b.hookSourceDiagnostics, Commands: b.hookSourceCommands}
 	}
 
 	return b.r
@@ -168,12 +182,14 @@ func (b *builder) candidates(host string) []candidate {
 				break
 			}
 
-			base := path.Base(name)
-			if base == "plugin.json" {
+			switch path.Base(name) {
+			case "plugin.json":
 				root, loader := manifestLayout(name)
 				set.add(ns, root, loader, name)
 
 				found = true
+			case "gemini-extension.json":
+				set.add(ns, path.Dir(name), report.HostGeminiCLI, name)
 			}
 
 			b.marketplace(ns, name)
@@ -183,11 +199,48 @@ func (b *builder) candidates(host string) []candidate {
 		if !found && !b.containerCollection(ns) && slices.Contains([]string{report.HostClaudeCode, report.HostCodex}, host) {
 			set.add(ns, ".", host, "")
 		}
+
+		if host == report.HostAuto {
+			set.addProjectHookSettings(ns)
+		}
 	}
 
 	sort.Slice(set.values, func(i, j int) bool { return candidateLess(set.values[i], set.values[j]) })
 
 	return set.values
+}
+
+func (s *candidateSet) addProjectHookSettings(ns *namespace) {
+	for _, name := range ns.names {
+		if !s.b.step() {
+			return
+		}
+
+		dir := path.Dir(name)
+		base := path.Base(name)
+
+		if path.Base(dir) != ".claude" || base != artifact.ClaudeSettings && base != artifact.ClaudeLocalSettings {
+			continue
+		}
+
+		e := ns.entries[name]
+		if e.doc == nil || !slices.ContainsFunc(e.doc.Units(), projectSettingsHasHooks) {
+			continue
+		}
+
+		count := len(s.values)
+		s.add(ns, path.Dir(dir), report.HostClaudeCode, "")
+
+		if len(s.values) > count {
+			s.values[count].projectSettings = true
+		}
+	}
+}
+
+func projectSettingsHasHooks(unit document.Unit) bool {
+	tree, ok := unit.Tree.(parse.JSONTree)
+
+	return ok && unit.Origin == "file" && tree.Root.Get("hooks") != nil
 }
 
 func (b *builder) marketplace(ns *namespace, name string) {
@@ -208,15 +261,19 @@ func (b *builder) standaloneSkills() {
 				break
 			}
 
-			if path.Base(name) == "SKILL.md" {
+			if path.Base(name) == artifact.SkillManifest {
 				e := ns.entries[name]
-				b.node("", "skill", e, report.HostAgentSkills, "unknown", whole(e), "standalone")
+				b.node("", report.ComponentSkill, e, report.HostAgentSkills, "unknown", whole(e), "standalone")
 			}
 		}
 	}
 }
 
-func (b *builder) step() bool {
+func (b *builder) step() bool { return b.spend(1) }
+
+// Reserve a whole operation before copying or merging state. A refused
+// reservation leaves the graph already built by earlier operations intact.
+func (b *builder) spend(n int) bool {
 	if b.stopped {
 		return false
 	}
@@ -228,13 +285,14 @@ func (b *builder) step() bool {
 		return false
 	}
 
-	b.operations++
-	if b.operations > b.r.Limits.Operations {
+	if n > b.r.Limits.Operations-b.operations {
 		b.stopped = true
 		b.issue("harness_operation_limit", "", "", report.OutcomePartial)
 
 		return false
 	}
+
+	b.operations += n
 
 	return true
 }
@@ -362,21 +420,28 @@ func (b *builder) plugin(c candidate) *plugin {
 		activation:       activation,
 		index:            len(b.r.Plugins),
 		processedConfigs: map[string]bool{},
+		projectSettings:  c.projectSettings,
 	}
+
+	adapter, kind := c.host+"-layout-subset", "plugin"
+	if c.projectSettings {
+		adapter, kind = c.host+"-project-settings-subset", "host_project"
+	}
+
 	b.r.Plugins = append(b.r.Plugins, report.PluginInterpretation{
 		ID:             id,
 		Host:           c.host,
 		Namespace:      c.ns.id,
 		Root:           c.root,
 		Manifests:      manifests,
-		AdapterID:      c.host + "-layout-subset",
+		AdapterID:      adapter,
 		AdapterVersion: version,
 		Contract:       "docs-2026-10-26-subset",
 		FormatStatus:   report.OutcomePartial,
 		Activation:     activation,
 		Assumptions:    []string{"No host binary/version, trust grants or installation are evaluated; only closed captured Claude hook-disable precedence is modeled.", "Paths are resolved only against this package namespace; external configuration is not read."},
 	})
-	p.rootNode = b.node(id, "plugin", e, c.host, activation, whole(e), c.ns.id+"/"+c.root)
+	p.rootNode = b.node(id, kind, e, c.host, activation, whole(e), c.ns.id+"/"+c.root)
 
 	return p
 }
@@ -402,7 +467,7 @@ func (b *builder) finish() {
 // A scan of a bundle is not an instruction to install an invented outer plugin.
 // Manifestless default-layout candidates remain supported inside each namespace.
 func (b *builder) containerCollection(ns *namespace) bool {
-	for _, name := range []string{"SKILL.md", "hooks/hooks.json", ".mcp.json", ".lsp.json"} {
+	for _, name := range []string{artifact.SkillManifest, "hooks/hooks.json", ".mcp.json", ".lsp.json"} {
 		if ns.entries[name] != nil {
 			return false
 		}

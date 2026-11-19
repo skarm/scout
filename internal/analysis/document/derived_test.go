@@ -1,6 +1,7 @@
 package document_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -10,6 +11,38 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/report"
 )
+
+func TestDerivedPreparationPreservesSiblingSnapshots(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		derive func(document.File) document.File
+	}{
+		{"generated shell", func(f document.File) document.File {
+			return f.WithGeneratedShell(t.Context(), nil, document.GeneratedShellUnrecovered)
+		}},
+		{"derived input", func(f document.File) document.File {
+			return f.WithDerivedInputs(t.Context(), nil, true)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original := document.Prepare(t.Context(), artifact.NewFile("notes.md", []byte("```ruby\nx\n```\n```go\npackage ?\n```\n"), false))
+			before := original.Diagnostics()
+			first := tc.derive(original)
+			frozen := document.Freeze([]document.File{first})[0]
+			want := first.Diagnostics()
+			if len(want) <= len(before) {
+				t.Fatal("derived preparation did not record its gap")
+			}
+			second := original.WithGeneratedShell(t.Context(), nil, document.GeneratedShellAppend)
+			if !has(second, "generated_shell_append") {
+				t.Fatal("sibling preparation did not record its own gap")
+			}
+			if !reflect.DeepEqual(original.Diagnostics(), before) || !reflect.DeepEqual(first.Diagnostics(), want) || !reflect.DeepEqual(frozen.Diagnostics(), want) {
+				t.Fatal("preparing a sibling changed an existing or frozen snapshot's diagnostics")
+			}
+		})
+	}
+}
 
 func TestGeneratedShellUsesOriginalParserBudget(t *testing.T) {
 	const body = "echo one\necho two\n"

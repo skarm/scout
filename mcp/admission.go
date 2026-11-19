@@ -8,7 +8,7 @@ import (
 // count and registers cancellation before the next notification can arrive.
 func (s *Server) accept(ctx context.Context, sess *session, r request) (context.Context, func(), *response) {
 	ret := func(msg string) (context.Context, func(), *response) {
-		x := failure(r.ID, -32000, msg)
+		x := failure(r.ID, rpcServerError, msg)
 		return nil, nil, &x
 	}
 

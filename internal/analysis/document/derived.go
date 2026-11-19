@@ -15,6 +15,34 @@ import (
 // OriginGeneratedShell is the coverage origin for shell reconstructed from captured code.
 const OriginGeneratedShell = "heredoc"
 
+// OriginHookInlineRuntime marks a literal program passed to a hook interpreter.
+const OriginHookInlineRuntime = "hook-inline-runtime"
+
+// WithHookInlineRuntime prepares a literal child program using the same
+// parser registry, byte budget, and source coordinates as its shell wrapper.
+func (f File) WithHookInlineRuntime(ctx context.Context, lang string, view source.View) (File, bool) {
+	span, err := view.Original(source.Span{End: len(view.Text())})
+	if err != nil || f.budget == nil || ctx.Err() != nil {
+		return f, false
+	}
+
+	for _, unit := range f.units {
+		if unit.Origin == OriginHookInlineRuntime && unit.Language == lang && unit.Span == span && unit.View.SameProjection(view) {
+			return f, true
+		}
+	}
+
+	if len(f.units)+len(f.shellUnits) >= MaxRegions {
+		return f, false
+	}
+
+	f.units = slices.Clone(f.units)
+	f.diagnostics = slices.Clone(f.diagnostics)
+	(*filePreparation)(&f).addUnit(ctx, lang, OriginHookInlineRuntime, span, view)
+
+	return f, true
+}
+
 // GeneratedShellGaps records distinct reasons for incomplete heredoc recovery.
 type GeneratedShellGaps uint8
 
@@ -42,17 +70,43 @@ type GeneratedShellIssue struct {
 	At     int // -1 when the exact location is unavailable
 }
 
-// GeneratedShellExecution binds a recovered write and body to a later command
-// in the same captured object. Transforms retain intervening appends and moves.
+// GeneratedShellExecution binds a write to a later command or a host-provided
+// execution sink. Transforms retain intervening appends and moves.
 // All spans use physical coordinates.
 type GeneratedShellExecution struct {
 	Write, Body, Use source.Span
 	Transforms       [MaxGeneratedShellTransforms]source.Span
+	HostEnvironment  bool
 }
 
 // MaxGeneratedShellTransforms leaves room for the initial write, body and use
 // in the report's eight-step evidence trace.
 const MaxGeneratedShellTransforms = 5
+
+// TracedShellCommand records command text passed to a shell sink established
+// by the hook tracer. Its span is in the captured file.
+type TracedShellCommand struct {
+	Span             source.Span
+	HostUpdatedInput bool
+}
+
+func (f File) TracedShellCommands() []TracedShellCommand {
+	return slices.Clone(f.tracedShellCommands)
+}
+
+func (f File) WithTracedShellCommand(command TracedShellCommand) (File, bool) {
+	if slices.Contains(f.tracedShellCommands, command) {
+		return f, true
+	}
+
+	if len(f.tracedShellCommands) >= MaxRegions {
+		return f, false
+	}
+
+	f.tracedShellCommands = append(slices.Clone(f.tracedShellCommands), command)
+
+	return f, true
+}
 
 func (f File) GeneratedShellExecutions() ([]GeneratedShellExecution, bool) {
 	return append([]GeneratedShellExecution(nil), f.shellExecutions...), f.shellExecutionLimit
@@ -71,6 +125,7 @@ func (f File) WithGeneratedShellExecutions(executions []GeneratedShellExecution,
 
 // WithGeneratedShell adds source-mapped units before preparation is frozen.
 func (f File) WithGeneratedShell(ctx context.Context, views []source.View, gaps GeneratedShellGaps, issues ...GeneratedShellIssue) File {
+	f.diagnostics = slices.Clone(f.diagnostics)
 	if len(views) > 0 {
 		f.units = append([]Unit(nil), f.units...)
 	}
@@ -183,6 +238,8 @@ func (f File) WithDerivedInputs(ctx context.Context, inputs []DerivedInput, limi
 		return f
 	}
 
+	f.diagnostics = slices.Clone(f.diagnostics)
+
 	f.derivedReady = true
 
 	f.derivedGap = limited
@@ -197,13 +254,13 @@ func (f File) WithDerivedInputs(ctx context.Context, inputs []DerivedInput, limi
 	seen := make(map[DerivedInput]bool)
 
 	for _, input := range inputs {
+		if seen[input] {
+			continue
+		}
+
 		if len(f.derived) >= MaxRegions {
 			f.derivedGap = true
 			break
-		}
-
-		if seen[input] {
-			continue
 		}
 
 		seen[input] = true

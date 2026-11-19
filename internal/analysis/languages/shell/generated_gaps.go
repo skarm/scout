@@ -27,7 +27,7 @@ func generatedShellWriteGaps(c *shellsyntax.Command, vars map[string]string, vie
 	}
 
 	input, output := generatedWriteDescriptors(c.Redirects, vars)
-	if input == nil || input.Op != "<<" && input.Op != "<<-" ||
+	if input == nil || input.Op != shellsyntax.RedirectHereDoc && input.Op != shellsyntax.RedirectStripHereDoc ||
 		input.BodyVerified && input.Body != nil && input.Body.Span.Start == input.Body.Span.End {
 		return 0
 	}
@@ -36,9 +36,9 @@ func generatedShellWriteGaps(c *shellsyntax.Command, vars map[string]string, vie
 
 	if output != nil {
 		switch output.Op {
-		case ">", ">|", "&>", "<>", ">&":
+		case shellsyntax.RedirectOutput, shellsyntax.RedirectClobber, shellsyntax.RedirectBoth, shellsyntax.RedirectReadWrite, shellsyntax.RedirectDuplicateOutput:
 			targets.observe(output.Target, vars, false)
-		case ">>", "&>>":
+		case shellsyntax.RedirectAppend, shellsyntax.RedirectAppendBoth:
 			targets.observe(output.Target, vars, true)
 		}
 	}
@@ -92,9 +92,9 @@ func generatedWriteDescriptors(redirects []*shellsyntax.Redirect, vars map[strin
 		}
 
 		switch r.Op {
-		case "&>", "&>>":
+		case shellsyntax.RedirectBoth, shellsyntax.RedirectAppendBoth:
 			fds["1"], fds["2"] = r, r
-		case "<&", ">&":
+		case shellsyntax.RedirectDuplicateInput, shellsyntax.RedirectDuplicateOutput:
 			if !generatedDuplicateDescriptor(fds, fd, r, vars) {
 				return nil, nil
 			}
@@ -133,7 +133,7 @@ func generatedDuplicateDescriptor(fds map[string]*shellsyntax.Redirect, fd strin
 		}
 	case known && value == "-":
 		fds[fd] = nil
-	case r.Op == ">&" && fd == "1":
+	case r.Op == shellsyntax.RedirectDuplicateOutput && fd == shellsyntax.StdoutFD:
 		// Bash also accepts [1]>&filename as a combined stdout/stderr write.
 		if known && value == "" {
 			return false
@@ -321,9 +321,9 @@ func dynamicScriptPath(word *shellsyntax.Word, vars map[string]string) bool {
 		var value string
 
 		switch part.Kind {
-		case "literal":
+		case shellsyntax.PartLiteral:
 			value = part.Text
-		case "parameter":
+		case shellsyntax.PartParameter:
 			var known bool
 
 			value, known = vars[part.Text]
@@ -353,7 +353,7 @@ func fixedNonlocalScriptPath(word *shellsyntax.Word) bool {
 	expansion := false
 
 	for _, part := range word.Parts {
-		if part.Kind != "literal" {
+		if part.Kind != shellsyntax.PartLiteral {
 			// An unquoted expansion can supply separate relative operands.
 			if !part.Quoted {
 				return false

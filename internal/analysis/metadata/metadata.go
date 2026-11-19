@@ -19,9 +19,12 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-const maxMetadataRecords = 512
-
-const valueTriggers = "triggers"
+const (
+	maxSkillNameBytes        = 64
+	maxSkillDescriptionRunes = 1024
+	maxMetadataRecords       = 512
+	valueTriggers            = "triggers"
+)
 
 func Collect(ctx context.Context, docs []document.File, host string) report.MetadataReport {
 	r := report.MetadataReport{
@@ -58,7 +61,7 @@ func collectFile(d document.File, host string, r *report.MetadataReport) bool {
 		name = p
 	}
 
-	isSkill := strings.EqualFold(path.Base(name), "SKILL.md")
+	isSkill := strings.EqualFold(path.Base(name), artifact.SkillManifest)
 	isManifest := slices.Contains([]string{"plugin.json", "manifest.json", "skill.json"}, path.Base(name))
 	found := false
 
@@ -269,12 +272,14 @@ func validateSkillIdentity(root *jsonconfig.Node, host string, f *report.Metadat
 		{
 			name:  "name",
 			issue: "skill_name_contract_invalid",
-			valid: func(s string) bool { return textmatch.Slug(s, 64) && !strings.Contains(s, "--") },
+			valid: func(s string) bool { return textmatch.Slug(s, maxSkillNameBytes) && !strings.Contains(s, "--") },
 		},
 		{
 			name:  "description",
 			issue: "skill_description_contract_invalid",
-			valid: func(s string) bool { return utf8.RuneCountInString(s) <= 1024 && strings.TrimSpace(s) != "" },
+			valid: func(s string) bool {
+				return utf8.RuneCountInString(s) <= maxSkillDescriptionRunes && strings.TrimSpace(s) != ""
+			},
 		},
 	} {
 		if value, ok := root.Get(rule.name).Text(); ok && !rule.valid(value) {

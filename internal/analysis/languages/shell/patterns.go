@@ -3,6 +3,7 @@ package shell
 import (
 	"context"
 	"iter"
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
@@ -13,8 +14,16 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+const (
+	maxShellPatternDepth      = 32
+	maxShellPatternOperations = 8192
+)
+
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var shellPatternCommands = stringSet("curl wget rm chmod git cp mv install")
+
+//nolint:gochecknoglobals // The same concurrency-safe replacement applies to every parsed operand.
+var shellPatternWordBreaks = strings.NewReplacer("\r", "__scout_word_break__", "\n", "__scout_word_break__")
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var (
@@ -136,7 +145,7 @@ func (p *shellPatternWalker) walk(tree *shellsyntax.File, view source.View, dept
 		return
 	}
 
-	if depth > 32 {
+	if depth > maxShellPatternDepth {
 		out.Truncated = true
 		return
 	}
@@ -156,13 +165,17 @@ func (p *shellPatternWalker) walk(tree *shellsyntax.File, view source.View, dept
 			for child := range shellNestedTrees(command) {
 				p.walk(child, view, depth+1)
 			}
+
+			for _, branch := range command.Alternatives {
+				p.walk(branch, view, depth+1)
+			}
 		}
 	}
 }
 
 func (p *shellPatternWalker) step() bool {
 	p.ops++
-	if p.ops > 8192 || !analysisbudget.Consume(p.ctx, 1) {
+	if p.ops > maxShellPatternOperations || !analysisbudget.Consume(p.ctx, 1) {
 		p.halted, p.out.Truncated = true, true
 	}
 
@@ -175,11 +188,31 @@ func shellNestedTrees(command *shellsyntax.Command) iter.Seq[*shellsyntax.File] 
 			return
 		}
 
-		for _, word := range command.Words {
-			for _, part := range word.Parts {
-				if part.Kind == "substitution" && !yield(part.Tree) {
-					return
+		wordSubstitutions := func(word *shellsyntax.Word) bool {
+			for tree := range word.Substitutions() {
+				if !yield(tree) {
+					return false
 				}
+			}
+
+			return true
+		}
+
+		for _, word := range slices.Concat(command.Words, command.ExpansionWords) {
+			if !wordSubstitutions(word) {
+				return
+			}
+		}
+
+		for _, assignment := range command.Assignments {
+			if !wordSubstitutions(assignment.Value) {
+				return
+			}
+		}
+
+		for _, redirect := range command.Redirects {
+			if !wordSubstitutions(redirect.Target) || !wordSubstitutions(redirect.Body) {
+				return
 			}
 		}
 	}
@@ -224,7 +257,7 @@ func shellPatternWords(command *shellsyntax.Command, mode PatternMode) []string 
 			ok = true
 
 			for _, part := range word.Parts {
-				if part.Kind != "literal" {
+				if part.Kind != shellsyntax.PartLiteral {
 					ok = false
 					break
 				}
@@ -240,7 +273,7 @@ func shellPatternWords(command *shellsyntax.Command, mode PatternMode) []string 
 		}
 
 		if len(words) > 0 {
-			v = strings.NewReplacer("\r", "__scout_word_break__", "\n", "__scout_word_break__").Replace(v)
+			v = shellPatternWordBreaks.Replace(v)
 		}
 
 		words = append(words, v)
@@ -360,7 +393,7 @@ func shellRemovalWord(word *shellsyntax.Word) (string, bool) {
 	var b strings.Builder
 
 	for _, p := range word.Parts {
-		if p.Kind != "literal" {
+		if p.Kind != shellsyntax.PartLiteral {
 			return "", false
 		}
 

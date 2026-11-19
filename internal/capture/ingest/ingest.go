@@ -18,6 +18,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	directoryReadBatchSize = 64
+)
+
 var errEmpty = errors.New("input contains no files")
 
 type builder struct {
@@ -338,7 +342,7 @@ func (b *builder) directoryEntries(ctx context.Context, f *os.File, dir string) 
 			return entries, false, err
 		}
 
-		batch, readErr := f.ReadDir(64)
+		batch, readErr := f.ReadDir(directoryReadBatchSize)
 		limited := false
 
 		for _, entry := range batch {
@@ -394,7 +398,7 @@ func readSelectedOpenFile(ctx context.Context, f *os.File, info os.FileInfo, max
 		return nil, err
 	}
 
-	if !before.Mode().IsRegular() || !os.SameFile(info, before) {
+	if !before.Mode().IsRegular() || !os.SameFile(info, before) || before.Mode() != info.Mode() {
 		return nil, errors.New("input changed before capture")
 	}
 
@@ -424,14 +428,16 @@ func readDirectory(ctx context.Context, target string, initial os.FileInfo, limi
 
 	b := newBuilder(limits)
 	if err := b.walkDirectory(ctx, root); err != nil {
+		b.complete = false
+		return b.snapshot("directory"), err
+	}
+
+	if err := ctx.Err(); err != nil {
+		b.complete = false
 		return b.snapshot("directory"), err
 	}
 
 	snapshot := b.snapshot("directory")
-	if err := ctx.Err(); err != nil {
-		return snapshot, err
-	}
-
 	if len(b.files) == 0 && len(b.skipped) == 0 && b.complete {
 		return snapshot, errEmpty
 	}

@@ -9,6 +9,10 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	maxEvaluationJSONDepth = 8
+)
+
 // The typed decoder rejects fields in the wrong location. This first pass also
 // rejects duplicate keys and Go's case-insensitive field aliases.
 func validateJSON(data []byte) error {
@@ -35,7 +39,7 @@ func validateJSONFields(data []byte, fields []string, requireContent bool) error
 }
 
 func jsonValue(d *json.Decoder, depth int, field string, fields []string, requireContent bool) error {
-	if depth > 8 {
+	if depth > maxEvaluationJSONDepth {
 		return errors.New("corpus nesting exceeds limit")
 	}
 

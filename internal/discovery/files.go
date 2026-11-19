@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/capture/rootfs"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 )
@@ -243,7 +244,7 @@ func (t *tree) skills(root string) {
 }
 
 func (t *tree) skill(dir, name string) bool {
-	manifest := path.Join(dir, "SKILL.md")
+	manifest := path.Join(dir, artifact.SkillManifest)
 	if t.read(manifest, false) == nil {
 		return false
 	}

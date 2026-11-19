@@ -7,6 +7,8 @@ import (
 	"github.com/skarm/scout/internal/analysis/document"
 )
 
+const maxCredentialTypeLineBytes = 256
+
 var credentialTypeLabel = regexp.MustCompile(`(?i)^[\t ]*\*{0,2}credential[ -]+types?(?:\(s\))?:\*{0,2}[\t ]*`)
 
 func credentialPrecision(d document.File, m Match) bool {
@@ -18,7 +20,7 @@ func credentialPrecision(d document.File, m Match) bool {
 	at := source.line(m)
 	start, end, text := at.Start, at.End, source.text
 
-	if end-start > 256 {
+	if end-start > maxCredentialTypeLineBytes {
 		return false
 	}
 

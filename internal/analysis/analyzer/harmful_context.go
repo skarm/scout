@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+const (
+	harmfulSubstanceContextBytes = 250
+)
+
 //nolint:gochecknoglobals // Immutable marker tables shared by concurrent scans.
 var (
 	harmfulSubstances         = regexp.MustCompile(`(?i)\b(?:cyanide|arsenic|ricin|botulinum|strychnine|thallium|polonium|sarin|vx gas|mustard gas|anthrax|deadly nightshade|aconite|hemlock|oleander)\b`)
@@ -17,7 +21,7 @@ var (
 )
 
 func harmfulSubstanceExempt(text string, start, end int) bool {
-	surrounding := strings.ToLower(text[max(0, start-250):min(len(text), end+250)])
+	surrounding := strings.ToLower(text[max(0, start-harmfulSubstanceContextBytes):min(len(text), end+harmfulSubstanceContextBytes)])
 	for _, marker := range harmfulInstructionMarkers {
 		if strings.Contains(surrounding, marker) {
 			return false

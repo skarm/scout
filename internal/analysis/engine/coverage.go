@@ -13,7 +13,7 @@ import (
 
 type coverageGap struct{ code, message string }
 
-func initializeFileCoverage(r *report.Analysis, documents []document.File) map[string]int {
+func initializeFileCoverage(r *report.Analysis, documents []document.File, checksPerFile int) map[string]int {
 	inventory := append([]report.File(nil), r.Artifact.Files...)
 	for _, object := range r.Extraction.Objects {
 		inventory = append(inventory, object.File)
@@ -53,6 +53,8 @@ func initializeFileCoverage(r *report.Analysis, documents []document.File) map[s
 	for _, doc := range documents {
 		f := doc.Artifact()
 		fc := &r.Coverage.Files[fileIndex[f.Metadata().Path]]
+
+		fc.Checks = make([]report.FileCheck, 0, checksPerFile)
 		classifyCoverage(r, fc, doc, extracted)
 	}
 
@@ -83,7 +85,7 @@ func classifyCoverage(r *report.Analysis, fc *report.FileCoverage, doc document.
 	}
 
 	m := f.Metadata()
-	if m.Kind == "text" {
+	if m.Kind == report.FileKindText {
 		r.Coverage.TextFiles++
 	}
 
@@ -149,7 +151,7 @@ func containerCoverageGap(category string, extracted bool) coverageGap {
 
 func contentCoverageGap(c filetype.Description, kind string, parsed bool) coverageGap {
 	switch {
-	case kind == "binary" || c.Executable:
+	case kind == report.FileKindBinary || c.Executable:
 		return coverageGap{
 			code:    "opaque_content",
 			message: "Raw byte patterns were checked, but encoded contents, embedded objects and behavior remain unverified.",

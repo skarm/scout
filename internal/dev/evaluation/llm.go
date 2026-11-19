@@ -10,10 +10,13 @@ import (
 )
 
 type Options struct {
-	Split       string
-	Reviewer    *scout.Scanner
-	Price       *TokenPrice
-	LabelReview *LabelReview
+	Split                string
+	Reviewer             *scout.Scanner
+	Price                *TokenPrice
+	LabelReview          *LabelReview
+	ShellHooks           bool
+	ShellHookRoots       *ShellHookRoots
+	ShellHookRootScanner *scout.Scanner
 }
 
 // TokenPrice is an operator assumption, not a fetched provider tariff.
@@ -68,6 +71,12 @@ type LLMReport struct {
 func (o Options) validate(c Corpus) error {
 	if o.Split != "" && (!validSplit(o.Split) || !slices.ContainsFunc(c.Cases, func(tc Case) bool { return tc.Split == o.Split })) {
 		return errors.New("selected split is invalid or empty")
+	}
+
+	if o.ShellHooks && !slices.ContainsFunc(c.Cases, func(tc Case) bool {
+		return tc.Category == "shell_hooks" && (o.Split == "" || tc.Split == o.Split)
+	}) {
+		return errors.New("shell hook metrics require a selected shell_hooks case")
 	}
 
 	if o.Price != nil {
@@ -211,7 +220,7 @@ func (r *LLMReport) finish() {
 	slices.Sort(r.durations)
 	r.P50NS = r.durations[(len(r.durations)-1)/2]
 
-	r.P95NS = r.durations[(95*len(r.durations)+99)/100-1]
+	r.P95NS = r.durations[(upperLatencyPercentile*len(r.durations)+percentileScale-1)/percentileScale-1]
 	if r.Price != nil && r.Usage.Complete {
 		cost := (float64(r.Usage.InputTokens)*r.Price.InputUSDPerMillion + float64(r.Usage.OutputTokens)*r.Price.OutputUSDPerMillion) / 1e6
 		r.EstimatedCostUSD = &cost

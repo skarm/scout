@@ -7,6 +7,16 @@ import (
 	"slices"
 )
 
+// Operator spellings in the normalized Python IR.
+const (
+	OpAnd    = "And"
+	OpNot    = "Not"
+	OpOr     = "Or"
+	OpUAdd   = "UAdd"
+	OpUSub   = "USub"
+	opInvert = "Invert"
+)
+
 //nolint:gochecknoglobals // Read-only IR schema and Python grammar tables are shared by scans.
 var fieldNames = [...]string{
 	invalidField:   "",
@@ -114,7 +124,8 @@ var nodeSchemas = [...]nodeSchema{
 	},
 	BoolOp:  {name: "BoolOp", fields: []fieldSpec{listField(Values), textField(Op)}},
 	IfExp:   {name: "IfExp", fields: []fieldSpec{childField(Body), childField(Orelse), childField(Test)}},
-	BinOp:   {name: "BinOp", fields: []fieldSpec{childField(Left), childField(Right)}},
+	BinOp:   {name: "BinOp", fields: []fieldSpec{childField(Left), childField(Right), textField(Op)}},
+	Compare: {name: "Compare", fields: []fieldSpec{childField(Left), childField(Right), textField(Op)}},
 	UnaryOp: {name: "UnaryOp", fields: []fieldSpec{childField(Operand), textField(Op)}},
 	Starred: {name: "Starred", fields: []fieldSpec{childField(FieldValue)}},
 	FunctionDef: {
@@ -151,14 +162,14 @@ var nodeSchemas = [...]nodeSchema{
 		name:   "Raise",
 		fields: []fieldSpec{childField(FieldValue), listField(Targets), childField(exc), childField(cause)},
 	},
-	assert:       {name: "Assert", fields: []fieldSpec{childField(FieldValue), listField(Targets)}},
-	Delete:       {name: "Delete", fields: []fieldSpec{childField(FieldValue), listField(Targets)}},
-	pass:         {name: "Pass"},
-	breakNode:    {name: "Break"},
-	continueNode: {name: "Continue"},
-	Global:       {name: "Global", fields: []fieldSpec{{kind: Names, shapes: shape(valueStrings)}}},
-	Nonlocal:     {name: "Nonlocal", fields: []fieldSpec{{kind: Names, shapes: shape(valueStrings)}}},
-	Import:       {name: "Import", fields: []fieldSpec{listField(Names)}},
+	assert:    {name: "Assert", fields: []fieldSpec{childField(FieldValue), listField(Targets)}},
+	Delete:    {name: "Delete", fields: []fieldSpec{childField(FieldValue), listField(Targets)}},
+	Pass:      {name: "Pass"},
+	breakNode: {name: "Break"},
+	Continue:  {name: "Continue"},
+	Global:    {name: "Global", fields: []fieldSpec{{kind: Names, shapes: shape(valueStrings)}}},
+	Nonlocal:  {name: "Nonlocal", fields: []fieldSpec{{kind: Names, shapes: shape(valueStrings)}}},
+	Import:    {name: "Import", fields: []fieldSpec{listField(Names)}},
 	ImportFrom: {
 		name: "ImportFrom",
 		fields: []fieldSpec{listField(Names), textField(FieldModule), {
@@ -243,9 +254,9 @@ const (
 	raise
 	assert
 	Delete
-	pass
+	Pass
 	breakNode
-	continueNode
+	Continue
 	Global
 	Nonlocal
 	Import
@@ -259,6 +270,7 @@ const (
 	ExceptHandler
 	UnsupportedExpression
 	UnsupportedStatement
+	Compare
 )
 
 // FieldKind is a structural selector, not an arbitrary property name. The schema

@@ -134,3 +134,82 @@ func TestSourcePreparationUsesRunQuotaAndFreezesObservations(t *testing.T) {
 		t.Fatalf("projection reran source discovery: %+v %v", out, err)
 	}
 }
+
+func TestSourceDeclarationRetentionLimitIsPreserved(t *testing.T) {
+	ctx := t.Context()
+	text := "NPM_CONFIG_REGISTRY=https://first.invalid\nNPM_CONFIG_REGISTRY=https://second.invalid\n"
+	doc := document.Prepare(ctx, artifact.NewFile("input.sh", []byte(text), false))
+	check := pluginRule(t, "NV-SC10")
+	docs, bound := analyzer.PrepareDerivedWithin(ctx, []analyzer.Analyzer{check}, []document.File{doc}, 10, 0)
+	for _, tc := range []struct {
+		name  string
+		check analyzer.Analyzer
+		doc   document.File
+	}{{"unbound", check, doc}, {"bound", bound[0], docs[0]}} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, budget := range []int{0, 1, 2} {
+				result, err := tc.check.Find(ctx, tc.doc, budget)
+				if err != nil || len(result.Matches) != budget || result.Truncated != (budget < 2) {
+					t.Fatalf("budget %d lost retention state: %+v %v", budget, result, err)
+				}
+			}
+		})
+	}
+}
+
+func TestDerivedConfigurationLimitCountsDistinctInputs(t *testing.T) {
+	const one = "cat > .npmrc <<'END'\ncolor=true\nEND\n"
+	for _, tc := range []struct {
+		name, last string
+		gap        bool
+	}{
+		{"exact", one, false},
+		{"duplicate at capacity", "tee .npmrc .npmrc <<'END'\ncolor=true\nEND\n", false},
+		{"additional file", "tee .npmrc pip.ini <<'END'\ncolor=true\nEND\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := strings.Repeat(one, document.MaxRegions-1) + tc.last
+			doc := document.Prepare(t.Context(), artifact.NewFile("setup.sh", []byte(text), false))
+			prepared := analyzer.PrepareDerived(t.Context(), []document.File{doc})[0]
+			children, limited := prepared.DerivedConfigs()
+			if len(children) != document.MaxRegions || limited != tc.gap {
+				t.Fatalf("retained %d configurations, limited=%v; want %d, %v", len(children), limited, document.MaxRegions, tc.gap)
+			}
+			for i, child := range children {
+				if child.File == nil || child.File.Artifact().Metadata().Path != ".npmrc" || i > 0 && child.Span.Start <= children[i-1].Span.Start {
+					t.Fatalf("unexpected configuration at %d", i)
+				}
+			}
+		})
+	}
+}
+
+func TestMavenSourceURLUsesCompleteElementText(t *testing.T) {
+	for _, tc := range []struct {
+		name, value string
+		count       int
+		partial     bool
+	}{
+		{"plain-default", "https://repo.maven.apache.org/maven2", 0, false},
+		{"cdata-default", "https://repo.maven.<![CDATA[apache.org]]>/maven2", 0, false},
+		{"comment-default", "https://repo.maven.<!-- boundary -->apache.org/maven2", 0, false},
+		{"entity-default", "https://repo.maven.apache.org&#47;maven2", 0, false},
+		{"cdata-private", "https://private.<![CDATA[example.invalid]]>/maven2", 1, false},
+		{"empty", "", 0, false},
+		{"nested-markup", "https://private.<host>example.invalid</host>/maven2", 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := "<project><repositories><repository><url>" + tc.value + "</url></repository></repositories></project>"
+			doc := document.Prepare(t.Context(), artifact.NewFile("pom.xml", []byte(text), false))
+			result, err := pluginRule(t, "NV-SC10").Find(t.Context(), doc, 10)
+			if err != nil || result.Truncated != tc.partial || len(result.Matches) != tc.count {
+				t.Fatalf("complete URL classification changed: %+v %v", result, err)
+			}
+			for _, match := range result.Matches {
+				if got := text[match.Start:match.End]; got != tc.value {
+					t.Fatalf("URL evidence %q, want original content %q", got, tc.value)
+				}
+			}
+		})
+	}
+}

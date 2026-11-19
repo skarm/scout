@@ -13,6 +13,8 @@ import (
 
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/fetch"
+	sigcheck "github.com/skarm/scout/internal/signatures"
+	"github.com/skarm/scout/internal/syntax/frontend"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/osv"
 	"github.com/skarm/scout/policy"
@@ -292,7 +294,7 @@ func (d document) apply(s *Settings) error {
 		return err
 	}
 
-	if err := duration(&s.Scanner.Limits.Timeout, d.Timeout, 10*time.Minute); err != nil {
+	if err := duration(&s.Scanner.Limits.Timeout, d.Timeout, scout.MaxScanTimeout); err != nil {
 		return err
 	}
 
@@ -323,7 +325,7 @@ func (d document) applyPolicyAndSignatures(s *Settings) error {
 		assign(&s.RulepackPath, d.Signatures.RulepackFile)
 		assign(&s.Scanner.Signatures.RulepackSHA256, d.Signatures.RulepackSHA256)
 
-		if err := duration(&s.Scanner.Signatures.Timeout, d.Signatures.Timeout, 10*time.Second); err != nil {
+		if err := duration(&s.Scanner.Signatures.Timeout, d.Signatures.Timeout, sigcheck.MaxTimeout); err != nil {
 			return err
 		}
 	}
@@ -392,7 +394,7 @@ func (d document) services(s *Settings, grants Grants) error {
 		if d.Download != nil {
 			assign(&opts.AllowLoopback, d.Download.AllowLoopback)
 
-			if err := duration(&opts.Timeout, d.Download.Timeout, 2*time.Minute); err != nil {
+			if err := duration(&opts.Timeout, d.Download.Timeout, fetch.MaxDownloadTimeout); err != nil {
 				return err
 			}
 		}
@@ -442,7 +444,7 @@ func (p *limits) apply(l *scout.Limits) error {
 		assign(&l.Analysis.MaxOperations, a.MaxOperations)
 		assign(&l.Analysis.MaxMatchesPerRule, a.MaxMatchesPerRule)
 
-		if err := duration(&l.Analysis.ParserTimeout, a.ParserTimeout, 10*time.Second); err != nil {
+		if err := duration(&l.Analysis.ParserTimeout, a.ParserTimeout, frontend.MaxTimeout); err != nil {
 			return err
 		}
 	}
@@ -496,7 +498,7 @@ func (p *reviewPatch) options() (*Reviewer, error) {
 	assign(&o.MaxRequests, p.MaxRequests)
 	assign(&o.MaxInputBytes, p.MaxInputBytes)
 
-	if err := duration(&o.Timeout, p.Timeout, 2*time.Minute); err != nil {
+	if err := duration(&o.Timeout, p.Timeout, review.MaxReviewTimeout); err != nil {
 		return nil, err
 	}
 

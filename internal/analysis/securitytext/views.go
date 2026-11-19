@@ -18,6 +18,11 @@ import (
 )
 
 const (
+	reconstructionCancellationInterval = 1024
+	maxClosingMarkupBytes              = 1024
+)
+
+const (
 	MaxBytes     = 1 << 20
 	MaxChanges   = 16384
 	MaxScanBytes = 16 << 20
@@ -113,7 +118,7 @@ func controlReplacements(ctx context.Context, text string) ([]source.Replacement
 	changes := make([]source.Replacement, 0)
 
 	for at, r := range text {
-		if at%1024 == 0 && ctx.Err() != nil {
+		if at%reconstructionCancellationInterval == 0 && ctx.Err() != nil {
 			return changes, true
 		}
 
@@ -192,7 +197,7 @@ func markup(ctx context.Context, text string) []source.Replacement {
 	out := make([]source.Replacement, 0)
 
 	for at := 0; at < len(text); {
-		if at%1024 == 0 && ctx.Err() != nil {
+		if at%reconstructionCancellationInterval == 0 && ctx.Err() != nil {
 			return out
 		}
 
@@ -248,7 +253,9 @@ func markupOpening(text string, at int, marker string) (int, bool) {
 	}
 
 	start := at + len(marker)
-	if start >= len(text) || unicode.IsLetter(before) || unicode.IsDigit(before) || text[start] == marker[0] || unicode.IsSpace(rune(text[start])) {
+
+	next, _ := utf8.DecodeRuneInString(text[start:])
+	if start >= len(text) || unicode.IsLetter(before) || unicode.IsDigit(before) || text[start] == marker[0] || unicode.IsSpace(next) {
 		return start, false
 	}
 
@@ -256,7 +263,7 @@ func markupOpening(text string, at int, marker string) (int, bool) {
 }
 
 func markupClosing(text string, start int, marker string) (int, bool) {
-	bound := min(len(text), start+1024)
+	bound := min(len(text), start+maxClosingMarkupBytes)
 
 	end := strings.Index(text[start:bound], marker)
 	if end < 0 {
@@ -265,6 +272,11 @@ func markupClosing(text string, start int, marker string) (int, bool) {
 
 	end += start
 	if strings.ContainsAny(text[start:end], "\r\n") || end == start {
+		return start, false
+	}
+
+	before, _ := utf8.DecodeLastRuneInString(text[start:end])
+	if marker != "`" && unicode.IsSpace(before) {
 		return start, false
 	}
 

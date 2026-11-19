@@ -12,12 +12,27 @@ import (
 )
 
 const (
+	corpusAuthoredRegression  = "authored_regression_not_holdout"
+	corpusIndependentLabelled = "independent_labelled_corpus"
+	corpusExternalUnreviewed  = "external_unreviewed_corpus"
+	corpusExternalLabelled    = "external_labelled_corpus"
+)
+
+const (
+	maxEvaluationCases        = 4096
+	maxEvaluationSources      = 4096
+	maxCaseFiles              = 1024
+	maxCasePathBytes          = 1024
+	maxCasePathComponentBytes = 255
+)
+
+const (
 	MaxPackageDepth   = 32
 	MaxPackageEntries = 8192
 )
 
 func (c Corpus) validate() error {
-	if !slices.Contains([]int{1, 2}, c.SchemaVersion) || !slices.Contains([]string{"authored_regression_not_holdout", "independent_labelled_corpus", "external_unreviewed_corpus", "external_labelled_corpus"}, c.Kind) || len(c.Cases) == 0 || len(c.Cases) > 4096 {
+	if !slices.Contains([]int{1, 2}, c.SchemaVersion) || !slices.Contains([]string{corpusAuthoredRegression, corpusIndependentLabelled, corpusExternalUnreviewed, corpusExternalLabelled}, c.Kind) || len(c.Cases) == 0 || len(c.Cases) > maxEvaluationCases {
 		return errors.New("invalid corpus identity or case count")
 	}
 
@@ -34,7 +49,7 @@ func (c Corpus) validate() error {
 	contents := map[[32]byte]string{}
 
 	for _, value := range c.Cases {
-		if c.Kind == "external_unreviewed_corpus" && (c.SchemaVersion != 2 || value.Label != "ambiguous") {
+		if c.Kind == corpusExternalUnreviewed && (c.SchemaVersion != 2 || value.Label != "ambiguous") {
 			return errors.New("unreviewed external cases require schema 2 and ambiguous labels")
 		}
 
@@ -58,7 +73,7 @@ func (c Corpus) validate() error {
 }
 
 func (c Corpus) validateSources() error {
-	if len(c.Sources) > 4096 || c.SchemaVersion == 2 && len(c.Sources) == 0 {
+	if len(c.Sources) > maxEvaluationSources || c.SchemaVersion == 2 && len(c.Sources) == 0 {
 		return errors.New("schema 2 requires bounded source provenance")
 	}
 
@@ -84,14 +99,14 @@ func (c Case) validate(version int) error {
 	}
 
 	if version == 1 {
-		if !fs.ValidPath(c.Path) || len(c.Path) > 1024 || len(c.Files) != 0 || c.SourceID != "" || c.Split != "" {
+		if !fs.ValidPath(c.Path) || len(c.Path) > maxCasePathBytes || len(c.Files) != 0 || c.SourceID != "" || c.Split != "" {
 			return errors.New("schema 1 requires one reader file without split metadata")
 		}
 
 		return nil
 	}
 
-	if c.Path != "" || c.Content != "" || len(c.Files) == 0 || len(c.Files) > 1024 || !boundedText(c.SourceID, 128) || !validSplit(c.Split) {
+	if c.Path != "" || c.Content != "" || len(c.Files) == 0 || len(c.Files) > maxCaseFiles || !boundedText(c.SourceID, 128) || !validSplit(c.Split) {
 		return errors.New("schema 2 requires package files, source_id and train/tune/holdout split")
 	}
 
@@ -109,12 +124,12 @@ func boundedText(text string, limit int) bool {
 // Keep the same file namespace on Unix and Windows, including reserved device
 // names, alternate streams and case-insensitive directory aliases.
 func portablePath(name string) bool {
-	if archiveutil.ValidatePath(name, 1024, MaxPackageDepth) != nil || strings.ContainsFunc(name, func(r rune) bool { return r < 32 || r > 126 }) {
+	if archiveutil.ValidatePath(name, maxCasePathBytes, MaxPackageDepth) != nil || strings.ContainsFunc(name, func(r rune) bool { return r < 32 || r > 126 }) {
 		return false
 	}
 
 	for part := range strings.SplitSeq(name, "/") {
-		if len(part) > 255 {
+		if len(part) > maxCasePathComponentBytes {
 			return false
 		}
 	}

@@ -18,7 +18,7 @@ Run with `go test -run TestSecurityRegressionCorpus -v ./tests/regression`.
 ## Package corpus format
 
 `packages.json` demonstrates schema 2 with multi-file packages, source provenance
-and `train` / `tune` / `holdout` partitions. All five cases are authored regression
+and `train` / `tune` / `holdout` partitions. All cases are authored regression
 fixtures. The partition names do **not** make them independent evaluation data.
 Do not use these fixtures to claim holdout quality or LLM detection quality.
 
@@ -26,3 +26,7 @@ Run `scout-dev evaluate --split holdout testdata/security-corpus/packages.json`.
 The full corpus is validated before the selected split is scanned. See the
 [evaluation guide](../../docs/development/evaluation.md) for provenance, isolation
 checks, LLM configuration and metric definitions.
+
+Native CI also evaluates the three `shell_hooks` cases with `--shell-hooks`.
+It requires both targeted signals and the bounded read loop to remain a covered
+negative. These authored cases provide a regression threshold for CI.

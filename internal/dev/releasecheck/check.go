@@ -28,7 +28,14 @@ import (
 	"github.com/skarm/scout/internal/nativecontract"
 )
 
-const maxBinarySize = 512 << 20
+const (
+	selftestTimeout        = 2 * time.Minute
+	selftestWaitDelay      = 2 * time.Second
+	maxSelftestStdoutBytes = 128 << 10
+	maxSelftestStderrBytes = 16 << 10
+	maxELFInterpreterBytes = 4096
+	maxBinarySize          = 512 << 20
+)
 
 //nolint:gochecknoglobals // Read-only system loader metadata shared by binary inspections.
 var systemLoaders = map[string][]string{
@@ -299,7 +306,7 @@ func copyRelease(f *os.File, r Report, dir string) (string, error) {
 }
 
 func runSelftest(ctx context.Context, bin, dir string, r Report) (Report, error) {
-	call, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	call, cancel := context.WithTimeout(ctx, selftestTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(call, bin, "selftest", "--format", "json", "--timeout", "90s")
@@ -312,9 +319,9 @@ func runSelftest(ctx context.Context, bin, dir string, r Report) (Report, error)
 			"USERPROFILE="+filepath.Join(dir, "home"), "TEMP="+filepath.Join(dir, "tmp"), "TMP="+filepath.Join(dir, "tmp"))
 	}
 
-	cmd.WaitDelay = 2 * time.Second
-	out := &boundedBuffer{limit: 128 << 10}
-	stderr := &boundedBuffer{limit: 16 << 10}
+	cmd.WaitDelay = selftestWaitDelay
+	out := &boundedBuffer{limit: maxSelftestStdoutBytes}
+	stderr := &boundedBuffer{limit: maxSelftestStderrBytes}
 	cmd.Stdout = out
 	cmd.Stderr = stderr
 	runErr := cmd.Run()
@@ -424,7 +431,7 @@ func inspectELFInterpreter(ef *elf.File, r *Report) error {
 	// Nonstandard dynamic loaders are dependencies too; do not trust DT_NEEDED alone.
 	for _, p := range ef.Progs {
 		if p.Type == elf.PT_INTERP {
-			if p.Filesz > 4096 {
+			if p.Filesz > maxELFInterpreterBytes {
 				return errors.New("invalid ELF interpreter")
 			}
 

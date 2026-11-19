@@ -25,7 +25,11 @@ import (
 
 func TestMCPDefaultAndProfileAliases(t *testing.T) {
 	for _, profile := range []string{"", "standard", "extended", "basic"} {
-		t.Run(profile, func(t *testing.T) {
+		name := profile
+		if name == "" {
+			name = "implicit_default"
+		}
+		t.Run(name, func(t *testing.T) {
 			if profile != "basic" && (!frontend.BackendFor("python").Available || !signatures.Backend().Available) {
 				t.Skip("full profile requires native backends")
 			}

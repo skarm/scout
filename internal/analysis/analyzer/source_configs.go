@@ -17,6 +17,11 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+const (
+	maxSourceXMLOperations = 8192
+	maxSourceXMLDepth      = 64
+)
+
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var (
 	lineSourceKeys  = stringSet("registry index-url extra-index-url find-links repository")
@@ -26,6 +31,12 @@ var (
 type sourceConfigAssignment struct {
 	key, value string
 	assigned   bool
+}
+
+type mavenSourceURL struct {
+	depth int
+	start int
+	text  strings.Builder
 }
 
 func directSourceConfig(ctx context.Context, name, text string, emit func(source.Span)) bool {
@@ -85,6 +96,8 @@ func directXMLSourceConfig(ctx context.Context, name, text string, emit func(sou
 	stack := make([]string, 0)
 	operations := 0
 
+	var mavenURL *mavenSourceURL
+
 	for {
 		if ctx.Err() != nil {
 			return true
@@ -98,22 +111,38 @@ func directXMLSourceConfig(ctx context.Context, name, text string, emit func(sou
 		}
 
 		operations++
-		if operations > 8192 {
+		if operations > maxSourceXMLOperations {
 			return true
 		}
 
 		switch node := tok.(type) {
 		case xml.StartElement:
+			if mavenURL != nil {
+				// A repository URL is text, not nested XML markup.
+				return true
+			}
+
 			stack = append(stack, node.Name.Local)
-			if len(stack) > 64 {
+			if len(stack) > maxSourceXMLDepth {
 				return true
 			}
 
 			inspectNuGetSource(name, node, stack, source.Span{Start: before, End: int(dec.InputOffset())}, emit)
+
+			if mavenSourceElement(name, stack) {
+				mavenURL = &mavenSourceURL{depth: len(stack), start: int(dec.InputOffset())}
+			}
 		case xml.EndElement:
+			if mavenURL != nil && mavenURL.depth == len(stack) {
+				inspectMavenSource(mavenURL.text.String(), source.Span{Start: mavenURL.start, End: before}, emit)
+				mavenURL = nil
+			}
+
 			stack = stack[:len(stack)-1] // Decoder.Token has already checked balanced XML names.
 		case xml.CharData:
-			inspectMavenSource(name, node, stack, source.Span{Start: before, End: int(dec.InputOffset())}, emit)
+			if mavenURL != nil {
+				mavenURL.text.Write(node)
+			}
 		}
 	}
 }
@@ -128,14 +157,18 @@ func inspectNuGetSource(name string, node xml.StartElement, stack []string, span
 	}
 }
 
-func inspectMavenSource(name string, node xml.CharData, stack []string, span source.Span, emit func(source.Span)) {
+func mavenSourceElement(name string, stack []string) bool {
 	if name != "nuget.config" && len(stack) > 1 && stack[len(stack)-1] == "url" {
 		parent := stack[len(stack)-2]
-		if parent == "mirror" || parent == "repository" || parent == "pluginRepository" {
-			v := strings.TrimSpace(string(node))
-			if v != "" && v != "https://repo.maven.apache.org/maven2" && v != "https://repo1.maven.org/maven2" {
-				emit(span)
-			}
-		}
+		return parent == "mirror" || parent == "repository" || parent == "pluginRepository"
+	}
+
+	return false
+}
+
+func inspectMavenSource(text string, span source.Span, emit func(source.Span)) {
+	v := strings.TrimSpace(text)
+	if v != "" && v != "https://repo.maven.apache.org/maven2" && v != "https://repo1.maven.org/maven2" {
+		emit(span)
 	}
 }

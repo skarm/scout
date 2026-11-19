@@ -8,6 +8,11 @@ import (
 	"slices"
 )
 
+const (
+	maxDiscoveryFilterValues    = 32
+	maxDiscoveryFilterPathBytes = 4096
+)
+
 // Filters narrows an already captured inventory. Paths are explicit operator
 // selections; neither includes nor component metadata can expand its roots.
 type Filters struct {
@@ -123,7 +128,7 @@ func filterTargets(ctx context.Context, candidates []string, filters Filters) ([
 
 func (f *Filters) resolve() error {
 	for _, values := range [][]string{f.Kinds, f.IncludePaths, f.ExcludePaths} {
-		if len(values) > 32 {
+		if len(values) > maxDiscoveryFilterValues {
 			return errors.New("at most 32 values per discovery filter")
 		}
 	}
@@ -149,7 +154,7 @@ func (f *Filters) resolve() error {
 func selectionPaths(values []string) ([]string, error) {
 	result := make([]string, len(values))
 	for i, name := range values {
-		if name == "" || len(name) > 4096 {
+		if name == "" || len(name) > maxDiscoveryFilterPathBytes {
 			return nil, errors.New("discovery path filters require nonempty bounded paths")
 		}
 

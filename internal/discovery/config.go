@@ -6,9 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
-
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 func (t *tree) config(name string, required bool) *jsonconfig.Node {
@@ -90,13 +91,27 @@ func (t *tree) codexConfig(name string) {
 
 	t.servers(n.Get("mcp_servers"), name, "/mcp_servers")
 
+	if plugins := n.Get("plugins"); plugins != nil && plugins.Kind != jsonconfig.KindObject {
+		t.b.issue("invalid_enablement", t.absolute(name))
+	}
+
 	for _, entry := range n.GetOrEmpty("plugins").Members {
-		if enabled := entry.Value.Get("enabled"); enabled != nil && enabled.Kind == jsonconfig.KindBool {
+		enabled := entry.Value.Get("enabled")
+		if entry.Value.Kind != jsonconfig.KindObject || enabled != nil && enabled.Kind != jsonconfig.KindBool {
+			t.b.issue("invalid_enablement", t.absolute(name))
+		} else if enabled != nil {
 			t.setting("plugin", entry.Key, declaredState(enabled.Bool), name, "/plugins/"+pointer(entry.Key)+"/enabled")
 		}
 	}
 
-	for i, entry := range n.Get("skills").GetOrEmpty("config").Elements {
+	skills := n.Get("skills")
+
+	config := skills.Get("config")
+	if skills != nil && skills.Kind != jsonconfig.KindObject || config != nil && config.Kind != jsonconfig.KindArray {
+		t.b.issue("invalid_enablement", t.absolute(name))
+	}
+
+	for i, entry := range skills.GetOrEmpty("config").Elements {
 		enabled := entry.Get("enabled")
 
 		value, ok := entry.Get("path").Text()
@@ -117,8 +132,8 @@ func (t *tree) plugins(root string) {
 }
 
 func (t *tree) pluginAt(dir string) bool {
-	for _, relative := range []string{"plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json"} {
-		if t.agent == "claude-code" && relative != ".claude-plugin/plugin.json" {
+	for _, relative := range []string{"plugin.json", artifact.CodexPluginManifest, artifact.ClaudePluginManifest} {
+		if t.agent == "claude-code" && relative != artifact.ClaudePluginManifest {
 			continue
 		}
 
@@ -186,7 +201,7 @@ func (t *tree) manifestlessPluginAt(dir, root string) bool {
 
 	// A malformed manifest already created a gap; do not reinterpret it as an
 	// absent optional manifest or infer packages at arbitrary cache depths.
-	if _, present := t.b.sources[t.absolute(path.Join(dir, ".claude-plugin/plugin.json"))]; present {
+	if _, present := t.b.sources[t.absolute(path.Join(dir, artifact.ClaudePluginManifest))]; present {
 		return false
 	}
 

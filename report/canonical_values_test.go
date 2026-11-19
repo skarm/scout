@@ -42,7 +42,7 @@ func TestCanonicalValuesPreserveExactLeafEncoding(t *testing.T) {
 			want:  `{"empty":"value","keep":"kept","mixed":1,"optional":"present"}`,
 		},
 	} {
-		got, err := canonicalValue([]byte("prefix:"), reflect.ValueOf(tc.value), "")
+		got, err := canonicalValue([]byte("prefix:"), reflect.ValueOf(tc.value), "", nil)
 		if err != nil || string(got) != "prefix:"+tc.want {
 			t.Fatalf("%T encoded as %s, %v; want %s", tc.value, got, err, tc.want)
 		}
@@ -51,7 +51,7 @@ func TestCanonicalValuesPreserveExactLeafEncoding(t *testing.T) {
 
 func TestCanonicalValuesRejectUnsupportedDomain(t *testing.T) {
 	for _, value := range []any{float32(1), float64(1), uintptr(1), complex64(1), map[string]int{"x": 1}, make(chan int), func() {}} {
-		got, err := canonicalValue([]byte("prefix:"), reflect.ValueOf(value), "")
+		got, err := canonicalValue([]byte("prefix:"), reflect.ValueOf(value), "", nil)
 		if err == nil || !strings.HasPrefix(err.Error(), "unsupported report value ") || got != nil {
 			t.Fatalf("unsupported %T encoded as %s, %v", value, got, err)
 		}

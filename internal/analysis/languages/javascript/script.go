@@ -26,6 +26,7 @@ type scriptValue struct {
 	known, dynamic bool
 	shell          bool
 	stringValue    bool
+	primitive      bool // number, boolean, null or undefined; never an object coercion
 	valueType      scriptType
 	secret         *scriptsyntax.Node
 }
@@ -43,6 +44,13 @@ type scriptScope struct {
 	values map[string]scriptValue
 	parent *scriptScope
 }
+
+const (
+	maxScriptOperations = 50000
+	maxScriptDepth      = 64
+	maxScopeBindings    = 1024
+	maxStringBytes      = 16384
+)
 
 type scriptWalk struct {
 	ctx        context.Context
@@ -63,7 +71,7 @@ func Collect(ctx context.Context, doc document.File, facts *check.FileLanguageFa
 		return
 	}
 
-	w := scriptWalk{ctx: ctx, facts: facts, operations: 50000}
+	w := scriptWalk{ctx: ctx, facts: facts, operations: maxScriptOperations}
 
 	for _, unit := range doc.Units() {
 		tree, ok := unit.Tree.(scriptsyntax.Tree)
@@ -88,10 +96,12 @@ func Collect(ctx context.Context, doc document.File, facts *check.FileLanguageFa
 
 func (a scriptCheck) Rule() report.Rule {
 	title, category := "", ""
+	version := "1"
 
 	switch a.id {
 	case ruleJS001:
 		title, category = "JavaScript constructs a shell command", "process-execution"
+		version = "2"
 	case ruleJS002:
 		title, category = "JavaScript evaluates code dynamically", "dynamic-execution"
 	case ruleJS003:
@@ -106,7 +116,7 @@ func (a scriptCheck) Rule() report.Rule {
 
 	return report.Rule{
 		ID:          a.id,
-		Version:     "1",
+		Version:     version,
 		Title:       title,
 		Description: title,
 		Severity:    report.High,
@@ -166,24 +176,38 @@ func (s *scriptScope) set(name string, v scriptValue, declare bool) {
 	s.values[name] = v
 }
 
-func cloneScriptScope(s *scriptScope) *scriptScope {
-	if s == nil {
+func (w *scriptWalk) cloneScope(s *scriptScope) *scriptScope {
+	if s == nil || !w.chargeOperations(0, len(s.values)+1) {
 		return nil
 	}
 
-	out := newScriptScope(cloneScriptScope(s.parent))
+	parent := w.cloneScope(s.parent)
+	if w.err != nil {
+		return nil
+	}
+
+	out := newScriptScope(parent)
 	maps.Copy(out.values, s.values)
 
 	return out
 }
 
 func (w *scriptWalk) charge(depth int) bool {
+	return w.chargeOperations(depth, 1)
+}
+
+func (w *scriptWalk) chargeOperations(depth, units int) bool {
 	if w.err != nil {
 		return false
 	}
 
-	w.operations--
-	if depth > 64 || w.operations < 0 || !analysisbudget.Consume(w.ctx, 1) {
+	if units < 0 {
+		w.err = errors.New("invalid script operation charge")
+		return false
+	}
+
+	w.operations -= units
+	if depth > maxScriptDepth || w.operations < 0 || !analysisbudget.Consume(w.ctx, uint64(units)) {
 		w.err = errors.New("script analysis budget exceeded")
 	}
 
@@ -199,10 +223,15 @@ func (w *scriptWalk) text(n *scriptsyntax.Node) string {
 		return ""
 	}
 
-	return w.unit.View.Text()[n.Start:n.End]
+	value, err := scriptsyntax.IdentifierText(n.Kind, w.unit.View.Text()[n.Start:n.End])
+	if err != nil {
+		w.err = err
+	}
+
+	return value
 }
 
-func (w *scriptWalk) emit(id string, n, origin *scriptsyntax.Node) {
+func (w *scriptWalk) emit(id string, n, origin *scriptsyntax.Node, signals ...string) {
 	f := w.facts.Rules[id]
 	if f == nil || f.Done() || n == nil || n.Invalid {
 		return
@@ -214,7 +243,7 @@ func (w *scriptWalk) emit(id string, n, origin *scriptsyntax.Node) {
 		return
 	}
 
-	m := match{Start: span.Start, End: span.End}
+	m := match{Start: span.Start, End: span.End, ContextSignals: signals}
 	if origin != nil {
 		at, err := w.unit.View.Original(source.Span{Start: origin.Start, End: origin.End})
 		if err != nil {
@@ -222,8 +251,8 @@ func (w *scriptWalk) emit(id string, n, origin *scriptsyntax.Node) {
 			return
 		}
 
-		m.Trace = []trace{{Role: "source", Start: at.Start, End: at.End}, {
-			Role:  "sink",
+		m.Trace = []trace{{Role: report.TraceSource, Start: at.Start, End: at.End}, {
+			Role:  report.TraceSink,
 			Start: span.Start,
 			End:   span.End,
 		}}
@@ -238,7 +267,7 @@ func (w *scriptWalk) statement(n *scriptsyntax.Node, s *scriptScope, depth int) 
 	}
 
 	switch n.Kind {
-	case "program", "statement_block":
+	case scriptsyntax.KindProgram, scriptsyntax.KindStatementBlock:
 		local := newScriptScope(s)
 		w.predeclare(n, local)
 
@@ -247,37 +276,42 @@ func (w *scriptWalk) statement(n *scriptsyntax.Node, s *scriptScope, depth int) 
 				return false
 			}
 		}
-	case "import_statement":
+	case scriptsyntax.KindImportStatement:
 		w.importStatement(n, s)
-	case "lexical_declaration", "variable_declaration":
+	case scriptsyntax.KindLexicalDeclaration, scriptsyntax.KindVariableDeclaration:
 		for _, c := range n.Children {
-			if c.Kind == "variable_declarator" {
-				w.bind(c.Child("name"), w.expr(c.Child("value"), s, depth+1), s, true)
+			if c.Kind == scriptsyntax.KindVariableDeclarator {
+				w.bind(c.Child(scriptsyntax.FieldName), w.expr(c.Child(scriptsyntax.FieldValue), s, depth+1), s, true)
 			}
 		}
-	case "function_declaration", "generator_function_declaration":
+	case scriptsyntax.KindFunctionDeclaration, scriptsyntax.KindGeneratorFunctionDeclaration:
 		w.function(n, s, depth+1)
-	case "return_statement", "throw_statement":
+	case scriptsyntax.KindReturnStatement, scriptsyntax.KindThrowStatement:
 		for _, c := range n.Children {
 			w.expr(c, s, depth+1)
 		}
 
 		return false
-	case "if_statement":
-		w.expr(n.Child("condition"), s, depth+1)
-		left, right := cloneScriptScope(s), cloneScriptScope(s)
-		w.statement(n.Child("consequence"), left, depth+1)
+	case scriptsyntax.KindIfStatement:
+		w.expr(n.Child(scriptsyntax.FieldCondition), s, depth+1)
 
-		if alt := n.Child("alternative"); alt != nil {
+		left, right := w.cloneScope(s), w.cloneScope(s)
+		if w.err != nil {
+			return false
+		}
+
+		w.statement(n.Child(scriptsyntax.FieldConsequence), left, depth+1)
+
+		if alt := n.Child(scriptsyntax.FieldAlternative); alt != nil {
 			w.statement(alt, right, depth+1)
 		}
 
-		joinScriptScopes(s, left, right)
-	case "expression_statement":
+		w.joinScopes(s, left, right)
+	case scriptsyntax.KindExpressionStatement:
 		for _, c := range n.Children {
 			w.expr(c, s, depth+1)
 		}
-	case "export_statement":
+	case scriptsyntax.KindExportStatement:
 		for _, c := range n.Children {
 			w.statement(c, s, depth+1)
 		}
@@ -289,104 +323,124 @@ func (w *scriptWalk) statement(n *scriptsyntax.Node, s *scriptScope, depth int) 
 }
 
 func (w *scriptWalk) predeclare(n *scriptsyntax.Node, s *scriptScope) {
+	if !w.chargeOperations(0, len(n.Children)) {
+		return
+	}
+
 	for _, c := range n.Children {
-		if c.Kind == "function_declaration" || c.Kind == "class_declaration" {
-			w.bind(c.Child("name"), scriptValue{}, s, true)
+		switch c.Kind {
+		case scriptsyntax.KindFunctionDeclaration, scriptsyntax.KindClassDeclaration, scriptsyntax.KindVariableDeclarator:
+			w.bind(c.Child(scriptsyntax.FieldName), scriptValue{}, s, true)
+		case scriptsyntax.KindLexicalDeclaration, scriptsyntax.KindVariableDeclaration:
+			w.predeclare(c, s)
 		}
 
-		if c.Kind == "lexical_declaration" || c.Kind == "variable_declaration" {
-			for _, d := range c.Children {
-				if d.Kind == "variable_declarator" {
-					w.bind(d.Child("name"), scriptValue{}, s, true)
-				}
-			}
+		if w.err != nil {
+			return
 		}
 	}
 }
 
 func (w *scriptWalk) function(n *scriptsyntax.Node, s *scriptScope, depth int) {
-	local := newScriptScope(cloneScriptScope(s))
+	local := newScriptScope(w.cloneScope(s))
+	if w.err != nil {
+		return
+	}
 
-	params := n.Child("parameters")
-	if params != nil {
+	params := n.Child(scriptsyntax.FieldParameters)
+	if params != nil && w.chargeOperations(0, len(params.Children)) {
 		for _, p := range params.Children {
 			w.bind(p, scriptValue{}, local, true)
 		}
 	}
 
-	w.bind(n.Child("parameter"), scriptValue{}, local, true)
+	w.bind(n.Child(scriptsyntax.FieldParameter), scriptValue{}, local, true)
 
-	body := n.Child("body")
-	if body != nil && body.Kind == "statement_block" {
+	body := n.Child(scriptsyntax.FieldBody)
+	if body != nil && body.Kind == scriptsyntax.KindStatementBlock {
 		w.statement(body, local, depth+1)
 	} else {
 		w.expr(body, local, depth+1)
 	}
 }
 
-func joinScriptScopes(dst, left, right *scriptScope) {
+func (w *scriptWalk) joinScopes(dst, left, right *scriptScope) {
 	for dst != nil && left != nil && right != nil {
+		if !w.chargeOperations(0, len(dst.values)+1) {
+			return
+		}
+
 		for k := range dst.values {
-			a, b := left.values[k], right.values[k]
-
-			v := scriptValue{secret: a.secret, dynamic: a.dynamic || b.dynamic}
-			if v.secret == nil {
-				v.secret = b.secret
-			}
-
-			if a.name == b.name {
-				v.name = a.name
-			}
-
-			if a.valueType == b.valueType {
-				v.valueType = a.valueType
-			}
-
-			v.stringValue = a.stringValue && b.stringValue
-
-			if a.known && b.known && a.text == b.text {
-				v.known = true
-				v.text = a.text
-			}
-
-			dst.values[k] = v
+			dst.values[k] = joinScriptValues(left.values[k], right.values[k])
 		}
 
 		dst, left, right = dst.parent, left.parent, right.parent
 	}
 }
 
+func joinScriptValues(a, b scriptValue) scriptValue {
+	v := scriptValue{secret: a.secret, dynamic: a.dynamic || b.dynamic, shell: a.shell || b.shell, primitive: a.primitive && b.primitive}
+	if v.secret == nil {
+		v.secret = b.secret
+	}
+
+	if a.name == b.name {
+		v.name = a.name
+	}
+
+	if a.valueType == b.valueType {
+		v.valueType = a.valueType
+	}
+
+	v.stringValue = a.stringValue && b.stringValue
+	if a.known && b.known && a.text == b.text && a.valueType == b.valueType && a.stringValue == b.stringValue {
+		v.known = true
+		v.text = a.text
+	}
+
+	return v
+}
+
 func (w *scriptWalk) bind(n *scriptsyntax.Node, v scriptValue, s *scriptScope, declare bool) {
-	if n == nil {
+	if n == nil || w.err != nil {
 		return
 	}
 
 	switch n.Kind {
-	case "identifier", "shorthand_property_identifier_pattern":
-		if _, exists := s.values[w.text(n)]; declare && !exists && len(s.values) >= 1024 {
+	case scriptsyntax.KindIdentifier, scriptsyntax.KindShorthandPropertyIdentifierPattern:
+		if _, exists := s.values[w.text(n)]; declare && !exists && len(s.values) >= maxScopeBindings {
 			w.err = errors.New("script binding limit")
 			return
 		}
 
 		s.set(w.text(n), v, declare)
-	case "object_pattern":
-		for _, c := range n.Children {
-			if c.Kind == "shorthand_property_identifier_pattern" {
-				property := scriptValue{name: v.name + "." + w.text(c)}
-				if v.name == "process.env" && literals.SensitiveName(w.text(c)) {
-					property.secret = c
-				}
+	case scriptsyntax.KindObjectPattern:
+		if !w.chargeOperations(0, len(n.Children)) {
+			return
+		}
 
-				w.bind(c, property, s, declare)
+		for _, c := range n.Children {
+			if c.Kind == scriptsyntax.KindShorthandPropertyIdentifierPattern {
+				w.bind(c, w.patternProperty(v, c), s, declare)
 			}
 
-			if c.Kind == "pair_pattern" {
-				w.bind(c.Child("value"), scriptValue{name: v.name + "." + w.text(c.Child("key"))}, s, declare)
+			if c.Kind == scriptsyntax.KindPairPattern {
+				w.bind(c.Child(scriptsyntax.FieldValue), w.patternProperty(v, c.Child(scriptsyntax.FieldKey)), s, declare)
+			}
+
+			if c.Kind == scriptsyntax.KindRestPattern || c.Kind == scriptsyntax.KindObjectAssignmentPattern {
+				w.shadowPattern(c, s, declare, 0)
 			}
 		}
-	case "required_parameter", "optional_parameter", "assignment_pattern", "rest_pattern":
+	case scriptsyntax.KindArrayPattern:
+		w.shadowPattern(n, s, declare, 0)
+	case scriptsyntax.KindRequiredParameter, scriptsyntax.KindOptionalParameter, scriptsyntax.KindAssignmentPattern, scriptsyntax.KindRestPattern:
+		if !w.chargeOperations(0, len(n.Children)) {
+			return
+		}
+
 		for _, c := range n.Children {
-			if c.Field == "pattern" || c.Field == "left" || c.Kind == "identifier" {
+			if c.Field == scriptsyntax.FieldPattern || c.Field == scriptsyntax.FieldLeft || c.Kind == scriptsyntax.KindIdentifier || c.Kind == scriptsyntax.KindArrayPattern || c.Kind == scriptsyntax.KindObjectPattern {
 				w.bind(c, v, s, declare)
 				break
 			}
@@ -394,8 +448,45 @@ func (w *scriptWalk) bind(n *scriptsyntax.Node, v scriptValue, s *scriptScope, d
 	}
 }
 
+// Unsupported value projections still introduce local names. Keeping those
+// names unknown prevents an accidental fallback to a global API model.
+func (w *scriptWalk) shadowPattern(n *scriptsyntax.Node, s *scriptScope, declare bool, depth int) {
+	if n == nil || !w.charge(depth) {
+		return
+	}
+
+	w.limited = true
+
+	switch n.Kind {
+	case scriptsyntax.KindIdentifier, scriptsyntax.KindShorthandPropertyIdentifierPattern:
+		w.bind(n, scriptValue{}, s, declare)
+	case scriptsyntax.KindPairPattern:
+		w.shadowPattern(n.Child(scriptsyntax.FieldValue), s, declare, depth+1)
+	case scriptsyntax.KindAssignmentPattern, scriptsyntax.KindObjectAssignmentPattern:
+		w.shadowPattern(n.Child(scriptsyntax.FieldLeft), s, declare, depth+1)
+	case scriptsyntax.KindObjectPattern, scriptsyntax.KindArrayPattern, scriptsyntax.KindRestPattern:
+		for _, child := range n.Children {
+			w.shadowPattern(child, s, declare, depth+1)
+		}
+	}
+}
+
+func (w *scriptWalk) patternProperty(value scriptValue, key *scriptsyntax.Node) scriptValue {
+	name := w.text(key)
+	if decoded, ok := scriptLiteral(name); ok {
+		name = decoded
+	}
+
+	property := scriptValue{name: value.name + "." + name}
+	if value.name == "process.env" && literals.SensitiveName(name) {
+		property.secret = key
+	}
+
+	return property
+}
+
 func (w *scriptWalk) importStatement(n *scriptsyntax.Node, s *scriptScope) {
-	module, ok := scriptLiteral(w.text(n.Child("source")))
+	module, ok := scriptLiteral(w.text(n.Child(scriptsyntax.FieldSource)))
 	if !ok {
 		return
 	}
@@ -406,10 +497,10 @@ func (w *scriptWalk) importStatement(n *scriptsyntax.Node, s *scriptScope) {
 
 	walk = func(n *scriptsyntax.Node) {
 		switch n.Kind {
-		case "import_specifier":
-			name := n.Child("name")
+		case scriptsyntax.KindImportSpecifier:
+			name := n.Child(scriptsyntax.FieldName)
 
-			alias := n.Child("alias")
+			alias := n.Child(scriptsyntax.FieldAlias)
 			if alias == nil {
 				alias = name
 			}
@@ -417,17 +508,17 @@ func (w *scriptWalk) importStatement(n *scriptsyntax.Node, s *scriptScope) {
 			w.bind(alias, scriptValue{name: module + "." + w.text(name)}, s, true)
 
 			return
-		case "namespace_import":
+		case scriptsyntax.KindNamespaceImport:
 			for _, c := range n.Children {
-				if c.Kind == "identifier" {
+				if c.Kind == scriptsyntax.KindIdentifier {
 					w.bind(c, scriptValue{name: module}, s, true)
 				}
 			}
 
 			return
-		case "import_clause":
+		case scriptsyntax.KindImportClause:
 			for _, c := range n.Children {
-				if c.Kind == "identifier" {
+				if c.Kind == scriptsyntax.KindIdentifier {
 					w.bind(c, scriptValue{name: module}, s, true)
 				} else {
 					walk(c)
@@ -442,7 +533,7 @@ func (w *scriptWalk) importStatement(n *scriptsyntax.Node, s *scriptScope) {
 		}
 	}
 	for _, c := range n.Children {
-		if c.Kind == "import_clause" {
+		if c.Kind == scriptsyntax.KindImportClause {
 			walk(c)
 		}
 	}

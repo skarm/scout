@@ -12,6 +12,10 @@ import (
 	"github.com/skarm/scout/internal/analysis/document"
 )
 
+const (
+	regexpLiteralLookbackBytes = 4096
+)
+
 // Recognize only a complete, ordinary single-line regexp operand. Ambiguous
 // division, comments, templates and truncated lookback retain the review signal.
 func regexpLiteralExec(d document.File, m Match) bool {
@@ -22,7 +26,7 @@ func regexpLiteralExec(d document.File, m Match) bool {
 		return false
 	}
 
-	floor := max(0, m.Start-4096)
+	floor := max(0, m.Start-regexpLiteralLookbackBytes)
 
 	start := strings.LastIndexAny(text[floor:m.Start], "\r\n")
 	if start < 0 && floor > 0 {

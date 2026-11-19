@@ -1,13 +1,54 @@
 package report
 
-import "errors"
+import (
+	"errors"
+	"path"
+)
+
+const (
+	maxShellHookRootPathBytes = 4096
+)
 
 // HarnessOptions is trusted caller configuration, never read from the artifact.
 // Host selects an interpretation, not a whitelist of files to scan.
 type HarnessOptions struct {
-	// Host selects auto, claude-code, codex or agent-skills. The empty value
+	// Host selects auto, claude-code, codex, gemini-cli or agent-skills. The empty value
 	// selects auto.
 	Host string `json:"host"`
+	// ShellHookRoot optionally supplies a root for simple hook command templates.
+	ShellHookRoot ShellHookRoot `json:"shell_hook_root,omitzero"`
+}
+
+// ShellHookRoot is a caller assumption about the host-provided root at hook
+// launch. It is not a capture path and does not alter the environment.
+type ShellHookRoot struct {
+	// HostAuto applies the same root constraint to supported plugin hosts.
+	Host string `json:"host"`
+	Path string `json:"path"`
+	// LCAll optionally constrains LC_ALL at entry to the first captured script.
+	LCAll string `json:"lc_all,omitempty"`
+}
+
+func (r ShellHookRoot) Validate() error {
+	if r.Host != HostAuto && r.Host != HostClaudeCode && r.Host != HostCodex && r.Host != HostGeminiCLI {
+		return errors.New("shell hook root requires auto, claude-code, codex or gemini-cli")
+	}
+
+	if r.LCAll != "" && r.LCAll != "C" && r.LCAll != "POSIX" {
+		return errors.New("shell hook locale must be C or POSIX")
+	}
+
+	if len(r.Path) < 2 || len(r.Path) > maxShellHookRootPathBytes || r.Path[0] != '/' || path.Clean(r.Path) != r.Path {
+		return errors.New("shell hook root must be a normalized absolute plugin path")
+	}
+
+	for _, c := range r.Path {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '/' || c == '.' || c == '_' || c == '-') {
+			return errors.New("shell hook root must use only ASCII letters, digits, slash, dot, underscore or hyphen")
+		}
+	}
+
+	return nil
 }
 
 // SourceRef identifies immutable bytes without embedding source/secret values.
@@ -70,6 +111,13 @@ type PluginInterpretation struct {
 	// operator.
 	Assumptions []string `json:"assumptions"`
 }
+
+const (
+	ComponentHook       = "hook"
+	ComponentHookConfig = "hook_config"
+	ComponentMCPConfig  = "mcp_config"
+	ComponentSkill      = "skill"
+)
 
 // Component records a source-bound plugin declaration and its inferred
 // activation context.
@@ -252,9 +300,14 @@ type ValidationReport struct {
 // interpretation.
 func (o HarnessOptions) Validate() error {
 	switch o.Host {
-	case "", HostAuto, HostClaudeCode, HostCodex, HostAgentSkills:
-		return nil
+	case "", HostAuto, HostClaudeCode, HostCodex, HostGeminiCLI, HostAgentSkills:
 	default:
-		return errors.New("harness must be auto, claude-code, codex or agent-skills")
+		return errors.New("harness must be auto, claude-code, codex, gemini-cli or agent-skills")
 	}
+
+	if o.ShellHookRoot != (ShellHookRoot{}) {
+		return o.ShellHookRoot.Validate()
+	}
+
+	return nil
 }

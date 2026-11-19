@@ -169,7 +169,7 @@ func literalAssignmentName(word *shellsyntax.Word) (string, bool) {
 	var prefix strings.Builder
 
 	for _, part := range word.Parts {
-		if part.Kind != "literal" {
+		if part.Kind != shellsyntax.PartLiteral {
 			break
 		}
 

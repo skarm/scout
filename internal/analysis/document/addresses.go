@@ -21,7 +21,7 @@ func CapturedAddresses(docs []File, extraction report.ExtractionReport) map[stri
 
 	for _, doc := range docs {
 		name := doc.Artifact().Metadata().Path
-		if !strings.HasPrefix(name, "scout-object://") {
+		if !strings.HasPrefix(name, report.ObjectPathPrefix) {
 			addresses[name] = Address{Namespace: "snapshot", Name: name}
 		}
 	}
