@@ -74,14 +74,13 @@ func (p *planner) toolScopes(addresses map[string]toolAddress) ([]toolScope, boo
 		base := path.Base(addr.name)
 		isSkill := strings.EqualFold(base, artifact.SkillManifest)
 
-		isPlugin := strings.HasSuffix(addr.name, artifact.ClaudePluginManifest) || strings.HasSuffix(addr.name, artifact.CodexPluginManifest)
+		root, isPlugin := artifact.PluginManifestRoot(addr.name)
 		if !isSkill && !isPlugin {
 			continue
 		}
 
-		root := path.Dir(addr.name)
-		if isPlugin {
-			root = path.Dir(root)
+		if !isPlugin {
+			root = path.Dir(addr.name)
 		}
 
 		// Ownership is independent of eligibility: an inner package with no
@@ -220,13 +219,13 @@ func (p *planner) toolAddresses() map[string]toolAddress {
 
 	for name := range p.files {
 		if !strings.HasPrefix(name, report.ObjectPathPrefix) {
-			addresses[name] = toolAddress{namespace: "snapshot", name: name}
+			addresses[name] = toolAddress{namespace: artifact.RootNamespace, name: name}
 		}
 	}
 
 	for _, o := range p.extraction.Objects {
 		if o.Role == "archive_member" && (o.ExtractorID == "zip32" || o.ExtractorID == "tar") {
-			addresses[o.File.Path] = toolAddress{namespace: o.ParentPath, name: o.MemberName}
+			addresses[o.File.Path] = toolAddress{namespace: artifact.ArchiveNamespace(o.ParentPath), name: o.MemberName}
 		}
 	}
 

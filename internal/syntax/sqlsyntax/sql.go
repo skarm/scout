@@ -57,6 +57,9 @@ type Tree struct {
 	Limited    bool
 }
 
+// ErrLimit means the lexer exceeded its byte, token or nesting budget.
+var ErrLimit = errors.New("SQL parser limit")
+
 type lexer struct {
 	ctx              context.Context
 	text             string
@@ -73,8 +76,12 @@ func Parse(ctx context.Context, text string) (Tree, error) {
 		return Tree{}, err
 	}
 
-	if len(text) > MaxBytes || !utf8.ValidString(text) {
-		return Tree{}, errors.New("SQL input limit or encoding")
+	if len(text) > MaxBytes {
+		return Tree{}, ErrLimit
+	}
+
+	if !utf8.ValidString(text) {
+		return Tree{}, errors.New("invalid SQL encoding")
 	}
 
 	l := lexer{ctx: ctx, text: text}
@@ -144,7 +151,7 @@ func (l *lexer) parse() (Tree, error) {
 		l.count++
 		if l.count > MaxTokens {
 			finish()
-			return out, errors.New("SQL token limit")
+			return out, ErrLimit
 		}
 
 		if t.Text == ";" && t.Kind == KindPunctuation && l.depth == 0 {
@@ -223,7 +230,7 @@ func (l *lexer) next() (Token, error) {
 	if c == '(' {
 		l.depth++
 		if l.depth > MaxDepth {
-			return Token{}, errors.New("SQL nesting limit")
+			return Token{}, ErrLimit
 		}
 	}
 
@@ -257,7 +264,7 @@ func (l *lexer) comment() error {
 		}
 
 		if depth > MaxDepth {
-			return errors.New("SQL comment limit")
+			return ErrLimit
 		}
 	}
 

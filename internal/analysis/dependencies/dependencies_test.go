@@ -45,6 +45,19 @@ func TestGoDeclarationsShareThePackageInventoryBudget(t *testing.T) {
 	}
 }
 
+func TestGoModuleInventoryUsesWholeFiles(t *testing.T) {
+	const module = "module example.invalid/sample\nrequire example.invalid/library v1.2.3\n"
+	files := []artifact.File{
+		artifact.NewFile("README.md", []byte("# Instructions\n\n```gomod\n"+module+"```\n"), false),
+		artifact.NewFile("go.mod", []byte(module), false),
+	}
+	docs := document.PrepareAll(t.Context(), files)
+	got := dependencies.Collect(t.Context(), docs)
+	if len(got.Manifests) != 1 || got.Manifests[0].Path != "go.mod" || len(got.Declarations) != 1 || got.Declarations[0].Source.Path != "go.mod" {
+		t.Fatalf("inventory should contain only the captured go.mod: %+v", got)
+	}
+}
+
 func TestSpecificReplacementPrecedence(t *testing.T) {
 	text := `module example.com/root
 require example.com/dependency v1.2.3

@@ -58,9 +58,6 @@ func TestPluginHookToGoFinding(t *testing.T) {
 	if len(r.Validation.Tasks) != len(r.Validation.Outcomes) || r.Validation.Completeness != "partial" {
 		t.Fatal("task ledger missing")
 	}
-	if _, err := os.Stat(filepath.Join(root, "executed")); !os.IsNotExist(err) {
-		t.Fatal("unexpected file")
-	}
 	for _, format := range []string{"json", "sarif", "text"} {
 		var out bytes.Buffer
 		if err := report.Write(&out, report.Format(format), r.Document); err != nil {

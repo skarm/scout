@@ -23,6 +23,7 @@ const (
 type discoveryArguments struct {
 	options         discovery.Options
 	format, output  string
+	snapshot        string
 	projects        repeated
 	kinds           repeated
 	includePaths    repeated
@@ -57,12 +58,16 @@ func discoverCommand(ctx context.Context, args []string, stdout, stderr io.Write
 		}
 	}
 
-	if a.scan {
+	if a.scan || a.snapshot != "" {
 		if err != nil || !snapshot.Complete {
 			_, _ = fmt.Fprintln(stderr, "discovery incomplete; automatic scan refused")
 			_ = writeInventory(stderr, snapshot, "text")
 
 			return 2
+		}
+
+		if a.snapshot != "" {
+			return snapshotDiscovered(ctx, a, snapshot, stdout, stderr)
 		}
 
 		return scanDiscovered(ctx, a, snapshot, stdout, stderr)
@@ -117,6 +122,7 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 	fs.DurationVar(&a.timeout, "timeout", a.timeout, "discovery deadline; maximum 2m")
 	fs.StringVar(&a.format, "format", a.format, "inventory format: text or json")
 	fs.StringVar(&a.output, "output", "", "inventory destination outside selected configuration locations; default stdout")
+	fs.StringVar(&a.snapshot, "snapshot", "", "save discovered environment and inspection; scanner flags follow --")
 	fs.BoolVar(&a.scan, "scan", false, "scan discovered roots; pass ordinary scan flags after --")
 	fs.Var(&a.kinds, "kind", "select skill, plugin, mcp-server or command scan roots; repeatable")
 	fs.Var(&a.includePaths, "include-path", "narrow discovered scan roots to this path; repeatable; cannot expand discovery")
@@ -133,7 +139,7 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 
 	a.scanArgs = fs.Args()
 	if a.timeout <= 0 || a.timeout > maxDiscoveryTimeout || a.format != "text" && a.format != "json" ||
-		a.noProject && len(a.projects) > 0 || !a.scan && len(a.scanArgs) > 0 || a.scan && a.explicitOutput {
+		a.noProject && len(a.projects) > 0 || !a.scan && a.snapshot == "" && len(a.scanArgs) > 0 || (a.scan || a.snapshot != "") && a.explicitOutput || a.scan && a.snapshot != "" {
 		return a, errors.New("invalid discovery arguments; scan options belong after --")
 	}
 

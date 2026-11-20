@@ -1331,6 +1331,7 @@ func TestScannerUnsupportedESExportsRemainIncomplete(t *testing.T) {
 			// These forms remain outside the selected export grammar. Retain
 			// independent observations without claiming a proven High flow.
 			requireBundleFinding(t, run, files, "NET001", true, report.Medium)
+			requireBundleFinding(t, run, files, "XF001", false, report.High)
 		})
 	}
 }

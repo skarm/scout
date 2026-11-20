@@ -63,6 +63,33 @@ func TestPackageDeclarations(t *testing.T) {
 	}
 }
 
+func TestRequirementsManifestUsesLiteralCapturedNames(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		manifest bool
+	}{
+		{name: "requirements.txt", manifest: true},
+		{name: "%72equirements.txt"},
+		{name: report.ObjectPathPrefix + "fixture/%72equirements.txt", manifest: true},
+		{name: report.ObjectPathPrefix + "fixture/%2572equirements.txt"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file := artifact.NewFile(tc.name, []byte("sample==1.2.3\n"), false)
+			docs := document.PrepareAll(t.Context(), []artifact.File{file})
+			result := dependencies.Collect(t.Context(), docs)
+			if !tc.manifest {
+				if len(result.Manifests) != 0 || len(result.Declarations) != 0 {
+					t.Fatal("literal filename was interpreted as a manifest", result)
+				}
+				return
+			}
+			if len(result.Manifests) != 1 || len(result.Declarations) != 1 || result.Declarations[0].Source.Path != tc.name {
+				t.Fatal("expected manifest with original evidence path", result)
+			}
+		})
+	}
+}
+
 func TestInvalidLockfileDoesNotBecomeEmptyClean(t *testing.T) {
 	d := document.PrepareAll(context.Background(), []artifact.File{artifact.NewFile("package-lock.json", []byte(`{"packages":{},"packages":{"hidden":{}}}`), false)})
 	r := dependencies.Collect(context.Background(), d)
@@ -79,6 +106,24 @@ func TestNPMShortVersionsAreRanges(t *testing.T) {
 		want := d.Module == "three" || d.Module == "pre"
 		if exact != want {
 			t.Fatalf("%+v", d)
+		}
+	}
+}
+
+func TestNPMLockRequiresNodeModulesComponent(t *testing.T) {
+	const text = `{"lockfileVersion":3,"packages":{
+		"example-node_modules/fixture":{"version":"1.2.3"},
+		"node_modules/ordinary":{"version":"2.3.4"},
+		"workspace/node_modules/@scope/nested":{"version":"3.4.5"}
+	}}`
+	docs := document.PrepareAll(t.Context(), []artifact.File{artifact.NewFile("package-lock.json", []byte(text), false)})
+	got := dependencies.Collect(t.Context(), docs)
+	if len(got.Declarations) != 2 || got.Declarations[0].Module != "ordinary" || got.Declarations[1].Module != "@scope/nested" {
+		t.Fatalf("inventory should contain only actual node_modules entries: %+v", got.Declarations)
+	}
+	for _, d := range got.Declarations {
+		if d.VersionSemantics != report.VersionExactLockfile {
+			t.Fatalf("lockfile provenance lost: %+v", d)
 		}
 	}
 }

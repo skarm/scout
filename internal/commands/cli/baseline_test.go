@@ -54,17 +54,19 @@ func TestBaselineRenewDoesNotApprovePendingEntries(t *testing.T) {
 	dir := t.TempDir()
 	source, destination := filepath.Join(dir, "source.json"), filepath.Join(dir, "renewed.json")
 	doc := selectiveBaseline(t, source)
-	args := []string{"baseline", "renew", "--from", source, "--output", destination, "--expires", "2099-01-01T00:00:00Z"}
+	const extended = "2098-01-01T00:00:00.2Z"
+	args := []string{"baseline", "renew", "--from", source, "--output", destination, "--expires", extended}
 	var out, diagnostics bytes.Buffer
 	if code := cli.Run(context.Background(), args, &out, &diagnostics); code != 0 {
 		t.Fatalf("renew: %d %s", code, &diagnostics)
 	}
 	got := readBaseline(t, destination)
-	if got.Entries[0] != doc.Entries[0] || got.Entries[1].Reason != doc.Entries[1].Reason || !got.Entries[1].Approved || got.Entries[1].Expires != "2099-01-01T00:00:00Z" {
+	if got.Entries[0] != doc.Entries[0] || got.Entries[1].Reason != doc.Entries[1].Reason || !got.Entries[1].Approved || got.Entries[1].Expires != extended {
 		t.Fatalf("renew changed approval or reason: %+v", got.Entries)
 	}
 	for _, extra := range [][]string{
 		{"--fingerprint", doc.Entries[0].Fingerprint},
+		{"--expires", doc.Entries[1].Expires},
 		{"--expires", "2097-01-01T00:00:00Z"},
 		{"--fingerprint", strings.Repeat("c", 64)},
 	} {
@@ -86,7 +88,7 @@ func selectiveBaseline(t *testing.T, path string) baseline.Document {
 	t.Helper()
 	d := baseline.Document{Version: baseline.Version, EngineVersion: "fixture", Profile: "custom", Entries: []baseline.Entry{
 		{Kind: "fingerprint", Fingerprint: strings.Repeat("a", 64), Reason: "pending", Expires: "2098-01-01T00:00:00Z"},
-		{Kind: "fingerprint", Fingerprint: strings.Repeat("b", 64), Reason: "reviewed earlier", Expires: "2098-01-01T00:00:00Z", Approved: true},
+		{Kind: "fingerprint", Fingerprint: strings.Repeat("b", 64), Reason: "reviewed earlier", Expires: "2098-01-01T00:00:00.1Z", Approved: true},
 	}}
 	data, err := baseline.Marshal(d)
 	if err != nil {

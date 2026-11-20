@@ -58,7 +58,7 @@ func (b *bundleAnalysis) dnsEndpoint(file, value string, ref report.SourceRef) {
 	if s := b.scope(file); s != nil {
 		b.endpoints[s.file] = append(b.endpoints[s.file], bundleEndpoint{value: value, ref: ref})
 		if !s.hosts[host] {
-			b.emit(ruleNET001, ref, b.reference(s.file, 0, len(b.docs[s.file].Artifact().Content())))
+			b.emit(ruleNET001, ref, b.wholeFileReference(s.file))
 		}
 	}
 }

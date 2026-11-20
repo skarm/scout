@@ -39,8 +39,9 @@ scout scan --format json /ci/registry-current.json
 
 Fetch creates a bounded data snapshot. `--latest` keeps only records explicitly
 marked `isLatest: true` by the registry; use the unfiltered mode for version history
-or records without that assertion. Comparison matches name/version identities and
-rejects incomplete snapshots.
+or records without that assertion. Fetch rejects repeated name/version identities
+among the selected records and saves their original JSON bytes. Comparison matches
+the same identities and rejects incomplete snapshots.
 A registry record is not an installation approval.
 
 ## DSSE/in-toto verification

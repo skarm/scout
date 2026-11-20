@@ -240,8 +240,8 @@ func scopeRoot(name string) (string, bool) {
 		return path.Dir(name), true
 	}
 
-	if strings.HasSuffix(name, artifact.ClaudePluginManifest) || strings.HasSuffix(name, artifact.CodexPluginManifest) {
-		return path.Dir(path.Dir(name)), true
+	if root, ok := artifact.PluginManifestRoot(name); ok {
+		return root, true
 	}
 
 	if !IsSettings(name) {

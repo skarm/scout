@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -132,6 +133,34 @@ func TestOfflineCacheFreshnessAndExactKey(t *testing.T) {
 	}
 }
 
+func TestPrecancelledCheckDoesNotConsumeOfflineCache(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	at := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	dep := cachedDependency()
+	for _, version := range []int{1, 2} {
+		t.Run(strconv.Itoa(version), func(t *testing.T) {
+			cache := Cache{Version: version, QueriedAt: at, Records: []Record{{
+				Ecosystem: dep.Ecosystem, Name: dep.Module, Version: dep.DeclaredVersion, Vulnerabilities: []ID{},
+			}}}
+			data, err := json.Marshal(cache)
+			if err != nil {
+				t.Fatal(err)
+			}
+			o := DefaultOptions()
+			o.Enabled, o.Offline = true, data
+			result, err := Check(ctx, report.DependencyReport{Declarations: []report.Dependency{dep}}, o, at)
+			if err != nil || result.Completeness != report.Partial || len(result.Queries) != 1 || result.Queries[0].Status != report.OutcomeCancelled {
+				t.Fatalf("canceled check returned an outcome other than partial cancellation: error=%v report=%+v", err, result)
+			}
+			exported, err := Export(result)
+			if err != nil || len(exported.Records) != 0 {
+				t.Fatalf("canceled query became an exported cache record: records=%v error=%v", exported.Records, err)
+			}
+		})
+	}
+}
+
 func TestPositiveFirstPageSurvivesPageFailure(t *testing.T) {
 	n := 0
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +184,65 @@ func TestPositiveFirstPageSurvivesPageFailure(t *testing.T) {
 	r, e := Check(context.Background(), d, o, time.Now())
 	if e != nil || len(r.Matches) != 1 || r.Completeness != report.Partial {
 		t.Fatalf("%+v %v", r, e)
+	}
+}
+
+func TestCallerCancellationDuringOSVRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		cache bool
+	}{
+		{name: "online"},
+		{name: "online with fresh fallback", cache: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var calls atomic.Int32
+			release := make(chan struct{})
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if calls.Add(1) == 1 {
+					_, _ = w.Write([]byte(`{"results":[{"vulns":[{"id":"GHSA-retained"}],"next_page_token":"second"}]}`))
+					return
+				}
+				if _, err := io.Copy(io.Discard, r.Body); err != nil {
+					t.Error(err)
+					return
+				}
+				cancel()
+				select {
+				case <-r.Context().Done():
+				case <-release:
+				}
+			}))
+			defer server.Close()
+			defer close(release)
+
+			now := time.Now().UTC()
+			o := DefaultOptions()
+			o.Enabled, o.AllowNetwork, o.AllowLoopback, o.Endpoint = true, true, true, server.URL
+			if tc.cache {
+				o.Offline, _ = json.Marshal(Cache{
+					Version:   1,
+					QueriedAt: now.Add(-time.Hour),
+					Records: []Record{{
+						Ecosystem:       "npm",
+						Name:            "sample",
+						Version:         "1.2.3",
+						Vulnerabilities: []ID{{ID: "GHSA-fallback"}},
+					}},
+				})
+			}
+			deps := dependencies()
+			deps.Declarations = deps.Declarations[:1]
+			got, err := Check(ctx, deps, o, now)
+			if err != nil || calls.Load() != 2 || len(got.Queries) != 1 || got.Queries[0].Status != report.OutcomeCancelled || got.Completeness != report.Partial {
+				t.Fatalf("error=%v, calls=%d, completeness=%s, queries=%+v", err, calls.Load(), got.Completeness, got.Queries)
+			}
+			if len(got.Matches) != 1 || got.Matches[0].ID != "GHSA-retained" {
+				t.Fatalf("expected only advisory from completed first page, got %+v", got.Matches)
+			}
+		})
 	}
 }
 

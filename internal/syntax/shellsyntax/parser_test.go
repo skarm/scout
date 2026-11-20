@@ -78,6 +78,37 @@ func TestHeredocDelimiterFollowsLogicalLines(t *testing.T) {
 	}
 }
 
+func TestSubshellAcceptsNumberedRedirects(t *testing.T) {
+	for _, tc := range []struct{ redirect, fd, op string }{
+		{redirect: ">out", fd: "", op: shellsyntax.RedirectOutput},
+		{redirect: "2>out", fd: "2", op: shellsyntax.RedirectOutput},
+		{redirect: "0<input", fd: "0", op: shellsyntax.RedirectInput},
+	} {
+		t.Run(tc.redirect, func(t *testing.T) {
+			text := "(printf sample) " + tc.redirect
+			tree, err := shellsyntax.Parse(t.Context(), text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			validateTree(t, tree, text)
+			cmd := tree.Statements[0].Commands[0]
+			if cmd.Subshell == nil || len(cmd.Redirects) != 1 || len(cmd.Words) != 0 {
+				t.Fatalf("subshell or redirect was lost: %+v", cmd)
+			}
+			redirect := cmd.Redirects[0]
+			if redirect.FD != tc.fd || redirect.Op != tc.op || text[redirect.Span.Start:redirect.Span.End] != tc.redirect {
+				t.Fatalf("unexpected redirect: %+v", redirect)
+			}
+		})
+	}
+	for _, word := range []string{"trailing", "2 >out"} {
+		_, err := shellsyntax.Parse(t.Context(), "(printf sample) "+word)
+		if failure, ok := errors.AsType[*shellsyntax.Error](err); !ok || failure.Code != "word_after_group" {
+			t.Fatalf("unexpected error after group for %q: %v", word, err)
+		}
+	}
+}
+
 func TestWords(t *testing.T) {
 	for _, tc := range []struct {
 		text, want string
@@ -106,6 +137,53 @@ func TestWords(t *testing.T) {
 				t.Fatalf("%q,%v", v, ok)
 			}
 		})
+	}
+}
+
+func TestDoubleQuotedDollarBeforeQuoteStaysLiteral(t *testing.T) {
+	for _, tc := range []struct{ name, word, want string }{
+		{name: "closing quote", word: `"price$"`, want: "price$"},
+		{name: "single quote inside double quotes", word: `"price$' USD"`, want: "price$' USD"},
+		{name: "adjacent quoted segments", word: `"цена$"' USD'`, want: "цена$ USD"},
+		{name: "single quotes", word: `'price$'`, want: "price$"},
+		{name: "unquoted at end of word", word: `price$`, want: "price$"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := "printf '%s' " + tc.word
+			tree, err := shellsyntax.Parse(t.Context(), text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			validateTree(t, tree, text)
+			word := tree.Statements[0].Commands[0].Words[2]
+			if got, known := word.Literal(); !known || got != tc.want {
+				t.Fatalf("literal = %q, known = %t, want %q", got, known, tc.want)
+			}
+			if got := text[word.Span.Start:word.Span.End]; got != tc.word {
+				t.Fatalf("word covers %q, want %q", got, tc.word)
+			}
+		})
+	}
+}
+
+func TestShellDollarQuotingRemainsModeSpecific(t *testing.T) {
+	for _, text := range []string{`printf '%s' $'ansi'`, `printf '%s' $"locale"`} {
+		_, err := shellsyntax.Parse(t.Context(), text)
+		if failure, ok := errors.AsType[*shellsyntax.Error](err); !ok || failure.Code != "unsupported_dollar_quoting" {
+			t.Fatalf("unsupported dollar quoting = %v for %q", err, text)
+		}
+	}
+
+	const body = "$'one' $\"two\"\n"
+	text := "cat <<END\n" + body + "END\n"
+	tree, err := shellsyntax.Parse(t.Context(), text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validateTree(t, tree, text)
+	word := tree.Statements[0].Commands[0].Redirects[0].Body
+	if got, known := word.Literal(); !known || got != body || text[word.Span.Start:word.Span.End] != body {
+		t.Fatalf("heredoc literal = %q, known = %t, want %q", got, known, body)
 	}
 }
 

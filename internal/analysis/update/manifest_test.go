@@ -3,11 +3,15 @@ package update_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/update"
+	"github.com/skarm/scout/internal/scantest"
+	"github.com/skarm/scout/internal/syntax/frontend"
+	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/report"
 )
 
@@ -52,6 +56,62 @@ func TestManifestSignalsReflectSourceBoundDeclarationChanges(t *testing.T) {
 	delta, err := update.Build(context.Background(), before, after, report.DefaultUpdateOptions())
 	if err != nil || !slices.Contains(delta.Issues, "manifest_declaration_unverified") || len(delta.ManifestSignals) != 0 {
 		t.Fatal(err, delta)
+	}
+}
+
+func TestYAMLExampleDoesNotChangeManifestComparison(t *testing.T) {
+	if !frontend.BackendFor(language.YAML).Available {
+		t.Skip("YAML parser unavailable in this build")
+	}
+	config := scantest.DefaultConfig()
+	config.Scanner.Checks.YAML = true
+	s, err := scantest.New(config, t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const skill = "---\nname: instructions\ndescription: Read data\nallowed-tools: Read\n---\n# Notes\n\n"
+	const example = "```yaml\nallowed-tools: View\n```\n"
+	scan := func(text string) report.Analysis {
+		t.Helper()
+		run, err := s.ScanBytes(t.Context(), "SKILL.md", []byte(text))
+		if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+			t.Fatal(err)
+		}
+		return run.Analysis
+	}
+	withExample := scan(skill + example)
+	if !slices.ContainsFunc(withExample.Coverage.Files, func(f report.FileCoverage) bool {
+		return slices.ContainsFunc(f.Units, func(u report.UnitCoverage) bool {
+			return u.Origin == "fenced-code" && u.Language == language.YAML && u.Status == report.UnitParsedLimited
+		})
+	}) {
+		t.Fatal("YAML example lost parser coverage")
+	}
+	for _, tc := range []struct {
+		name          string
+		before, after report.Analysis
+		want          bool
+	}{
+		{name: "same capture", before: withExample, after: withExample},
+		{name: "added example", before: scan(skill), after: withExample},
+		{name: "changed frontmatter", before: withExample, after: scan(strings.Replace(skill, "allowed-tools: Read", "allowed-tools: Edit", 1) + example), want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			delta, err := update.Build(t.Context(), tc.before, tc.after, report.DefaultUpdateOptions())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if slices.Contains(delta.Issues, "ambiguous_previous_manifest") {
+				t.Fatal("example collided with frontmatter", delta.Issues)
+			}
+			if tc.want {
+				if len(delta.ManifestSignals) != 1 || delta.ManifestSignals[0].RuleID != "NV-RP1" {
+					t.Fatalf("actual permission change was lost: %+v", delta.ManifestSignals)
+				}
+			} else if len(delta.ManifestSignals) != 0 {
+				t.Fatalf("YAML example changed manifest semantics: %+v", delta.ManifestSignals)
+			}
+		})
 	}
 }
 

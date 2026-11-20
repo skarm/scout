@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,10 +24,14 @@ import (
 
 const (
 	knowledgeCallTimeout         = time.Minute
+	knowledgeCallWaitDelay       = 2 * time.Second
+	maxKnowledgeStderrBytes      = 16 << 10
 	maxKnowledgeRequestBodyBytes = 256 << 10
 	maxFixtureRequestBytes       = 256 << 10
 	fixtureModel                 = "scripted-fixture-no-live-model"
 )
+
+var errKnowledgeOutputLimit = errors.New("scout command exceeded output budget")
 
 type knowledgeCase struct {
 	ID, Label, Topic, Path, Content string
@@ -44,18 +48,39 @@ type fixtureReviewer struct {
 	err                 error
 }
 
+type cliOutput struct {
+	data     bytes.Buffer
+	limit    int
+	overflow bool
+}
+
+func (out *cliOutput) Write(data []byte) (int, error) {
+	if len(data) > out.limit-out.data.Len() {
+		out.overflow = true
+		return 0, errKnowledgeOutputLimit
+	}
+
+	return out.data.Write(data)
+}
+
 func checkKnowledgeRuntime(ctx context.Context, o options, w io.Writer) error {
 	if err := o.require("binary", "output"); err != nil {
 		return err
 	}
 
-	binary, err := filepath.Abs(o.get("binary"))
-	if err != nil {
+	var corpus struct{ Cases []knowledgeCase }
+	if err := readJSON(filepath.Join(o.root, "testdata/knowledge-runtime/cases.json"), &corpus); err != nil {
 		return err
 	}
 
-	var corpus struct{ Cases []knowledgeCase }
-	if err = readJSON(filepath.Join(o.root, "testdata/knowledge-runtime/cases.json"), &corpus); err != nil {
+	workspace, err := os.MkdirTemp("", "scout-knowledge-binary-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(workspace) }()
+
+	binary, binarySHA, err := stageKnowledgeBinary(ctx, o.get("binary"), workspace)
+	if err != nil {
 		return err
 	}
 
@@ -78,15 +103,10 @@ func checkKnowledgeRuntime(ctx context.Context, o options, w io.Writer) error {
 		return err
 	}
 
-	return writeKnowledgeRuntimeSummary(o, binary, pack, corpus.Cases, rows, w)
+	return writeKnowledgeRuntimeSummary(o, binarySHA, pack, corpus.Cases, rows, w)
 }
 
-func writeKnowledgeRuntimeSummary(o options, binary string, pack object, cases []knowledgeCase, rows []object, w io.Writer) error {
-	binarySHA, err := fileDigest(binary)
-	if err != nil {
-		return err
-	}
-
+func writeKnowledgeRuntimeSummary(o options, binarySHA string, pack object, cases []knowledgeCase, rows []object, w io.Writer) error {
 	summary := object{
 		"scope":                "Actual static scans and scripted semantic transport integration. Not model quality or SQL detection accuracy.",
 		"public_network":       false,
@@ -98,7 +118,7 @@ func writeKnowledgeRuntimeSummary(o options, binary string, pack object, cases [
 	}
 
 	destination := filepath.Join(o.get("output"), "summary.json")
-	if err = writeJSON(destination, summary); err != nil {
+	if err := writeJSON(destination, summary); err != nil {
 		return err
 	}
 
@@ -143,23 +163,33 @@ func invokeCLI(ctx context.Context, binary string, args ...string) ([]byte, int,
 	defer cancel()
 
 	cmd := exec.CommandContext(call, binary, args...) //nolint:gosec // G204: explicitly selected trusted Scout binary; scanned artifact bytes are never executed.
+	cmd.WaitDelay = knowledgeCallWaitDelay
 
-	var stdout, stderr bytes.Buffer
+	stdout := &cliOutput{limit: maxJSONLine}
+	stderr := &cliOutput{limit: maxKnowledgeStderrBytes}
 
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	err := cmd.Run()
+
+	if callErr := call.Err(); callErr != nil {
+		return nil, 0, callErr
+	}
+
+	if stdout.overflow || stderr.overflow {
+		return nil, 0, errKnowledgeOutputLimit
+	}
 
 	code, err := cliProcessExit(err)
 	if err != nil {
 		return nil, code, err
 	}
 
-	if err := validateCLIStderr(stdout.Bytes(), stderr.Bytes(), args, code); err != nil {
+	if err := validateCLIStderr(stdout.data.Bytes(), stderr.data.Bytes(), args, code); err != nil {
 		return nil, code, err
 	}
 
-	return stdout.Bytes(), code, nil
+	return stdout.data.Bytes(), code, nil
 }
 
 func invokeJSON(ctx context.Context, binary string, args ...string) (object, int, error) {
@@ -591,8 +621,36 @@ func validateKnowledgeProposal(semantic object, tc knowledgeCase) error {
 }
 
 func runKnowledgeCases(ctx context.Context, o options, binary string, reviewer *fixtureReviewer, cases []knowledgeCase) ([]object, error) {
-	server := httptest.NewServer(http.HandlerFunc(reviewer.serve))
-	defer server.Close()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	var config net.ListenConfig
+
+	listener, err := config.Listen(ctx, "tcp", "127.0.0.1:0")
+	if err != nil {
+		listener, err = config.Listen(ctx, "tcp", "[::1]:0")
+		if err != nil {
+			return nil, fmt.Errorf("cannot bind local knowledge fixture: %w", err)
+		}
+	}
+
+	server := &http.Server{Handler: http.HandlerFunc(reviewer.serve), ReadHeaderTimeout: knowledgeCallTimeout}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		_ = server.Serve(listener)
+	}()
+
+	defer func() {
+		_ = server.Close()
+
+		<-done
+	}()
+
+	endpoint := "http://" + listener.Addr().String() + "/v1/chat/completions"
 
 	folder, err := os.MkdirTemp("", "scout-authored-knowledge-")
 	if err != nil {
@@ -603,7 +661,7 @@ func runKnowledgeCases(ctx context.Context, o options, binary string, reviewer *
 
 	rows := make([]object, 0, len(cases))
 	for _, tc := range cases {
-		row, err := checkKnowledgeCase(ctx, o, binary, folder, server.URL+"/v1/chat/completions", reviewer, tc)
+		row, err := checkKnowledgeCase(ctx, o, binary, folder, endpoint, reviewer, tc)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", tc.ID, err)
 		}

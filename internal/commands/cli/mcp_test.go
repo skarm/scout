@@ -100,21 +100,29 @@ func TestMCPHTTPListenFailureDoesNotReportSuccess(t *testing.T) {
 
 func TestMCPHTTPCancellationShutsDownTheAuthenticatedListener(t *testing.T) {
 	server := mcpHTTPFixture(t, strings.Repeat("x", 32))
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	started := make(mcpStarted, 1)
+	diag := &mcpStartupLog{started: make(chan struct{}, 1)}
 	finished := make(chan int, 1)
-	go func() { finished <- serveMCPHTTP(ctx, server, "127.0.0.1:0", time.Second, started) }()
+	go func() { finished <- serveMCPHTTP(ctx, server, "127.0.0.1:0", time.Second, diag) }()
 	select {
-	case <-started:
+	case <-diag.started:
+	case code := <-finished:
+		t.Fatalf("authenticated server exited before readiness: code=%d stderr=%q", code, diag.output.String())
 	case <-time.After(2 * time.Second):
+		cancel()
+		select {
+		case <-finished:
+		case <-time.After(2 * time.Second):
+			t.Fatal("authenticated server neither reported readiness nor exited after cancellation")
+		}
 		t.Fatal("authenticated server did not start")
 	}
 	cancel()
 	select {
 	case code := <-finished:
 		if code != 0 {
-			t.Fatalf("graceful cancellation returned %d", code)
+			t.Fatalf("graceful cancellation returned %d: stderr=%q", code, diag.output.String())
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("HTTP cancellation leaked listener")
@@ -144,14 +152,20 @@ func mcpHTTPFixture(t *testing.T, token string) *mcp.Server {
 	return server
 }
 
-type mcpStarted chan struct{}
+type mcpStartupLog struct {
+	started chan struct{}
+	output  bytes.Buffer
+}
 
-func (w mcpStarted) Write(p []byte) (int, error) {
-	select {
-	case w <- struct{}{}:
-	default:
+func (w *mcpStartupLog) Write(p []byte) (int, error) {
+	n, err := w.output.Write(p)
+	if strings.Contains(w.output.String(), "Authenticated MCP HTTP server listening on loopback /mcp") {
+		select {
+		case w.started <- struct{}{}:
+		default:
+		}
 	}
-	return len(p), nil
+	return n, err
 }
 
 const mcpCaptureFixture = `{"initialize":{"protocolVersion":"2026-07-28","serverInfo":{"name":"PRIVATE_SERVER","version":"1"},"capabilities":{"tools":{}},"instructions":"PRIVATE_INSTRUCTION"},"tools":{"tools":[{"name":"PRIVATE_TOOL","description":"PRIVATE_DESCRIPTION","inputSchema":{"type":"object"}}]}}`

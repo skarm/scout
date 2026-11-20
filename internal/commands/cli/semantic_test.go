@@ -49,13 +49,19 @@ func TestSemanticCLIWithLocalProtocolFixture(t *testing.T) {
 		}
 		if err := json.NewDecoder(r.Body).Decode(&wire); err != nil {
 			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 		if len(wire.Messages) != 2 {
-			t.Fatal("wrong message count")
+			t.Error("wrong message count")
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 		var req review.Request
 		if err := json.Unmarshal([]byte(wire.Messages[1].Content), &req); err != nil {
 			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 		response := review.Response{
 			SchemaVersion: review.ProtocolVersion,

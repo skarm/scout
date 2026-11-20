@@ -5,9 +5,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/skarm/scout/internal/syntax/frontend"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/internal/syntax/sqlsyntax"
 )
 
 func TestRegistryContract(t *testing.T) {
@@ -134,6 +137,137 @@ func TestDefaultShellBackend(t *testing.T) {
 		} else if err == nil || parse.FailureCategory(err) != tc.category {
 			t.Fatalf("wrong failure: %v", err)
 		}
+	}
+}
+
+func TestEmbeddedBackendPreservesCallerCancellation(t *testing.T) {
+	options := frontend.DefaultOptions()
+	options.Python, options.YAML, options.TOML = true, true, true
+	registry, err := parse.WithFrontends(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	expired, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	for _, format := range []string{"python", "yaml", "toml"} {
+		t.Run(format, func(t *testing.T) {
+			backend, ok := registry.Lookup(format)
+			if !ok {
+				t.Fatal("embedded frontend missing")
+			}
+			for _, ctx := range []context.Context{cancelled, expired} {
+				tree, err := backend.Parse(ctx, source.View{})
+				if tree != nil || !errors.Is(err, ctx.Err()) {
+					t.Fatalf("tree=%T, error=%v, want %v", tree, err, ctx.Err())
+				}
+			}
+		})
+	}
+}
+
+func TestEmbeddedBackendClassifiesOwnDeadlineAsLimit(t *testing.T) {
+	if !frontend.BackendFor("yaml").Available {
+		t.Skip("YAML frontend unavailable")
+	}
+
+	registry, err := parse.WithFrontends(frontend.Options{YAML: true, Timeout: time.Nanosecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, ok := registry.Lookup("yaml")
+	if !ok {
+		t.Fatal("YAML frontend missing")
+	}
+	view, err := source.NewView("name: sample", []source.Span{{End: len("name: sample")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tree, err := backend.Parse(t.Context(), view)
+	if tree != nil || err == nil || parse.FailureCategory(err) != "parser_limit" {
+		t.Fatalf("tree=%T, error=%v, want parser_limit", tree, err)
+	}
+}
+
+func TestSQLBudgetFailureRetainsEarlierStatements(t *testing.T) {
+	backend, ok := parse.Defaults().Lookup("sql")
+	if !ok {
+		t.Fatal("missing SQL backend")
+	}
+
+	for _, tc := range []struct{ name, text, category string }{
+		{name: "bytes", text: strings.Repeat(" ", sqlsyntax.MaxBytes) + "SELECT 2;", category: "parser_limit"},
+		{name: "tokens", text: "SELECT " + strings.Repeat("1+", sqlsyntax.MaxTokens/2) + "1;", category: "parser_limit"},
+		{name: "parentheses", text: "SELECT " + strings.Repeat("(", sqlsyntax.MaxDepth+1) + "2" + strings.Repeat(")", sqlsyntax.MaxDepth+1) + ";", category: "parser_limit"},
+		{name: "comment", text: strings.Repeat("/* ", sqlsyntax.MaxDepth+1) + strings.Repeat(" */", sqlsyntax.MaxDepth+1), category: "parser_limit"},
+		{name: "syntax", text: "SELECT (2;", category: "syntax_error"},
+		{name: "encoding", text: "SELECT \xff;", category: "syntax_error"},
+		{name: "unsupported", text: "CALL fn();", category: "unsupported_syntax"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const earlier = "SELECT 1"
+
+			text := earlier + "; " + tc.text
+			view, err := source.NewView(text, []source.Span{{End: len(text)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			raw, err := backend.Parse(t.Context(), view)
+			if got := parse.FailureCategory(err); err == nil || got != tc.category {
+				t.Fatalf("category = %s (%v), want %s", got, err, tc.category)
+			}
+
+			tree, ok := raw.(sqlsyntax.Tree)
+			if !ok {
+				t.Fatalf("invalid tree type: %T", raw)
+			}
+
+			if tc.name != "bytes" && tc.name != "encoding" && (len(tree.Statements) == 0 || tree.Statements[0].Start != 0 || tree.Statements[0].End != len(earlier)) {
+				t.Fatal("first statement lost or source span changed")
+			}
+		})
+	}
+}
+
+func TestScriptBudgetFailureAndCancellation(t *testing.T) {
+	for _, lang := range []string{"javascript", "typescript"} {
+		t.Run(lang, func(t *testing.T) {
+			backend, ok := parse.Defaults().Lookup(lang)
+			if !ok {
+				t.Skip("script parser unavailable")
+			}
+
+			for _, tc := range []struct{ name, text, category string }{
+				{name: "bytes", text: strings.Repeat(" ", backend.Descriptor().UnitBytes) + "const x = 1;", category: "parser_limit"},
+				{name: "depth", text: "const x = " + strings.Repeat("(", 66) + "1" + strings.Repeat(")", 66) + ";", category: "parser_limit"},
+				{name: "syntax", text: "const x = ;", category: "syntax_error"},
+				{name: "encoding", text: "const x = '\xff';", category: "syntax_error"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					view, err := source.NewView(tc.text, []source.Span{{End: len(tc.text)}})
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					_, err = backend.Parse(t.Context(), view)
+					if got := parse.FailureCategory(err); err == nil || got != tc.category {
+						t.Fatalf("category = %s (%v), want %s", got, err, tc.category)
+					}
+				})
+			}
+
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+
+			if _, err := backend.Parse(ctx, source.View{}); !errors.Is(err, context.Canceled) {
+				t.Fatal("cancellation was lost", err)
+			}
+		})
 	}
 }
 

@@ -58,9 +58,14 @@ func readSourceConfigAssignment(name, text string) sourceConfigAssignment {
 		}
 	}
 
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 && value[0] == value[len(value)-1] && (value[0] == '\'' || value[0] == '"') {
+		value = value[1 : len(value)-1]
+	}
+
 	return sourceConfigAssignment{
 		key:      strings.TrimSpace(key),
-		value:    strings.Trim(strings.TrimSpace(value), `"'`),
+		value:    value,
 		assigned: assigned,
 	}
 }
@@ -81,7 +86,9 @@ func directLineSourceConfig(ctx context.Context, name, text string, emit func(so
 		trim := strings.TrimSpace(line)
 
 		assignment := readSourceConfigAssignment(name, trim)
-		if !sourceConfigComment(trim) && assignment.assigned && lineSourceKeys[assignment.key] && !sourcepolicy.Default(assignment.value, kind) {
+
+		sourceKey := lineSourceKeys[assignment.key] || name == ".npmrc" && strings.HasSuffix(assignment.key, ":registry")
+		if !sourceConfigComment(trim) && assignment.assigned && sourceKey && !sourcepolicy.Default(assignment.value, kind) {
 			emit(source.Span{Start: offset, End: offset + len(line)})
 		}
 

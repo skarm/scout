@@ -695,7 +695,7 @@ func (a *shellWalk) simpleCommand(c *shellsyntax.Command, s *shellState, input s
 
 	input, outputRedirect, destination := a.redirects(c, s, input)
 	if c.Subshell != nil {
-		out := a.list(c.Subshell, a.cloneState(s))
+		out := a.listInput(c.Subshell, a.cloneState(s), input)
 
 		if outputRedirect {
 			return shellValue{}
@@ -710,15 +710,17 @@ func (a *shellWalk) simpleCommand(c *shellsyntax.Command, s *shellState, input s
 		return shellValue{}
 	}
 
+	var out shellValue
+
 	if body := s.functions[name]; body != nil {
-		return a.function(body, s, input)
-	}
+		out = a.function(body, s, input)
+	} else {
+		a.commandCapabilities(c, name, args, input)
 
-	a.commandCapabilities(c, name, args, input)
-
-	out := a.invokeCommand(c, s, input, name, args)
-	if name != "true" && name != "false" && name != ":" && name != "printf" {
-		out.output = true
+		out = a.invokeCommand(c, s, input, name, args)
+		if name != "true" && name != "false" && name != ":" && name != "printf" {
+			out.output = true
+		}
 	}
 
 	a.writeRedirected(s, destination, out)

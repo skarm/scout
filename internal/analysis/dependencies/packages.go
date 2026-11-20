@@ -3,7 +3,6 @@ package dependencies
 import (
 	"context"
 	"net/url"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -52,16 +51,6 @@ type requirementDeclaration struct {
 }
 
 func exactNPM(v string) bool { return textmatch.Version(v) && semver.IsValid("v"+v) }
-
-func logicalName(p string) string {
-	// Derived URIs contain escaped member names; this is only a format hint, not
-	// file ownership or permission. The raw source still identifies the object.
-	if u, e := url.PathUnescape(p); e == nil {
-		p = u
-	}
-
-	return strings.ToLower(path.Base(p))
-}
 
 func appendDecl(out *report.DependencyReport, doc document.File, u *document.Unit, eco, name, version, semantics string, span source.Span, indirect bool) bool {
 	if len(out.Declarations) >= maxDeclarations {
@@ -128,7 +117,7 @@ func declarationSource(doc document.File, u *document.Unit, span source.Span) (r
 }
 
 func collectPackages(ctx context.Context, doc document.File, out *report.DependencyReport) {
-	name := logicalName(doc.Artifact().Metadata().Path)
+	name := strings.ToLower(doc.Artifact().BaseName())
 	switch {
 	case pythonTOMLNames[name]:
 		collectPythonTOML(ctx, doc, out, name)
@@ -335,14 +324,16 @@ func collectNPMPackages(ctx context.Context, n *jsonconfig.Node, add dependencyA
 }
 
 func npmPackageCoordinate(name string, n *jsonconfig.Node) (string, string, string, bool) {
-	p := name
+	const modules = "/node_modules/"
 
-	i := strings.LastIndex(p, "node_modules/")
+	p := "/" + name
+
+	i := strings.LastIndex(p, modules)
 	if i < 0 {
 		return "", "", "", false
 	}
 
-	pkg := p[i+len("node_modules/"):]
+	pkg := p[i+len(modules):]
 	if explicit, ok := n.Get("name").Text(); ok {
 		pkg = explicit
 	}
@@ -454,6 +445,11 @@ func collectRequirements(ctx context.Context, doc document.File, out *report.Dep
 		pkg, v, kind := parsed.name, parsed.version, parsed.kind
 		if !publicSource {
 			kind = report.VersionUnresolved
+		}
+		// Preserve declarations, but do not promote ranges or unresolved sources
+		// to complete coverage without a resolver for their selected versions.
+		if kind == report.VersionUnresolved {
+			out.Manifests[mi].Status = report.OutcomePartial
 		}
 
 		if !appendDecl(out, doc, nil, report.EcosystemPyPI, normalizePyPIName(pkg), v, kind, source.Span{Start: start, End: offset}, false) {

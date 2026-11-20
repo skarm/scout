@@ -114,7 +114,7 @@ function operatorReviewer(raw) {
   if (!clean(r.endpoint) || !clean(r.model, MAX_MODEL_NAME_LENGTH) || !PROVIDERS.has(provider)) fail('Invalid reviewer configuration');
   if (r.allowLoopback !== undefined && typeof r.allowLoopback !== 'boolean') fail('Invalid reviewer loopback permission');
   reviewerEndpoint(r);
-  if (r.keyEnv !== undefined && !/^[A-Z][A-Z0-9_]{0,63}$/.test(r.keyEnv)) fail('Invalid credential variable name');
+  if (r.keyEnv !== undefined && (typeof r.keyEnv !== 'string' || !/^[A-Z][A-Z0-9_]{0,63}$/.test(r.keyEnv))) fail('Invalid credential variable name');
   return Object.freeze({ ...r, provider });
 }
 function reviewerEndpoint(reviewer) {
@@ -464,6 +464,7 @@ function inspectionProfile(config, semantic) {
 
 function validateRemotePins(item, remote) {
   for (const [field, pattern, message] of [['revision', /^[a-fA-F0-9]{40}$/, 'Invalid immutable revision'], ['sha256', /^[a-fA-F0-9]{64}$/, 'Invalid download hash']]) {
-    if (item[field] !== undefined && (!remote || !pattern.test(item[field]))) fail(message);
+    const pin = item[field];
+    if (pin !== undefined && (!remote || typeof pin !== 'string' || !pattern.test(pin))) fail(message);
   }
 }

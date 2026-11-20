@@ -133,6 +133,94 @@ func TestPortablePluginAndAncestorBoundary(t *testing.T) {
 	}
 }
 
+func TestDiscoveryCompactsAliasedSourceRoots(t *testing.T) {
+	base := canonicalTemp(t)
+	home, alias := filepath.Join(base, "Home"), filepath.Join(base, "HOME")
+	write(t, home, ".agents/skills/helper/SKILL.md", "Fixture")
+	write(t, home, "nested/README.md", "Fixture")
+	write(t, base, ".git/HEAD", "Outside home")
+	write(t, base, ".agents/skills/outside/SKILL.md", "Outside home")
+	info, err := os.Stat(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasInfo, err := os.Stat(alias)
+	if os.IsNotExist(err) {
+		t.Skip("case-sensitive temporary volume")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(info, aliasInfo) {
+		t.Skip("case spelling names different directories")
+	}
+
+	for _, tc := range []struct{ name, project string }{{"same root", alias}, {"nested root", filepath.Join(alias, "nested")}} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := options(home)
+			o.Agent, o.Projects = "codex", []string{tc.project}
+			result, err := discovery.Discover(t.Context(), o)
+			wantRoot := filepath.Join(home, ".agents", "skills")
+			if err != nil || !result.Complete || !slices.Equal(result.Targets, []string{wantRoot}) {
+				t.Fatalf("aliased scopes produced overlapping scan roots: %v %+v", err, result)
+			}
+
+			for _, scope := range []string{"user", "project"} {
+				if !slices.ContainsFunc(result.Components, func(c discovery.Component) bool {
+					return c.Kind == "skill" && c.Name == "helper" && c.Scope == scope
+				}) {
+					t.Errorf("lost %s declaration: %+v", scope, result.Components)
+				}
+			}
+
+			selected, err := discovery.Select(t.Context(), result, discovery.Filters{Kinds: []string{"skill"}})
+			if err != nil || !slices.Equal(selected.Targets, []string{filepath.Join(wantRoot, "helper")}) {
+				t.Fatalf("kind selector lost aliased scan scope: %v %v", err, selected.Targets)
+			}
+		})
+	}
+}
+
+func TestExplicitAgentHomeCanShareTheUserHome(t *testing.T) {
+	t.Run("codex", func(t *testing.T) {
+		home := canonicalTemp(t)
+		write(t, home, ".agents/skills/helper/SKILL.md", "Fixture")
+		write(t, home, "config.toml", "[mcp_servers.fixture]\nenabled = false\n")
+		o := options(home)
+		o.Agent, o.CodexHome = "codex", home
+		result, err := discovery.Discover(t.Context(), o)
+		if err != nil || !result.Complete || len(result.Components) != 2 {
+			t.Fatalf("shared home lost a discovery surface: %v %+v", err, result)
+		}
+		for _, source := range []string{"config.toml", ".agents/skills/helper/SKILL.md"} {
+			if !slices.ContainsFunc(result.Components, func(c discovery.Component) bool {
+				return c.Source == filepath.Join(home, filepath.FromSlash(source))
+			}) {
+				t.Errorf("shared home missed %s: %+v", source, result.Components)
+			}
+		}
+	})
+
+	t.Run("claude-code", func(t *testing.T) {
+		home := canonicalTemp(t)
+		project := filepath.Join(home, "project")
+		write(t, project, ".git/HEAD", "Fixture")
+		write(t, home, ".claude.json", `{"mcpServers":{"fixture":{}},"projects":{`+quoted(project)+`:{"disabledMcpServers":["fixture"]}}}`)
+		write(t, home, "settings.json", `{"enabledPlugins":{"helper@market":true}}`)
+		o := options(home)
+		o.Agent, o.ClaudeHome, o.Projects = "claude-code", home, []string{project}
+		result, err := discovery.Discover(t.Context(), o)
+		if err != nil || !result.Complete || len(result.Sources) != 2 || len(result.Components) != 1 || len(result.Enablement) != 2 {
+			t.Fatalf("shared home lost or duplicated declarations: %v %+v", err, result)
+		}
+		for _, want := range []string{"fixture", "helper@market"} {
+			if !slices.ContainsFunc(result.Enablement, func(e discovery.Enablement) bool { return e.Selector == want }) {
+				t.Errorf("shared home lost enablement for %q: %+v", want, result.Enablement)
+			}
+		}
+	})
+}
+
 func TestRefuseLinksAndEscapingPluginReferences(t *testing.T) {
 	home, outside := canonicalTemp(t), canonicalTemp(t)
 	write(t, outside, "payload/SKILL.md", "SECRET_OUTSIDE")

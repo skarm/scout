@@ -3,6 +3,7 @@
 package signatures
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/skarm/scout/report"
@@ -153,10 +154,18 @@ func ciscoRequiredPatterns(rule string, patterns []yrx.Pattern) []string {
 	case "Scout_Cisco_Cron_C2_Persistence":
 		groups = [][]string{{"$endpoint"}, {"$schedule"}, {"$execute"}}
 	case "Scout_Cisco_EncodedArchive_StageExec":
-		groups = [][]string{{"$py_decode"}, {"$py_archive"}, {"$py_extract"}, {"$py_exec"}}
-		if !nativePatternPresent(patterns, "$py_decode") {
-			groups = [][]string{{"$sh_decode"}, {"$sh_archive"}, {"$sh_exec"}}
+		alternatives := [][]string{
+			{"$py_decode", "$py_archive", "$py_extract", "$py_exec"},
+			{"$sh_decode", "$sh_archive", "$sh_exec"},
 		}
+		for _, names := range alternatives {
+			missing := slices.ContainsFunc(names, func(name string) bool { return !nativePatternPresent(patterns, name) })
+			if !missing {
+				return names
+			}
+		}
+
+		return nil
 	default:
 		return nil
 	}

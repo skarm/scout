@@ -83,17 +83,21 @@ func Select(ctx context.Context, snapshot Snapshot, filters Filters) (Snapshot, 
 
 func filterTargets(ctx context.Context, candidates []string, filters Filters) ([]string, error) {
 	selected := make(map[string]bool)
-	paths := selectionFilesystem{ctx: ctx, entries: make(map[string]os.FileInfo)}
+	paths := selectionFilesystem{ctx: ctx, entries: make(pathStats)}
+	orderedIncludes := slices.Sorted(slices.Values(filters.IncludePaths))
+	matches := make([]string, 0, len(orderedIncludes))
 
 	for _, candidate := range candidates {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 
-		includes := filters.IncludePaths
+		includes := orderedIncludes
 		if len(includes) == 0 {
 			includes = []string{candidate}
 		}
+
+		matches = matches[:0]
 
 		for _, include := range includes {
 			name, err := paths.intersect(candidate, include)
@@ -110,9 +114,18 @@ func filterTargets(ctx context.Context, candidates []string, filters Filters) ([
 				return nil, err
 			}
 
-			if !excluded {
-				selected[name] = true
+			if excluded {
+				continue
 			}
+
+			matches, err = paths.addMatch(matches, name)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		for _, name := range matches {
+			selected[name] = true
 		}
 	}
 
@@ -226,7 +239,30 @@ func coveredBy(roots map[string]bool, name string) bool {
 
 type selectionFilesystem struct {
 	ctx     context.Context
-	entries map[string]os.FileInfo
+	entries pathStats
+}
+
+// Keep the outermost of overlapping include matches for this discovered root.
+// The match list is bounded by the number of explicit includes. Keep the
+// earlier match when both paths name the same file or directory.
+func (p *selectionFilesystem) addMatch(matches []string, name string) ([]string, error) {
+	for i := 0; i < len(matches); {
+		narrower, err := p.intersect(name, matches[i])
+		if err != nil {
+			return nil, err
+		}
+
+		switch narrower {
+		case name:
+			return matches, nil
+		case matches[i]:
+			matches = slices.Delete(matches, i, i+1)
+		default:
+			i++
+		}
+	}
+
+	return append(matches, name), nil
 }
 
 func (p *selectionFilesystem) intersect(root, selected string) (string, error) {
@@ -267,7 +303,7 @@ func (p *selectionFilesystem) contains(root, name string) (bool, error) {
 		return true, nil
 	}
 
-	rootInfo, err := p.stat(root)
+	rootInfo, err := p.entries.stat(root)
 	if err != nil || rootInfo == nil {
 		return false, err
 	}
@@ -277,7 +313,7 @@ func (p *selectionFilesystem) contains(root, name string) (bool, error) {
 			return false, err
 		}
 
-		info, err := p.stat(name)
+		info, err := p.entries.stat(name)
 		if err != nil {
 			return false, err
 		}
@@ -295,8 +331,10 @@ func (p *selectionFilesystem) contains(root, name string) (bool, error) {
 	}
 }
 
-func (p *selectionFilesystem) stat(name string) (os.FileInfo, error) {
-	if info, ok := p.entries[name]; ok {
+type pathStats map[string]os.FileInfo
+
+func (p pathStats) stat(name string) (os.FileInfo, error) {
+	if info, ok := p[name]; ok {
 		return info, nil
 	}
 
@@ -305,7 +343,7 @@ func (p *selectionFilesystem) stat(name string) (os.FileInfo, error) {
 		return nil, errors.New("cannot inspect discovery path filter or scan root")
 	}
 
-	p.entries[name] = info
+	p[name] = info
 
 	return info, nil
 }

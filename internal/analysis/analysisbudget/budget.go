@@ -4,23 +4,23 @@ package analysisbudget
 
 import (
 	"context"
-	"sync/atomic"
+	"sync"
 )
 
 type contextKey struct{}
 
 type counter struct {
+	mu        sync.Mutex
 	limit     uint64
-	used      atomic.Uint64
-	exhausted atomic.Bool
+	used      uint64
+	exhausted bool
 }
 
 // WithLimit derives a context with a fresh task-local quota. A nested quota does
 // not consume its parent's quota; the parent still supplies cancellation and
 // deadlines. As with context.WithValue, a nil parent is invalid.
 func WithLimit(parent context.Context, limit uint64) context.Context {
-	budget := &counter{limit: limit}
-	budget.exhausted.Store(limit == 0)
+	budget := &counter{limit: limit, exhausted: limit == 0}
 
 	return context.WithValue(parent, contextKey{}, budget)
 }
@@ -40,28 +40,33 @@ func Consume(ctx context.Context, units uint64) bool {
 		return true
 	}
 
-	for {
-		if budget.exhausted.Load() || ctx.Err() != nil {
-			return false
-		}
+	// Admission and terminal rejection update the same task state.
+	budget.mu.Lock()
+	defer budget.mu.Unlock()
 
-		used := budget.used.Load()
-		// Subtraction checks the remaining capacity without overflowing addition.
-		if units > budget.limit-used {
-			budget.exhausted.Store(true)
-			return false
-		}
-
-		if budget.used.CompareAndSwap(used, used+units) {
-			return true
-		}
+	if budget.exhausted {
+		return false
 	}
+
+	// Subtraction checks the remaining capacity without overflowing addition.
+	if units > budget.limit-budget.used {
+		budget.exhausted = true
+		return false
+	}
+
+	budget.used += units
+
+	return true
 }
 
 // Used reports accepted units for this task, or zero without a task quota.
 func Used(ctx context.Context) uint64 {
 	if budget := lookup(ctx); budget != nil {
-		return budget.used.Load()
+		budget.mu.Lock()
+		v := budget.used
+		budget.mu.Unlock()
+
+		return v
 	}
 
 	return 0
@@ -72,7 +77,11 @@ func Used(ctx context.Context) uint64 {
 // operation leaves Exhausted false until more work is requested.
 func Exhausted(ctx context.Context) bool {
 	if budget := lookup(ctx); budget != nil {
-		return budget.exhausted.Load()
+		budget.mu.Lock()
+		v := budget.exhausted
+		budget.mu.Unlock()
+
+		return v
 	}
 
 	return false

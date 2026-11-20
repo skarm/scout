@@ -97,6 +97,61 @@ func TestSelectionPathAliasesFollowFilesystemSemantics(t *testing.T) {
 	}
 }
 
+func TestSelectionCompactsOverlappingIncludes(t *testing.T) {
+	for _, names := range [][2]string{{"Team", "TEAM"}, {"caf\u00e9", "cafe\u0301"}} {
+		t.Run(names[0], func(t *testing.T) {
+			root := canonicalTemp(t)
+			parent, alias := filepath.Join(root, names[0]), filepath.Join(root, names[1])
+			write(t, parent, "child/SKILL.md", "Fixture")
+			info, err := os.Stat(parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			aliasInfo, err := os.Stat(alias)
+			same := err == nil && os.SameFile(info, aliasInfo)
+			if os.IsNotExist(err) {
+				write(t, alias, "child/SKILL.md", "Separate fixture")
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			original := discovery.Snapshot{Targets: []string{root}}
+			for _, other := range []string{alias, filepath.Join(alias, "child")} {
+				first, err := discovery.Select(t.Context(), original, discovery.Filters{IncludePaths: []string{parent, other}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				second, err := discovery.Select(t.Context(), original, discovery.Filters{IncludePaths: []string{other, parent}})
+				if err != nil || !reflect.DeepEqual(first.Targets, second.Targets) {
+					t.Fatalf("include order changed scan roots: %v vs %v, err=%v", first.Targets, second.Targets, err)
+				}
+				want := 2
+				if same {
+					want = 1
+				}
+				if len(first.Targets) != want {
+					t.Fatalf("same directory=%t, includes=%q and %q, scan roots=%v", same, parent, other, first.Targets)
+				}
+				if same {
+					survivor, err := os.Stat(first.Targets[0])
+					if err != nil || !os.SameFile(info, survivor) {
+						t.Fatalf("selected %q instead of outer directory %q: %v", first.Targets[0], parent, err)
+					}
+				}
+			}
+		})
+	}
+
+	root := canonicalTemp(t)
+	kept, ignored := filepath.Join(root, "team", "kept"), filepath.Join(root, "team", "ignored")
+	selected, err := discovery.Select(t.Context(), discovery.Snapshot{Targets: []string{root}}, discovery.Filters{
+		IncludePaths: []string{filepath.Dir(kept), kept}, ExcludePaths: []string{ignored},
+	})
+	if err != nil || !reflect.DeepEqual(selected.Targets, []string{kept}) {
+		t.Fatalf("excluded overlap erased narrower surviving include: targets=%v error=%v", selected.Targets, err)
+	}
+}
+
 func TestSelectionResolvesExistingAncestorsOfMissingFilters(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	link := filepath.Join(root, "alias")

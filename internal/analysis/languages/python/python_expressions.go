@@ -225,8 +225,10 @@ func (w *pyWalker) conditionalExpr(n *frontend.Node, s *pyState, depth int) pyVa
 }
 
 func (w *pyWalker) attributeExpr(n *frontend.Node, s *pyState, depth int) pyValue {
-	v := w.expr(n.Child(frontend.FieldValue), s, depth+1)
+	return readAttribute(n, w.expr(n.Child(frontend.FieldValue), s, depth+1), s)
+}
 
+func readAttribute(n *frontend.Node, v pyValue, s *pyState) pyValue {
 	name := v.symbol()
 	if name != "" {
 		name = canonicalSymbolName(name + "." + n.String(frontend.Attr))
@@ -261,6 +263,10 @@ func (w *pyWalker) subscriptExpr(n *frontend.Node, s *pyState, depth int) pyValu
 	v := w.expr(n.Child(frontend.FieldValue), s, depth+1)
 	index := w.expr(n.Child(frontend.Slice), s, depth+1)
 
+	return w.readSubscript(n, v, index)
+}
+
+func (w *pyWalker) readSubscript(n *frontend.Node, v, index pyValue) pyValue {
 	key, known := reflectionKey(index, n.Child(frontend.Slice))
 	if base := moduleDictionarySymbol(v.symbol()); base != "" {
 		if known {

@@ -135,7 +135,7 @@ func (b *bundleAnalysis) hookTargets(file, command string) []report.SourceRef {
 		for _, ext := range []string{".js", ".ts", ".py", ".sh"} {
 			if strings.HasSuffix(word, ext) {
 				if target := b.resolveLocal(file, word); target != nil {
-					refs = append(refs, b.reference(target.Artifact().Metadata().Path, 0, len(target.Artifact().Content())))
+					refs = append(refs, b.wholeFileReference(target.Artifact().Metadata().Path))
 				}
 			}
 		}

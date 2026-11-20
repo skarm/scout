@@ -32,4 +32,6 @@ go run -tags=coreonly ./cmd/scout-dev check-knowledge-runtime --binary "$(comman
 ```
 
 Use a new output directory. The tool sends inputs only to the local fixture server.
+Every check runs from the same private copy of the selected Scout executable.
+The summary records the SHA-256 of that copy.
 Run full core/native suites and race checks separately without filters.

@@ -83,37 +83,47 @@ func Enrich(findings []report.Finding, g report.ComponentGraph) bool {
 	return truncated
 }
 
-// ApplyConfigScopes annotates actual config objects only. It never turns quoted
-// examples or JSON extracted string tokens into installed configuration.
+// ApplyConfigScopes annotates the captured versions of config objects in the graph.
 func ApplyConfigScopes(docs []document.File, g report.ComponentGraph) []document.File {
-	byPath := map[string][]document.ConfigScope{}
-	seen := map[string]bool{}
+	type configSource struct{ path, digest string }
+
+	type scopedConfig struct {
+		file  configSource
+		scope document.ConfigScope
+	}
+
+	bySource := map[configSource][]document.ConfigScope{}
+	seen := map[scopedConfig]bool{}
 
 	for _, n := range g.Components {
 		if n.Source == nil || (n.Kind != report.ComponentMCPConfig && n.Kind != report.ComponentHookConfig) {
 			continue
 		}
 
-		key := fmt.Sprintf("%s:%s:%s:%d:%d", n.Host, n.Kind, n.Source.Path, n.Source.ByteStart, n.Source.ByteEnd)
-		if seen[key] {
-			continue
-		}
-
-		seen[key] = true
-
-		byPath[n.Source.Path] = append(byPath[n.Source.Path], document.ConfigScope{
+		file := configSource{path: n.Source.Path, digest: n.Source.SHA256}
+		scope := document.ConfigScope{
 			Role: n.Kind,
 			Host: n.Host,
 			Span: source.Span{
 				Start: n.Source.ByteStart,
 				End:   n.Source.ByteEnd,
 			},
-		})
+		}
+
+		key := scopedConfig{file: file, scope: scope}
+		if seen[key] {
+			continue
+		}
+
+		seen[key] = true
+
+		bySource[file] = append(bySource[file], scope)
 	}
 
 	out := append([]document.File(nil), docs...)
 	for i := range out {
-		out[i] = out[i].WithConfigScopes(byPath[out[i].Artifact().Metadata().Path])
+		meta := out[i].Artifact().Metadata()
+		out[i] = out[i].WithConfigScopes(bySource[configSource{path: meta.Path, digest: meta.SHA256}])
 	}
 
 	return out

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"os"
 	"strings"
 )
 
@@ -15,7 +14,7 @@ const (
 	maxPEImportDirectoryBytes = 64 << 10
 )
 
-func inspectPE(f *os.File, r *Report) error {
+func inspectPE(f io.ReaderAt, r *Report) error {
 	file, err := pe.NewFile(f)
 	if err != nil {
 		return errors.New("invalid PE binary")

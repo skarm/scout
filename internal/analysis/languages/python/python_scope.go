@@ -18,6 +18,7 @@ type (
 	pyObjectStore struct {
 		classes  map[*pyClass]map[string]pyValue
 		defaults map[*pyFunction]map[string]pyValue
+		revision int
 	}
 	pyState struct {
 		names           map[string]pyValue
@@ -140,9 +141,12 @@ func (w *pyWalker) assign(target *frontend.Node, v pyValue, s *pyState, statemen
 	case frontend.Name:
 		s.set(target.String(frontend.ID), transformed(v, statement))
 	case frontend.Attribute:
-		w.assignAttribute(target, v, s, statement)
+		base := w.expr(target.Child(frontend.FieldValue), s, 0)
+		storeAttribute(base, target.String(frontend.Attr), v, s, statement)
 	case frontend.Subscript:
-		w.assignSubscript(target, v, s, statement)
+		base := w.expr(target.Child(frontend.FieldValue), s, 0)
+		index := w.expr(target.Child(frontend.Slice), s, 0)
+		w.storeSubscript(target, base, index, v, statement)
 	case frontend.Tuple, frontend.List:
 		w.assignSequence(target, v, s, statement)
 	case frontend.Starred:
@@ -155,10 +159,9 @@ func (w *pyWalker) assign(target *frontend.Node, v pyValue, s *pyState, statemen
 	}
 }
 
-func (w *pyWalker) assignAttribute(target *frontend.Node, v pyValue, s *pyState, statement *frontend.Node) {
-	base := w.expr(target.Child(frontend.FieldValue), s, 0)
+func storeAttribute(base pyValue, name string, v pyValue, s *pyState, statement *frontend.Node) {
 	if instance := base.instance(); instance != nil {
-		instance.fields[target.String(frontend.Attr)] = transformed(v, statement)
+		instance.fields[name] = transformed(v, statement)
 	}
 
 	if class := base.class(); class != nil {
@@ -168,14 +171,11 @@ func (w *pyWalker) assignAttribute(target *frontend.Node, v pyValue, s *pyState,
 			s.objects.classes[class] = attrs
 		}
 
-		attrs[target.String(frontend.Attr)] = transformed(v, statement)
+		attrs[name] = transformed(v, statement)
 	}
 }
 
-func (w *pyWalker) assignSubscript(target *frontend.Node, v pyValue, s *pyState, statement *frontend.Node) {
-	base := w.expr(target.Child(frontend.FieldValue), s, 0)
-
-	index := w.expr(target.Child(frontend.Slice), s, 0)
+func (w *pyWalker) storeSubscript(target *frontend.Node, base, index, v pyValue, statement *frontend.Node) {
 	if mapping := base.mapping(); mapping != nil {
 		if key, ok := reflectionKey(index, target.Child(frontend.Slice)); ok && len(mapping.entries) < maxDictionaryEntries {
 			mapping.entries[key] = transformed(v, statement)

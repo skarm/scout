@@ -84,3 +84,30 @@ func TestPermissionDeclarationsRequireOwnedParsedConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestPermissionScopesRequireManifestDirectoryComponent(t *testing.T) {
+	for _, tc := range []struct {
+		manifest string
+		want     bool
+	}{
+		{manifest: ".claude-plugin/plugin.json", want: true},
+		{manifest: "module/.claude-plugin/plugin.json", want: true},
+		{manifest: "module/.codex-plugin/plugin.json", want: true},
+		{manifest: "docs.claude-plugin/plugin.json"},
+		{manifest: "module/docs.codex-plugin/plugin.json"},
+	} {
+		t.Run(tc.manifest, func(t *testing.T) {
+			const helper = "package sample\nimport \"os\"\nfunc f() { _ = os.Getenv(\"EXAMPLE\") }\n"
+			docs := document.PrepareAll(t.Context(), []artifact.File{
+				artifact.NewFile(tc.manifest, []byte(`{"name":"sample","permissions":["read"]}`), false),
+				artifact.NewFile("helper.go", []byte(helper), false),
+				artifact.NewFile("module/helper.go", []byte(helper), false),
+			})
+			checks := analyzer.BindContexts(t.Context(), []analyzer.Analyzer{pluginRule(t, "NV-LP1")}, docs, report.ExtractionReport{})
+			result, err := checks[0].Find(t.Context(), docs[0], 1)
+			if err != nil || result.Truncated || checks[0].AppliesTo(docs[0]) != tc.want || (len(result.Matches) == 1) != tc.want {
+				t.Fatalf("permission scope from %q matched=%t, result=%+v, err=%v", tc.manifest, tc.want, result, err)
+			}
+		})
+	}
+}

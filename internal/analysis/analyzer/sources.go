@@ -6,8 +6,6 @@ package analyzer
 
 import (
 	"context"
-	"net/url"
-	"path"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/check"
@@ -42,12 +40,13 @@ func (sourceRedirection) Rule() report.Rule {
 
 func (sourceRedirection) AppliesTo(document.File) bool { return true }
 func (a sourceRedirection) Find(ctx context.Context, f document.File, budget int) (Result, error) {
+	file := f.Artifact()
 	out := Result{}
 	collected := collectMatches(&out, budget)
 	emit := func(at source.Span) { collected.span(at.Start, at.End) }
 
 	if a.declarations != nil {
-		cached, err := a.declarations[f.Artifact().Metadata().Path].Result(budget)
+		cached, err := a.declarations[file.Metadata().Path].Result(budget)
 		for _, m := range cached.Matches {
 			emit(source.Span{Start: m.Start, End: m.End})
 		}
@@ -62,13 +61,10 @@ func (a sourceRedirection) Find(ctx context.Context, f document.File, budget int
 
 	out.Truncated = derivedSourceDeclarations(ctx, f, emit) || out.Truncated
 
-	name := strings.ToLower(path.Base(f.Artifact().Metadata().Path))
-	if unescaped, e := url.PathUnescape(name); e == nil {
-		name = strings.ToLower(path.Base(unescaped))
-	}
+	name := strings.ToLower(file.BaseName())
 
-	out.Truncated = directSourceConfig(ctx, name, f.Artifact().Content(), emit) || out.Truncated
-	if err := sourceTextDeclarations(ctx, name, f.Artifact().Content(), emit); err != nil {
+	out.Truncated = directSourceConfig(ctx, name, file.Content(), emit) || out.Truncated
+	if err := sourceTextDeclarations(ctx, name, file.Content(), emit); err != nil {
 		return out, err
 	}
 
@@ -117,13 +113,7 @@ func inspectSourceUnits(ctx context.Context, f document.File, name string, emit 
 }
 
 func sourceTextDeclarations(ctx context.Context, name, text string, emit func(source.Span)) error {
-	classify := npmrcSourceLine
-
-	switch {
-	case name == ".npmrc":
-	case name == "requirements.txt" || strings.HasPrefix(name, "requirements-"):
-		classify = requirementsSourceFlag
-	default:
+	if name != "requirements.txt" && !strings.HasPrefix(name, "requirements-") {
 		return nil
 	}
 
@@ -135,7 +125,7 @@ func sourceTextDeclarations(ctx context.Context, name, text string, emit func(so
 		}
 
 		trim := strings.TrimSpace(line)
-		if !sourceConfigComment(trim) && classify(trim) {
+		if !sourceConfigComment(trim) && requirementsSourceFlag(trim) {
 			emit(source.Span{Start: offset, End: offset + len(line)})
 		}
 
@@ -143,13 +133,6 @@ func sourceTextDeclarations(ctx context.Context, name, text string, emit func(so
 	}
 
 	return nil
-}
-
-func npmrcSourceLine(text string) bool {
-	key, value, assigned := strings.Cut(text, "=")
-	key = strings.TrimSpace(key)
-
-	return assigned && (key == "registry" || strings.HasSuffix(key, ":registry")) && !sourcepolicy.Default(strings.TrimSpace(value), report.EcosystemNPM)
 }
 
 func inspectSourceTree(ctx context.Context, name, filePath string, root *jsonconfig.Node, mark func(*jsonconfig.Node)) {

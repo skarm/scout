@@ -214,7 +214,7 @@ func Create(r report.Analysis, reason string, expires time.Time, approve bool) (
 			Kind:        valueFingerprint,
 			Fingerprint: Fingerprint(r, f),
 			Reason:      reason,
-			Expires:     expires.UTC().Format(time.RFC3339),
+			Expires:     expires.UTC().Format(time.RFC3339Nano),
 			Approved:    approve,
 		})
 	}

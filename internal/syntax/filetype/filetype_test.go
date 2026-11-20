@@ -24,6 +24,10 @@ func TestContentHints(t *testing.T) {
 		{name: "unknown", data: "SQLite format 3\x00", format: "sqlite", category: "database", conflict: false},
 		{name: ".cache/a.py", data: "#!/bin/sh\ntrue", format: "text", category: "source-or-config", conflict: true},
 		{name: "a.js", data: "const a = 1;", format: "text", category: "source-or-config", conflict: false},
+		{name: "requirements.txt", data: "requests==2.32.3\n", format: "text", category: "text", conflict: false},
+		{name: "Pipfile.lock", data: `{"default":{}}`, format: "text", category: "source-or-config", conflict: false},
+		{name: "requirements.txt", data: "#!/bin/sh\nprintf hello\n", format: "text", category: "source-or-config", conflict: true},
+		{name: "requirements.txt", data: "\x7fELF\x00data", format: "elf", category: "executable", conflict: true},
 	} {
 		t.Run(tc.name+"/"+tc.format, func(t *testing.T) {
 			d := filetype.Inspect(tc.name, tc.data, false)

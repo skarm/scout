@@ -47,12 +47,17 @@ func (b *builder) open(base, agent, scope string, required bool, visit func(*tre
 		return
 	}
 
-	key := agent + ":" + scope + ":" + resolved
-	if b.roots[key] {
-		return
-	}
+	resolved = b.sourcePaths.canonical(resolved)
+	// Project ancestor walks can revisit a root. User home and explicit
+	// agent home visits each load their own configuration locations.
+	if scope == "project" {
+		key := agent + ":" + resolved
+		if b.projectVisits[key] {
+			return
+		}
 
-	b.roots[key] = true
+		b.projectVisits[key] = true
+	}
 
 	r, err := rootfs.Open(resolved)
 	if err != nil {

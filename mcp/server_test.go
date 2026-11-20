@@ -115,6 +115,75 @@ func TestMCPToolCannotOverridePolicyOrReadArbitraryInputs(t *testing.T) {
 	}
 }
 
+func TestMCPScanUploadRequiresExplicitData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registered.txt")
+	if err := os.WriteFile(path, []byte("ordinary text"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options := mcp.DefaultOptions()
+	options.Targets["registered"] = path
+	s := newServer(t, options)
+
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+	}{
+		{name: "missing data", args: map[string]any{"name": "sample.txt"}},
+		{name: "null data", args: map[string]any{"name": "sample.txt", "data_base64": nil}},
+		{name: "mixed modes", args: map[string]any{"target": "registered", "name": "sample.txt", "data_base64": ""}},
+		{name: "mixed modes with empty data", args: map[string]any{"target": "registered", "data_base64": ""}},
+		{name: "mixed modes with null name", args: map[string]any{"target": "registered", "name": nil}},
+		{name: "mixed modes with null target", args: map[string]any{"target": nil, "name": "sample.txt", "data_base64": ""}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := mcpCall(t, s, "scan_skill", tc.args)
+			if result["isError"] != true || result["structuredContent"] != nil {
+				t.Fatal("expected rejection before scanning")
+			}
+		})
+	}
+
+	result := mcpCall(t, s, "scan_skill", map[string]any{"name": "sample.txt", "data_base64": ""})
+	document := mcpDocument(t, result)
+	files := document.Run.Targets[0].Analysis.Artifact.Files
+	if result["isError"] != false || document.Run.State != report.RunComplete || len(files) != 1 || files[0].Path != "sample.txt" || files[0].Size != 0 {
+		t.Fatalf("explicit zero-byte upload lost its report or file: %+v", files)
+	}
+
+	result = mcpCall(t, s, "scan_skill", map[string]any{"target": "registered"})
+	document = mcpDocument(t, result)
+	files = document.Run.Targets[0].Analysis.Artifact.Files
+	if result["isError"] != false || document.Run.State != report.RunComplete || len(files) != 1 || files[0].Path != "registered.txt" || files[0].Size == 0 {
+		t.Fatalf("named target lost its report or file: %+v", files)
+	}
+}
+
+func TestMCPUploadOnlyToolSchemaRequiresUpload(t *testing.T) {
+	responses := conformanceMessages(t, initMessage, readyMessage, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	if len(responses) != 2 || responses[1].Error != nil {
+		t.Fatal("tools/list failed", responses)
+	}
+	var list struct {
+		Tools []struct {
+			Name        string
+			InputSchema struct {
+				Required   []string
+				Properties map[string]json.RawMessage
+			}
+		}
+	}
+	if err := json.Unmarshal(responses[1].Result, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Tools) != 1 || list.Tools[0].Name != "scan_skill" {
+		t.Fatal("unexpected tools", list.Tools)
+	}
+	schema := list.Tools[0].InputSchema
+	if len(schema.Required) != 2 || schema.Required[0] != "name" || schema.Required[1] != "data_base64" || len(schema.Properties) != 2 || schema.Properties["name"] == nil || schema.Properties["data_base64"] == nil {
+		t.Fatal("upload-only schema advertised incorrect inputs", schema)
+	}
+}
+
 func TestHTTPAuthOriginLifecycle(t *testing.T) {
 	o := mcp.DefaultOptions()
 	o.HTTPToken = strings.Repeat("T", 40)

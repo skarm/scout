@@ -1,4 +1,4 @@
-//nolint:testpackage // Exercises scope copying through the internal traversal and its operation budget.
+//nolint:testpackage // Tests exercise private traversal state and operation budgets.
 package shell
 
 import (
@@ -15,6 +15,66 @@ import (
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
 )
+
+func TestSubshellKeepsStdinAndIsolatesBindings(t *testing.T) {
+	for _, tc := range []struct {
+		name, redirect string
+		untrusted      bool
+	}{
+		{name: "literal input", redirect: "<<< 'fixture'"},
+		{name: "dynamic input", redirect: `<<< "$sample"`, untrusted: true},
+		{name: "inherited input", untrusted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tree, err := shellsyntax.Parse(t.Context(), "(status=inside; read -r sample) "+tc.redirect)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			untrusted := false
+			walk := shellWalk{
+				ctx: t.Context(),
+				observeCapability: func(kind string, _ source.Span) {
+					untrusted = untrusted || kind == "untrusted_input"
+				},
+			}
+			state := newShellState()
+			state.vars["status"] = shellValue{text: "outside", known: true}
+			walk.list(tree, state)
+			if walk.err != nil || untrusted != tc.untrusted {
+				t.Fatalf("untrusted input = %t, want %t, analysis error = %v", untrusted, tc.untrusted, walk.err)
+			}
+
+			if status := state.vars["status"]; !status.known || status.text != "outside" {
+				t.Fatalf("subshell changed parent binding: %+v", status)
+			}
+		})
+	}
+}
+
+func TestShellFunctionCallRedirectsStdout(t *testing.T) {
+	for _, tc := range []struct {
+		name, redirect string
+		output         bool
+	}{
+		{name: "stdout retained", output: true},
+		{name: "stdout redirected", redirect: " > output"},
+		{name: "stderr redirected", redirect: " 2> error", output: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tree, err := shellsyntax.ParseDeclarations(t.Context(), "say() { printf '%s' fixture; }; say"+tc.redirect)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			walk := shellWalk{ctx: t.Context()}
+			out := walk.list(tree, newShellState())
+			if walk.err != nil || out.output != tc.output || tc.output && out.prefix != 'f' {
+				t.Fatalf("stdout = %t, want %t, prefix = %q, error = %v", out.output, tc.output, out.prefix, walk.err)
+			}
+		})
+	}
+}
 
 func TestShellFunctionScopesRespectBudget(t *testing.T) {
 	for _, tc := range []struct {

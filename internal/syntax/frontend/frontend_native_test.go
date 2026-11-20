@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/syntax/frontend"
@@ -354,6 +355,141 @@ func TestPythonBinaryOperatorIdentity(t *testing.T) {
 			}
 			if expression.Start != 0 || expression.End != len(text) {
 				t.Fatal("physical span changed")
+			}
+		})
+	}
+}
+
+func TestPythonImaginaryLiteralTruth(t *testing.T) {
+	options := frontend.DefaultOptions()
+	options.Python = true
+	for _, tc := range []struct {
+		literal string
+		truth   bool
+	}{
+		{literal: "0j", truth: false},
+		{literal: "0.0j", truth: false},
+		{literal: "0J", truth: false},
+		{literal: "1e-999j", truth: false},
+		{literal: "1j", truth: true},
+		{literal: ".25J", truth: true},
+		{literal: "1_000j", truth: true},
+		{literal: "1e999j", truth: true},
+	} {
+		t.Run(tc.literal, func(t *testing.T) {
+			result, err := frontend.Parse(t.Context(), options, "python", tc.literal)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			n := result.AST.List(frontend.Body)[0].Child(frontend.FieldValue)
+			truth, known := n.Field(frontend.NumericTruth).Boolean()
+			if n.Kind() != frontend.Constant || !known || truth != tc.truth || n.Start != 0 || n.End != len(tc.literal) {
+				t.Fatalf("%s projected truth = %v, known = %v, node = %+v", tc.literal, truth, known, n)
+			}
+		})
+	}
+}
+
+func TestPythonSubscriptRetainsAllIndexExpressions(t *testing.T) {
+	options := frontend.DefaultOptions()
+	options.Python = true
+	for _, tc := range []struct {
+		key   string
+		tuple bool
+		items []string
+	}{
+		{key: "row()", items: []string{"row()"}},
+		{key: "row(),", tuple: true, items: []string{"row()"}},
+		{key: "row(), col()", tuple: true, items: []string{"row()", "col()"}},
+		{key: "row(1, 2)", items: []string{"row(1, 2)"}},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			const object = "table"
+			text := object + "[" + tc.key + "]"
+			result, err := frontend.Parse(t.Context(), options, "python", text)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			n := result.AST.List(frontend.Body)[0].Child(frontend.FieldValue)
+			if n.Kind() != frontend.Subscript || n.Child(frontend.FieldValue).String(frontend.ID) != object {
+				t.Fatalf("lost subscript receiver: %+v", n)
+			}
+
+			key := n.Child(frontend.Slice)
+			if key == nil || key.Start != len(object)+1 || key.End != len(text)-1 {
+				t.Fatalf("subscript key span changed: %+v", key)
+			}
+
+			items := []*frontend.Node{key}
+			if tc.tuple {
+				if key.Kind() != frontend.Tuple {
+					t.Fatalf("subscript key = %s, want tuple", key.Kind())
+				}
+
+				items = key.List(frontend.Elts)
+			}
+
+			if len(items) != len(tc.items) {
+				t.Fatalf("subscript has %d index expressions, want %d", len(items), len(tc.items))
+			}
+
+			for i, item := range items {
+				if item.Kind() != frontend.Call || text[item.Start:item.End] != tc.items[i] {
+					t.Fatalf("index %d lost expression or coordinates: %+v", i, item)
+				}
+			}
+		})
+	}
+
+	result, err := frontend.Parse(t.Context(), options, "python", "table[row(), start():stop()]")
+	var limitation *frontend.Failure
+	if !errors.As(err, &limitation) || limitation.Category != "unsupported_projection" || result.AST == nil {
+		t.Fatalf("slice syntax should preserve partial projection: %v", err)
+	}
+
+	items := result.AST.List(frontend.Body)[0].Child(frontend.FieldValue).Child(frontend.Slice).List(frontend.Elts)
+	if len(items) != 2 || items[1].Kind() != frontend.UnsupportedExpression || len(items[1].Children()) != 2 {
+		t.Fatal("partial slice lost its bounds")
+	}
+}
+
+func TestPythonCallPreservesGeneratorAsOneArgument(t *testing.T) {
+	options := frontend.DefaultOptions()
+	options.Python = true
+	const expression = "item for item in values if enabled"
+	for _, text := range []string{"sum(" + expression + ")", "sum((" + expression + "), start=0)"} {
+		t.Run(text, func(t *testing.T) {
+			result, err := frontend.Parse(t.Context(), options, "python", text)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			call := result.AST.List(frontend.Body)[0].Child(frontend.FieldValue)
+			args := call.List(frontend.Args)
+			if call.Kind() != frontend.Call || len(args) != 1 || args[0].Kind() != frontend.GeneratorExp {
+				t.Fatalf("generator was not retained as one argument: %+v", call)
+			}
+
+			generator := args[0]
+			start := strings.Index(text, expression)
+			if generator.Start != start-1 || generator.End != start+len(expression)+1 || generator.Child(frontend.Elt).String(frontend.ID) != "item" {
+				t.Fatalf("generator expression or physical span changed: %+v", generator)
+			}
+
+			clauses := generator.List(frontend.Generators)
+			if len(clauses) != 1 || clauses[0].Child(frontend.Target).String(frontend.ID) != "item" || clauses[0].Child(frontend.Iter).String(frontend.ID) != "values" {
+				t.Fatalf("generator loop not retained: %+v", clauses)
+			}
+
+			if filters := clauses[0].List(frontend.Ifs); len(filters) != 1 || filters[0].String(frontend.ID) != "enabled" {
+				t.Fatal("generator filter not retained")
+			}
+
+			keywords := call.List(frontend.Keywords)
+			if strings.Contains(text, "start=") && (len(keywords) != 1 || keywords[0].String(frontend.FieldArg) != "start") {
+				t.Fatalf("explicit generator call lost keyword argument: %+v", keywords)
 			}
 		})
 	}

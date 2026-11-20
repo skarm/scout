@@ -142,14 +142,6 @@ func projectRoot() (string, error) {
 	}
 }
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
-func fileDigest(path string) (string, error) {
-	b, err := os.ReadFile(path) //nolint:gosec // G304: explicit caller-selected maintenance input.
-	if err != nil {
-		return "", err
-	}
-
-	return digest(b), nil
-}
 
 func readJSON(path string, value any) error {
 	b, err := os.ReadFile(path) //nolint:gosec // G304: caller-selected local JSON input to an offline maintenance command.

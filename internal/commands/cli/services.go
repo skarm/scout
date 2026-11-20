@@ -86,7 +86,7 @@ func (p argvPatch) resolveDownload(s *configfile.Settings) error {
 	if p.values.grants.Download {
 		v.Enabled = true
 		s.Scanner.Download = &v
-	} else if p.values.revision != "" || p.values.sha256 != "" || v.AllowLoopback {
+	} else if p.values.revision != "" || p.values.sha256 != "" || v.AllowLoopback || p.present["download-timeout"] {
 		return errors.New("download options require --allow-download")
 	}
 

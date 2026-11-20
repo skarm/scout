@@ -56,6 +56,9 @@ type request struct {
 	grants                          configfile.Grants
 	followExternal                  bool
 	environment                     bool
+	snapshotCandidate, snapshotSave string
+	snapshotEmpty                   bool
+	snapshotSourceDiff              bool
 	externalOrigins                 repeated
 	externalDepth, externalRequests int
 	externalBytes                   int64

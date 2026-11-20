@@ -32,7 +32,14 @@ func TestConfigValidationReturnsThePreparedInspectionWithoutTargets(t *testing.T
 	if err := json.Unmarshal(stdout.Bytes(), &plan); err != nil || plan.Name != "custom" {
 		t.Fatalf("invalid prepared inspection: %s %v", &stdout, err)
 	}
-	for _, extra := range [][]string{{"unexpected"}, {"--fail-on", "unknown"}, {"--baseline", filepath.Join(t.TempDir(), "missing")}} {
+	for _, extra := range [][]string{
+		{"unexpected"},
+		{"--fail-on", "unknown"},
+		{"--baseline", filepath.Join(t.TempDir(), "missing")},
+		{"--output", filepath.Join(t.TempDir(), "plan.json")},
+		{"--report", "json=" + filepath.Join(t.TempDir(), "plan.json")},
+		{"--name", "ordinary.txt"},
+	} {
 		stdout.Reset()
 		stderr.Reset()
 		if code := Run(context.Background(), append(append([]string{}, args...), extra...), &stdout, &stderr); code != 2 || stdout.Len() != 0 {
@@ -191,7 +198,13 @@ func TestTrustedConfigurationRejectsFilesystemAliases(t *testing.T) {
 }
 
 func TestMCPBoundaryFailuresDoNotProduceSuccessfulProtocolOutput(t *testing.T) {
-	for _, flags := range [][]string{{"--unknown"}, {"--fail-on", "unknown"}, {"--workers", "0"}, {"--max-concurrent", "0"}} {
+	for _, flags := range [][]string{
+		{"--unknown"},
+		{"--fail-on", "unknown"},
+		{"--workers", "0"},
+		{"--max-concurrent", "0"},
+		{"--target", "candidate=", "--target", "candidate=" + t.TempDir()},
+	} {
 		var stdout, stderr bytes.Buffer
 		args := append(reducedCommandFlags(), flags...)
 		code := serveMCP(context.Background(), args, io.NopCloser(strings.NewReader("")), &stdout, &stderr)
@@ -257,6 +270,7 @@ func TestFinalResolveRequiresDownloadGrantForEveryControl(t *testing.T) {
 		{name: "revision", args: []string{"--revision", strings.Repeat("a", 40)}},
 		{name: "hash", args: []string{"--download-sha256", strings.Repeat("a", 64)}},
 		{name: "loopback", args: []string{"--download-allow-loopback"}},
+		{name: "timeout", args: []string{"--download-timeout", "4s"}},
 	} {
 		for _, grant := range []string{"", "false", "true"} {
 			t.Run(control.name+"/grant="+grant, func(t *testing.T) {

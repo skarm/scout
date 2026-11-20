@@ -27,8 +27,9 @@ known system locations. `--project` is repeatable and replaces the default proje
 `--no-project` omits projects. Each selected project's parents are checked up to
 the nearest `.git` entry, the selected home or filesystem root. Paths recorded in
 agent configuration do not cause discovery to walk other projects.
-Selected project aliases are canonicalized before matching inline MCP registrations;
-both the selected spelling and its canonical path are recognized.
+Inline MCP registrations in `~/.claude.json` are matched by path spelling against
+the selected project and its symlink-resolved path. Use the spelling in
+`projects` for paths that differ only by case or Unicode normalization on disk.
 
 Codex locations:
 

@@ -3,9 +3,11 @@ package releasecheck
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"debug/elf"
 	"debug/macho"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -16,6 +18,53 @@ import (
 
 	"github.com/skarm/scout/internal/nativecontract"
 )
+
+func TestReleaseCopyRequiresTheInspectedSizeAndDigest(t *testing.T) {
+	data := []byte("ordinary staged bytes")
+	path := filepath.Join(t.TempDir(), "fixture.txt")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	input, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := input.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+	for _, tc := range []struct {
+		name, sha string
+		size      int64
+		valid     bool
+	}{
+		{name: "exact", sha: digest, size: int64(len(data)), valid: true},
+		{name: "stale size", sha: digest, size: int64(len(data) + 1), valid: false},
+		{name: "changed bytes", sha: strings.Repeat("0", 64), size: int64(len(data)), valid: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			staged, err := copyRelease(input, Report{Size: tc.size, SHA256: tc.sha}, t.TempDir())
+			if !tc.valid {
+				if err == nil || staged != "" {
+					t.Fatal("different bytes or size accepted for staging")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, err := os.ReadFile(staged); err != nil || !bytes.Equal(got, data) {
+				t.Fatal("exact bytes were not copied", err)
+			}
+		})
+	}
+}
 
 // Minimal ELF headers exercise the format boundary on every host. These bytes
 // are only inspected; no fixture executable or library is ever loaded or run.

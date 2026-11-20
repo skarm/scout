@@ -10,6 +10,23 @@ import (
 )
 
 const operatorHelp = `
+snapshot create / snapshot compare / snapshot inspect:
+  --snapshot FILE            Required saved environment; create never replaces a file.
+  --root ID=PATH             Repeat for all selected local roots; stable lowercase IDs.
+  --empty                    Compare with removal of all saved roots; no --root inputs.
+  --candidate FILE           Compare two saved snapshots without reading their original sources.
+  --save-candidate FILE      Save checked current bytes and inspection to a new snapshot.
+                             Reuse this file as the next --snapshot after review.
+  Uses scan configuration, policy, service and budget flags; compare adds --max-changes.
+  create saves captured source bytes and the inspection, including incomplete results.
+  compare without --root repeats saved discovery or rechecks saved source paths.
+  Both environments are rescanned; relationship differences retain evidence and coverage.
+  --include-source-diff      Include bounded source excerpts; may disclose secrets.
+  inspect displays saved discovery arguments, paths and historical status without source bytes.
+  Capture failures include location and limit details; JSON uses scout.environment-snapshot-error/v1.
+  Snapshot comparison formats: text, markdown, json; JSON uses scout.environment-comparison/v1.
+  Snapshots may contain secrets. Store outside inputs; checksum is not approval or a signature.
+
 discover:
   --agent all|codex|claude-code Agent to inventory (default: all).
   --home DIR                 Selected user home (default: current user's home).
@@ -25,6 +42,7 @@ discover:
   --format text|json         Inventory format (default: text).
   --output FILE              Inventory destination (default: stdout).
   --scan                     Scan discovered roots; ordinary scan flags follow --.
+  --snapshot FILE            Save discovered environment; requires one --agent; scan flags follow --.
   --kind KIND                Select skill, plugin, mcp-server or command roots; repeatable.
   --include-path PATH        Narrow discovered roots; repeatable; cannot expand discovery.
   --exclude-path PATH        Omit overlapping roots; repeatable; use --kind for precision.

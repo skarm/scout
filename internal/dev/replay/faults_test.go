@@ -3,11 +3,28 @@ package replay //nolint:testpackage // Exercises private replay fault classifica
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/report"
 )
+
+func TestCaptureUnicodeFilenamesArePreserved(t *testing.T) {
+	for _, tc := range []struct{ encoded, want string }{
+		{encoded: `"paired-\ud83d\ude42.txt"`, want: "paired-🙂.txt"},
+		{encoded: `"literal-�.txt"`, want: "literal-�.txt"},
+		{encoded: `"escaped-\ufffd.txt"`, want: "escaped-�.txt"},
+	} {
+		t.Run(tc.encoded, func(t *testing.T) {
+			data := `{"id":"` + strings.Repeat("a", 64) + `","files":[{"name":` + tc.encoded + `,"data":"b2s="}]}`
+			got, err := decodeRecord([]byte(data), scout.DefaultOptions().Limits)
+			if err != nil || got.rejection != "" || len(got.files) != 1 || got.files[0].name != tc.want {
+				t.Fatalf("filename did not survive decoding: %+v, %v", got, err)
+			}
+		})
+	}
+}
 
 func TestReplayFaultPriorityKeepsCoverageGapsDistinctFromExecutionFaults(t *testing.T) {
 	for _, tc := range []struct {

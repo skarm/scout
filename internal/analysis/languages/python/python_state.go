@@ -347,6 +347,7 @@ func mergePyBranchesWithin(s, a, b *pyState, memo *pyMerge) {
 	r.parent, r.global, r.forks = s.parent, s.global, s.forks
 	s.objects.classes = r.objects.classes
 	s.objects.defaults = r.objects.defaults
+	s.objects.revision++
 	r.objects = s.objects
 	*s = *r
 }

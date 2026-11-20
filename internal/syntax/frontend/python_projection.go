@@ -61,18 +61,7 @@ func init() {
 				source: pyFieldAttribute,
 			}},
 		},
-		pyKindSubscript: {
-			kind: Subscript,
-			fields: []pythonProjectedField{{
-				kind:   FieldValue,
-				form:   pythonChild,
-				source: pyFieldValue,
-			}, {
-				kind:   Slice,
-				form:   pythonChild,
-				source: pyFieldSubscript,
-			}},
-		},
+		pyKindSubscript: {kind: Subscript, build: (*pythonNormalizer).subscriptNode},
 		pyKindAugmentedAssignment: {
 			kind: AugAssign,
 			fields: []pythonProjectedField{{

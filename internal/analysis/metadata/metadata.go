@@ -4,8 +4,6 @@ package metadata
 
 import (
 	"context"
-	"net/url"
-	"path"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -56,14 +54,10 @@ func collectFile(d document.File, host string, r *report.MetadataReport) bool {
 		return proceed
 	}
 
-	name := d.Artifact().Metadata().Path
-	if p, e := url.PathUnescape(name); e == nil {
-		name = p
-	}
-
-	isSkill := strings.EqualFold(path.Base(name), artifact.SkillManifest)
-	isManifest := slices.Contains([]string{"plugin.json", "manifest.json", "skill.json"}, path.Base(name))
-	found := false
+	name := d.Artifact().BaseName()
+	isSkill := strings.EqualFold(name, artifact.SkillManifest)
+	isManifest := slices.Contains([]string{"plugin.json", "manifest.json", "skill.json"}, name)
+	foundFrontmatter := false
 
 	for _, u := range d.Units() {
 		if !metadataUnit(u, isManifest) {
@@ -74,7 +68,7 @@ func collectFile(d document.File, host string, r *report.MetadataReport) bool {
 			return false
 		}
 
-		found = true
+		foundFrontmatter = foundFrontmatter || u.Origin == "frontmatter"
 
 		f := collectUnit(d, u, isSkill, host)
 		if len(f.Issues) > 0 {
@@ -84,7 +78,7 @@ func collectFile(d document.File, host string, r *report.MetadataReport) bool {
 		r.Files = append(r.Files, f)
 	}
 
-	if isSkill && !found {
+	if isSkill && !foundFrontmatter {
 		if !admitRecord(r) {
 			return false
 		}
@@ -118,7 +112,8 @@ func admitRecord(r *report.MetadataReport) bool {
 }
 
 func metadataUnit(u document.Unit, manifest bool) bool {
-	return u.Origin == "frontmatter" || slices.Contains([]string{"yaml", "toml"}, u.Language) || (manifest && u.Language == language.JSON)
+	return u.Origin == "frontmatter" || u.Origin == "file" &&
+		(u.Language == language.YAML || u.Language == language.TOML || manifest && u.Language == language.JSON)
 }
 
 func collectUnit(d document.File, u document.Unit, isSkill bool, host string) report.MetadataFile {

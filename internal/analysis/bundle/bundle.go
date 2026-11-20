@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -131,6 +132,14 @@ func (a bundleCheck) Find(ctx context.Context, d document.File, budget int) (res
 	if len(out.Matches) > budget {
 		out.Matches = out.Matches[:max(0, budget)]
 		out.Truncated = true
+	}
+	// Consumers receive independent results from the immutable bound facts.
+	out.Matches = slices.Clone(out.Matches)
+	for i := range out.Matches {
+		m := &out.Matches[i]
+		m.Trace = slices.Clone(m.Trace)
+		m.Related = slices.Clone(m.Related)
+		m.ContextSignals = slices.Clone(m.ContextSignals)
 	}
 
 	return out, errors.Join(a.err, ctx.Err())
@@ -328,6 +337,17 @@ func (b *bundleAnalysis) reference(file string, start, end int) report.SourceRef
 	}
 }
 
+// Whole-file references provide optional supporting evidence. An empty file
+// has no byte span and does not invalidate the primary observation.
+func (b *bundleAnalysis) wholeFileReference(file string) report.SourceRef {
+	size := len(b.docs[file].Artifact().Content())
+	if size == 0 {
+		return report.SourceRef{}
+	}
+
+	return b.reference(file, 0, size)
+}
+
 func (b *bundleAnalysis) discover(docs []document.File) {
 	for _, d := range docs {
 		if !b.step() {
@@ -412,7 +432,7 @@ func (b *bundleAnalysis) endpoint(file, value string, ref report.SourceRef) {
 
 	b.endpoints[s.file] = append(b.endpoints[s.file], bundleEndpoint{value: value, ref: ref})
 	if !s.hosts[canonicalHost(value)] {
-		b.emit(ruleNET001, ref, b.reference(s.file, 0, len(b.docs[s.file].Artifact().Content())))
+		b.emit(ruleNET001, ref, b.wholeFileReference(s.file))
 	}
 }
 

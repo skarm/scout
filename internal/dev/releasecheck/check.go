@@ -291,14 +291,14 @@ func copyRelease(f *os.File, r Report, dir string) (string, error) {
 	}
 
 	h := sha256.New()
-	_, ce := io.Copy(io.MultiWriter(dst, h), io.NewSectionReader(f, 0, r.Size))
+	n, ce := io.Copy(io.MultiWriter(dst, h), io.NewSectionReader(f, 0, r.Size))
 
 	cl := dst.Close()
 	if ce != nil || cl != nil {
 		return "", errors.New("cannot copy release binary")
 	}
 
-	if hex.EncodeToString(h.Sum(nil)) != r.SHA256 {
+	if n != r.Size || hex.EncodeToString(h.Sum(nil)) != r.SHA256 {
 		return "", errors.New("release changed during verification")
 	}
 
@@ -377,28 +377,29 @@ func inspect(f *os.File) (Report, error) {
 	}
 
 	r.Size = st.Size()
+	input := io.NewSectionReader(f, 0, r.Size)
 
 	h := sha256.New()
-	if _, e = io.Copy(h, io.NewSectionReader(f, 0, st.Size())); e != nil {
+	if n, err := io.Copy(h, input); err != nil || n != r.Size {
 		return r, errors.New("cannot hash release binary")
 	}
 
 	r.SHA256 = hex.EncodeToString(h.Sum(nil))
 
 	var magic [4]byte
-	if _, e = f.ReadAt(magic[:], 0); e != nil {
+	if _, e = input.ReadAt(magic[:], 0); e != nil {
 		return r, e
 	}
 
-	e = inspectFormat(f, &r, magic)
+	e = inspectFormat(input, &r, magic)
 	if e != nil {
 		return r, e
 	}
 
-	return inspectBuildInfo(f, r)
+	return inspectBuildInfo(input, r)
 }
 
-func inspectELF(f *os.File, r *Report) error {
+func inspectELF(f io.ReaderAt, r *Report) error {
 	ef, e := elf.NewFile(f)
 	if e != nil {
 		return errors.New("invalid ELF binary")
@@ -450,7 +451,7 @@ func inspectELFInterpreter(ef *elf.File, r *Report) error {
 	return nil
 }
 
-func inspectMachO(f *os.File, r *Report) error {
+func inspectMachO(f io.ReaderAt, r *Report) error {
 	mf, e := macho.NewFile(f)
 	if e != nil {
 		return errors.New("invalid Mach-O binary")
@@ -485,7 +486,7 @@ func inspectMachO(f *os.File, r *Report) error {
 	return nil
 }
 
-func inspectBuildInfo(f *os.File, r Report) (Report, error) {
+func inspectBuildInfo(f io.ReaderAt, r Report) (Report, error) {
 	sort.Strings(r.Libraries)
 	sort.Strings(r.SearchPaths)
 
@@ -523,7 +524,7 @@ func moduleHasDigest(module *debug.Module) bool {
 	return module.Version != "" && strings.HasPrefix(module.Sum, "h1:") && err == nil && len(digest) == 32
 }
 
-func inspectFormat(f *os.File, r *Report, magic [4]byte) error {
+func inspectFormat(f io.ReaderAt, r *Report, magic [4]byte) error {
 	if magic[0] == 'M' && magic[1] == 'Z' {
 		return inspectPE(f, r)
 	}

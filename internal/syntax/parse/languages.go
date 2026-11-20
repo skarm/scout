@@ -2,6 +2,7 @@ package parse
 
 import (
 	"context"
+	"errors"
 
 	"github.com/skarm/scout/internal/buildinfo"
 	"github.com/skarm/scout/internal/syntax/language"
@@ -39,7 +40,12 @@ func (b scriptBackend) Descriptor() Descriptor {
 }
 
 func (b scriptBackend) Parse(ctx context.Context, v source.View) (any, error) {
-	return scriptsyntax.Parse(ctx, b.language, v.Text())
+	tree, err := scriptsyntax.Parse(ctx, b.language, v.Text())
+	if errors.Is(err, scriptsyntax.ErrLimit) {
+		err = &Failure{Category: "parser_limit"}
+	}
+
+	return tree, err
 }
 
 func (sqlBackend) Descriptor() Descriptor {
@@ -54,7 +60,9 @@ func (sqlBackend) Descriptor() Descriptor {
 
 func (sqlBackend) Parse(ctx context.Context, v source.View) (any, error) {
 	tree, err := sqlsyntax.Parse(ctx, v.Text())
-	if err == nil && tree.Limited {
+	if errors.Is(err, sqlsyntax.ErrLimit) {
+		err = &Failure{Category: "parser_limit"}
+	} else if err == nil && tree.Limited {
 		err = &Failure{Category: "unsupported_syntax"}
 	}
 

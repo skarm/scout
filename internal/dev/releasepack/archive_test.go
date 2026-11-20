@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReleaseArchives(t *testing.T) {
@@ -69,6 +70,37 @@ func TestCandidatesNeedOnlyBinaryAndChecksum(t *testing.T) {
 	candidates, output := fixture(t)
 	if err := packageRelease("v1.2.3", candidates, output); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestReleaseArchivesIgnoreCandidateTimestamps(t *testing.T) {
+	candidates, first := fixture(t)
+	second := filepath.Join(filepath.Dir(first), "retry")
+	for i, output := range []string{first, second} {
+		modified := time.Date(2025+i, time.January, 1, 12, 0, 0, 0, time.UTC)
+		for _, platform := range targets() {
+			path := filepath.Join(candidates, "native-candidate-"+platform.name, platform.binary)
+			if err := os.Chtimes(path, modified, modified); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := packageRelease("v1.2.3", candidates, output); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, entry := range []string{"scout-v1.2.3-macos-arm64.tar.gz", "scout-v1.2.3-linux-amd64.tar.gz", "scout-v1.2.3-windows-amd64.zip", "SHA256SUMS"} {
+		before, err := digest(filepath.Join(first, entry))
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, err := digest(filepath.Join(second, entry))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if before != after {
+			t.Errorf("identical candidate bytes produced different %s", entry)
+		}
 	}
 }
 

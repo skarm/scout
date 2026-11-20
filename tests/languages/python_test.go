@@ -336,12 +336,12 @@ func TestScannerPythonUnknownDeserializationArguments(t *testing.T) {
 		}
 		count := 0
 		for _, finding := range run.Targets[0].Analysis.Findings {
-			if finding.RuleID == "PY-AST10" {
+			if finding.RuleID == tc.analyzer {
 				count++
 			}
 		}
 		if count != tc.unsafe {
-			t.Fatalf("unsafe observations=%d, want %d", count, tc.unsafe)
+			t.Fatalf("%s observations=%d, want %d", tc.analyzer, count, tc.unsafe)
 		}
 		covered := false
 		for _, check := range run.Targets[0].Analysis.Coverage.Checks {
