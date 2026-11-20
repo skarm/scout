@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -184,16 +185,10 @@ func writeTar(path string, files []entry) (err error) {
 	defer func() { err = errors.Join(err, archive.Close(), compressed.Close(), file.Close()) }()
 
 	for _, item := range files {
-		header, err := tar.FileInfoHeader(item.info, "")
-		if err != nil {
-			return err
-		}
+		// Keep archive bytes stable across downloads with different file metadata.
+		header := tar.Header{Name: item.name, Size: item.info.Size(), Mode: 0o755, Typeflag: tar.TypeReg}
 
-		header.Name = item.name
-		// Artifact downloads reset executable bits. Restore them in the archive
-		// without modifying the checked candidate's files.
-		header.Mode = 0o755
-		if err = archive.WriteHeader(header); err != nil {
+		if err = archive.WriteHeader(&header); err != nil {
 			return err
 		}
 
@@ -215,16 +210,14 @@ func writeZIP(path string, files []entry) (err error) {
 	defer func() { err = errors.Join(err, archive.Close(), file.Close()) }()
 
 	for _, item := range files {
-		header, err := zip.FileInfoHeader(item.info)
-		if err != nil {
-			return err
+		header := zip.FileHeader{
+			Name:     item.name,
+			Method:   zip.Deflate,
+			Modified: time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC), // Earliest DOS timestamp.
 		}
-
-		header.Name = item.name
 		header.SetMode(0o755)
-		header.Method = zip.Deflate
 
-		writer, err := archive.CreateHeader(header)
+		writer, err := archive.CreateHeader(&header)
 		if err != nil {
 			return err
 		}

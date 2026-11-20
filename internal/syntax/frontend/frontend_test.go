@@ -112,6 +112,78 @@ func TestActualYAML(t *testing.T) {
 	}
 }
 
+func TestYAMLFlowCoordinatesAcrossMultibyteRunes(t *testing.T) {
+	if !frontend.BackendFor("yaml").Available {
+		t.Skip("YAML frontend unavailable")
+	}
+	options := frontend.DefaultOptions()
+	options.YAML = true
+	for _, ending := range []string{"\n", "\r\n", "\r", "\u0085", "\u2028", "\u2029"} {
+		t.Run(strconv.Quote(ending), func(t *testing.T) {
+			text := "\ufeffvalues: ['前', {clé: ['😀','e\u0301', last], следующий: конец}," + ending + "  done]" + ending
+			result, err := frontend.Parse(t.Context(), options, "yaml", text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Config == nil || len(result.Config.Members) != 1 {
+				t.Fatalf("missing YAML mapping: %+v", result.Config)
+			}
+			values := result.Config.Members[0].Value.Elements
+			if len(values) != 3 || len(values[1].Members) != 2 || len(values[1].Members[0].Value.Elements) != 3 {
+				t.Fatalf("missing YAML flow values: %+v", values)
+			}
+			fields := values[1].Members
+			inner := fields[0].Value.Elements
+			for _, tc := range []struct {
+				start int
+				raw   string
+			}{
+				{values[0].Start, "'前'"},
+				{values[2].Start, "done"},
+				{fields[0].Start, "clé"},
+				{fields[1].Start, "следующий"},
+				{inner[0].Start, "'😀'"},
+				{inner[1].Start, "'e\u0301'"},
+				{inner[2].Start, "last"},
+				{fields[1].Value.Start, "конец"},
+			} {
+				if want := strings.Index(text, tc.raw); tc.start != want {
+					t.Errorf("byte start of %q = %d, want %d", tc.raw, tc.start, want)
+				}
+			}
+		})
+	}
+}
+
+func TestYAMLLimitsIncludeExactBoundaries(t *testing.T) {
+	if !frontend.BackendFor("yaml").Available {
+		t.Skip("YAML frontend unavailable")
+	}
+	options := frontend.DefaultOptions()
+	options.YAML = true
+	const sequenceItems = 8190 // The document and outer sequence also consume nodes.
+	sequence := func(items int) string { return "[" + strings.Repeat("x,", items-1) + "x]" }
+	const header = "key: x\n#"
+	bytes := header + strings.Repeat(" ", frontend.MaxBytes-len(header))
+	depth := strings.Repeat("[", frontend.MaxDepth) + "x" + strings.Repeat("]", frontend.MaxDepth)
+	for _, tc := range []struct{ name, exact, over, category string }{
+		{name: "bytes", exact: bytes, over: bytes + " ", category: "input_limit"},
+		{name: "nodes", exact: sequence(sequenceItems), over: sequence(sequenceItems + 1), category: "limit"},
+		{name: "depth", exact: depth, over: "[" + depth + "]", category: "limit"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := frontend.Parse(t.Context(), options, "yaml", tc.exact); err != nil {
+				t.Fatal(err)
+			}
+			_, err := frontend.Parse(t.Context(), options, "yaml", tc.over)
+			var failure *frontend.Failure
+			if !errors.As(err, &failure) || failure.Category != tc.category {
+				t.Fatalf("want %q, got %v", tc.category, err)
+			}
+		})
+	}
+}
+
 func TestSyntheticCSTNormalizationAndUnknownBarrier(t *testing.T) {
 	// The test constructs a CST explicitly; it checks projection/evidence only,
 	// NOT acceptance or detection quality of a real native Python parser.

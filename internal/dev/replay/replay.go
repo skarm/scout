@@ -23,6 +23,7 @@ import (
 	"github.com/skarm/scout/internal/capture/archiveutil"
 	"github.com/skarm/scout/internal/capture/ingest"
 	"github.com/skarm/scout/internal/dev/replaywire"
+	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
 )
@@ -504,7 +505,16 @@ func (r *encodedRecord) field(d *json.Decoder, key string) (err error) {
 func (f *encodedFile) field(d *json.Decoder, key string) (err error) {
 	switch key {
 	case "name":
-		f.name, err = stringToken(d)
+		var raw json.RawMessage
+		if err = d.Decode(&raw); err != nil {
+			return err
+		}
+
+		if !jsonconfig.ValidStringUnicode(string(raw)) {
+			return errors.New("valid Unicode filename required")
+		}
+
+		err = json.Unmarshal(raw, &f.name)
 	case "data":
 		f.data, err = stringToken(d)
 	case "executable":

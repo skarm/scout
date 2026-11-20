@@ -11,17 +11,23 @@ func (s *Server) tools() []any {
 	}
 
 	sort.Strings(keys)
-	targetSchema := map[string]any{"type": "string", "enum": keys}
-	desc := "Scan untrusted skill/plugin bytes without execution. Use a named operator-authorized target OR a filename plus base64 upload (128 KiB maximum). Findings do not imply complete analysis."
+
+	input := "a filename and base64 upload (128 KiB maximum)"
+	if len(keys) > 0 {
+		input = "a named operator-authorized target or " + input
+	}
+
+	desc := "Scan untrusted skill/plugin bytes without execution. Provide " + input + ". Findings do not imply complete analysis."
 	desc += " Operator-selected inspection profile: " + s.scanner.InspectionPlan().Name + ". The tool cannot change the check set or grant network access."
+	uploadFields := []string{fieldName, fieldUploadData}
+	properties := map[string]any{
+		fieldName:       map[string]any{"type": "string", "minLength": 1},
+		fieldUploadData: map[string]any{"type": "string"},
+	}
 	schema := map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"properties": map[string]any{
-			"target":      targetSchema,
-			"name":        map[string]any{"type": "string"},
-			"data_base64": map[string]any{"type": "string"},
-		},
+		"properties":           properties,
 	}
 
 	out := []any{map[string]any{
@@ -30,7 +36,16 @@ func (s *Server) tools() []any {
 		"inputSchema": schema,
 		"annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false},
 	}}
-	if len(s.options.Targets) > 0 {
+	if len(keys) == 0 {
+		schema["required"] = uploadFields
+	} else {
+		targetSchema := map[string]any{"type": "string", "enum": keys}
+		properties[fieldTarget] = targetSchema
+		schema["oneOf"] = []map[string]any{
+			{"required": []string{fieldTarget}, "maxProperties": 1},
+			{"required": uploadFields, "maxProperties": 2},
+		}
+
 		out = append(out, map[string]any{
 			"name":        toolCompareSkills,
 			"description": "Freshly scan two operator-authorized targets and compare evidence; old findings are not auto-approved.",

@@ -74,6 +74,7 @@ type captureState struct {
 	snapshot Snapshot
 	consumed int64
 	seen     map[string]bool
+	keys     map[string]bool
 }
 
 func DefaultOptions() Options {
@@ -96,6 +97,7 @@ func Fetch(ctx context.Context, o Options) (Snapshot, error) {
 			Servers:        []json.RawMessage{},
 		},
 		seen: map[string]bool{},
+		keys: map[string]bool{},
 	}
 	if err := validateOptions(ctx, o); err != nil {
 		return state.snapshot, err
@@ -264,7 +266,9 @@ func nextCursor(metadata *jsonconfig.Node) (string, error) {
 
 func (s *captureState) records(servers *jsonconfig.Node, data []byte) error {
 	for _, entry := range servers.Elements {
-		name, ok := serverNode(entry).Get(fieldName).Text()
+		server := serverNode(entry)
+
+		name, ok := server.Get(fieldName).Text()
 		if !ok || name == "" {
 			return errors.New("registry server identity unavailable")
 		}
@@ -275,6 +279,19 @@ func (s *captureState) records(servers *jsonconfig.Node, data []byte) error {
 
 		if len(s.snapshot.Servers) >= s.options.MaxRecords {
 			return errors.New("registry record limit")
+		}
+
+		if !s.options.LatestOnly || isLatest(entry) {
+			id, err := recordKey(name, server)
+			if err != nil {
+				return err
+			}
+
+			if s.keys[id] {
+				return errors.New("duplicate registry record identity")
+			}
+
+			s.keys[id] = true
 		}
 
 		s.snapshot.Servers = append(s.snapshot.Servers, json.RawMessage(strings.Clone(string(data[entry.Span.Start:entry.Span.End]))))
@@ -337,12 +354,11 @@ func recordIndex(ctx context.Context, s Snapshot) (map[string]string, error) {
 			return nil, errors.New("registry record lacks identity")
 		}
 
-		version, _ := server.Get(fieldVersion).Text()
-		if strings.ContainsRune(name, 0) || strings.ContainsRune(version, 0) {
-			return nil, errors.New("invalid registry record identity")
+		id, err := recordKey(name, server)
+		if err != nil {
+			return nil, err
 		}
 
-		id := hash([]byte(name + "\x00" + version))
 		if _, exists := index[id]; exists {
 			return nil, errors.New("duplicate registry record identity")
 		}
@@ -366,4 +382,14 @@ func recordIndex(ctx context.Context, s Snapshot) (map[string]string, error) {
 
 	return index, nil
 }
+
+func recordKey(name string, server *jsonconfig.Node) (string, error) {
+	version, ok := server.Get(fieldVersion).Text()
+	if !ok || version == "" || strings.ContainsRune(name, 0) || strings.ContainsRune(version, 0) {
+		return "", errors.New("invalid registry record identity")
+	}
+
+	return hash([]byte(name + "\x00" + version)), nil
+}
+
 func hash(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }

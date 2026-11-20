@@ -20,6 +20,7 @@ policy and preservation of static findings. This is an integration test, NOT
 a classifier or model accuracy test. A benign fixture response does not override
 unsupported coverage or authorize installation.
 
-SQL has no static SQL engine in this change. SQL risk responses can now survive
-the semantic protocol, but a static-only scan does not detect these SQL defects
-merely because a knowledge topic exists. Live inference is not used by these tests.
+The SQL examples declare no static expectations. Scout's bounded SQL analyzer
+checks selected statement patterns. The scripted HTTP tests verify delivery of
+SQL knowledge topics and validation of their proposed findings. They use no live
+inference.

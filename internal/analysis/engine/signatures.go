@@ -88,13 +88,26 @@ func applySignatures(ctx context.Context, r *report.Analysis, docs []document.Fi
 	r.Rules = append(r.Rules, rules...)
 
 	partial := err != nil || out.Completeness != string(report.Complete)
-	for _, step := range out.Outcomes {
-		if !collectSignatureMatches(step, byPath, rules, r.Signatures.RulesSHA256, collector) {
+	filesDone, findings := 0, 0
+
+	for i := range r.Signatures.Outcomes {
+		step := &r.Signatures.Outcomes[i]
+		observed, complete := collectSignatureMatches(*step, byPath, rules, r.Signatures.RulesSHA256, collector)
+		findings += observed
+
+		if !complete {
 			partial = true
-			step.Status = report.OutcomePartial
+
+			if step.Status == report.OutcomeCompleted {
+				step.Status = report.OutcomePartial
+			}
 		}
 
-		signatureFileCoverage(r, step, fileIndex)
+		if step.Status == report.OutcomeCompleted && !step.Truncated {
+			filesDone++
+		}
+
+		signatureFileCoverage(r, *step, fileIndex)
 	}
 
 	status := report.OutcomeCompleted
@@ -114,6 +127,8 @@ func applySignatures(ctx context.Context, r *report.Analysis, docs []document.Fi
 		Version:    "2",
 		Status:     status,
 		FilesTotal: len(inputs),
+		FilesDone:  filesDone,
+		Findings:   findings,
 		Detail:     "Plan and per-object outcomes are in signatures; target contents were not executed.",
 	})
 }
@@ -142,8 +157,9 @@ func signatureFileCoverage(r *report.Analysis, step signatures.Outcome, fileInde
 	}
 }
 
-func collectSignatureMatches(step signatures.Outcome, byPath map[string]document.File, rules []report.Rule, rulesSHA string, collector *findingCollector) bool {
+func collectSignatureMatches(step signatures.Outcome, byPath map[string]document.File, rules []report.Rule, rulesSHA string, collector *findingCollector) (int, bool) {
 	complete := true
+	observed := 0
 
 	for _, m := range step.Matches {
 		i, ok := signatureCategoryRule[m.Category]
@@ -180,9 +196,11 @@ func collectSignatureMatches(step signatures.Outcome, byPath map[string]document
 
 		f.RelatedEvidence = append([]report.SourceRef(nil), match.Related...)
 		collector.add(f)
+
+		observed++
 	}
 
-	return complete
+	return observed, complete
 }
 
 // All reported string spans support one native condition. Invalid related spans

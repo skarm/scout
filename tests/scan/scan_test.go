@@ -414,10 +414,13 @@ func TestRawChecksOnEveryCapturedFile(t *testing.T) {
 			if len(r.Coverage.Files) < 1 || r.Coverage.Files[0].Path != tc.name || r.Coverage.CapturedFiles != 1 {
 				t.Fatal("missing original per-file record")
 			}
-			for _, c := range r.Coverage.Files[0].Checks {
-				if c.AnalyzerID == "EX001" && c.Status != "completed" {
-					t.Fatal("raw check state lost")
-				}
+			checks := r.Coverage.Files[0].Checks
+			checkIndex := slices.IndexFunc(checks, func(c report.FileCheck) bool { return c.AnalyzerID == "EX001" })
+			if checkIndex < 0 {
+				t.Fatal("missing EX001 coverage")
+			}
+			if status := checks[checkIndex].Status; status != report.OutcomeCompleted {
+				t.Fatalf("EX001 coverage status = %s, want completed", status)
 			}
 			if tc.byteOnly && r.Coverage.Completeness != "partial" {
 				t.Fatal("binary certified by raw search")
@@ -474,15 +477,16 @@ func TestCoverageTracksSkippedFiles(t *testing.T) {
 	if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
 		t.Fatal(err)
 	}
-	if len(r.Coverage.Files) != 2 {
-		t.Fatal("skipped entry missing from coverage")
+	if n := len(r.Coverage.Files); n != 2 {
+		t.Fatalf("coverage has %d files, want 2", n)
 	}
-	for _, f := range r.Coverage.Files {
-		if f.Path == "too-large.txt" {
-			if f.ReadStatus != "skipped" || f.Completeness != "partial" || len(f.Checks) != 0 || len(f.Gaps) == 0 {
-				t.Fatalf("bad skipped state: %+v", f)
-			}
-		}
+	index := slices.IndexFunc(r.Coverage.Files, func(f report.FileCoverage) bool { return f.Path == "too-large.txt" })
+	if index < 0 {
+		t.Fatal("too-large.txt missing from coverage")
+	}
+	f := r.Coverage.Files[index]
+	if f.ReadStatus != "skipped" || f.Completeness != report.Partial || len(f.Checks) != 0 || len(f.Gaps) == 0 {
+		t.Fatalf("bad skipped state: %+v", f)
 	}
 }
 

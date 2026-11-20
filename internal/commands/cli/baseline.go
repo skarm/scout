@@ -185,7 +185,7 @@ func editBaselineEntry(entry baseline.Entry, options baselineArguments, expires 
 		entry.Reason = options.reason
 	}
 
-	entry.Expires = expires.Format(time.RFC3339)
+	entry.Expires = expires.Format(time.RFC3339Nano)
 
 	return entry, nil
 }

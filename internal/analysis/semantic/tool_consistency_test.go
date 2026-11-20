@@ -158,6 +158,45 @@ func TestDescriptionlessPackageStillOwnsItsCode(t *testing.T) {
 	}
 }
 
+func TestToolConsistencyMatchesWholePluginDirectoryNames(t *testing.T) {
+	const codePath = "pkg/format.py"
+	for _, tc := range []struct {
+		path      string
+		wantCalls int
+	}{
+		{path: artifact.ClaudePluginManifest, wantCalls: 1},
+		{path: "pkg/" + artifact.ClaudePluginManifest, wantCalls: 1},
+		{path: "pkg/example" + artifact.ClaudePluginManifest},
+		{path: artifact.CodexPluginManifest, wantCalls: 1},
+		{path: "pkg/" + artifact.CodexPluginManifest, wantCalls: 1},
+		{path: "pkg/example" + artifact.CodexPluginManifest},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			files := []artifact.File{
+				artifact.NewFile(tc.path, []byte(`{"name":"fixture","description":"Format ordinary text"}`), false),
+				artifact.NewFile(codePath, []byte("print('plain test text')"), false),
+			}
+			calls, scannedCode := 0, false
+			p := provider{fn: func(_ context.Context, raw []byte) (review.Completion, error) {
+				req := parseRequest(t, raw)
+				switch req.Mode {
+				case "tool_consistency":
+					calls++
+				case "discovery":
+					for _, excerpt := range req.Excerpts {
+						scannedCode = scannedCode || excerpt.Path == codePath
+					}
+				}
+				return emptyCompletion(t, req), nil
+			}}
+			result := semantic.Run(t.Context(), files, report.ComponentGraph{}, nil, "fixture", options(), p)
+			if !scannedCode || result.Completeness != report.Complete || calls != tc.wantCalls {
+				t.Fatalf("discovered code=%t completeness=%s, tool consistency calls=%d, want %d", scannedCode, result.Completeness, calls, tc.wantCalls)
+			}
+		})
+	}
+}
+
 func TestToolConsistencyDeclarationBudgetAndEmptyCode(t *testing.T) {
 	for _, oversized := range []bool{false, true} {
 		description := "---\ndescription: Local text only\n---\n"

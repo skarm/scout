@@ -413,7 +413,7 @@ func (w *scriptWalk) pair(n *scriptsyntax.Node, s *scriptScope, depth int) scrip
 		key = decoded
 	}
 
-	if key == "rejectUnauthorized" && value.known && value.text == "false" {
+	if key == "rejectUnauthorized" && value.known && value.primitive && value.text == "false" {
 		w.emit(ruleJS006, n, nil)
 	}
 

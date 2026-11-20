@@ -15,6 +15,7 @@
 - [Сравнение обновлений](user/update-review.ru.md).
 - [Обнаружение установленных компонентов агентов](user/discovery.ru.md).
 - [Анализ взаимодействий выбранного окружения](user/environment-analysis.ru.md).
+- [Снимки окружения и отчёты об изменениях](user/environment-snapshots.ru.md).
 - [Семантическая проверка](user/semantic-review.ru.md).
 - [Интеграции и MCP](user/integrations.ru.md).
 

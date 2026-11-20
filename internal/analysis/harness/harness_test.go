@@ -340,10 +340,9 @@ func TestCancellationAndInvalidHost(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	g := harness.Discover(ctx, nil, nil, report.ExtractionReport{}, report.HarnessOptions{})
-	if len(g.Plugins) != 0 {
-		t.Fatal("empty cancelled input produced plugins", g)
+	if len(g.Plugins) != 0 || !hasIssue(g, "harness_cancelled") {
+		t.Fatal("empty cancelled input was not reported", g)
 	}
-	// Empty input has no operations. A known file must still account for cancellation.
 	g = harness.Discover(ctx, []report.File{{Path: "plugin.json"}}, nil, report.ExtractionReport{}, report.HarnessOptions{})
 	if !hasIssue(g, "harness_cancelled") {
 		t.Fatal(g)
@@ -351,6 +350,36 @@ func TestCancellationAndInvalidHost(t *testing.T) {
 	g = harness.Discover(context.Background(), nil, nil, report.ExtractionReport{}, report.HarnessOptions{Host: "untrusted-host"})
 	if !hasIssue(g, "invalid_harness_request") {
 		t.Fatal(g)
+	}
+}
+
+func TestNilContextStopsBeforePreparingHookPolicy(t *testing.T) {
+	file := artifact.NewFile(".claude-plugin/plugin.json", []byte(`{"name":"p"}`), false)
+	docs := document.PrepareAll(t.Context(), []artifact.File{file})
+	var ctx context.Context
+	graph := harness.Discover(ctx, []report.File{file.Metadata()}, docs, report.ExtractionReport{}, report.HarnessOptions{})
+	if !hasIssue(graph, "harness_cancelled") || len(graph.Plugins) != 0 {
+		t.Fatal("nil context was not reported", graph)
+	}
+}
+
+func TestMarketplaceDirectoryComponents(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{path: ".claude-plugin/marketplace.json", want: true},
+		{path: "fixture/.claude-plugin/marketplace.json", want: true},
+		{path: "fixture/.agents/plugins/marketplace.json", want: true},
+		{path: "fixture/notes.claude-plugin/marketplace.json"},
+		{path: "notes.agents/plugins/marketplace.json"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			graph := inspect(t, map[string]string{tc.path: `{"name":"catalog","plugins":[]}`}, report.HostAuto)
+			if hasNode(graph, "marketplace", tc.path, "unknown") != tc.want || hasIssue(graph, "marketplace_install_closure_unverified") != tc.want {
+				t.Fatalf("unexpected marketplace interpretation for %q: %+v", tc.path, graph)
+			}
+		})
 	}
 }
 
@@ -666,6 +695,7 @@ func TestContextOverlapAndConfigScopeBinding(t *testing.T) {
 		t.Fatal(findings)
 	}
 	files := document.PrepareAll(context.Background(), []artifact.File{artifact.NewFile("x", []byte(`{"mcpServers":{}}`), false)})
+	source.SHA256 = files[0].Artifact().Metadata().SHA256
 	graph.Components = []report.Component{{Kind: "mcp_config", Host: "codex", Source: source}, {
 		Kind:   "mcp_config",
 		Host:   "codex",
@@ -681,6 +711,34 @@ func TestContextOverlapAndConfigScopeBinding(t *testing.T) {
 	scoped := harness.ApplyConfigScopes(files, graph)
 	if len(files[0].ConfigScopes()) != 0 || len(scoped[0].ConfigScopes()) != 2 {
 		t.Fatal(scoped)
+	}
+}
+
+func TestConfigScopeRequiresCapturedBytes(t *testing.T) {
+	const config = "fixture/declared.json"
+	previous := map[string]string{
+		"fixture/.codex-plugin/plugin.json": `{"name":"p","mcpServers":"./declared.json"}`,
+		config:                              `{"mcpServers":{}}`,
+	}
+	graph := inspect(t, previous, report.HostCodex)
+	for _, tc := range []struct {
+		name, content string
+		want          int
+	}{
+		{name: "captured", content: previous[config], want: 1},
+		{name: "edited", content: `{"ordinary!!":{}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file := artifact.NewFile(config, []byte(tc.content), false)
+			docs := document.PrepareAll(t.Context(), []artifact.File{file})
+			scoped := harness.ApplyConfigScopes(docs, graph)
+			if len(scoped) != 1 || len(docs[0].ConfigScopes()) != 0 {
+				t.Fatal("scope binding changed the inputs or discarded the document")
+			}
+			if scopes := scoped[0].ConfigScopes(); len(scopes) != tc.want {
+				t.Fatalf("want %d config scopes, got %v", tc.want, scopes)
+			}
+		})
 	}
 }
 

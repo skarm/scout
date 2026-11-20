@@ -108,7 +108,8 @@ type builder struct {
 	stopped                    bool
 	seen                       map[Component]bool
 	sources                    map[string]string
-	roots                      map[string]bool
+	projectVisits              map[string]bool
+	sourcePaths                sourcePathAliases
 	protected                  map[string]bool
 	projectRoots, projectNames []string
 }
@@ -123,7 +124,7 @@ func Discover(ctx context.Context, options Options) (Snapshot, error) {
 		return Snapshot{}, errors.New("invalid discovery options")
 	}
 
-	b := &builder{ctx: ctx, options: options, seen: map[Component]bool{}, sources: map[string]string{}, roots: map[string]bool{}, out: Snapshot{
+	b := &builder{ctx: ctx, options: options, seen: map[Component]bool{}, sources: map[string]string{}, projectVisits: map[string]bool{}, out: Snapshot{
 		Schema: "scout.environment/v1", Complete: true,
 		Components: []Component{}, Sources: []Source{}, Targets: []string{}, Issues: []Issue{}, Enablement: []Enablement{},
 		Limitations: []string{

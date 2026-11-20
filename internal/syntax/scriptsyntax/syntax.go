@@ -2,13 +2,19 @@
 // Go-owned trees. It never executes JavaScript, resolves imports or runs Node.
 package scriptsyntax
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 const (
 	MaxBytes = 256 << 10
 	maxNodes = 16384
 	maxDepth = 64
 )
+
+// ErrLimit means the parser exceeded its byte, time or syntax-tree budget.
+var ErrLimit = errors.New("script parser limit")
 
 type Node struct {
 	Kind, Field string

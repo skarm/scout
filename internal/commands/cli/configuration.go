@@ -39,8 +39,12 @@ func configCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 }
 
 func (r *request) validateConfigCommand() error {
-	if len(r.targets) != 0 || r.input != "" {
+	if len(r.targets) != 0 || r.input != "" || r.name != "" {
 		return errors.New("config validate has no targets")
+	}
+
+	if r.output != "" || len(r.reports) != 0 {
+		return errors.New("config validate writes the JSON inspection plan to stdout")
 	}
 
 	if err := r.loadTrusted(); err != nil {

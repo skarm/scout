@@ -95,6 +95,24 @@ func TestOnlyRealSettingsCanDisableHooks(t *testing.T) {
 	}
 }
 
+func TestPluginPolicyBoundaryRequiresExactManifestPath(t *testing.T) {
+	const hook = "pkg/hooks/hooks.json"
+	for _, manifest := range []string{artifact.ClaudePluginManifest, artifact.CodexPluginManifest} {
+		for _, prefix := range []string{"", "example"} {
+			t.Run(prefix+manifest, func(t *testing.T) {
+				p := bind(t, map[string]string{
+					".claude/settings.json":    `{"disableAllHooks":true}`,
+					"pkg/" + prefix + manifest: `{"name":"sample"}`,
+					hook:                       command,
+				}, report.ExtractionReport{})
+				if p[hook].Disabled != (prefix != "") || p[hook].Uncertain {
+					t.Fatalf("unexpected hook policy: %+v", p[hook])
+				}
+			})
+		}
+	}
+}
+
 func TestArchiveNamespacesDoNotShareDisableState(t *testing.T) {
 	a, b, c := "scout-object://a", "scout-object://b", "scout-object://c"
 	p := bind(t, map[string]string{a: `{"disableAllHooks":true}`, b: command, c: command}, report.ExtractionReport{Objects: []report.DerivedObject{

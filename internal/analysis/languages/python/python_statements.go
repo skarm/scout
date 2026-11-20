@@ -72,8 +72,7 @@ func (w *pyWalker) assignmentStatement(n *frontend.Node, s *pyState, depth int) 
 			w.annotationTarget(n.Child(frontend.Target), s, depth)
 		}
 	case frontend.AugAssign:
-		v := joinPy(w.expr(n.Child(frontend.Target), s, depth+1), w.expr(n.Child(frontend.FieldValue), s, depth+1))
-		w.assign(n.Child(frontend.Target), v, s, n)
+		w.augmentedAssignment(n, s, depth+1)
 	case frontend.FunctionDef, frontend.AsyncFunctionDef:
 		w.functionStatement(n, s, depth)
 	case frontend.ClassDef:
@@ -83,6 +82,48 @@ func (w *pyWalker) assignmentStatement(n *frontend.Node, s *pyState, depth int) 
 	}
 
 	return true
+}
+
+func (w *pyWalker) augmentedAssignment(statement *frontend.Node, s *pyState, depth int) {
+	target := statement.Child(frontend.Target)
+	right := statement.Child(frontend.FieldValue)
+
+	if target == nil || target.Kind() != frontend.Attribute && target.Kind() != frontend.Subscript {
+		value := joinPy(w.expr(target, s, depth), w.expr(right, s, depth))
+		w.assign(target, value, s, statement)
+
+		return
+	}
+
+	if !w.charge(depth) {
+		return
+	}
+
+	base := w.expr(target.Child(frontend.FieldValue), s, depth+1)
+	revision := s.objects.revision
+
+	if target.Kind() == frontend.Attribute {
+		value := joinPy(readAttribute(target, base, s), w.expr(right, s, depth))
+		if base.instance() != nil && s.objects.revision != revision {
+			w.limited = true
+			return
+		}
+
+		storeAttribute(base, target.String(frontend.Attr), value, s, statement)
+
+		return
+	}
+
+	index := w.expr(target.Child(frontend.Slice), s, depth+1)
+	value := joinPy(w.readSubscript(target, base, index), w.expr(right, s, depth))
+
+	if base.mapping() != nil && s.objects.revision != revision {
+		// Merging a branch can replace previously selected containers.
+		w.limited = true
+		return
+	}
+
+	w.storeSubscript(target, base, index, value, statement)
 }
 
 // An annotation without a value never writes its target. Attribute/subscript

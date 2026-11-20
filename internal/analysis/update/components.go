@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/report"
 )
@@ -63,8 +64,8 @@ func (b *builder) componentOwners(r report.Analysis, x inventory, out componentI
 		}
 
 		ns := p.Namespace
-		if ns != "snapshot" {
-			ns = x.objectKey(ns)
+		if parent, archived := artifact.ArchiveParentPath(ns); archived {
+			ns = x.objectKey(parent)
 		}
 
 		out.plugins[p.ID] = key("plugin", ns, p.Root, p.Host, p.AdapterID, p.AdapterVersion, p.Contract)

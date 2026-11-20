@@ -125,3 +125,42 @@ func TestConcurrentConsumptionNeverOvershoots(t *testing.T) {
 		}
 	}
 }
+
+func TestConcurrentRejectionIsTerminal(t *testing.T) {
+	budget := analysisbudget.WithLimit(t.Context(), 5)
+	paused := &pausingContext{Context: budget, entered: make(chan struct{}), release: make(chan struct{})}
+	done := make(chan bool, 1)
+	go func() { done <- analysisbudget.Consume(paused, 1) }()
+
+	// An implementation with a second context check can pause just before
+	// committing an admission. Otherwise the admission finishes first.
+	select {
+	case <-paused.entered:
+		rejected := !analysisbudget.Consume(budget, 6)
+		used := analysisbudget.Used(budget)
+		close(paused.release)
+		accepted := <-done
+		if !rejected || used != 0 || accepted || !analysisbudget.Exhausted(budget) {
+			t.Fatalf("admission after terminal rejection: used before release=%d rejected=%t accepted=%t used after release=%d", used, rejected, accepted, analysisbudget.Used(budget))
+		}
+	case accepted := <-done:
+		if !accepted || analysisbudget.Used(budget) != 1 || analysisbudget.Consume(budget, 6) || !analysisbudget.Exhausted(budget) {
+			t.Fatal("ordered admission or terminal rejection failed")
+		}
+	}
+}
+
+type pausingContext struct {
+	context.Context
+	calls            atomic.Int32
+	entered, release chan struct{}
+}
+
+func (c *pausingContext) Err() error {
+	if c.calls.Add(1) == 2 {
+		close(c.entered)
+		<-c.release
+	}
+
+	return c.Context.Err()
+}

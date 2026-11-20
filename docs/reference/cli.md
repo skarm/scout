@@ -339,7 +339,7 @@ See [update comparison](../user/update-review.md).
 budget and service flags to construct and validate a scanner, without targets.
 `--config FILE` is optional; without it, validation starts from defaults.
 The result is always the prepared inspection plan as JSON on stdout.
-Scan report flags (`--format`, `--output`, `--report`) do not control this output.
+`--format` has no effect on the plan. `--output` and `--report` are rejected.
 
 ## MCP server
 
@@ -476,3 +476,25 @@ Both commands require explicitly selected local files. The artifact is limited t
 256 KiB, including JSON escaping and metadata; source also has the backend's
 256 KiB ceiling. A hash is byte identity, not publisher authentication. See
 [rulepack usage](../user/usage.md#versioned-rulepacks) for configuration and rollback.
+
+## Environment snapshots
+
+```text
+scout snapshot create --snapshot FILE --root ID=PATH [scan flags]
+scout snapshot compare --snapshot FILE --root ID=PATH [compare flags]
+scout snapshot compare --snapshot FILE --empty [compare flags]
+scout snapshot compare --snapshot FILE --candidate FILE [compare flags]
+scout snapshot compare --snapshot FILE --save-candidate NEW_FILE [compare flags]
+scout snapshot compare --snapshot FILE [--include-source-diff] [compare flags]
+scout snapshot inspect --snapshot FILE [--format text|json]
+scout discover --agent AGENT --snapshot FILE [discovery flags] -- [scan flags]
+```
+
+`--snapshot` selects a new checkpoint for create or an existing checkpoint for compare.
+Repeat `--root` for the complete current selection. `--empty` explicitly selects no roots.
+See [saved environments](../user/environment-snapshots.md).
+
+Without `--root`, `--empty` or `--candidate`, snapshot compare repeats saved discovery or rechecks saved source paths.
+`--candidate` reads a second snapshot and cannot be combined with `--root`, `--empty` or `--save-candidate`.
+`--save-candidate` writes the current bytes used in the comparison and their inspection to a new file.
+`--include-source-diff` includes bounded source excerpts only when explicitly selected.

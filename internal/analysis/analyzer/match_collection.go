@@ -30,16 +30,16 @@ func (c *boundedMatches) add(m Match) bool {
 		return true
 	}
 
-	if c.seen == nil {
-		c.seen = make(map[source.Span]bool)
-	}
-
-	c.seen[at] = true
 	if len(c.out.Matches) >= c.budget {
 		c.out.Truncated = true
 		return false
 	}
 
+	if c.seen == nil {
+		c.seen = make(map[source.Span]bool)
+	}
+
+	c.seen[at] = true
 	c.out.Matches = append(c.out.Matches, m)
 
 	return true

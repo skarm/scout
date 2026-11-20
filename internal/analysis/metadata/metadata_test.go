@@ -9,7 +9,9 @@ import (
 
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/internal/syntax/frontend"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/report"
 )
 
@@ -134,6 +136,64 @@ func TestMetadataCancellationMissingFrontmatterAndCanonicalValues(t *testing.T) 
 		if got := canonicalNumber("number", value); got != value {
 			t.Fatalf("unbounded number %s changed to %s", value, got)
 		}
+	}
+}
+
+func TestOnlyVirtualMetadataPathsAreURLDecoded(t *testing.T) {
+	for _, tc := range []struct {
+		path        string
+		frontmatter bool
+	}{
+		{path: "docs/%53KILL.md"},
+		{path: "docs/SKILL.md", frontmatter: true},
+		{path: report.ObjectPathPrefix + "fixture/SKILL.md", frontmatter: true},
+		{path: report.ObjectPathPrefix + "fixture/%2553KILL.md"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			file := artifact.NewFile(tc.path, []byte("Ordinary documentation.\n"), false)
+			docs := document.PrepareAll(t.Context(), []artifact.File{file})
+			got := Collect(t.Context(), docs, report.HostAgentSkills)
+			if tc.frontmatter {
+				if got.Completeness != report.Partial || len(got.Files) != 1 || got.Files[0].Path != tc.path || got.Files[0].Status != "required_missing" {
+					t.Fatalf("missing required frontmatter was lost: %+v", got)
+				}
+			} else if got.Completeness != report.Complete || len(got.Files) != 0 {
+				t.Fatalf("literal percent escapes invented a skill: %+v", got)
+			}
+		})
+	}
+}
+
+func TestYAMLExampleDoesNotSupplySkillFrontmatter(t *testing.T) {
+	if !frontend.BackendFor("yaml").Available {
+		t.Skip("YAML parser unavailable in this build")
+	}
+	options := frontend.DefaultOptions()
+	options.YAML = true
+	registry, err := parse.WithFrontends(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const body = "# Instructions\n\n```yaml\nname: example\ndescription: Read sample values\n```\n"
+	for _, tc := range []struct {
+		name, header string
+		want         report.Completeness
+	}{
+		{name: "missing", want: report.Partial},
+		{name: "present", header: "---\nname: instructions\ndescription: Read a document\n---\n", want: report.Complete},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := []artifact.File{artifact.NewFile("SKILL.md", []byte(tc.header+body), false)}
+			docs := document.PrepareAllWithRegistry(t.Context(), files, registry)
+			got := Collect(t.Context(), docs, report.HostAgentSkills)
+			if got.Completeness != tc.want || len(got.Files) != 1 {
+				t.Fatalf("expected one frontmatter record: %+v", got)
+			}
+			missing := slices.ContainsFunc(got.Files, func(f report.MetadataFile) bool { return f.Status == "required_missing" })
+			if missing != (tc.header == "") {
+				t.Fatalf("wrong frontmatter outcome: %+v", got.Files)
+			}
+		})
 	}
 }
 

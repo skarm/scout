@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/engine"
 	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/internal/signatures"
 	"github.com/skarm/scout/osv"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
@@ -250,6 +252,61 @@ func TestIncompleteCaptureWithoutDiagnosticNeverCompletes(t *testing.T) {
 	result, err := e.Run(context.Background(), snapshot, options(report.DefaultCaptureLimits()))
 	if err != nil || result.Coverage.Completeness != report.Partial || result.Artifact.InventoryComplete {
 		t.Fatalf("incomplete capture incorrectly completed: %+v,%v", result.Coverage, err)
+	}
+}
+
+func TestSignatureCoverageReportsCompletedInputsAndObservedFindings(t *testing.T) {
+	if !signatures.Backend().Available {
+		t.Skip("native signatures backend unavailable")
+	}
+	e, err := engine.New([]check.Analyzer{fake{
+		id:   "OK",
+		find: func(context.Context, document.File, int) (check.Result, error) { return check.Result{}, nil },
+	}}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signatureOptions := signatures.DefaultOptions()
+	signatureOptions.Enabled = true
+	signatureOptions.ExtraRules = []byte(`
+rule FixtureWord { strings: $s = "fixture-marker" condition: $s }
+rule FixtureByte { strings: $s = { C3 } condition: $s }
+`)
+	e, err = e.WithSignatures(signatureOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := []artifact.File{
+		artifact.NewFile("marker.txt", []byte("fixture-marker"), false),
+		artifact.NewFile("text.txt", []byte("café"), false),
+	}
+	snapshot := artifact.New("directory", files, nil, nil, true)
+	r, err := e.Run(t.Context(), snapshot, options(report.DefaultCaptureLimits()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Findings) != 1 || !slices.Equal(r.Findings[0].SignatureNames, []string{"FixtureWord"}) {
+		t.Fatalf("unexpected findings for the source spans: %+v", r.Findings)
+	}
+	if r.Signatures.Completeness != string(report.Partial) || len(r.Signatures.Outcomes) != 2 {
+		t.Fatalf("unexpected signature execution: %+v", r.Signatures)
+	}
+	for _, step := range r.Signatures.Outcomes {
+		want := report.OutcomeCompleted
+		if step.Path == "text.txt" {
+			want = report.OutcomePartial
+		}
+		if step.Status != want {
+			t.Errorf("signature outcome for %s = %s, want %s", step.Path, step.Status, want)
+		}
+	}
+	index := slices.IndexFunc(r.Coverage.Checks, func(c report.Check) bool { return c.AnalyzerID == "yara-x" })
+	if index < 0 {
+		t.Fatal("missing YARA-X coverage summary")
+	}
+	summary := r.Coverage.Checks[index]
+	if summary.Status != report.OutcomePartial || summary.FilesTotal != 2 || summary.FilesDone != 1 || summary.Findings != 1 {
+		t.Errorf("incorrect YARA-X coverage summary: %+v", summary)
 	}
 }
 

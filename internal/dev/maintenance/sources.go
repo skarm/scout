@@ -178,7 +178,7 @@ func pinnedRepository(s pinnedSource) (*url.URL, error) {
 
 func verifyCachedArtifact(ctx context.Context, id, cache string, item sourceArtifact, download bool) error {
 	path := filepath.Join(cache, item.SHA256)
-	data, readErr := os.ReadFile(path) //nolint:gosec // G304: the filename is a validated SHA-256 inside the explicitly selected cache.
+	data, readErr := readCachedSource(path, item.Bytes)
 
 	missing := errors.Is(readErr, os.ErrNotExist)
 	if missing && download {
@@ -194,10 +194,29 @@ func verifyCachedArtifact(ctx context.Context, id, cache string, item sourceArti
 	}
 
 	if missing && download {
-		if err := os.WriteFile(path, data, privateFileMode); err != nil { //nolint:gosec // G703: validated hexadecimal digest fixes the cache-relative filename.
+		if err := os.WriteFile(path, data, privateFileMode); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func readCachedSource(path string, size int) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if !info.Mode().IsRegular() || info.Size() != int64(size) {
+		return nil, errors.New("cached source size differs from the pinned regular file")
+	}
+
+	file, err := os.Open(path) //nolint:gosec // G304: the filename is a validated SHA-256 inside the explicitly selected cache.
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	return io.ReadAll(io.LimitReader(file, int64(size)+1))
 }

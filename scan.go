@@ -172,7 +172,9 @@ func (s *Scanner) inspectTargets(ctx context.Context, targets []Target, operatio
 }
 
 func (s *Scanner) targetOptions(index, count int, operation report.Operation) targetSettings {
-	o := cloneOptions(s.options)
+	// New owns the option payloads, so each target can share the read-only
+	// rules, offline cache and certificate pools. Copy adjustable options below.
+	o := s.options
 
 	if operation == report.CompareOperation {
 		index = count - 1
@@ -182,8 +184,15 @@ func (s *Scanner) targetOptions(index, count int, operation report.Operation) ta
 	quota.applyLimits(&o.Limits)
 
 	if o.External != nil {
-		o.External.MaxRequests = int(quota.allocate(int64(o.External.MaxRequests)))
-		o.External.MaxBytes = quota.allocate(o.External.MaxBytes)
+		external := *o.External
+		external.MaxRequests = int(quota.allocate(int64(external.MaxRequests)))
+		external.MaxBytes = quota.allocate(external.MaxBytes)
+		o.External = &external
+	}
+
+	if o.Vulnerabilities != nil {
+		vulnerabilities := *o.Vulnerabilities
+		o.Vulnerabilities = &vulnerabilities
 	}
 
 	settings := targetSettings{Options: o}

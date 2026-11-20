@@ -16,6 +16,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/languages/literals"
 	"github.com/skarm/scout/internal/analysis/securitytext"
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
 )
 
@@ -196,7 +197,8 @@ func inspectHTMLURLs(tags []renderTag, out *renderCollector) {
 }
 
 func inspectMarkdownURLs(ctx context.Context, text string, out *renderCollector) error {
-	for candidate, loc := range markdownDestination.FindAllStringSubmatchIndex(text, -1) {
+	// Read one extra candidate to distinguish an exact limit from omitted work.
+	for candidate, loc := range markdownDestination.FindAllStringSubmatchIndex(text, maxMarkdownURLCandidates+1) {
 		if candidate >= maxMarkdownURLCandidates {
 			return errors.New("render destination candidate limit")
 		}
@@ -293,12 +295,17 @@ func renderRegions(ctx context.Context, text string) ([]renderTag, []source.Span
 			return tags, hidden, errors.New("render tag limit")
 		}
 
-		if t.closing {
+		switch {
+		case t.closing:
 			var regions []source.Span
 
 			stack, regions = closeRenderStack(stack, t.name, end)
 			hidden = append(hidden, regions...)
-		} else if !strings.HasSuffix(strings.TrimSpace(text[t.span.Start:t.span.End-1]), "/") && !voidRenderTag(t.name) {
+		case voidRenderTag(t.name), strings.HasSuffix(strings.TrimSpace(text[t.span.Start:t.span.End-1]), "/"):
+			if t.hidden {
+				hidden = append(hidden, t.span)
+			}
+		default:
 			if len(stack) >= maxHTMLNesting {
 				return tags, hidden, errors.New("render nesting limit")
 			}
@@ -356,14 +363,15 @@ func parseRenderTag(text string, start, end int) renderTag {
 	}
 
 	begin := i
-	for i < end && (text[i] >= 'a' && text[i] <= 'z' || text[i] >= 'A' && text[i] <= 'Z' || text[i] >= '0' && text[i] <= '9') {
+	if i >= end-1 || !textmatch.Alnum(text[i]) {
+		return t
+	}
+
+	for i < end-1 && !renderSpace(text[i]) && text[i] != '/' {
 		i++
 	}
 
 	t.name = strings.ToLower(text[begin:i])
-	if t.name == "" {
-		return t
-	}
 
 	for i < end-1 {
 		for i < end-1 && (renderSpace(text[i]) || text[i] == '/') {

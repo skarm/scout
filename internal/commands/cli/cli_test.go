@@ -626,3 +626,26 @@ func writeOperatorFixture(t *testing.T, path string, data []byte) {
 		t.Fatal(err)
 	}
 }
+
+func TestRegistryFetchSnapshotRoundTripsLargeRecord(t *testing.T) {
+	const contentSize = 240_000
+	record := `{"server":{"name":"example/tool","version":"1","description":"` + strings.Repeat("<", contentSize) + `"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := io.WriteString(w, `{"servers":[`+record+`]}`); err != nil {
+			t.Error(err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	output := filepath.Join(t.TempDir(), "registry.json")
+	var stdout, diagnostics bytes.Buffer
+	args := []string{"registry", "fetch", "--allow-download", "--allow-loopback", "--endpoint", server.URL + "/servers", "--output", output}
+	if code := cli.Run(t.Context(), args, &stdout, &diagnostics); code != 0 {
+		t.Fatalf("fetch failed: %d %s", code, diagnostics.String())
+	}
+
+	args = []string{"registry", "compare", output, output}
+	if code := cli.Run(t.Context(), args, &stdout, &diagnostics); code != 0 || !bytes.Contains(stdout.Bytes(), []byte(`"changes":[]`)) {
+		t.Fatalf("generated snapshot did not round trip: %d %s", code, diagnostics.String())
+	}
+}

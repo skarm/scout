@@ -213,3 +213,53 @@ func TestMavenSourceURLUsesCompleteElementText(t *testing.T) {
 		})
 	}
 }
+
+func TestSourceConfigUsesCapturedBasename(t *testing.T) {
+	const text = "index-url=https://packages.example.invalid/simple\n"
+	for _, tc := range []struct {
+		name string
+		want int
+	}{
+		{name: "docs/pip.conf", want: 1},
+		{name: "docs/%70ip.conf"},
+		{name: "docs/notes%2Fpip.conf"},
+		{name: "scout-object://fixture/pip.conf", want: 1},
+		{name: "scout-object://fixture/%2570ip.conf"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertSourceLineMatches(t, tc.name, text, tc.want)
+		})
+	}
+}
+
+func TestNpmrcSourceUsesQuotedAssignmentValues(t *testing.T) {
+	for _, tc := range []struct {
+		name, text string
+		want       int
+	}{
+		{name: "default", text: "registry=https://registry.npmjs.org/"},
+		{name: "quoted default", text: `registry="https://registry.npmjs.org/"`},
+		{name: "quoted scoped default", text: "@fixture:registry='https://registry.npmjs.org/'"},
+		{name: "quoted scoped alternate", text: `@fixture:registry="https://packages.example.invalid/"`, want: 1},
+		{name: "quoted alternate", text: "registry='https://packages.example.invalid/'", want: 1},
+		{name: "unbalanced quote", text: `registry="https://registry.npmjs.org/`, want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertSourceLineMatches(t, ".npmrc", tc.text+"\n", tc.want)
+		})
+	}
+}
+
+func assertSourceLineMatches(t *testing.T, name, text string, want int) {
+	t.Helper()
+	doc := document.Prepare(t.Context(), artifact.NewFile(name, []byte(text), false))
+	result, err := pluginRule(t, "NV-SC10").Find(t.Context(), doc, 1)
+	if err != nil || result.Truncated || len(result.Matches) != want {
+		t.Fatalf("want %d source observations, got %+v, err=%v", want, result, err)
+	}
+	for _, match := range result.Matches {
+		if match.Start != 0 || match.End != len(text) {
+			t.Fatalf("invalid source span %+v", match)
+		}
+	}
+}

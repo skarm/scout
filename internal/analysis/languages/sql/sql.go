@@ -146,7 +146,27 @@ func sqlDestructive(command string, ts []sqlsyntax.Token) bool {
 		return !sqlOuterWhere(ts)
 	}
 
-	return command == sqlsyntax.KeywordWith && (sqlWords(ts, sqlsyntax.KeywordDelete) || sqlWords(ts, sqlsyntax.KeywordUpdate))
+	return command == sqlsyntax.KeywordWith && sqlWithModifiesRows(ts)
+}
+
+func sqlWithModifiesRows(ts []sqlsyntax.Token) bool {
+	for i, tok := range ts {
+		if tok.Kind != sqlsyntax.KindWord {
+			continue
+		}
+
+		switch tok.Text {
+		case sqlsyntax.KeywordDelete:
+			return true
+		case sqlsyntax.KeywordUpdate:
+			// SELECT locking clauses may occur in the main statement or a CTE.
+			if !sqlWords(ts[max(0, i-1):i], "FOR") && !sqlWords(ts[max(0, i-3):i], "FOR", "NO", "KEY") {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func sqlOuterWhere(ts []sqlsyntax.Token) bool {

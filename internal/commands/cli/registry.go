@@ -12,10 +12,6 @@ import (
 	"github.com/skarm/scout/internal/distribution/registry"
 )
 
-const (
-	maxRegistrySnapshotFileBytes = 32 << 20
-)
-
 func registryCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		return usageError(stderr, "registry requires fetch or compare")
@@ -60,7 +56,12 @@ func fetchRegistry(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return usageError(stderr, err.Error())
 	}
 
-	if err := writeOperatorJSON(ctx, *path, nil, snapshot, stdout); err != nil {
+	data, err := registry.EncodeSnapshot(snapshot)
+	if err != nil {
+		return usageError(stderr, err.Error())
+	}
+
+	if err := writeRegistrySnapshot(ctx, *path, data, stdout); err != nil {
 		return usageError(stderr, "cannot publish registry snapshot")
 	}
 
@@ -105,7 +106,7 @@ func compareRegistry(ctx context.Context, args []string, stdout, stderr io.Write
 func readRegistrySnapshot(path string) (registry.Snapshot, error) {
 	var out registry.Snapshot
 
-	data, err := readTrusted(path, nil, maxRegistrySnapshotFileBytes)
+	data, err := readTrusted(path, nil, registry.MaxSnapshotBytes)
 	if err != nil {
 		return out, err
 	}
@@ -122,6 +123,19 @@ func readRegistrySnapshot(path string) (registry.Snapshot, error) {
 	}
 
 	return out, nil
+}
+
+func writeRegistrySnapshot(ctx context.Context, path string, data []byte, stdout io.Writer) error {
+	write := func(w io.Writer) error {
+		_, err := io.Copy(w, bytes.NewReader(data))
+		return err
+	}
+
+	if path == "" {
+		return write(stdout)
+	}
+
+	return output.Write(ctx, path, nil, write)
 }
 
 func writeOperatorJSON(ctx context.Context, path string, inputs []string, value any, stdout io.Writer) error {

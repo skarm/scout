@@ -58,7 +58,7 @@ func (b *bundleAnalysis) surfaceFact(kind, value, file string, ref report.Source
 	}
 
 	addr, ok := b.addresses[file]
-	if !ok || addr.Namespace != "snapshot" {
+	if !ok || addr.Namespace != artifact.RootNamespace {
 		b.surface.Limited = true
 		return
 	}

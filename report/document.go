@@ -289,6 +289,11 @@ func writeComparison(out *bytes.Buffer, delta UpdateDelta, md bool) {
 	_, _ = fmt.Fprintf(out, "Comparison: %s; unchanged snapshot: %t; files: %d; components: %d; dependencies: %d; findings: %d; manifest signals: %d; omitted: %d.\n\n",
 		quote(string(delta.Completeness)), delta.SameSnapshot, delta.Counts.FileChanges, delta.Counts.ComponentChanges, delta.Counts.DependencyChanges, delta.Counts.FindingChanges, delta.Counts.ManifestSignals, delta.OmittedChanges)
 
+	_, _ = fmt.Fprintf(out, "Findings: %d introduced; %d persistent; %d no longer observed (not proof of remediation).\n\n", delta.Counts.IntroducedFindings, delta.Counts.PersistentFindings, delta.Counts.UnobservedFindings)
+	if delta.Completeness != Complete {
+		out.WriteString("Comparison coverage is incomplete; absence of a change does not establish equality.\n\n")
+	}
+
 	for _, change := range delta.Files {
 		name := change.Address.Root
 		if change.After != nil {
@@ -298,6 +303,22 @@ func writeComparison(out *bytes.Buffer, delta UpdateDelta, md bool) {
 		}
 
 		_, _ = fmt.Fprintf(out, "File %s: %s.\n\n", quote(name), quote(change.Change))
+	}
+
+	for _, change := range delta.Components {
+		_, _ = fmt.Fprintf(out, "Component %s (%s): %s; %d previous and %d candidate occurrences unmatched.\n\n", quote(change.Kind), quote(change.Host), quote(change.Change), len(change.NotMatchedBefore), len(change.NotMatchedAfter))
+	}
+
+	for _, change := range delta.Dependencies {
+		_, _ = fmt.Fprintf(out, "Dependency declarations: %s; %d before, %d after.\n\n", quote(change.Change), len(change.Before), len(change.After))
+		for _, side := range []struct {
+			label        string
+			declarations []Dependency
+		}{{"Before", change.Before}, {"After", change.After}} {
+			for _, dependency := range side.declarations {
+				_, _ = fmt.Fprintf(out, "%s dependency %s at %s in %s.\n\n", side.label, quote(dependency.Module), quote(dependency.DeclaredVersion), quote(dependency.Source.Path))
+			}
+		}
 	}
 
 	for _, signal := range delta.ManifestSignals {
@@ -314,7 +335,18 @@ func writeComparison(out *bytes.Buffer, delta UpdateDelta, md bool) {
 	}
 
 	for _, change := range delta.Findings {
-		_, _ = fmt.Fprintf(out, "Finding %s: %s.\n\n", quote(change.RuleID), quote(change.Change))
+		_, _ = fmt.Fprintf(out, "Finding %s: %s", quote(change.RuleID), quote(change.Change))
+
+		location := change.AfterLocation
+		if location == nil {
+			location = change.BeforeLocation
+		}
+
+		if location != nil {
+			_, _ = fmt.Fprintf(out, "; %s at bytes %d..%d", quote(location.Path), location.ByteStart, location.ByteEnd)
+		}
+
+		out.WriteString(".\n\n")
 	}
 
 	for _, issue := range delta.Issues {

@@ -1,6 +1,39 @@
 package maintenance
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"io"
+	"strings"
+	"testing"
+)
+
+func TestCLIOutputEnforcesByteLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name, input string
+		wantBytes   int64
+		wantError   error
+	}{
+		{name: "exact limit", input: "text", wantBytes: 4},
+		{name: "over the limit", input: "texts", wantError: errKnowledgeOutputLimit},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output := &cliOutput{limit: 4}
+			n, err := io.Copy(output, io.LimitReader(strings.NewReader(tc.input), int64(len(tc.input))))
+			if !errors.Is(err, tc.wantError) || n != tc.wantBytes || int64(output.data.Len()) != tc.wantBytes || output.overflow != (tc.wantError != nil) {
+				t.Fatalf("copied %d bytes, retained %d bytes, overflow=%t, error=%v", n, output.data.Len(), output.overflow, err)
+			}
+		})
+	}
+}
+
+func TestKnowledgeCasesHonorCancellationBeforeListening(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if rows, err := runKnowledgeCases(ctx, options{}, "", &fixtureReviewer{}, nil); rows != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled fixture startup returned rows=%v, err=%v", rows, err)
+	}
+}
 
 func TestStaticKnowledgeExpectationsRespectAvailabilityAndGuidance(t *testing.T) {
 	report := func() object {

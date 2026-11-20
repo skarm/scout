@@ -10,17 +10,8 @@ func (b *pythonNormalizer) nodeInteger(n *pythonSyntax, _ int, kind NodeKind) *N
 	out := b.make(n, kind)
 	b.set(out, FieldValue, NullValue())
 
-	if n.Kind == pyKindInteger {
-		b.set(out, NumericTruth, BoolValue(pythonIntegerTruth(b.textOf(n))))
-	}
-
-	if n.Kind == pyKindFloat {
-		v, err := strconv.ParseFloat(strings.ReplaceAll(b.textOf(n), "_", ""), 64)
-		if err == nil || math.IsInf(v, 0) {
-			b.set(out, NumericTruth, BoolValue(v != 0))
-		} else {
-			b.set(out, NumericUnknown, BoolValue(true))
-		}
+	if n.Kind == pyKindInteger || n.Kind == pyKindFloat {
+		b.setNumericTruth(out, n.Kind, b.textOf(n))
 	}
 
 	if n.Kind == pyKindEllipsis {
@@ -36,6 +27,23 @@ func (b *pythonNormalizer) nodeInteger(n *pythonSyntax, _ int, kind NodeKind) *N
 	}
 
 	return out
+}
+
+func (b *pythonNormalizer) setNumericTruth(out *Node, kind, text string) {
+	// An imaginary literal has a floating-point coefficient, even when
+	// the CST classifies its spelling as an integer.
+	coefficient := strings.TrimRight(text, "jJ")
+	if kind == pyKindInteger && coefficient == text {
+		b.set(out, NumericTruth, BoolValue(pythonIntegerTruth(text)))
+		return
+	}
+
+	v, err := strconv.ParseFloat(strings.ReplaceAll(coefficient, "_", ""), 64)
+	if err == nil || math.IsInf(v, 0) {
+		b.set(out, NumericTruth, BoolValue(v != 0))
+	} else {
+		b.set(out, NumericUnknown, BoolValue(true))
+	}
 }
 
 func pythonIntegerTruth(text string) bool {

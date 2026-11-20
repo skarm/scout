@@ -266,6 +266,10 @@ func CheckWithin(ctx context.Context, deps report.DependencyReport, o Options, n
 	// classification or turn a missing classified coordinate into a clean one.
 	if r.ClassifiedCache {
 		for _, g := range groups {
+			if ctx.Err() != nil {
+				break
+			}
+
 			if _, ok := cached[key(g.q.Package.Ecosystem, g.q.Package.Name, g.q.Version)]; ok {
 				fallback(g, "not_cached")
 			}
@@ -548,14 +552,14 @@ func queryBatch(ctx context.Context, batch []*queryGroup, o Options, requests *i
 			break
 		}
 
-		if !o.AllowNetwork {
-			setPending(pending, "not_cached", fallback)
+		if ctx.Err() != nil {
+			setPending(pending, report.OutcomeCancelled, set)
 
 			break
 		}
 
-		if ctx.Err() != nil {
-			setPending(pending, "cancelled", set)
+		if !o.AllowNetwork {
+			setPending(pending, "not_cached", fallback)
 
 			break
 		}
@@ -576,6 +580,12 @@ func queryBatch(ctx context.Context, batch []*queryGroup, o Options, requests *i
 		fo.RootCAs = o.RootCAs
 
 		body, err := fetch.PostJSON(ctx, o.Endpoint, data, fo)
+		if ctx.Err() != nil {
+			setPending(pending, report.OutcomeCancelled, set)
+
+			break
+		}
+
 		if err != nil {
 			setPending(pending, "provider_failed", fallback)
 
@@ -583,6 +593,12 @@ func queryBatch(ctx context.Context, batch []*queryGroup, o Options, requests *i
 		}
 
 		out, valid := decodeQueryResponse(ctx, body, len(pending))
+		if ctx.Err() != nil {
+			setPending(pending, report.OutcomeCancelled, set)
+
+			break
+		}
+
 		if !valid {
 			setPending(pending, "invalid_response", set)
 

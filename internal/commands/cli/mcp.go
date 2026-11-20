@@ -104,8 +104,10 @@ func parseMCPInvocation(ctx context.Context, args []string, stderr io.Writer) (m
 
 	for _, pair := range c.targets {
 		key, path, ok := strings.Cut(pair, "=")
-		if !ok || c.options.Targets[key] != "" {
-			return c, errors.New("target must be a unique name=path")
+
+		_, duplicate := c.options.Targets[key]
+		if !ok || key == "" || path == "" || duplicate {
+			return c, errors.New("target requires a unique name and a nonempty path (name=path)")
 		}
 
 		c.options.Targets[key] = path

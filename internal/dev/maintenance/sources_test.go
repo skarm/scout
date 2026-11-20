@@ -48,6 +48,15 @@ func TestPinnedSourceCacheBindsURLRevisionBytesAndGitIdentity(t *testing.T) {
 	}
 }
 
+func TestOversizedSourceCacheEntryFailsAtSizeCheck(t *testing.T) {
+	source, item, data := sourceFixture()
+	cache := t.TempDir()
+	maintenanceFile(t, cache, item.SHA256, append(data, 'x'))
+	if _, err := verifySource(t.Context(), source, cache, false); err == nil || !strings.Contains(err.Error(), "cached source size differs") {
+		t.Fatalf("expected a cache size error, got %v", err)
+	}
+}
+
 func TestSourceDownloadRejectsRedirectsStatusAndCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

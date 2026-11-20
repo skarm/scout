@@ -27,11 +27,14 @@ await test('operator configuration is explicit, bounded and immutable', () => {
     {SCOUT_TARGETS:'{"candidate":{"path":"https://user:key@host/path"}}'},
     {SCOUT_TARGETS:'{"candidate":{"path":"https://host/p?token=secret"}}'},
     {SCOUT_TARGETS:'{"candidate":{"path":"/tmp","revision":"abc"}}'},
+    {SCOUT_TARGETS:JSON.stringify({candidate:{path:'https://example.invalid/pkg',revision:['a'.repeat(40)]}})},
+    {SCOUT_TARGETS:JSON.stringify({candidate:{path:'https://example.invalid/pkg',sha256:['b'.repeat(64)]}})},
     {SCOUT_TARGETS:'{"candidate":{"path":"/tmp","harness":"invented"}}'},
     {SCOUT_REDUCED_CORE:'true'},
     {SCOUT_REVIEWER: JSON.stringify({endpoint:'http://localhost/review',model:'test'})},
     {SCOUT_REVIEWER: JSON.stringify({endpoint:'http://192.168.0.1/review',model:'test',allowLoopback:true})},
     {SCOUT_REVIEWER: JSON.stringify({endpoint:'https://x/review',model:'test',keyEnv:'$HOME'})},
+    {SCOUT_REVIEWER: JSON.stringify({endpoint:'https://x/review',model:'test',keyEnv:['REVIEW_KEY']})},
     {SCOUT_REVIEWER: JSON.stringify({endpoint:'https://x/review',model:'test',provider:'executable'})},
   ]) assert.throws(() => setup(change),undefined,JSON.stringify(change));
   const loop = setup({SCOUT_REVIEWER: JSON.stringify({endpoint:'http://127.0.0.1:8080/v1/chat/completions',model:'test',allowLoopback:true})});

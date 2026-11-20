@@ -140,14 +140,18 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 		return b.r
 	}
 
+	if !b.spend(0) {
+		return b.r
+	}
+
 	b.shellHookRoot = opts.ShellHookRoot
 
 	b.spaces = namespaces(inventory, docs, extraction)
 
 	b.hooks = hookpolicy.Bind(ctx, docs, extraction)
 	for _, space := range b.spaces {
-		if space.id != "snapshot" {
-			b.containerRoots[space.id] = true
+		if parent, archived := artifact.ArchiveParentPath(space.id); archived {
+			b.containerRoots[parent] = true
 		}
 	}
 
@@ -244,8 +248,7 @@ func projectSettingsHasHooks(unit document.Unit) bool {
 }
 
 func (b *builder) marketplace(ns *namespace, name string) {
-	base := path.Base(name)
-	if base == "marketplace.json" && (strings.Contains(name, ".claude-plugin/") || strings.Contains(name, ".agents/plugins/")) {
+	if path.Base(name) == "marketplace.json" && (strings.Contains("/"+name, "/.claude-plugin/") || strings.Contains("/"+name, "/.agents/plugins/")) {
 		e := ns.entries[name]
 		b.node("", "marketplace", e, "unknown", "unknown", whole(e), "catalog")
 		b.issue("marketplace_install_closure_unverified", "", e.meta.Path, report.OutcomePartial)
@@ -592,18 +595,18 @@ func namespaces(inventory []report.File, docs []document.File, extraction report
 	spaces := map[string]*namespace{}
 
 	for _, m := range inventory {
-		putNamespace(spaces, byPath, "snapshot", m.Path, m)
+		putNamespace(spaces, byPath, artifact.RootNamespace, m.Path, m)
 	}
 
 	for _, o := range extraction.Objects {
 		if archiveNamespaceMember(o.Role, o.ExtractorID) {
-			putNamespace(spaces, byPath, o.ParentPath, o.MemberName, o.File)
+			putNamespace(spaces, byPath, artifact.ArchiveNamespace(o.ParentPath), o.MemberName, o.File)
 		}
 	}
 
 	for _, o := range extraction.Skipped {
 		if archiveNamespaceMember(o.Role, o.ExtractorID) {
-			putNamespace(spaces, byPath, o.ParentPath, o.MemberName, report.File{
+			putNamespace(spaces, byPath, artifact.ArchiveNamespace(o.ParentPath), o.MemberName, report.File{
 				Path:   o.ParentPath + "#unread-member/" + o.MemberName,
 				Size:   o.DeclaredSize,
 				Status: "skipped",

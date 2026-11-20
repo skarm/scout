@@ -67,6 +67,54 @@ func TestDictionaryEvaluatesKeyBeforeValue(t *testing.T) {
 	assertCallFacts(t, w, true)
 }
 
+func TestAugmentedAssignmentEvaluatesTargetOnce(t *testing.T) {
+	for _, kind := range []frontend.NodeKind{frontend.Attribute, frontend.Subscript} {
+		t.Run(kind.String(), func(t *testing.T) {
+			w, state := semanticWalker(t), newPyState()
+			initial := origin("fixture", semanticName(t, "initial"))
+			entries := map[string]pyValue{"original": initial}
+			switch kind {
+			case frontend.Attribute:
+				state.set("container", instanceValue(&pyInstance{fields: entries}))
+			case frontend.Subscript:
+				state.set("container", pyValue{meaning: &pyMapping{entries: entries}})
+			}
+			base := semanticAssign(t, "receiver", semanticName(t, "container"))
+			right := semanticAssign(t, "receiver", semanticName(t, "updated"))
+			state.set("updated", literalValue("updated", true, 2))
+
+			var target *frontend.Node
+			if kind == frontend.Attribute {
+				target = semanticNode(t, kind, frontend.ChildField(frontend.FieldValue, base), frontend.TextField(frontend.Attr, "original"))
+			} else {
+				key := semanticNode(t, frontend.Constant, frontend.LiteralField(frontend.StringValue("original")))
+				index := semanticAssign(t, "key", key)
+				target = semanticNode(t, kind, frontend.ChildField(frontend.FieldValue, base), frontend.ChildField(frontend.Slice, index))
+				right = semanticNode(t, frontend.Tuple, frontend.NodesField(frontend.Elts, []*frontend.Node{
+					right, semanticAssign(t, "key", semanticName(t, "updated")),
+				}))
+			}
+			statement := semanticNode(t, frontend.AugAssign, frontend.ChildField(frontend.Target, target), frontend.ChildField(frontend.FieldValue, right))
+			w.assignmentStatement(statement, state, 0)
+
+			receiver, _ := state.lookup("receiver")
+			if value, _ := receiver.literal(); value != "updated" {
+				t.Errorf("receiver after right-hand side = %q, want updated", value)
+			}
+			if kind == frontend.Subscript {
+				key, _ := state.lookup("key")
+				if value, _ := key.literal(); value != "updated" {
+					t.Errorf("subscript key after right-hand side = %q, want updated", value)
+				}
+			}
+			result := entries["original"]
+			if len(result.origins) != 1 || len(result.origins[0].steps) <= len(initial.origins[0].steps) {
+				t.Fatal("augmented result was not stored in the original container")
+			}
+		})
+	}
+}
+
 func TestSubscriptionKeepsOnlyKnownCallableIdentities(t *testing.T) {
 	for _, tc := range []struct {
 		name, symbol string
@@ -118,6 +166,23 @@ func TestClassAttributesAreIsolatedByForkAndSharedByAliases(t *testing.T) {
 	}
 	if got := w.expr(alias, state, 0).symbol(); got != "exec" {
 		t.Errorf("fork changed surrounding class: %q", got)
+	}
+}
+
+func TestMROAcceptsExactlyTheClassLimit(t *testing.T) {
+	root := &pyClass{}
+	root.mro = pyMRO(root, nil)
+	base := root
+	for size := 2; size <= maxPythonMROEntries; size++ {
+		derived := &pyClass{}
+		derived.mro = pyMRO(derived, []*pyClass{base})
+		if len(derived.mro) != size || derived.mro[0] != derived || derived.mro[size-1] != root {
+			t.Fatalf("MRO length = %d, want %d with the derived and root classes at its ends", len(derived.mro), size)
+		}
+		base = derived
+	}
+	if got := pyMRO(&pyClass{}, []*pyClass{base}); got != nil {
+		t.Fatalf("MRO length = %d above the limit %d", len(got), maxPythonMROEntries)
 	}
 }
 

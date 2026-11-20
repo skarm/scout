@@ -67,6 +67,11 @@ func (t *tree) claude(base string) {
 }
 
 func (t *tree) claudeGlobal(name string) {
+	// The ordinary and explicit agent homes can refer to the same root.
+	if _, found := t.b.sources[t.absolute(name)]; found {
+		return
+	}
+
 	n := t.config(name, false)
 	if n == nil {
 		return
@@ -140,7 +145,11 @@ func (b *builder) prepareProjects() {
 
 func (b *builder) projects() {
 	for _, root := range b.projectRoots {
-		b.ancestors(root)
+		if b.stopped || b.ctx.Err() != nil {
+			return
+		}
+
+		b.ancestors(b.sourcePaths.canonical(root))
 	}
 }
 

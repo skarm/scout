@@ -25,8 +25,8 @@ import (
 	"github.com/skarm/scout/review"
 )
 
-// These are actual detector regressions. SQL examples intentionally have no
-// static SQL expectation: knowledge does not manufacture an absent SQL parser.
+// These examples check the static detector expectations declared in the corpus.
+// The SQL examples exercise semantic topics and declare no static expectations.
 func TestKnowledgeRuntimeStaticExamples(t *testing.T) {
 	for _, tc := range runtimeCases(t) {
 		t.Run(tc.ID, func(t *testing.T) {

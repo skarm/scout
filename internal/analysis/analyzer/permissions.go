@@ -309,7 +309,7 @@ func permissionScopeCandidates(ctx context.Context, docs []document.File, addres
 func permissionScopeFor(d document.File, addr permissionAddress) (*permissionScope, bool) {
 	isSkill := path.Base(addr.Name) == artifact.SkillManifest
 
-	isPlugin := strings.HasSuffix(addr.Name, artifact.ClaudePluginManifest) || strings.HasSuffix(addr.Name, artifact.CodexPluginManifest)
+	root, isPlugin := artifact.PluginManifestRoot(addr.Name)
 	if !isSkill && !isPlugin {
 		return nil, false
 	}
@@ -319,9 +319,8 @@ func permissionScopeFor(d document.File, addr permissionAddress) (*permissionSco
 		return nil, true
 	}
 
-	root := path.Dir(addr.Name)
-	if isPlugin {
-		root = path.Dir(root)
+	if !isPlugin {
+		root = path.Dir(addr.Name)
 	}
 
 	if root == "." {

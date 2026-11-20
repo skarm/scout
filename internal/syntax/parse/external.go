@@ -70,6 +70,10 @@ func (b embeddedBackend) Descriptor() Descriptor {
 func (b embeddedBackend) Parse(ctx context.Context, v source.View) (any, error) {
 	r, err := frontend.Parse(ctx, b.options, b.lang, v.Text())
 	if err != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		var f *frontend.Failure
 		if b.lang == language.Python && r.AST != nil && errors.As(err, &f) && f.Category == "unsupported_projection" {
 			return PythonTree{Root: r.AST, Runtime: r.RuntimeIdentity()}, &Failure{Category: "unsupported_syntax"}

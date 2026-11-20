@@ -206,8 +206,8 @@ func (p *parser) expansion(w *Word, mode wordMode) error {
 
 	c := p.text[p.at]
 	if c == '\'' || c == '"' {
-		if mode == heredocBodyWord {
-			return p.literal(w, start, p.at, "$", false)
+		if mode != ordinaryWord {
+			return p.literal(w, start, p.at, "$", quoted)
 		}
 
 		return p.fail("unsupported_dollar_quoting")

@@ -25,8 +25,16 @@ type capture struct {
 func Available() bool { return true }
 
 func parse(ctx context.Context, lang, text string) (Tree, error) {
-	if len(text) > MaxBytes || !utf8.ValidString(text) {
-		return Tree{}, errors.New("script input limit or encoding")
+	if err := ctx.Err(); err != nil {
+		return Tree{}, err
+	}
+
+	if len(text) > MaxBytes {
+		return Tree{}, ErrLimit
+	}
+
+	if !utf8.ValidString(text) {
+		return Tree{}, errors.New("invalid script encoding")
 	}
 
 	parser := treeparse.NewParser()
@@ -59,7 +67,11 @@ func parse(ctx context.Context, lang, text string) (Tree, error) {
 	}
 
 	if tree == nil {
-		return Tree{}, errors.New("script parser timeout")
+		if err := ctx.Err(); err != nil {
+			return Tree{}, err
+		}
+
+		return Tree{}, ErrLimit
 	}
 	defer tree.Close()
 
@@ -79,15 +91,24 @@ func (p *capture) node(n *treeparse.Node, depth int, field string) (*Node, error
 	}
 
 	p.count++
-	if n == nil || depth > maxDepth || p.count > maxNodes || n.EndByte() > uint(p.size) {
-		return nil, errors.New("script tree limit")
+	if depth > maxDepth || p.count > maxNodes {
+		return nil, ErrLimit
+	}
+
+	if n == nil {
+		return nil, errors.New("invalid script tree")
+	}
+
+	start, end := n.StartByte(), n.EndByte()
+	if start > end || end > uint(p.size) {
+		return nil, errors.New("invalid script tree")
 	}
 
 	out := &Node{
 		Kind:    n.Kind(),
 		Field:   field,
-		Start:   int(n.StartByte()),
-		End:     int(n.EndByte()),
+		Start:   int(start),
+		End:     int(end),
 		Invalid: n.IsError() || n.IsMissing(),
 	}
 	if _, err := IdentifierText(out.Kind, p.text[out.Start:out.End]); err != nil {

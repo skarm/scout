@@ -3,11 +3,11 @@ package document
 import (
 	"strings"
 
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/report"
 )
 
-// Address identifies a file within a captured snapshot or container. Names and
-// namespaces retain their recorded spelling; this model does not resolve paths.
+// Address identifies a file by namespace and recorded name within captured data.
 type Address struct {
 	Namespace string
 	Name      string
@@ -22,13 +22,13 @@ func CapturedAddresses(docs []File, extraction report.ExtractionReport) map[stri
 	for _, doc := range docs {
 		name := doc.Artifact().Metadata().Path
 		if !strings.HasPrefix(name, report.ObjectPathPrefix) {
-			addresses[name] = Address{Namespace: "snapshot", Name: name}
+			addresses[name] = Address{Namespace: artifact.RootNamespace, Name: name}
 		}
 	}
 
 	for _, object := range extraction.Objects {
 		if object.Role == "archive_member" {
-			addresses[object.File.Path] = Address{Namespace: object.ParentPath, Name: object.MemberName}
+			addresses[object.File.Path] = Address{Namespace: artifact.ArchiveNamespace(object.ParentPath), Name: object.MemberName}
 		}
 	}
 

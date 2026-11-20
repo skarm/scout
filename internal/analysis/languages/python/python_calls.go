@@ -439,22 +439,21 @@ func pyMRO(c *pyClass, bases []*pyClass) []*pyClass {
 	seqs = append(seqs, append([]*pyClass(nil), bases...))
 
 	out := []*pyClass{c}
-	for len(out) < maxPythonMROEntries {
+
+	for {
 		candidate, remaining := nextMROHead(seqs)
 
 		if !remaining {
 			return out
 		}
 
-		if candidate == nil {
+		if candidate == nil || len(out) >= maxPythonMROEntries {
 			return nil
 		}
 
 		out = append(out, candidate)
 		dropMROHead(seqs, candidate)
 	}
-
-	return nil
 }
 
 func validMROHead(head *pyClass, seqs [][]*pyClass) bool {

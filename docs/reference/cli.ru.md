@@ -357,7 +357,7 @@ scout version
 параллелизма, лимитов и сервисов из `scan`, чтобы создать и проверить Scanner
 без входов. `--config FILE` необязателен; без него проверяются настройки по умолчанию.
 Результат — подготовленный план проверки, всегда в JSON в stdout.
-Флаги отчёта сканирования (`--format`, `--output`, `--report`) не управляют этим выводом.
+`--format` не меняет формат плана. `--output` и `--report` отклоняются.
 
 ## Сервер MCP
 
@@ -504,3 +504,25 @@ scout version
 вместе с экранированием JSON и метаданными; исходник также ограничен 256 КиБ.
 Хеш подтверждает тождество байтов, но не подлинность издателя. Конфигурация и откат
 описаны в [руководстве](../user/usage.ru.md#версионируемые-наборы-правил).
+
+## Снимки окружения
+
+```text
+scout snapshot create --snapshot FILE --root ID=PATH [scan flags]
+scout snapshot compare --snapshot FILE --root ID=PATH [compare flags]
+scout snapshot compare --snapshot FILE --empty [compare flags]
+scout snapshot compare --snapshot FILE --candidate FILE [compare flags]
+scout snapshot compare --snapshot FILE --save-candidate NEW_FILE [compare flags]
+scout snapshot compare --snapshot FILE [--include-source-diff] [compare flags]
+scout snapshot inspect --snapshot FILE [--format text|json]
+scout discover --agent AGENT --snapshot FILE [discovery flags] -- [scan flags]
+```
+
+`--snapshot` задаёт новый снимок для create или сохранённый для compare.
+Повторяйте `--root` для полного текущего набора. `--empty` явно выбирает пустой набор.
+См. [снимки окружения](../user/environment-snapshots.ru.md).
+
+Без `--root`, `--empty` и `--candidate` сравнение повторяет сохранённый discovery или проверяет сохранённые пути.
+`--candidate` читает второй снимок и несовместим с `--root`, `--empty` и `--save-candidate`.
+`--save-candidate` сохраняет текущие байты из сравнения и отчёт их проверки в новый файл.
+`--include-source-diff` явно включает ограниченные фрагменты исходников в отчёт.

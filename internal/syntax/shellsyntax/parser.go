@@ -411,10 +411,6 @@ func (p *parser) functionHead(c *Command, open token) bool {
 }
 
 func (p *parser) commandToken(c *Command, w *Word) error {
-	if c.Subshell != nil {
-		return p.fail("word_after_group")
-	}
-
 	_, _ = p.take()
 
 	handled, err := p.wordRedirect(c, w)
@@ -424,6 +420,10 @@ func (p *parser) commandToken(c *Command, w *Word) error {
 
 	if handled {
 		return nil
+	}
+
+	if c.Subshell != nil {
+		return p.fail("word_after_group")
 	}
 
 	if c.Case != nil {

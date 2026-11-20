@@ -1,7 +1,6 @@
 package knowledge_test
 
 import (
-	"encoding/json"
 	"regexp"
 	"strings"
 	"sync"
@@ -69,30 +68,52 @@ func TestEveryPublishedRuleHasReviewedGuidance(t *testing.T) {
 }
 
 func TestPackCannotBeMutatedByCaller(t *testing.T) {
-	want := knowledge.Inventory()
-	original, _ := knowledge.Lookup("NV-P2")
-	g, _ := knowledge.Lookup("NV-P2")
+	const id = "NV-P2"
+	g, ok := knowledge.Lookup(id)
+	if !ok || len(g.ReviewChecks) == 0 || len(g.Sources) == 0 {
+		t.Fatalf("Lookup(%q) lacks the guidance needed by this fixture: %+v", id, g)
+	}
+	wantCheck, wantSourceURL := g.ReviewChecks[0], g.Sources[0].URL
 	g.ReviewChecks[0] = "TAINT"
 	g.Sources[0].URL = "BAD"
 	c := knowledge.Catalog()
-	delete(c, "NV-P2")
+	delete(c, id)
 	p := knowledge.Patterns("P3")
+	if len(p) == 0 {
+		t.Fatal("Patterns(P3) has no fixture entries")
+	}
+	wantPattern := p[0].Expression
 	p[0].Expression = "TAINT"
 	m := knowledge.Inventory()
+	if len(m.Assets) == 0 || len(m.Prompts) == 0 || len(m.Prompts[0].UpstreamIDs) == 0 {
+		t.Fatal("Inventory() lacks fixture assets or prompt upstream IDs")
+	}
+	wantAssetPath, wantUpstreamID, wantDigest := m.Assets[0].Path, m.Prompts[0].UpstreamIDs[0], m.SHA256
 	m.Assets[0].Path = "BAD"
 	m.Prompts[0].UpstreamIDs[0] = "BAD"
-	got, _ := knowledge.Lookup("NV-P2")
-	a, _ := json.Marshal(got)
-	b, _ := json.Marshal(original)
-	if string(a) != string(b) || knowledge.Inventory().SHA256 != want.SHA256 {
-		t.Fatal("global pack mutable")
+	got, ok := knowledge.Lookup(id)
+	if !ok || len(got.ReviewChecks) == 0 || len(got.Sources) == 0 {
+		t.Fatalf("Lookup(%q) lost fixture guidance after caller mutation: %+v", id, got)
+	}
+	if got.ReviewChecks[0] != wantCheck || got.Sources[0].URL != wantSourceURL {
+		t.Errorf("Lookup(%q) after caller mutation: check=%q source=%q; want check=%q source=%q", id, got.ReviewChecks[0], got.Sources[0].URL, wantCheck, wantSourceURL)
+	}
+	if patterns := knowledge.Patterns("P3"); len(patterns) == 0 || patterns[0].Expression != wantPattern {
+		t.Errorf("Patterns(P3) after caller mutation = %+v; want first expression %q", patterns, wantPattern)
+	}
+	manifest := knowledge.Inventory()
+	if len(manifest.Assets) == 0 || len(manifest.Prompts) == 0 || len(manifest.Prompts[0].UpstreamIDs) == 0 {
+		t.Fatal("Inventory() lost fixture assets or prompt upstream IDs after caller mutation")
+	}
+	if path, id := manifest.Assets[0].Path, manifest.Prompts[0].UpstreamIDs[0]; path != wantAssetPath || id != wantUpstreamID {
+		t.Errorf("Inventory() after caller mutation: path=%q upstream ID=%q; want path=%q upstream ID=%q", path, id, wantAssetPath, wantUpstreamID)
 	}
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
 			for range 10 {
-				if knowledge.Inventory().SHA256 != want.SHA256 {
-					t.Error("unstable digest")
+				if digest := knowledge.Inventory().SHA256; digest != wantDigest {
+					t.Errorf("concurrent Inventory() digest = %q; want %q", digest, wantDigest)
 				}
 			}
 		})

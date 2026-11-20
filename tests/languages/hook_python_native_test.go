@@ -3,9 +3,11 @@
 package scout_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"errors"
-	"os"
-	"path/filepath"
+	"io"
+	"io/fs"
 	"slices"
 	"strings"
 	"testing"
@@ -243,33 +245,65 @@ func TestPythonHookStdinProgramCoverage(t *testing.T) {
 }
 
 func TestHookDirectPythonShebang(t *testing.T) {
-	for _, executable := range []bool{false, true} {
-		root := t.TempDir()
-		scenario.WriteFile(t, root, ".claude-plugin/plugin.json", `{"name":"test-plugin"}`)
-		scenario.WriteFile(t, root, "hooks/hooks.json", `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\"${CLAUDE_PLUGIN_ROOT}/handler.py\""}]}]}}`)
-		scenario.WriteFile(t, root, "handler.py", "#!/usr/bin/env python3\nimport subprocess\nsubprocess.run('printf ready', shell=True)\n")
-		if executable {
-			if err := os.Chmod(filepath.Join(root, "handler.py"), 0o755); err != nil {
+	for _, tc := range []struct {
+		name string
+		mode fs.FileMode
+		want bool
+	}{
+		{name: "non-executable", mode: 0o644},
+		{name: "executable", mode: 0o755, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// ZIP member modes preserve Unix permissions on Windows too.
+			var data bytes.Buffer
+			archive := zip.NewWriter(&data)
+			for _, file := range []struct {
+				name, content string
+				mode          fs.FileMode
+			}{
+				{".claude-plugin/plugin.json", `{"name":"test-plugin"}`, 0o644},
+				{"hooks/hooks.json", `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\"${CLAUDE_PLUGIN_ROOT}/handler.py\""}]}]}}`, 0o644},
+				{"handler.py", "#!/usr/bin/env python3\nimport subprocess\nsubprocess.run('printf ready', shell=True)\n", tc.mode},
+			} {
+				header := zip.FileHeader{Name: file.name}
+				header.SetMode(file.mode)
+				member, err := archive.CreateHeader(&header)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := io.WriteString(member, file.content); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := archive.Close(); err != nil {
 				t.Fatal(err)
 			}
-		}
 
-		result, err := scenario.Scanner(t, scantest.FullConfig()).Scan(t.Context(), root)
-		if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
-			t.Fatal(err)
-		}
-
-		linked := false
-		for _, finding := range result.Findings {
-			if finding.Location.Path == "handler.py" && finding.RuleID == python.HookShellCommandRule &&
-				slices.Contains(finding.ContextSignals, check.ShellCommandText) && len(finding.HookSources) == 1 {
-				linked = finding.HookSources[0].Event == "Stop"
+			result, err := scenario.Scanner(t, scantest.FullConfig()).ScanBytes(t.Context(), "plugin.zip", data.Bytes())
+			if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+				t.Fatal(err)
 			}
-		}
 
-		if linked != executable {
-			t.Fatalf("linked direct Python command = %v with executable bit %v", linked, executable)
-		}
+			index := slices.IndexFunc(result.Extraction.Objects, func(object report.DerivedObject) bool {
+				return object.MemberName == "handler.py"
+			})
+			if index == -1 {
+				t.Fatal("missing extracted handler.py")
+			}
+			handler := result.Extraction.Objects[index].File
+			if handler.Executable != tc.want {
+				t.Fatalf("captured handler.py executable = %v, want %v", handler.Executable, tc.want)
+			}
+
+			linked := slices.ContainsFunc(result.Findings, func(finding report.Finding) bool {
+				return finding.Location.Path == handler.Path && finding.RuleID == python.HookShellCommandRule &&
+					slices.Contains(finding.ContextSignals, check.ShellCommandText) && len(finding.HookSources) == 1 &&
+					finding.HookSources[0].Event == "Stop"
+			})
+			if linked != tc.want {
+				t.Fatalf("linked direct Python command = %v, want %v", linked, tc.want)
+			}
+		})
 	}
 }
 

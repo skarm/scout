@@ -15,6 +15,7 @@ Guides to using, extending and validating Scout.
 - [Update comparison](user/update-review.md).
 - [Discover installed agent components](user/discovery.md).
 - [Analyze interactions in one selected environment](user/environment-analysis.md).
+- [Saved environment snapshots and change reports](user/environment-snapshots.md).
 - [Semantic review](user/semantic-review.md).
 - [Integrations and MCP](user/integrations.md).
 

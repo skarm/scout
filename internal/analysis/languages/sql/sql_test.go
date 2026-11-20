@@ -141,6 +141,37 @@ func TestDestructiveStatementAfterLexicalWhitespaceRetainsEvidence(t *testing.T)
 	}
 }
 
+func TestCTELockingClausesDoNotReportDataModification(t *testing.T) {
+	for _, tc := range []struct {
+		name, statement string
+		want            int
+	}{
+		{name: "locking select", statement: "WITH ids AS (SELECT 1 AS id) SELECT * FROM inventory WHERE id IN (SELECT id FROM ids) FOR UPDATE", want: 0},
+		{name: "nested locking select", statement: "WITH entries AS (SELECT * FROM inventory FOR NO KEY UPDATE) SELECT * FROM entries", want: 0},
+		{name: "main update", statement: "WITH ids AS (SELECT 1 AS id) UPDATE inventory SET status = 'ready'", want: 1},
+		{name: "nested update", statement: "WITH entries AS (UPDATE inventory SET status = 'ready' RETURNING id) SELECT * FROM entries", want: 1},
+		{name: "nested delete", statement: "WITH entries AS (DELETE FROM sample_items RETURNING id) SELECT * FROM entries", want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file := document.Prepare(t.Context(), artifact.NewFile("transaction.sql", []byte(tc.statement+";"), false))
+			for _, rule := range sql.Rules() {
+				if rule.Rule().ID != "SQL001" {
+					continue
+				}
+				result, err := rule.Find(t.Context(), file, 10)
+				if err != nil || result.Truncated || len(result.Matches) != tc.want {
+					t.Fatalf("SQL001 matches=%d want=%d truncated=%v err=%v", len(result.Matches), tc.want, result.Truncated, err)
+				}
+				if tc.want != 0 && (result.Matches[0].Start != 0 || result.Matches[0].End != len(tc.statement)) {
+					t.Fatalf("incorrect modification evidence: %+v", result.Matches[0])
+				}
+				return
+			}
+			t.Fatal("SQL001 not registered")
+		})
+	}
+}
+
 func checkDestructiveStatement(t *testing.T, file document.File, text string, start int, command string) {
 	t.Helper()
 	for _, rule := range sql.Rules() {

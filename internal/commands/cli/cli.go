@@ -17,6 +17,7 @@ const usage = `Usage:
   scout scan [flags] <target> [target...]
   scout scan [flags] --input - --name <relative-name>
   scout compare [flags] <before> <after>
+  scout snapshot create|compare|inspect --snapshot FILE [flags]
   scout discover [flags] [--scan -- <scan flags>]
   scout rules list [--all]
   scout rules pack create|inspect [flags]
@@ -40,7 +41,8 @@ Scan flags: --config FILE --profile standard|review|custom --format text|json|sa
 Network and source upload require separate explicit grants. Configuration is never discovered in targets.
 Place flags before inputs. Use -- before a variable or a path beginning with -.
 Run scout -h for the complete flag reference; scout scan -h for scan defaults.
-Reports use scout.report/v1; stdout contains only the requested report, diagnostics go to stderr.
+Reports use scout.report/v1; snapshot comparisons use scout.environment-comparison/v1.
+Stdout contains only the requested report, diagnostics go to stderr.
 Exit: 0 complete/allow; 1 complete/review-or-block; 2 incomplete, invalid request or output failure.
 `
 
@@ -62,6 +64,8 @@ func inspectionCommand(ctx context.Context, args []string, stdout, stderr io.Wri
 		return scanCommand(ctx, args[1:], os.Stdin, stdout, stderr)
 	case "compare":
 		return compareCommand(ctx, args[1:], stdout, stderr)
+	case "snapshot":
+		return environmentSnapshotCommand(ctx, args[1:], stdout, stderr)
 	case "discover":
 		return discoverCommand(ctx, args[1:], stdout, stderr)
 	case "doctor", "selftest":

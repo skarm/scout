@@ -12,11 +12,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-type scanArguments struct {
-	Target string `json:"target,omitempty"`
-	Name   string `json:"name,omitempty"`
-	Data   string `json:"data_base64,omitempty"`
-}
+const (
+	fieldTarget     = "target"
+	fieldUploadData = "data_base64"
+)
 
 func (s *Server) compare(ctx context.Context, raw json.RawMessage) (report.PreparedDocument, error) {
 	var a struct {
@@ -38,12 +37,13 @@ func (s *Server) compare(ctx context.Context, raw json.RawMessage) (report.Prepa
 }
 
 func (s *Server) scan(ctx context.Context, raw json.RawMessage) (report.PreparedDocument, error) {
-	var a scanArguments
-	if strictParams(raw, &a, "target", "name", "data_base64") != nil {
+	// Field presence distinguishes an omitted upload from an explicit zero-byte upload.
+	var args map[string]*string
+	if strictParams(raw, &args, fieldTarget, fieldName, fieldUploadData) != nil {
 		return report.PreparedDocument{}, errors.New("invalid arguments")
 	}
 
-	target, err := s.authorizedInput(a)
+	target, err := s.authorizedInput(args)
 	if err != nil {
 		return report.PreparedDocument{}, err
 	}
@@ -53,13 +53,13 @@ func (s *Server) scan(ctx context.Context, raw json.RawMessage) (report.Prepared
 	return s.evaluated(run, err)
 }
 
-func (s *Server) authorizedInput(a scanArguments) (scout.Target, error) {
-	if a.Target != "" {
-		if a.Name != "" || a.Data != "" {
+func (s *Server) authorizedInput(args map[string]*string) (scout.Target, error) {
+	if target, provided := args[fieldTarget]; provided {
+		if target == nil || len(args) != 1 {
 			return scout.Target{}, errors.New("exclusive inputs")
 		}
 
-		p, ok := s.options.Targets[a.Target]
+		p, ok := s.options.Targets[*target]
 		if !ok {
 			return scout.Target{}, errors.New("unauthorized target")
 		}
@@ -67,16 +67,17 @@ func (s *Server) authorizedInput(a scanArguments) (scout.Target, error) {
 		return scout.Path(p), nil
 	}
 
-	if a.Name == "" || len(a.Data) > base64.StdEncoding.EncodedLen(MaxUploadBytes) {
+	name, encoded := args[fieldName], args[fieldUploadData]
+	if name == nil || *name == "" || encoded == nil || len(*encoded) > base64.StdEncoding.EncodedLen(MaxUploadBytes) {
 		return scout.Target{}, errors.New("upload requires name and bounded data")
 	}
 
-	data, err := base64.StdEncoding.Strict().DecodeString(a.Data)
+	data, err := base64.StdEncoding.Strict().DecodeString(*encoded)
 	if err != nil || len(data) > MaxUploadBytes {
 		return scout.Target{}, errors.New("invalid upload")
 	}
 
-	return scout.Reader(a.Name, bytes.NewReader(data)), nil
+	return scout.Reader(*name, bytes.NewReader(data)), nil
 }
 
 func (s *Server) evaluated(run report.Run, scanErr error) (report.PreparedDocument, error) {

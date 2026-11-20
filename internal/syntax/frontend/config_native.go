@@ -43,7 +43,19 @@ type configProjection struct {
 
 type yamlProjection struct {
 	configProjection
-	lines []int
+	positions yamlPositions
+}
+
+// YAML line starts are indexed in Unicode code points. Only multibyte runes
+// need an entry to convert a decoder column to an original byte offset.
+type yamlPositions struct {
+	lineStarts          []int
+	multibyte           []yamlOffset
+	bomBytes, runeCount int
+}
+
+type yamlOffset struct {
+	position, extraBytes int
 }
 
 func (p *configProjection) step(depth int) error {
@@ -143,53 +155,68 @@ func parseYAML(ctx context.Context, text string) (*ConfigNode, error) {
 		return nil, &Failure{Category: "deadline"}
 	}
 
-	p := yamlProjection{configProjection: configProjection{ctx: ctx, text: text}, lines: yamlLineStarts(text)}
+	p := yamlProjection{configProjection: configProjection{ctx: ctx, text: text}, positions: indexYAMLPositions(text)}
 
 	return p.node(&document, 0)
 }
 
-func yamlLineStarts(text string) []int {
+func indexYAMLPositions(text string) yamlPositions {
 	const bom = "\ufeff"
 
-	start := 0
+	var positions yamlPositions
 	if strings.HasPrefix(text, bom) {
-		start = len(bom) // The decoder removes the stream BOM before counting columns.
+		positions.bomBytes = len(bom) // The decoder does not count the stream BOM.
 	}
 
-	lines := []int{start}
-	for i, r := range text[start:] {
-		at := start + i
+	positions.lineStarts = []int{0}
+	for i, r := range text[positions.bomBytes:] {
+		positions.runeCount++
+
+		if width := utf8.RuneLen(r); width > 1 {
+			// The extra bytes apply to every column after this rune.
+			positions.multibyte = append(positions.multibyte, yamlOffset{
+				position: positions.runeCount, extraBytes: i + width - positions.runeCount,
+			})
+		}
 
 		switch r {
 		case '\r':
+			at := positions.bomBytes + i
 			if at+1 < len(text) && text[at+1] == '\n' {
 				continue
 			}
 
-			lines = append(lines, at+1)
+			positions.lineStarts = append(positions.lineStarts, positions.runeCount)
 		case '\n', '\u0085', '\u2028', '\u2029':
-			// Match the selected YAML decoder, which also recognizes legacy breaks.
-			lines = append(lines, at+utf8.RuneLen(r))
+			// Match the selected decoder's line break conventions.
+			positions.lineStarts = append(positions.lineStarts, positions.runeCount)
 		}
 	}
 
-	return lines
+	return positions
 }
 
 func (p *yamlProjection) offset(line, column int) (int, error) {
-	if line <= 0 || column <= 0 || line > len(p.lines) {
+	positions := p.positions
+	if line <= 0 || column <= 0 || line > len(positions.lineStarts) {
 		return 0, &Failure{Category: "invalid_tree"}
 	}
 
-	at := p.lines[line-1]
+	start, end := positions.lineStarts[line-1], positions.runeCount
+	if line < len(positions.lineStarts) {
+		end = positions.lineStarts[line]
+	}
 
-	for col := 1; col < column; col++ {
-		if at >= len(p.text) || line < len(p.lines) && at >= p.lines[line] {
-			return 0, &Failure{Category: "invalid_tree"}
-		}
+	if column-1 > end-start {
+		return 0, &Failure{Category: "invalid_tree"}
+	}
 
-		_, n := utf8.DecodeRuneInString(p.text[at:])
-		at += n
+	position := start + column - 1
+	at := positions.bomBytes + position
+
+	i := sort.Search(len(positions.multibyte), func(i int) bool { return positions.multibyte[i].position > position })
+	if i > 0 {
+		at += positions.multibyte[i-1].extraBytes
 	}
 
 	return at, nil
