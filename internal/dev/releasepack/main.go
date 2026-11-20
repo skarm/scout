@@ -21,8 +21,9 @@ func run(args []string, diag io.Writer) error {
 	flags := flag.NewFlagSet("releasepack", flag.ContinueOnError)
 	flags.SetOutput(diag)
 	version := flags.String("version", "", "tag or commit SHA for archive names")
-	candidates := flags.String("candidates", "", "directory containing the three native-candidate artifacts")
+	candidates := flags.String("candidates", "", "directory containing the native-candidate artifacts")
 	output := flags.String("output", "", "new directory for release archives and SHA256SUMS")
+	allowMissing := flags.Bool("allow-missing", false, "package available candidates when a platform artifact is absent")
 
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -32,5 +33,5 @@ func run(args []string, diag io.Writer) error {
 		return errors.New("--version, --candidates and --output are required; positional arguments are not supported")
 	}
 
-	return packageRelease(*version, *candidates, *output)
+	return packageRelease(*version, *candidates, *output, *allowMissing)
 }

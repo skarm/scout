@@ -68,8 +68,60 @@ func TestReleaseArchives(t *testing.T) {
 
 func TestCandidatesNeedOnlyBinaryAndChecksum(t *testing.T) {
 	candidates, output := fixture(t)
-	if err := packageRelease("v1.2.3", candidates, output); err != nil {
+	if err := packageRelease("v1.2.3", candidates, output, false); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPackageAvailablePlatforms(t *testing.T) {
+	candidates, output := fixture(t)
+	if err := os.RemoveAll(filepath.Join(candidates, "native-candidate-windows-amd64")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := packageRelease("v1.2.3", candidates, output, false); err == nil {
+		t.Fatal("full release accepted a missing platform")
+	}
+	args := []string{"--version", "v1.2.3", "--candidates", candidates, "--output", output, "--allow-missing"}
+	if err := run(args, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := os.ReadDir(output)
+	if err != nil || len(files) != 3 {
+		t.Fatal("expected two archives and SHA256SUMS", files, err)
+	}
+
+	var wantChecksums strings.Builder
+	for _, name := range []string{"scout-v1.2.3-macos-arm64.tar.gz", "scout-v1.2.3-linux-amd64.tar.gz"} {
+		path := filepath.Join(output, name)
+		checkTar(t, path)
+		sum, err := digest(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = wantChecksums.WriteString(sum + "  " + name + "\n")
+	}
+	checksums, err := os.ReadFile(filepath.Join(output, "SHA256SUMS"))
+	if err != nil || string(checksums) != wantChecksums.String() {
+		t.Fatal("unexpected partial archive checksums", string(checksums), err)
+	}
+}
+
+func TestPartialPackagingRequiresVerifiedCandidates(t *testing.T) {
+	candidates, output := fixture(t)
+	binary := filepath.Join(candidates, "native-candidate-windows-amd64", "scout.exe")
+	if err := os.Remove(binary); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{candidates, t.TempDir()} {
+		if err := packageRelease("v1.2.3", path, output, true); err == nil {
+			t.Fatal("partial packaging accepted incomplete or empty candidates", path)
+		}
+		if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("invalid candidates created output", err)
+		}
 	}
 }
 
@@ -84,7 +136,7 @@ func TestReleaseArchivesIgnoreCandidateTimestamps(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := packageRelease("v1.2.3", candidates, output); err != nil {
+		if err := packageRelease("v1.2.3", candidates, output, false); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -154,7 +206,7 @@ func TestInvalidCandidatesLeaveNoOutput(t *testing.T) {
 				}
 			}
 
-			if err := packageRelease("v1.2.3", candidates, output); err == nil {
+			if err := packageRelease("v1.2.3", candidates, output, false); err == nil {
 				t.Fatal("invalid candidate was packaged")
 			}
 
@@ -168,7 +220,7 @@ func TestInvalidCandidatesLeaveNoOutput(t *testing.T) {
 func TestVersionAndOutputAdmission(t *testing.T) {
 	candidates, output := fixture(t)
 	for _, version := range []string{"", "../outside", "-flag", "v1/2", strings.Repeat("a", 129)} {
-		if err := packageRelease(version, candidates, output); err == nil {
+		if err := packageRelease(version, candidates, output, false); err == nil {
 			t.Fatal("invalid version accepted", version)
 		}
 	}
@@ -180,7 +232,7 @@ func TestVersionAndOutputAdmission(t *testing.T) {
 	marker := filepath.Join(output, "existing-file")
 	writeFixture(t, marker, "preserve")
 
-	if err := packageRelease("abc123", candidates, output); !errors.Is(err, os.ErrExist) {
+	if err := packageRelease("abc123", candidates, output, false); !errors.Is(err, os.ErrExist) {
 		t.Fatal("existing output was not refused", err)
 	}
 

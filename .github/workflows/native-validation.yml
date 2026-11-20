@@ -3,7 +3,18 @@ name: Native engine validation (not automatic publication)
 # Dependencies are pinned; this job receives no publication credentials.
 on:
   workflow_call:
+    inputs:
+      platform:
+        description: Platform to build and test
+        type: string
+        default: all
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build and test
+        type: choice
+        default: all
+        options: [all, linux-amd64, macos-arm64, windows-amd64]
 
 permissions:
   contents: read
@@ -14,15 +25,16 @@ concurrency:
 
 jobs:
   native:
+    name: Full native engines (${{ matrix.target }})
+    if: inputs.platform == 'all' || inputs.platform == 'linux-amd64' || inputs.platform == 'macos-arm64'
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: ubuntu-24.04
-            target: linux-amd64
-          - runner: macos-15
-            target: darwin-arm64
-    runs-on: ${{ matrix.runner }}
+        target: >-
+          ${{ fromJSON(inputs.platform == 'linux-amd64' && '["linux-amd64"]' ||
+                       inputs.platform == 'macos-arm64' && '["darwin-arm64"]' ||
+                       '["linux-amd64","darwin-arm64"]') }}
+    runs-on: ${{ matrix.target == 'linux-amd64' && 'ubuntu-24.04' || 'macos-15' }}
     timeout-minutes: 90
     defaults:
       run:
@@ -137,6 +149,7 @@ jobs:
 
   windows:
     name: Full native engines (windows-amd64)
+    if: inputs.platform == 'all' || inputs.platform == 'windows-amd64'
     runs-on: windows-2025
     timeout-minutes: 120
     defaults:

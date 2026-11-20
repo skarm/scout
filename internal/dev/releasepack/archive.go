@@ -43,19 +43,30 @@ func targets() []target {
 	}
 }
 
-func packageRelease(version, candidates, output string) (err error) {
+func packageRelease(version, candidates, output string, allowMissing bool) (err error) {
 	if !validVersion(version) {
 		return errors.New("invalid release version")
 	}
 
 	checked := make([]candidate, 0, len(targets()))
 	for _, platform := range targets() {
-		files, err := candidateFiles(filepath.Join(candidates, "native-candidate-"+platform.name), platform.binary)
+		root := filepath.Join(candidates, "native-candidate-"+platform.name)
+		if allowMissing {
+			if _, err := os.Lstat(root); errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+		}
+
+		files, err := candidateFiles(root, platform.binary)
 		if err != nil {
 			return fmt.Errorf("%s: %w", platform.name, err)
 		}
 
 		checked = append(checked, candidate{target: platform, files: files})
+	}
+
+	if len(checked) == 0 {
+		return errors.New("no native candidates to package")
 	}
 
 	if err = os.MkdirAll(filepath.Dir(output), 0o700); err != nil {

@@ -107,7 +107,7 @@ The **Scout release** workflow builds three full native distributions:
 - `scout-vX.Y.Z-windows-amd64.zip`: Windows x64, tested on Windows Server 2025.
 
 Each archive contains only `scout` or `scout.exe` at its root.
-`SHA256SUMS` is published separately and contains checksums for all three archives. macOS builds are unsigned
+`SHA256SUMS` is published separately and covers the archives available in the release. macOS builds are unsigned
 and are not notarized; Windows binaries are not Authenticode-signed.
 
 Commit and push the workflow and sources before creating a release tag:
@@ -117,13 +117,20 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-Tags with a numeric major, minor and patch version trigger publication. A tag such as `v1.2.3-rc.1` produces a prerelease. The workflow runs native and race tests, verifies binaries and checks recorded evidence before packaging. It uploads all archives to a draft before publication.
+Tags with a numeric major, minor and patch version trigger publication. A tag such as `v1.2.3-rc.1` produces a prerelease. When the shared checks pass, the workflow publishes every platform archive that passed its own validation. At least one verified archive is required. A new release starts as a draft while its assets are uploaded.
 
-Retry a failed upload while the release is a draft. For published releases, the workflow verifies existing files byte for byte and uploads missing files. A mismatch requires a new tag.
+Retrying failed jobs can add missing platform archives to the same release and update `SHA256SUMS`. The workflow preserves published archives and verifies any archive that is also present in the new build byte for byte. A mismatch requires a new tag.
 
-Use **Actions → Scout release → Run workflow** for a trial build. Manual runs
-save `release-assets` for 14 days and never publish a GitHub Release. Publication
-uses the built-in `GITHUB_TOKEN` with `contents: write` only in the publish job;
+Use **Actions → Scout release → Run workflow** for a trial build with packaged
+archives. Choose `all` (the default), `linux-amd64`, `macos-arm64`, or
+`windows-amd64` in the `platform` field. **Native engine validation** accepts
+the same choice and runs the selected native jobs without the shared release
+checks or packaging. Manual runs never publish a GitHub Release.
+
+The workflow retains `release-assets` for 14 days. If a platform fails during
+an all-platform run and the shared checks pass, the run retains the
+remaining verified archives and their checksums in `release-assets-partial-<attempt>`.
+The publish job uses the built-in `GITHUB_TOKEN` with `contents: write`;
 no personal access token is required, subject to repository/organization policies.
 
 The Windows job builds YARA-X 1.22.0 from pinned upstream commit

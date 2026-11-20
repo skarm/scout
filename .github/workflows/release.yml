@@ -4,6 +4,12 @@ on:
   push:
     tags: ['v[0-9]*']
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build and test
+        type: choice
+        default: all
+        options: [all, linux-amd64, macos-arm64, windows-amd64]
 
 permissions:
   contents: read
@@ -43,19 +49,28 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   candidates:
-    name: Test and build all three platforms
+    name: Test and build selected platforms
     needs: version
     uses: ./.github/workflows/native-validation.yml
+    with:
+      platform: ${{ inputs.platform || 'all' }}
 
   package:
     name: Package verified candidates
     needs: [checks, candidates]
+    if: >-
+      ${{ !cancelled() && needs.checks.result == 'success' &&
+          (needs.candidates.result == 'success' ||
+           (needs.candidates.result == 'failure' && (inputs.platform || 'all') == 'all')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
       source-sha: ${{ steps.source.outputs.sha }}
+      artifact-name: ${{ steps.archive.outputs.artifact-name }}
     env:
       VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+      PLATFORM: ${{ inputs.platform || 'all' }}
+      ARTIFACT_NAME: ${{ needs.candidates.result == 'success' && 'release-assets' || format('release-assets-partial-{0}', github.run_attempt) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,23 +83,48 @@ jobs:
           go-version: '1.27.3'
           check-latest: false
           cache: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      # A single match extracts directly into path. Exact patterns tolerate
+      # missing candidates and keep each verified artifact in its own directory.
+      - name: Download the Linux candidate if available
+        if: env.PLATFORM == 'all' || env.PLATFORM == 'linux-amd64'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: native-candidate-*
-          path: .work/candidates
-      - name: Package macOS, Linux and Windows archives with SHA-256
-        run: go run -mod=readonly ./internal/dev/releasepack --version "$VERSION" --candidates .work/candidates --output .work/release
+          pattern: native-candidate-linux-amd64
+          path: .work/candidates/native-candidate-linux-amd64
+      - name: Download the macOS candidate if available
+        if: env.PLATFORM == 'all' || env.PLATFORM == 'macos-arm64'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-candidate-darwin-arm64
+          path: .work/candidates/native-candidate-darwin-arm64
+      - name: Download the Windows candidate if available
+        if: env.PLATFORM == 'all' || env.PLATFORM == 'windows-amd64'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-candidate-windows-amd64
+          path: .work/candidates/native-candidate-windows-amd64
+      - name: Package available platform archives with SHA-256
+        id: archive
+        env:
+          CANDIDATES_RESULT: ${{ needs.candidates.result }}
+        run: |
+          args=(--version "$VERSION" --candidates .work/candidates --output .work/release)
+          if [[ "$PLATFORM" != all || "$CANDIDATES_RESULT" == failure ]]; then
+            args+=(--allow-missing)
+          fi
+          go run -mod=readonly ./internal/dev/releasepack "${args[@]}"
+          echo "artifact-name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-assets
+          name: ${{ env.ARTIFACT_NAME }}
           path: .work/release
           if-no-files-found: error
           retention-days: 14
 
   publish:
-    name: Publish all assets together
+    name: Publish verified platform archives
     needs: package
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: ${{ !cancelled() && needs.package.result == 'success' && github.event_name == 'push' && github.ref_type == 'tag' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -97,19 +137,25 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release-assets
+          name: ${{ needs.package.outputs.artifact-name }}
           path: release-assets
       - name: Verify archive checksums
         working-directory: release-assets
         run: |
           archives=("scout-$VERSION-macos-arm64.tar.gz" "scout-$VERSION-linux-amd64.tar.gz" "scout-$VERSION-windows-amd64.zip")
+          available=()
           for archive in "${archives[@]}"; do
-            test -s "$archive"
+            if [[ -e "$archive" ]]; then
+              test -s "$archive"
+              available+=("$archive")
+            fi
           done
-          test "$(wc -l < SHA256SUMS)" -eq 3
-          diff -u <(printf '%s\n' "${archives[@]}" | sort) <(cut -c 67- SHA256SUMS | sort)
+          test "${#available[@]}" -gt 0
+          test "$(wc -l < SHA256SUMS)" -eq "${#available[@]}"
+          diff -u <(printf '%s\n' "${available[@]}" | sort) <(cut -c 67- SHA256SUMS | sort)
           sha256sum --check --strict SHA256SUMS
-      - name: Publish verified assets without replacing published files
+      - name: Publish verified archives and update their checksums
+        working-directory: release-assets
         run: |
           set -euo pipefail
           verify_tag() {
@@ -121,41 +167,67 @@ jobs:
             fi
           }
           verify_tag
-          assets=(
-            "release-assets/scout-$VERSION-macos-arm64.tar.gz"
-            "release-assets/scout-$VERSION-linux-amd64.tar.gz"
-            "release-assets/scout-$VERSION-windows-amd64.zip"
-            'release-assets/SHA256SUMS'
-          )
+          staging="$(mktemp -d)"
+          trap 'rm -rf "$staging"' EXIT
+          state="$staging/release.json"
+          previous="$staging/previous"
+          mkdir "$previous"
+          asset_exists() {
+            jq -e --arg name "$1" 'any(.assets[]; .name == $name)' "$state" > /dev/null
+          }
+
           prerelease=false
           [[ "${VERSION%%+*}" != *-* ]] || prerelease=true
-          if gh release view "$VERSION" --json isDraft,assets > release-state.json; then
-            if [[ "$(jq -r '.isDraft' release-state.json)" != true ]]; then
-              existing="$(mktemp -d)"
-              trap 'rm -rf "$existing"' EXIT
-              missing=()
-              for asset in "${assets[@]}"; do
-                name="${asset##*/}"
-                if jq -e --arg name "$name" 'any(.assets[]; .name == $name)' release-state.json > /dev/null; then
-                  gh release download "$VERSION" --pattern "$name" --dir "$existing"
-                  if ! cmp -s "$asset" "$existing/$name"; then
-                    echo "Published asset $name differs from this build; use a new version tag" >&2
-                    exit 1
-                  fi
-                else
-                  missing+=("$asset")
-                fi
-              done
-              verify_tag
-              if [[ ${#missing[@]} -gt 0 ]]; then
-                gh release upload "$VERSION" "${missing[@]}"
-              fi
-              echo 'Published release assets verified; missing files uploaded without replacing existing files'
-              exit 0
-            fi
-            gh release upload "$VERSION" "${assets[@]}" --clobber
-          else
-            gh release create "$VERSION" "${assets[@]}" --verify-tag --draft --prerelease="$prerelease" --generate-notes --title "$VERSION"
+          if ! gh release view "$VERSION" --json isDraft,assets > "$state"; then
+            gh release create "$VERSION" --verify-tag --draft --prerelease="$prerelease" --generate-notes --title "$VERSION"
+            printf '%s\n' '{"isDraft":true,"assets":[]}' > "$state"
           fi
+          draft="$(jq -r '.isDraft' "$state")"
+          if asset_exists SHA256SUMS; then
+            gh release download "$VERSION" --pattern SHA256SUMS --dir "$previous"
+          fi
+
+          archives=("scout-$VERSION-macos-arm64.tar.gz" "scout-$VERSION-linux-amd64.tar.gz" "scout-$VERSION-windows-amd64.zip")
+          uploads=()
+          for archive in "${archives[@]}"; do
+            if asset_exists "$archive" && [[ "$draft" != true || ! -f "$archive" ]]; then
+              gh release download "$VERSION" --pattern "$archive" --dir "$previous"
+              checksum="$(cd "$previous" && sha256sum "$archive")"
+              if [[ -f "$archive" ]]; then
+                if ! cmp -s "$archive" "$previous/$archive"; then
+                  echo "Published asset $archive differs from this build; use a new version tag" >&2
+                  exit 1
+                fi
+              elif ! grep -Fxq -- "$checksum" "$previous/SHA256SUMS"; then
+                echo "Cannot verify existing asset $archive without the matching build or checksum" >&2
+                exit 1
+              fi
+              printf '%s\n' "$checksum"
+            elif [[ -f "$archive" ]]; then
+              uploads+=("$archive")
+              sha256sum "$archive"
+            fi
+          done > "$staging/SHA256SUMS"
+
           verify_tag
-          gh release edit "$VERSION" --draft=false --prerelease="$prerelease"
+          if [[ ${#uploads[@]} -gt 0 ]]; then
+            if [[ "$draft" == true ]]; then
+              gh release upload "$VERSION" "${uploads[@]}" --clobber
+            else
+              gh release upload "$VERSION" "${uploads[@]}"
+            fi
+          fi
+          if ! cmp -s "$staging/SHA256SUMS" "$previous/SHA256SUMS"; then
+            if ! gh release upload "$VERSION" "$staging/SHA256SUMS" --clobber; then
+              # The CLI can remove the old checksum asset before a failed upload.
+              if [[ -f "$previous/SHA256SUMS" ]]; then
+                gh release upload "$VERSION" "$previous/SHA256SUMS" --clobber ||
+                  echo 'Could not restore the previous SHA256SUMS' >&2
+              fi
+              exit 1
+            fi
+          fi
+          if [[ "$draft" == true ]]; then
+            verify_tag
+            gh release edit "$VERSION" --draft=false --prerelease="$prerelease"
+          fi

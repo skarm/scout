@@ -170,19 +170,22 @@ func TestEmbeddedBackendPreservesCallerCancellation(t *testing.T) {
 }
 
 func TestEmbeddedBackendClassifiesOwnDeadlineAsLimit(t *testing.T) {
-	if !frontend.BackendFor("yaml").Available {
-		t.Skip("YAML frontend unavailable")
+	if !frontend.BackendFor("python").Available {
+		t.Skip("Python frontend unavailable")
 	}
 
-	registry, err := parse.WithFrontends(frontend.Options{YAML: true, Timeout: time.Nanosecond})
+	// The Python parser rejects a remaining budget below one microsecond
+	// synchronously, so this test does not depend on the context timer firing.
+	registry, err := parse.WithFrontends(frontend.Options{Python: true, Timeout: time.Nanosecond})
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend, ok := registry.Lookup("yaml")
+	backend, ok := registry.Lookup("python")
 	if !ok {
-		t.Fatal("YAML frontend missing")
+		t.Fatal("Python frontend missing")
 	}
-	view, err := source.NewView("name: sample", []source.Span{{End: len("name: sample")}})
+	const text = "pass"
+	view, err := source.NewView(text, []source.Span{{End: len(text)}})
 	if err != nil {
 		t.Fatal(err)
 	}
