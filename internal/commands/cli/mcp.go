@@ -184,25 +184,38 @@ func serveMCPHTTP(ctx context.Context, server *mcp.Server, address string, timeo
 		MaxHeaderBytes:    maxHTTPHeaderBytes,
 	}
 
-	done := make(chan struct{})
-	defer close(done)
+	_, _ = fmt.Fprintln(stderr, "Authenticated MCP HTTP server listening on loopback /mcp")
+
+	return runMCPHTTPServer(ctx, httpServer, listener)
+}
+
+func runMCPHTTPServer(ctx context.Context, server *http.Server, listener net.Listener) int {
+	servingDone, shutdownDone := make(chan struct{}), make(chan struct{})
+	defer func() {
+		close(servingDone)
+		// Serve returns when Shutdown closes the listener, before active
+		// handlers finish and before the CLI can safely release the scanner.
+		<-shutdownDone
+	}()
 
 	go func() {
+		defer close(shutdownDone)
+
 		select {
 		case <-ctx.Done():
 			c, cancel := context.WithTimeout(context.WithoutCancel(ctx), httpShutdownTimeout)
 			defer cancel()
 
-			if err := httpServer.Shutdown(c); err != nil {
-				_ = httpServer.Close()
+			if err := server.Shutdown(c); err != nil {
+				_ = server.Close()
 			}
-		case <-done:
+		case <-servingDone:
 		}
 	}()
 
-	_, _ = fmt.Fprintln(stderr, "Authenticated MCP HTTP server listening on loopback /mcp")
+	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		_ = server.Close()
 
-	if e = httpServer.Serve(listener); e != nil && !errors.Is(e, http.ErrServerClosed) {
 		return 2
 	}
 

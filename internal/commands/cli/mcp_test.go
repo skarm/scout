@@ -7,9 +7,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -126,6 +129,73 @@ func TestMCPHTTPCancellationShutsDownTheAuthenticatedListener(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("HTTP cancellation leaked listener")
+	}
+}
+
+func TestMCPHTTPShutdownWaitsForActiveResponse(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	started, release := make(chan struct{}), make(chan struct{})
+	releaseHandler := sync.OnceFunc(func() { close(release) })
+	defer releaseHandler()
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(started)
+		<-release
+		_, _ = io.WriteString(w, "complete")
+	})}
+	defer func() { _ = server.Close() }()
+	finished := make(chan int, 1)
+	go func() { finished <- runMCPHTTPServer(ctx, server, listener) }()
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	defer client.CloseIdleConnections()
+	response := make(chan string, 1)
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+listener.Addr().String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		r, err := client.Do(request)
+		if err != nil {
+			response <- err.Error()
+			return
+		}
+		defer func() { _ = r.Body.Close() }()
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			response <- err.Error()
+			return
+		}
+		response <- string(body)
+	}()
+	select {
+	case <-started:
+	case result := <-response:
+		t.Fatalf("HTTP handler did not start: %q", result)
+	}
+	cancel()
+	select {
+	case code := <-finished:
+		t.Fatalf("HTTP server returned %d while the handler was still active", code)
+	case <-time.After(100 * time.Millisecond):
+	}
+	releaseHandler()
+	if result := <-response; result != "complete" {
+		t.Fatalf("in-flight response = %q, want complete", result)
+	}
+	select {
+	case code := <-finished:
+		if code != 0 {
+			t.Fatalf("HTTP shutdown returned %d, want 0", code)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("HTTP shutdown did not complete")
 	}
 }
 

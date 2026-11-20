@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 	"testing"
 
@@ -318,9 +319,7 @@ func TestInvocationChargesDefaultScopeCopy(t *testing.T) {
 	function := &pyFunction{node: node, lexical: state, defaults: defaults}
 	selected := &pyMapping{entries: map[string]pyValue{"value": namedValue("selected")}}
 	state.objects.defaults[function] = map[string]pyValue{}
-	for name, value := range defaults {
-		state.objects.defaults[function][name] = value
-	}
+	maps.Copy(state.objects.defaults[function], defaults)
 	state.objects.defaults[function]["parameter_0"] = pyValue{meaning: selected}
 	for _, quota := range []uint64{8, 4096} {
 		t.Run(strconv.FormatUint(quota, 10), func(t *testing.T) {

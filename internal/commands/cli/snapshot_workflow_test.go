@@ -18,14 +18,15 @@ type usableComparison struct {
 	After    string          `json:"after_sha256"`
 	Decision report.Decision `json:"decision"`
 	Roots    []struct {
-		ID, Change string
-		BeforePath string `json:"before_path"`
-		AfterPath  string `json:"after_path"`
-		Content    []struct {
-			Path, Explanation, Excerpt string
-			AddedLines                 int  `json:"added_lines"`
-			RemovedLines               int  `json:"removed_lines"`
-			DiffOmitted                bool `json:"diff_omitted"`
+		ID, Change  string
+		BeforePath  string                          `json:"before_path"`
+		AfterPath   string                          `json:"after_path"`
+		Directories []struct{ Path, Change string } `json:"directories"`
+		Content     []struct {
+			Path, Change, Explanation, Excerpt string
+			AddedLines                         int  `json:"added_lines"`
+			RemovedLines                       int  `json:"removed_lines"`
+			DiffOmitted                        bool `json:"diff_omitted"`
 		} `json:"content_changes"`
 	} `json:"roots"`
 	Relationships struct {
@@ -126,6 +127,57 @@ func TestSnapshotSavedManualPathsAndProtectedOutputs(t *testing.T) {
 	code, out := runCheckpoint(t, checkpointArgs("compare", checkpoint))
 	if code != 1 || comparisonResult(t, out).Roots[0].Change != "removed" {
 		t.Fatal("deleted saved root not removed", code)
+	}
+}
+
+func TestSnapshotReportsFileAndDirectoryReplacements(t *testing.T) {
+	for _, beforeDirectory := range []bool{false, true} {
+		name := "file becomes directory"
+		fileChange, directoryChange := "removed", "added"
+		if beforeDirectory {
+			name = "directory becomes file"
+			fileChange, directoryChange = "added", "removed"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "readme.txt"), []byte("Ordinary text\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			entry := filepath.Join(root, "notes.txt")
+			writeEntry := func(directory bool) {
+				t.Helper()
+				var err error
+				if directory {
+					err = os.Mkdir(entry, 0o700)
+				} else {
+					err = os.WriteFile(entry, []byte("Local notes\n"), 0o600)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			writeEntry(beforeDirectory)
+			checkpoint := filepath.Join(t.TempDir(), "snapshot.json")
+			if code, _ := runCheckpoint(t, checkpointArgs("create", checkpoint, "--root", "main="+root)); code != 0 {
+				t.Fatalf("create exit code = %d, want 0", code)
+			}
+			if err := os.Remove(entry); err != nil {
+				t.Fatal(err)
+			}
+			writeEntry(!beforeDirectory)
+			code, out := runCheckpoint(t, checkpointArgs("compare", checkpoint))
+			result := comparisonResult(t, out)
+			if code != 1 || len(result.Roots) != 1 || result.Roots[0].Change != "modified" {
+				t.Fatalf("comparison exit code = %d, roots = %+v", code, result.Roots)
+			}
+			files, directories := result.Roots[0].Content, result.Roots[0].Directories
+			if len(directories) != 1 || directories[0].Path != "notes.txt" || directories[0].Change != directoryChange {
+				t.Errorf("directory changes = %+v, want notes.txt %s", directories, directoryChange)
+			}
+			if len(files) != 1 || files[0].Path != "notes.txt" || files[0].Change != fileChange {
+				t.Errorf("file changes = %+v, want notes.txt %s", files, fileChange)
+			}
+		})
 	}
 }
 

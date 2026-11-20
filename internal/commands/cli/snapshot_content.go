@@ -31,20 +31,22 @@ type snapshotContentChange struct {
 	DiffOmitted  bool   `json:"diff_omitted,omitempty"`
 }
 
-func rootEntries(s envsnapshot.Snapshot, id string) (map[string]envsnapshot.Entry, string) {
-	entries := map[string]envsnapshot.Entry{}
+func rootFiles(s envsnapshot.Snapshot, id string) (map[string]envsnapshot.Entry, string) {
+	files := map[string]envsnapshot.Entry{}
 
 	for _, root := range s.Roots {
 		if root.ID == id {
 			for _, entry := range root.Entries {
-				entries[entry.Path] = entry
+				if !entry.Directory {
+					files[entry.Path] = entry
+				}
 			}
 
-			return entries, root.Source
+			return files, root.Source
 		}
 	}
 
-	return entries, ""
+	return files, ""
 }
 
 func (r *environmentComparison) describeContent(before, after envsnapshot.Snapshot, includeSource bool) {
@@ -52,8 +54,8 @@ func (r *environmentComparison) describeContent(before, after envsnapshot.Snapsh
 
 	for i := range r.Roots {
 		root := &r.Roots[i]
-		old, oldPath := rootEntries(before, root.ID)
-		next, newPath := rootEntries(after, root.ID)
+		old, oldPath := rootFiles(before, root.ID)
+		next, newPath := rootFiles(after, root.ID)
 		root.BeforePath, root.AfterPath = oldPath, newPath
 
 		keys := map[string]string{}
@@ -69,13 +71,9 @@ func (r *environmentComparison) describeContent(before, after envsnapshot.Snapsh
 			b, bok := old[path]
 
 			a, aok := next[path]
-			if bok && aok && b.Directory == a.Directory && b.SHA256 == a.SHA256 && b.Executable == a.Executable {
+			if bok && aok && b.SHA256 == a.SHA256 && b.Executable == a.Executable {
 				continue
 			}
-
-			if (!bok || b.Directory) && (!aok || a.Directory) {
-				continue
-			} // Directory inventory is already reported separately.
 
 			item := describeSnapshotFile(path, b, a, bok, aok, includeSource, &byteBudget, &lineBudget)
 

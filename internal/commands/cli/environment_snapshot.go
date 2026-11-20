@@ -553,6 +553,7 @@ func parseSnapshotRequest(mode string, args []string, stderr io.Writer, snapshot
 
 		fs.StringVar(&snapshotPath, "snapshot", "", "required environment snapshot path (create never replaces it)")
 		fs.Var(&roots, "root", "named local root ID=PATH; repeat for the complete selected environment")
+
 		if mode == "compare" {
 			fs.BoolVar(&empty, "empty", false, "explicitly compare against an empty environment")
 			fs.BoolVar(&diff, "source-diff", false, "include bounded source excerpts in change reports; may contain secrets")

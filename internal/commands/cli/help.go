@@ -207,7 +207,8 @@ func scanFlagGroup(name string) string {
 func appendFlagHelp(text *strings.Builder, f *flag.Flag) {
 	value, description := flag.UnquoteUsage(f)
 	argument := "--" + f.Name
-	if short := shortFlagNames[f.Name]; short != "" {
+
+	if short := shortFlagName(f.Name); short != "" {
 		argument += ", " + short
 	}
 
