@@ -34,10 +34,10 @@ func createRulepack(ctx context.Context, args []string, stdout, stderr io.Writer
 	fs.SetOutput(stderr)
 	id := fs.String("id", "", "required package identifier")
 	version := fs.String("version", "", "required package release label")
-	yara := fs.String("yara", "", "trusted UTF-8 YARA source file")
+	yara := fs.String(flagYARA, "", "trusted UTF-8 YARA source file")
 
 	path := fs.String("output", "", "artifact destination; default stdout")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}
 
@@ -84,7 +84,7 @@ func inspectRulepack(ctx context.Context, args []string, stdout, stderr io.Write
 	fs.SetOutput(stderr)
 
 	pin := fs.String("sha256", "", "expected lowercase SHA-256 of the entire artifact")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}
 

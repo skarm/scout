@@ -32,7 +32,7 @@ returns a bounded summary. Use a separate CLI call when the full report is neede
 scout mcp --profile standard --transport stdio \
   --target candidate=/absolute/review/candidate
 scout mcp --profile standard --transport http --listen 127.0.0.1:8837 \
-  --auth-token-env SCOUT_MCP_TOKEN --target candidate=/absolute/review/candidate
+  --token-env SCOUT_MCP_TOKEN --target candidate=/absolute/review/candidate
 ```
 
 `scan_skill` accepts an authorized target key or an upload with a filename and

@@ -40,7 +40,7 @@ func fetchRegistry(ctx context.Context, args []string, stdout, stderr io.Writer)
 	fs.Int64Var(&o.MaxBytes, "max-bytes", o.MaxBytes, "maximum aggregate response bytes")
 
 	path := fs.String("output", "", "snapshot output file; default stdout")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}
 
@@ -73,7 +73,7 @@ func compareRegistry(ctx context.Context, args []string, stdout, stderr io.Write
 	fs.SetOutput(stderr)
 
 	path := fs.String("output", "", "comparison output file; default stdout")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}
 

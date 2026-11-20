@@ -45,7 +45,7 @@ func parseBaselineArguments(args []string, stderr io.Writer) (baselineArguments,
 	fs.Var(&a.fingerprints, "fingerprint", "select an exact finding fingerprint for approve/renew; repeatable; omitted selects all")
 	fs.BoolVar(&a.dryRun, "dry-run", false, "print a JSON change preview without writing a baseline")
 
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := parseFlags(fs, args[1:]); err != nil {
 		return a, err
 	}
 

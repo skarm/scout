@@ -87,7 +87,7 @@ The check uses selected [JSON Schema 2020-12](https://json-schema.org/draft/2020
 
 ### Custom and third-party YARA rules
 
-`--yara-rules` adds one file containing one or more YARA-X-compatible rules to the
+`--yara` adds one file containing one or more YARA-X-compatible rules to the
 embedded signatures. For example, save a trusted rule in `/etc/scout/organization.yar`:
 
 ```yara
@@ -100,7 +100,7 @@ rule organization_review_marker {
 ```
 
 ```sh
-scout scan --yara-rules /etc/scout/organization.yar --fail-on medium ./my-plugin
+scout scan --yara /etc/scout/organization.yar --fail-on medium ./my-plugin
 ```
 
 Keep the trusted rules file outside the target. This example produces `YR5` at Medium severity and sets the policy threshold to Medium. For release artifacts and rollback, use [versioned rulepacks](usage.md#versioned-rulepacks).

@@ -24,30 +24,32 @@ const (
 	flagExtractEntries     = "extract-entries"
 	flagExtractObjectBytes = "extract-object-bytes"
 	flagExtractObjects     = "extract-objects"
-	flagExtractTotalBytes  = "extract-total-bytes"
+	flagExtractBytes       = "extract-bytes"
+	flagFailOn             = "fail-on"
 	flagHarness            = "harness"
 	flagMaxArchiveBytes    = "max-archive-bytes"
-	flagMaxCaptureBytes    = "max-capture-bytes"
 	flagMaxEntries         = "max-entries"
 	flagMaxFileBytes       = "max-file-bytes"
 	flagMaxFiles           = "max-files"
 	flagMaxFindings        = "max-findings"
 	flagMaxMatchesPerRule  = "max-matches-per-rule"
 	flagMaxOperations      = "max-operations"
-	flagMaxTotalBytes      = "max-total-bytes"
+	flagMaxRunBytes        = "max-run-bytes"
+	flagMaxTargetBytes     = "max-target-bytes"
 	flagParserTimeout      = "parser-timeout"
 	flagProfile            = "profile"
 	flagScope              = "scope"
 	flagTargetWorkers      = "target-workers"
 	flagTimeout            = "timeout"
 	flagWorkers            = "workers"
+	flagYARA               = "yara"
 )
 
 type request struct {
 	settings                        configfile.Settings
 	format, output                  string
 	reports                         repeated
-	input, name                     string
+	stdinName                       string
 	revision, sha256                string
 	targets                         []string
 	publicationInputs               []string
@@ -68,11 +70,10 @@ type request struct {
 // destinations, not a scanner configuration. Only resolve produces settings.
 // Presence distinguishes an omitted flag from an explicit false or zero.
 type argvPatch struct {
-	values                    request
-	present                   map[string]bool
-	command                   string
-	checks                    checkSelection
-	semantic, vulnerabilities bool
+	values                  request
+	present                 map[string]bool
+	checks                  checkSelection
+	review, vulnerabilities bool
 }
 
 type stringSetting[T ~string] struct{ value *T }
@@ -97,12 +98,12 @@ func resolveRequest(command string, args []string, stderr io.Writer, extra func(
 
 func parseArgv(command string, args []string, stderr io.Writer, extra func(*flag.FlagSet)) (argvPatch, error) {
 	patch, fs := requestFlagSet(command, stderr, extra)
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return *patch, err
 	}
 
 	patch.values.targets = fs.Args()
-	fs.Visit(func(f *flag.Flag) { patch.present[f.Name] = true })
+	fs.Visit(func(f *flag.Flag) { patch.present[canonicalFlagName(f.Name)] = true })
 
 	return *patch, nil
 }
@@ -117,7 +118,6 @@ func requestFlagSet(command string, stderr io.Writer, extra func(*flag.FlagSet))
 	patch := &argvPatch{
 		values:  request{settings: settings},
 		present: map[string]bool{},
-		command: command,
 		checks:  checkSelection{value: allStaticChecks()},
 	}
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
@@ -127,15 +127,23 @@ func requestFlagSet(command string, stderr io.Writer, extra func(*flag.FlagSet))
 	bindBudgets(fs, &patch.values.settings.Scanner)
 	bindServices(fs, patch)
 
-	if command == "scan" {
-		fs.BoolVar(&patch.values.environment, "environment", false, "treat selected local roots as one agent/project environment")
+	switch command {
+	case "scan":
+		bindScanInputs(fs, &patch.values)
+		bindDownloads(fs, &patch.values)
+	case "mcp", "config validate":
+		bindDownloads(fs, &patch.values)
+	}
+
+	if command != "mcp" && command != "config validate" {
+		bindReports(fs, &patch.values)
 	}
 
 	if extra != nil {
 		extra(fs)
 	}
 
-	if command == "compare" {
+	if command == "compare" || command == "snapshot compare" {
 		patch.values.compare = scout.DefaultCompareOptions()
 		fs.IntVar(&patch.values.compare.MaxChanges, "max-changes", patch.values.compare.MaxChanges, "maximum retained comparison deltas")
 	}
@@ -166,10 +174,6 @@ func (p argvPatch) resolve(settings configfile.Settings, lookupEnv func(string) 
 	r := p.values
 
 	r.settings = settings
-	if err := p.rejectCommandControls(); err != nil {
-		return r, err
-	}
-
 	p.applySettings(&r.settings)
 
 	if err := p.resolveInspection(&r.settings.Scanner); err != nil {
@@ -188,20 +192,6 @@ func (p argvPatch) resolve(settings configfile.Settings, lookupEnv func(string) 
 	return r, nil
 }
 
-func (p argvPatch) rejectCommandControls() error {
-	if p.command != "compare" {
-		return nil
-	}
-
-	for name := range p.present {
-		if strings.HasPrefix(name, "download-") || strings.HasPrefix(name, "external-") || name == "follow-external" || name == "allow-download" || name == "revision" {
-			return errors.New("compare rejects download controls")
-		}
-	}
-
-	return nil
-}
-
 func (p argvPatch) applySettings(s *configfile.Settings) {
 	v := p.values.settings
 	applyArgument(p.present, flagProfile, &s.Scanner.Profile, v.Scanner.Profile)
@@ -209,15 +199,13 @@ func (p argvPatch) applySettings(s *configfile.Settings) {
 	applyArgument(p.present, flagAllowBaselineGlobs, &s.Policy.AllowGlobs, v.Policy.AllowGlobs)
 	applyArgument(p.present, flagScope, &s.Policy.Scope, v.Policy.Scope)
 
-	if p.present["fail-on"] || p.present["block-at"] {
-		s.Policy.FailAt = v.Policy.FailAt
-	}
+	applyArgument(p.present, flagFailOn, &s.Policy.FailAt, v.Policy.FailAt)
 
 	applyArgument(p.present, flagHarness, &s.Scanner.Harness.Host, v.Scanner.Harness.Host)
 	applyArgument(p.present, flagWorkers, &s.Scanner.Concurrency.Workers, v.Scanner.Concurrency.Workers)
 	applyArgument(p.present, flagTargetWorkers, &s.Scanner.Concurrency.Targets, v.Scanner.Concurrency.Targets)
 	applyArgument(p.present, flagTimeout, &s.Scanner.Limits.Timeout, v.Scanner.Limits.Timeout)
-	applyArgument(p.present, "yara-rules", &s.ExtraRulesPath, v.ExtraRulesPath)
+	applyArgument(p.present, flagYARA, &s.ExtraRulesPath, v.ExtraRulesPath)
 	applyArgument(p.present, "rulepack", &s.RulepackPath, v.RulepackPath)
 	applyArgument(p.present, "rulepack-sha256", &s.Scanner.Signatures.RulepackSHA256, v.Scanner.Signatures.RulepackSHA256)
 	applyArgument(p.present, "osv-cache", &s.OSVCachePath, v.OSVCachePath)
@@ -229,9 +217,9 @@ func (p argvPatch) applyBudgets(l *scout.Limits) {
 	applyArgument(p.present, flagMaxFiles, &l.Capture.MaxFiles, v.Capture.MaxFiles)
 	applyArgument(p.present, flagMaxEntries, &l.Capture.MaxEntries, v.Capture.MaxEntries)
 	applyArgument(p.present, flagMaxFileBytes, &l.Capture.MaxFileBytes, v.Capture.MaxFileBytes)
-	applyArgument(p.present, flagMaxTotalBytes, &l.Capture.MaxTotalBytes, v.Capture.MaxTotalBytes)
+	applyArgument(p.present, flagMaxTargetBytes, &l.Capture.MaxTotalBytes, v.Capture.MaxTotalBytes)
 	applyArgument(p.present, flagMaxArchiveBytes, &l.Capture.MaxArchiveBytes, v.Capture.MaxArchiveBytes)
-	applyArgument(p.present, flagMaxCaptureBytes, &l.MaxCaptureBytes, v.MaxCaptureBytes)
+	applyArgument(p.present, flagMaxRunBytes, &l.MaxCaptureBytes, v.MaxCaptureBytes)
 	applyArgument(p.present, flagMaxOperations, &l.Analysis.MaxOperations, v.Analysis.MaxOperations)
 	applyArgument(p.present, flagMaxMatchesPerRule, &l.Analysis.MaxMatchesPerRule, v.Analysis.MaxMatchesPerRule)
 	applyArgument(p.present, flagParserTimeout, &l.Analysis.ParserTimeout, v.Analysis.ParserTimeout)
@@ -240,7 +228,7 @@ func (p argvPatch) applyBudgets(l *scout.Limits) {
 	applyArgument(p.present, flagExtractObjects, &l.Extraction.MaxObjects, v.Extraction.MaxObjects)
 	applyArgument(p.present, flagExtractEntries, &l.Extraction.MaxEntries, v.Extraction.MaxEntries)
 	applyArgument(p.present, flagExtractObjectBytes, &l.Extraction.MaxObjectBytes, v.Extraction.MaxObjectBytes)
-	applyArgument(p.present, flagExtractTotalBytes, &l.Extraction.MaxTotalBytes, v.Extraction.MaxTotalBytes)
+	applyArgument(p.present, flagExtractBytes, &l.Extraction.MaxTotalBytes, v.Extraction.MaxTotalBytes)
 }
 
 func (p argvPatch) resolveInspection(o *scout.Options) error {
@@ -291,20 +279,35 @@ func bindCommon(fs *flag.FlagSet, r *request) {
 		return nil
 	})
 	fs.Var(stringSetting[scout.Profile]{value: &r.settings.Scanner.Profile}, flagProfile, "inspection `PROFILE`: standard, review or custom")
-	fs.StringVar(&r.format, "format", "text", "report `FORMAT`: text, json, sarif or markdown")
-	fs.StringVar(&r.output, "output", "", "report `FILE` (atomic replacement; default stdout)")
-	fs.Var(&r.reports, "report", "additional `FORMAT=PATH`; repeatable")
-	fs.StringVar(&r.input, "input", "", "`-` reads one target from stdin")
-	fs.StringVar(&r.name, "name", "", "`RELATIVE_PATH` for stdin format detection and source coordinates")
 	fs.StringVar(&r.settings.BaselinePath, flagBaseline, r.settings.BaselinePath, "operator approvals `FILE` outside inputs")
 	fs.BoolVar(&r.settings.Policy.AllowGlobs, flagAllowBaselineGlobs, r.settings.Policy.AllowGlobs, "permit broad approvals")
-	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, "fail-on", "minimum blocking `SEVERITY`: info, low, medium, high or critical")
+	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, flagFailOn, "minimum blocking `SEVERITY`: info, low, medium, high or critical")
 	fs.Var(stringSetting[policy.ScopePolicy]{value: &r.settings.Policy.Scope}, flagScope, "coverage `POLICY`: conservative (default) or selected")
-	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, "block-at", "`SEVERITY` alias for fail-on")
 	fs.StringVar(&r.settings.Scanner.Harness.Host, flagHarness, r.settings.Scanner.Harness.Host, "`HOST` interpretation: auto, claude-code, codex, gemini-cli or agent-skills")
 	fs.IntVar(&r.settings.Scanner.Concurrency.Workers, flagWorkers, r.settings.Scanner.Concurrency.Workers, "analyzer workers shared across targets (1..32)")
 	fs.IntVar(&r.settings.Scanner.Concurrency.Targets, flagTargetWorkers, r.settings.Scanner.Concurrency.Targets, "concurrent targets (1..32)")
 	fs.DurationVar(&r.settings.Scanner.Limits.Timeout, flagTimeout, r.settings.Scanner.Limits.Timeout, "whole operation timeout")
+}
+
+func bindReports(fs *flag.FlagSet, r *request) {
+	fs.StringVar(&r.format, "format", "text", "report `FORMAT`: text, json, sarif or markdown")
+	fs.StringVar(&r.output, "output", "", "report `FILE` (atomic replacement; default stdout)")
+	fs.Var(&r.reports, "report", "additional `FORMAT=PATH`; repeatable")
+}
+
+func bindScanInputs(fs *flag.FlagSet, r *request) {
+	fs.Func("stdin", "read stdin as relative filename `NAME` for format detection and source coordinates", func(name string) error {
+		if name == "" {
+			return errors.New("stdin requires a relative filename")
+		}
+
+		r.stdinName = name
+
+		return nil
+	})
+	fs.BoolVar(&r.environment, "environment", false, "treat selected local roots as one agent/project environment")
+	fs.StringVar(&r.revision, "revision", "", "pinned commit revision")
+	fs.StringVar(&r.sha256, "download-sha256", "", "pinned response hash")
 }
 
 func (s stringSetting[T]) String() string {
@@ -324,9 +327,9 @@ func bindBudgets(fs *flag.FlagSet, o *scout.Options) {
 	fs.IntVar(&c.MaxFiles, flagMaxFiles, c.MaxFiles, "captured files per target")
 	fs.IntVar(&c.MaxEntries, flagMaxEntries, c.MaxEntries, "entries per target")
 	fs.Int64Var(&c.MaxFileBytes, flagMaxFileBytes, c.MaxFileBytes, "bytes per file")
-	fs.Int64Var(&c.MaxTotalBytes, flagMaxTotalBytes, c.MaxTotalBytes, "captured bytes per target")
+	fs.Int64Var(&c.MaxTotalBytes, flagMaxTargetBytes, c.MaxTotalBytes, "captured bytes per target")
 	fs.Int64Var(&c.MaxArchiveBytes, flagMaxArchiveBytes, c.MaxArchiveBytes, "compressed bytes per target")
-	fs.Int64Var(&o.Limits.MaxCaptureBytes, flagMaxCaptureBytes, o.Limits.MaxCaptureBytes, "captured bytes across all targets")
+	fs.Int64Var(&o.Limits.MaxCaptureBytes, flagMaxRunBytes, o.Limits.MaxCaptureBytes, "captured bytes across all targets")
 	fs.Uint64Var(&a.MaxOperations, flagMaxOperations, a.MaxOperations, "bounded analysis operations across targets")
 	fs.IntVar(&a.MaxMatchesPerRule, flagMaxMatchesPerRule, a.MaxMatchesPerRule, "candidate occurrences per rule")
 	fs.DurationVar(&a.ParserTimeout, flagParserTimeout, a.ParserTimeout, "parser timeout")
@@ -335,5 +338,5 @@ func bindBudgets(fs *flag.FlagSet, o *scout.Options) {
 	fs.IntVar(&e.MaxObjects, flagExtractObjects, e.MaxObjects, "derived objects per target")
 	fs.IntVar(&e.MaxEntries, flagExtractEntries, e.MaxEntries, "extraction entries per target")
 	fs.Int64Var(&e.MaxObjectBytes, flagExtractObjectBytes, e.MaxObjectBytes, "bytes per derived object")
-	fs.Int64Var(&e.MaxTotalBytes, flagExtractTotalBytes, e.MaxTotalBytes, "extracted bytes per target")
+	fs.Int64Var(&e.MaxTotalBytes, flagExtractBytes, e.MaxTotalBytes, "extracted bytes per target")
 }

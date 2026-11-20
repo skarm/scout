@@ -50,9 +50,9 @@ func (r *repeated) Set(v string) error {
 func (c *mcpInvocation) bind(fs *flag.FlagSet) {
 	fs.StringVar(&c.transport, "transport", c.transport, "stdio or authenticated loopback HTTP")
 	fs.StringVar(&c.listen, "listen", c.listen, "numeric loopback bind for HTTP /mcp")
-	fs.StringVar(&c.tokenEnv, "auth-token-env", c.tokenEnv, "explicit environment variable with HTTP bearer token (>=32 bytes)")
-	fs.DurationVar(&c.options.Timeout, "scan-timeout", c.options.Timeout, "maximum duration of each tool call")
-	fs.IntVar(&c.options.MaxConcurrent, "max-concurrent", c.options.MaxConcurrent, "concurrent scans across all sessions (1..8)")
+	fs.StringVar(&c.tokenEnv, "token-env", c.tokenEnv, "explicit environment variable with HTTP bearer token (>=32 bytes)")
+	fs.DurationVar(&c.options.Timeout, "tool-timeout", c.options.Timeout, "maximum duration of each tool call")
+	fs.IntVar(&c.options.MaxConcurrent, "concurrency", c.options.MaxConcurrent, "concurrent scans across all sessions (1..8)")
 	fs.Var(&c.targets, "target", "operator-authorized name=local-path; repeatable; no target means upload-only")
 	fs.Var(&c.origins, "origin", "explicit allowed HTTP Origin; repeatable")
 }
@@ -78,7 +78,7 @@ func (c *mcpInvocation) prepareHTTP() error {
 	}
 
 	if c.tokenEnv == "" {
-		return errors.New("HTTP requires --auth-token-env")
+		return errors.New("HTTP requires --token-env")
 	}
 
 	c.options.HTTPToken = os.Getenv(c.tokenEnv)

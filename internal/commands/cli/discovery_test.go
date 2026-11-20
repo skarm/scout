@@ -175,7 +175,7 @@ func TestDiscoverArgumentAndOutputFailures(t *testing.T) {
 		{"--scan", "--format", "json"},
 		{"unexpected"},
 		{"--scan", "--", "extra-target"},
-		{"--scan", "--", "--input", "-", "--name", "SKILL.md"},
+		{"--scan", "--", "--stdin", "SKILL.md"},
 	} {
 		var out, diagnostics bytes.Buffer
 		if code := cli.Run(context.Background(), append(append([]string{}, base...), extra...), &out, &diagnostics); code != 2 {

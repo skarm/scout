@@ -12,7 +12,7 @@ For file-based setup, copy and customize
 [preset instructions](../../examples/configs/README.md#llm-review-template).
 
 ```bash
-scout scan --profile review --semantic --allow-source-upload \
+scout scan --profile review --review --allow-source-upload \
   --llm-provider chat-completions \
   --llm-endpoint https://trusted.example/v1/chat/completions \
   --llm-model YOUR_MODEL --llm-api-key-env REVIEW_API_KEY \

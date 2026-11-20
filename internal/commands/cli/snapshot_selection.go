@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/skarm/scout/internal/capture/envsnapshot"
 	"github.com/skarm/scout/internal/discovery"
@@ -197,19 +196,7 @@ func snapshotDiscovered(ctx context.Context, a discoveryArguments, inventory dis
 		return usageError(stderr, "no components discovered; select an environment with local components")
 	}
 
-	for _, arg := range a.scanArgs {
-		flag, _, _ := strings.Cut(arg, "=")
-		if strings.HasPrefix(flag, "-") && isSnapshotSelectionFlag(strings.TrimLeft(flag, "-")) {
-			return usageError(stderr, "discovered snapshots accept scan flags only after --; selection and snapshot path belong before --")
-		}
-	}
-
-	args := append([]string{"--snapshot", a.snapshot}, a.scanArgs...)
-	for _, id := range sortedRootIDs(inputs, nil) {
-		args = append(args, "--root", id+"="+inputs[id])
-	}
-
-	r, path, roots, err := parseSnapshotRequest("create", args, stderr)
+	r, path, roots, err := parseSnapshotRequest("create", a.scanArgs, stderr, a.snapshot, inputs)
 	if err != nil {
 		return requestError(err, stderr)
 	}
@@ -222,15 +209,6 @@ func snapshotDiscovered(ctx context.Context, a discoveryArguments, inventory dis
 	}
 
 	return executeEnvironmentSnapshot(ctx, "create", r, path, roots, &checkpointDiscovery{Arguments: plan, Inventory: inventory}, stdout, stderr)
-}
-
-func isSnapshotSelectionFlag(name string) bool {
-	switch name {
-	case "snapshot", "root", "empty", "candidate", "save-candidate":
-		return true
-	default:
-		return false
-	}
 }
 
 func completeDiscovery(ctx context.Context, a discoveryArguments) (discovery.Snapshot, error) {

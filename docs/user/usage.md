@@ -102,9 +102,9 @@ Remote scans require `--allow-download`. GitHub repository roots also require
 `--revision` with a full commit SHA. See [external sources](../reference/external-sources.md).
 
 ```sh
-scout scan --vuln --allow-vulnerability-network \
+scout scan --osv --allow-osv-network \
   --format json ./my-plugin
-scout scan --vuln --osv-cache /ci/osv-cache.json \
+scout scan --osv --osv-cache /ci/osv-cache.json \
   --osv-cache-max-age 168h --format json ./my-plugin
 ```
 
@@ -115,7 +115,7 @@ missing or stale records leave gaps. An advisory does not establish reachability
 
 A trusted cache with `"version": 2` enables `MAL001`. An exact dependency coordinate classified as `malicious-package` yields a Critical finding, with evidence from the captured manifest or lockfile. Ordinary advisories use `OSV001` (High). The `MAL-` ID prefix alone does not classify an advisory.
 
-Use `--vuln --osv-cache FILE` and keep the cache outside the target. Replace the sample data and timestamps with verified intelligence and actual query times.
+Use `--osv --osv-cache FILE` and keep the cache outside the target. Replace the sample data and timestamps with verified intelligence and actual query times.
 
 ```json
 {
@@ -159,6 +159,6 @@ scout scan --rulepack /ci/agent-1.2.3.rulepack.json \
 
 Set `trusted_sha256` to the lowercase artifact digest from your release process. The pin checks all artifact bytes. Publisher trust comes from the release process. To upgrade or roll back, change the path and pin together. An open Scanner keeps its loaded source.
 
-Configuration uses `signatures.rulepack_file` and `signatures.rulepack_sha256`. Standard and review select YARA. In custom, add `--checks yara`. Use either `--rulepack` or `--yara-rules`.
+Configuration uses `signatures.rulepack_file` and `signatures.rulepack_sha256`. Standard and review select YARA. In custom, add `--checks yara`. Use either `--rulepack` or `--yara`.
 
 Creation and inspection work without YARA-X. Scanning compiles the source before capture. Unsupported syntax, duplicate rule names, includes and console usage fail the operation. Both artifact and source have a 256 KiB limit. Reports retain package metadata and hashes. [Rulepack flags](../reference/cli.md#rulepack-artifacts)

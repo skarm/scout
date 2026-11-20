@@ -32,7 +32,7 @@ func inspectEnvironmentSnapshot(ctx context.Context, args []string, stdout, stde
 	path := fs.String("snapshot", "", "required operator-selected checkpoint")
 
 	format := fs.String("format", "text", "output format: text or json; no source bytes")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}
 

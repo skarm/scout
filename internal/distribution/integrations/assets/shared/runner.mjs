@@ -434,7 +434,7 @@ function targetInvocation(target, args, grants) {
   }
 }
 function semanticInvocation(r, args, grants) {
-    args.push('--semantic', '--allow-source-upload', '--llm-provider', r.provider, '--llm-endpoint', r.endpoint, '--llm-model', r.model);
+    args.push('--review', '--allow-source-upload', '--llm-provider', r.provider, '--llm-endpoint', r.endpoint, '--llm-model', r.model);
     if (r.allowLoopback) args.push('--llm-allow-loopback');
     if (r.keyEnv) args.push('--llm-api-key-env', 'SCOUT_REVIEW_KEY');
     grants.push({ permission: 'webfetch', patterns: [r.endpoint], description: 'Upload captured source (possibly including secrets) to the configured reviewer. No complete redaction is promised.' });

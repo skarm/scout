@@ -28,14 +28,14 @@ Contents
 ```sh
 scout -h
 scout scan -h
-scout scan --format json ./my-plugin
+scout scan -f json ./my-plugin
 scout scan --format json -- "$target"
-scout scan --input - --name SKILL.md --format json < ./SKILL.md
+scout scan --stdin SKILL.md -f json < ./SKILL.md
 ```
 
-`scout -h`, `scout --help` and `scout help` print the complete command and flag
-reference. `scout scan -h` or `scout scan --help` prints scan flags and defaults.
-Commands with a flag parser also accept `-h` and `--help` before their inputs.
+Use `--help` (`-h`) at the root or run `scout help` for the complete reference.
+`scout scan -h` prints scan flags and defaults. Commands with a flag parser
+accept either spelling before their inputs.
 
 Put flags before positional inputs. `--` ends flag parsing; it is optional for
 ordinary paths such as `./my-plugin`. Keep it before a path supplied by a variable
@@ -52,11 +52,12 @@ from `--config`. Permissions always come from the current invocation.
 
 ```text
 scout scan [flags] <target> [target...]
-scout scan [flags] --input - --name <relative-name>
+scout scan [flags] --stdin NAME
 scout compare [flags] <before> <after>
 scout discover [flags] [--scan -- <scan flags>]
 scout config validate [flags]
 scout mcp [flags]
+scout mcp snapshot --source-id ID [--output FILE] <capture.json>
 scout doctor [flags]
 scout baseline create|approve|renew [flags]
 scout rules list [--all]
@@ -82,7 +83,7 @@ Stdin accepts one named input and cannot be mixed with positional targets.
 `scout discover` inventories Codex and Claude Code; `--scan` passes discovered
 roots to the existing Scanner. See [locations, format and limits](../user/discovery.md).
 
-- `--agent all|codex|claude-code`: agent; default `all`.
+- `--agent all|codex|claude-code` (`-a`): agent; default `all`.
 - `--home DIR`: selected user home; default current user's home.
 - `--codex-home DIR`, `--claude-home DIR`: explicit agent configuration directories.
   Without `--home`, process `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are honored.
@@ -93,12 +94,14 @@ roots to the existing Scanner. See [locations, format and limits](../user/discov
 - `--max-depth N`: skill/plugin traversal depth; default 12, 1..32.
 - `--max-bytes N`: aggregate config/manifest bytes; default 8388608, 1..67108864.
   A single file is limited to 256 KiB.
-- `--timeout DURATION`: discovery deadline; default `10s`, greater than 0 and at most `2m`.
-- `--format text|json`: inventory format; default `text`.
-- `--output FILE`: inventory outside scan inputs; default stdout.
+- `--timeout DURATION` (`-t`): discovery deadline; default `10s`, greater than 0 and at most `2m`.
+- `--format text|json` (`-f`): inventory format; default `text`.
+- `--output FILE` (`-o`): inventory outside scan inputs; default stdout.
 - `--scan`: scan discovered roots; default `false`. Ordinary scan flags follow `--`.
   Inventory `--format`/`--output` flags are rejected in this mode.
-- `--kind skill|plugin|mcp-server|command`: repeatable component-type selection;
+- `--snapshot FILE` (`-s`) saves the discovered environment. Select one agent
+  and pass scan flags after `--`.
+- `--kind skill|plugin|mcp-server|command` (`-k`): repeatable component-type selection;
   unset selects the original grouped scan roots.
 - `--include-path PATH`: repeatable intersection with discovered scan roots;
   cannot add paths outside the inventory.
@@ -114,22 +117,21 @@ report and exit code. Declaration states do not establish component activation.
 
 ### Input and configuration
 
-- `--environment`: explicitly relate selected local roots as one agent/project
+- `--environment` (`--env`): explicitly relate selected local roots as one agent/project
   environment; default `false`. Independent scans remain independent by default.
   Requires existing, nonoverlapping local roots and does not support external traversal.
   See [environment analysis](../user/environment-analysis.md).
 
-- `--config FILE`: explicit operator JSON configuration; unset by default. May be
+- `--config FILE` (`-c`): explicit operator JSON configuration; unset by default. May be
   supplied only once. Configuration is never discovered inside targets.
-- `--profile standard|review|custom`: inspection preset; default `standard`.
+- `--profile standard|review|custom` (`-p`): inspection preset; default `standard`.
   `standard` selects all static checks; `review` also requires a configured reviewer;
   `custom` permits explicit check selection. CLI aliases: `extended` = `standard`,
   `semantic` = `review`, `basic` = `custom` with all optional static checks disabled.
 - `--harness auto|claude-code|codex|gemini-cli|agent-skills`: interpretation of agent/plugin
   declarations; default `auto`.
-- `--input -`: read one input from stdin; unset by default. Only `-` is supported.
-- `--name RELATIVE_PATH`: required with `--input -`; the input's relative filename,
-  used for format detection and source coordinates. Unset by default.
+- `--stdin NAME` (`-i`): read one input from stdin. Use a relative filename such as
+  `SKILL.md` for format detection and source coordinates. Omit positional inputs.
 
 Keep config, baseline, extra rules and caches outside all inspected inputs.
 See [configuration](../user/usage.md#configuration) and
@@ -138,11 +140,11 @@ Copy a [ready-to-use config](../../examples/configs/README.md) for a common work
 
 ### Reports
 
-- `--format text|json|sarif|markdown`: primary report format; default `text`.
+- `--format text|json|sarif|markdown` (`-f`): primary report format; default `text`.
   `terminal` is an alias for `text`.
-- `--output FILE`: primary report destination; default stdout. An existing regular
+- `--output FILE` (`-o`): primary report destination; default stdout. An existing regular
   file is replaced atomically; directories and symlinks are rejected.
-- `--report FORMAT=PATH`: additional report destination; repeatable, none by default.
+- `--report FORMAT=PATH` (`-r`): additional report destination; repeatable, none by default.
   Uses the same formats as `--format`. Destinations must be distinct and outside
   inputs and trusted operator files. The primary report is still produced.
 
@@ -153,15 +155,13 @@ See [report publication](../user/usage.md#save-reports).
 
 ### Policy
 
-- `--fail-on info|low|medium|high|critical`: minimum unsuppressed finding severity
+- `--fail-on info|low|medium|high|critical` (`--fo`): minimum unsuppressed finding severity
   that blocks admission; default `high`. Other policy reasons can still require
   review, and incomplete execution still exits with code 2.
-- `--block-at SEVERITY`: alias for `--fail-on`; same default. If both occur, the
-  last supplied value wins.
 - `--scope conservative|selected`: language coverage policy; default `conservative`.
   `selected` accepts declared language-analysis limitations, but does not waive
   parsing failures, unfinished checks or exhausted budgets.
-- `--baseline FILE`: trusted operator baseline JSON; unset by default.
+- `--baseline FILE` (`-b`): trusted operator baseline JSON; unset by default.
 - `--allow-baseline-globs`: permit glob approvals in that baseline; default `false`.
 
 See [baseline](../user/usage.md#baseline) and
@@ -169,7 +169,7 @@ See [baseline](../user/usage.md#baseline) and
 
 ### Optional static checks
 
-- `--checks LIST`: complete comma-separated selection of optional static checks.
+- `--checks LIST` (`--chk`): complete comma-separated selection of optional static checks.
   Default without config: `python,yaml,toml,yara,patterns`; the `basic` profile alias
   defaults to `none`. An explicit list replaces the configured selection.
   Names: `python` for Python AST checks, `yaml` and `toml` for structural parsing,
@@ -177,7 +177,7 @@ See [baseline](../user/usage.md#baseline) and
   `none` disables all optional static checks. Built-in checks always remain enabled.
   Supply the flag only once; empty, unknown, duplicate names and mixing `none`
   with other names are rejected.
-- `--yara-rules FILE`: additional trusted YARA source; unset by default. Requires
+- `--yara FILE` (`-y`): additional trusted YARA source; unset by default. Requires
   enabled YARA checks. Includes and console access are prohibited.
 
 Subsets and `none` require `--profile custom`; `standard` and `review` require the
@@ -188,14 +188,14 @@ See [checks and extensions](../user/inspection-profiles.md).
 
 - `--rulepack FILE`: explicit trusted `scout.rulepack/v1` additional YARA source
   artifact; unset by default. Requires YARA selection and is mutually exclusive
-  with `--yara-rules`. The file must be outside every inspected input.
+  with `--yara`. The file must be outside every inspected input.
 - `--rulepack-sha256 DIGEST`: optional lowercase 64-digit SHA-256 pin for all
   artifact bytes. Requires `--rulepack`; version metadata and whitespace are bound.
   A mismatch or incompatible ABI fails initialization. No automatic download or fallback.
-- `--workers N`: analyzer workers shared across the operation's targets; default
+- `--workers N` (`-w`): analyzer workers shared across the operation's targets; default
   `4`, range 1..32.
-- `--target-workers N`: simultaneous targets; default `1`, range 1..32.
-- `--timeout DURATION`: entire scan or comparison deadline; default `2m`, positive
+- `--target-workers N` (`--tw`): simultaneous targets; default `1`, range 1..32.
+- `--timeout DURATION` (`-t`): entire scan or comparison deadline; default `2m`, positive
   and at most `10m`.
 - `--parser-timeout DURATION`: deadline for one parser operation; default `3s`,
   positive and at most `10s`.
@@ -205,11 +205,11 @@ See [checks and extensions](../user/inspection-profiles.md).
   default `8192`, range 1..100000.
 - `--max-file-bytes N`: bytes per captured file; default `1048576` (1 MiB),
   range 1..33554432.
-- `--max-total-bytes N`: captured bytes per target; default `33554432` (32 MiB),
+- `--max-target-bytes N`: captured bytes per target; default `33554432` (32 MiB),
   at least `--max-file-bytes` and at most `268435456`.
 - `--max-archive-bytes N`: source archive bytes per target; default `33554432`,
   range 1..134217728.
-- `--max-capture-bytes N`: aggregate captured bytes across the run; default
+- `--max-run-bytes N`: aggregate captured bytes across the run; default
   `33554432`, range 1..268435456.
 - `--max-operations N`: analysis work budget shared across targets and tasks;
   default `16777216`, range 1..1099511627776.
@@ -223,7 +223,7 @@ See [checks and extensions](../user/inspection-profiles.md).
   range 1..100000.
 - `--extract-object-bytes N`: bytes per derived object; default `1048576`,
   range 1..33554432.
-- `--extract-total-bytes N`: extracted bytes per target; default `16777216`
+- `--extract-bytes N`: extracted bytes per target; default `16777216`
   (16 MiB), at least `--extract-object-bytes` and at most `134217728`.
 
 Per-target ceilings are also bounded by shared run budgets, divided among targets.
@@ -264,15 +264,15 @@ unless an explicit numeric loopback exception applies.
 
 ### Vulnerabilities
 
-- `--vuln`: enable exact-coordinate OSV queries; default `false`.
+- `--osv`: enable exact-coordinate OSV queries; default `false`.
   Requires network permission or an explicit offline cache.
-- `--allow-vulnerability-network`: authorize package-coordinate queries independently
+- `--allow-osv-network`: authorize package-coordinate queries independently
   of downloads and source upload; default `false`.
 - `--osv-cache FILE`: trusted exact-query cache; unset by default. A cache path also
   enables the service. Version 1 covers ordinary vulnerability IDs; version 2
   also selects `MAL001` for explicitly classified malicious-package records.
   Fresh version-2 cache answers take precedence over ordinary network queries.
-  A nonempty cache path also takes precedence over `--vuln=false`.
+  A nonempty cache path also takes precedence over `--osv=false`.
 - `--osv-cache-max-age DURATION`: maximum cache age; default `168h` (7 days),
   range `1m`..`8760h`.
 - `--osv-endpoint URL`: query endpoint; default `https://api.osv.dev/v1/querybatch`.
@@ -286,8 +286,8 @@ leave inspection gaps. See [OSV usage](../user/usage.md#network-services-and-ext
 
 ### LLM review
 
-- `--semantic`: enable a reviewer configured by flags; default `false`. A `review`
-  object in config also enables the reviewer. `--semantic=false` disables that
+- `--review` (`--llm`): enable a reviewer configured by flags; default `false`. A `review`
+  object in config also enables the reviewer. `--review=false` disables that
   configured service; also select a non-review profile when disabling it.
 - `--allow-source-upload`: authorize captured source upload; default `false`.
   Required for every enabled reviewer, including local services.
@@ -317,15 +317,13 @@ leave inspection gaps. See [OSV usage](../user/usage.md#network-services-and-ext
   and at most `2m`, also bounded by the overall operation deadline.
 
 Provider/quality flags require an enabled reviewer. `--profile review` still needs
-`--semantic` when the reviewer is supplied only through flags. See
+`--review` when the reviewer is supplied only through flags. See
 [semantic review](../user/semantic-review.md) for consent and provider requirements.
 
 ## Compare
 
 `compare` requires exactly two local paths. It supports scan configuration, report,
-policy, check, concurrency, budget, OSV and reviewer flags. It rejects `--input`,
-`--name`, `--allow-download`, `--revision`, `--download-*`, `--follow-external` and
-`--external-*`.
+policy, check, concurrency, budget, OSV and reviewer flags.
 
 - `--max-changes N`: maximum retained comparison deltas; default `4096`,
   range 1..20000. Truncation makes the comparison incomplete.
@@ -337,39 +335,40 @@ See [update comparison](../user/update-review.md).
 
 `config validate` uses the scan configuration, policy, static-check, concurrency,
 budget and service flags to construct and validate a scanner, without targets.
-`--config FILE` is optional; without it, validation starts from defaults.
+`--config FILE` (`-c`) is optional. Validation starts from defaults when omitted.
 The result is always the prepared inspection plan as JSON on stdout.
-`--format` has no effect on the plan. `--output` and `--report` are rejected.
 
 ## MCP server
 
 `mcp` uses scan configuration, policy, static-check, concurrency, budget and service
-flags. Inputs are authorized using `--target` or supplied by tool uploads;
-`--input`/`--name` do not select stdin scan inputs. Scan report flags do not control
-protocol output.
+flags. Authorize named inputs with `--target` or supply them through tool uploads.
+Reports are returned in tool responses.
 
 - `--transport stdio|http`: transport; default `stdio`.
 - `--listen ADDRESS`: HTTP numeric loopback bind; default `127.0.0.1:8837`.
-- `--auth-token-env NAME`: environment variable containing the HTTP bearer token;
+- `--token-env NAME`: environment variable containing the HTTP bearer token;
   unset by default. Required for HTTP; token length 32..512 non-whitespace bytes.
-- `--scan-timeout DURATION`: deadline for each admitted tool call; default `1m`,
+- `--tool-timeout DURATION`: deadline for each admitted tool call; default `1m`,
   positive and at most `10m`. `--timeout` also bounds the scanner operation.
-- `--max-concurrent N`: tool-call concurrency across sessions; default `2`,
+- `--concurrency N`: tool-call concurrency across sessions; default `2`,
   range 1..8.
 - `--target NAME=LOCAL_PATH`: authorized named local input; repeatable, none by
   default, maximum 64. Tool callers select names rather than arbitrary paths.
 - `--origin ORIGIN`: explicitly allowed browser HTTP Origin; repeatable, none by
   default. Empty means browser origins are denied. For HTTP only.
 
-`--auth-token-env` is also HTTP-only. Without named targets, use uploads.
+`--token-env` is also HTTP-only. Without named targets, use uploads.
 See [MCP setup](../user/integrations.md#mcp-server).
+
+`mcp snapshot` imports a local MCP capture. Use `--source-id ID` for a stable
+source identifier and `--output FILE` (`-o`) to write the snapshot to a file.
 
 ## Doctor
 
 `doctor` (alias `selftest`) checks the linked native backends.
 
-- `--format text|json`: output format; default `terminal`, an alias for `text`.
-- `--timeout DURATION`: cooperative total self-test deadline; default `90s`,
+- `--format text|json` (`-f`): output format; default `terminal`, an alias for `text`.
+- `--timeout DURATION` (`-t`): cooperative total self-test deadline; default `90s`,
   positive and at most `2m`.
 
 ## Baseline
@@ -378,13 +377,13 @@ See [MCP setup](../user/integrations.md#mcp-server).
 
 - `--from FILE`: required source. `create` reads a validated single-target JSON
   report; `approve` and `renew` read a baseline JSON document.
-- `--output FILE`: destination outside the source; required unless `--dry-run` is set.
+- `--output FILE` (`-o`): destination outside the source; required unless `--dry-run` is set.
 - `--reason TEXT`: operator justification; required for nonempty create/approve
   operations. Renew preserves each existing reason when omitted.
 - `--expires RFC3339`: required future expiry, for example `2099-01-01T00:00:00Z`.
 - `--fingerprint SHA256`: repeatable exact-entry selector for approve/renew;
   omitted selects all. Unknown, duplicate or malformed selectors fail without writing.
-- `--dry-run`: print `scout.baseline-preview/v1` JSON changes to stdout without
+- `--dry-run` (`-d`): print `scout.baseline-preview/v1` JSON changes to stdout without
   writing a baseline. `--output` is optional; a supplied destination is validated.
 
 `create` writes pending entries. `approve` approves selected entries. `renew` only
@@ -398,7 +397,7 @@ their reasons and expiry times. See [baseline workflow](../user/usage.md#baselin
   `false`. Without `--all`, print the base catalog. Output is JSON.
 - `profiles`: profile-name JSON list; no flags.
 - `capabilities`: compiled parser/signature backend JSON; no flags.
-- `version`: build version text; no flags. Root `--version` is equivalent.
+- `version` prints the build version. The root flag `--version` (`-v`) does the same.
 
 ## Knowledge and integrations
 
@@ -412,7 +411,7 @@ their reasons and expiry times. See [baseline workflow](../user/usage.md#baselin
 
 - `--bundle agent-skill|claude-code|codex|pi|opencode|review-materials`: required
   bundle name; unset by default.
-- `--output FILE`: required new ZIP path. Existing files are never replaced.
+- `--output FILE` (`-o`): required new ZIP path. Existing files are never replaced.
 
 See [integration bundles](../user/integrations.md).
 
@@ -429,11 +428,11 @@ See [integration bundles](../user/integrations.md).
 - `--max-pages N`: page ceiling; default `32`, range 1..128.
 - `--max-bytes N`: aggregate response bytes; default `8388608` (8 MiB),
   range 1..33554432.
-- `--output FILE`: snapshot JSON destination; default stdout.
+- `--output FILE` (`-o`): snapshot JSON destination; default stdout.
 
 `registry compare` takes two snapshot paths, previous then current:
 
-- `--output FILE`: comparison JSON destination; default stdout.
+- `--output FILE` (`-o`): comparison JSON destination; default stdout.
 
 See [registry snapshots](external-sources.md#mcp-registry).
 
@@ -461,9 +460,10 @@ self-test fails. Other operator commands use `0` for success and `2` for failure
 ### Rulepack artifacts
 
 `scout rules pack create --id ID --version VERSION --yara FILE [--output FILE]`
-packages trusted UTF-8 additional source as deterministic JSON. With no `--output`,
-the artifact goes to stdout. Publication cannot overwrite the source file.
-`--id`, `--version` and `--yara` are required; positional arguments are rejected.
+packages trusted UTF-8 additional source as deterministic JSON. The artifact goes
+to stdout by default. Use `--output FILE` (`-o`) to write it to a file.
+Publication cannot overwrite the source file. The command requires `--id`,
+`--version` (`-v`) and `--yara` (`-y`) and rejects positional arguments.
 Creation validates metadata and bounds; it does not compile YARA.
 
 `scout rules pack inspect [--sha256 DIGEST] FILE` validates exact schema fields,
@@ -480,21 +480,22 @@ Both commands require explicitly selected local files. The artifact is limited t
 ## Environment snapshots
 
 ```text
-scout snapshot create --snapshot FILE --root ID=PATH [scan flags]
+scout snapshot create --snapshot FILE --root ID=PATH [local scan flags]
 scout snapshot compare --snapshot FILE --root ID=PATH [compare flags]
 scout snapshot compare --snapshot FILE --empty [compare flags]
 scout snapshot compare --snapshot FILE --candidate FILE [compare flags]
 scout snapshot compare --snapshot FILE --save-candidate NEW_FILE [compare flags]
-scout snapshot compare --snapshot FILE [--include-source-diff] [compare flags]
+scout snapshot compare --snapshot FILE [--source-diff] [compare flags]
 scout snapshot inspect --snapshot FILE [--format text|json]
-scout discover --agent AGENT --snapshot FILE [discovery flags] -- [scan flags]
+scout discover --agent AGENT --snapshot FILE [discovery flags] -- [local scan flags]
 ```
 
-`--snapshot` selects a new checkpoint for create or an existing checkpoint for compare.
+`--snapshot FILE` (`-s`) selects a new checkpoint for create or an existing checkpoint for compare.
 Repeat `--root` for the complete current selection. `--empty` explicitly selects no roots.
+`snapshot inspect` accepts `--format text|json` (`-f`).
 See [saved environments](../user/environment-snapshots.md).
 
 Without `--root`, `--empty` or `--candidate`, snapshot compare repeats saved discovery or rechecks saved source paths.
 `--candidate` reads a second snapshot and cannot be combined with `--root`, `--empty` or `--save-candidate`.
 `--save-candidate` writes the current bytes used in the comparison and their inspection to a new file.
-`--include-source-diff` includes bounded source excerpts only when explicitly selected.
+`--source-diff` includes bounded source excerpts only when explicitly selected.

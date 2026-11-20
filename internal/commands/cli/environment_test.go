@@ -44,7 +44,7 @@ func TestDiscoverEnvironmentRequiresOneAgentAndProjectContext(t *testing.T) {
 }
 
 func TestEnvironmentRejectsRemoteAndStdinBeforeCapture(t *testing.T) {
-	for _, inputs := range [][]string{{"https://example.invalid/never-fetch"}, {"--input", "-", "--name", "SKILL.md"}} {
+	for _, inputs := range [][]string{{"https://example.invalid/never-fetch"}, {"--stdin", "SKILL.md"}} {
 		var out, diagnostics bytes.Buffer
 		args := append([]string{"scan", "--environment", "--profile", "custom", "--checks", "none"}, inputs...)
 		if code := cli.Run(context.Background(), args, &out, &diagnostics); code != 2 || out.Len() != 0 || !strings.Contains(diagnostics.String(), "local paths") {

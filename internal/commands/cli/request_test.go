@@ -38,7 +38,7 @@ func TestConfigValidationReturnsThePreparedInspectionWithoutTargets(t *testing.T
 		{"--baseline", filepath.Join(t.TempDir(), "missing")},
 		{"--output", filepath.Join(t.TempDir(), "plan.json")},
 		{"--report", "json=" + filepath.Join(t.TempDir(), "plan.json")},
-		{"--name", "ordinary.txt"},
+		{"--stdin", "ordinary.txt"},
 	} {
 		stdout.Reset()
 		stderr.Reset()
@@ -57,12 +57,12 @@ func TestMCPArgumentsPreserveTransportIdentityAndTargetGrants(t *testing.T) {
 	if err != nil || invocation.transport != "stdio" || len(invocation.options.Targets) != 1 {
 		t.Fatalf("stdio grants lost: %+v %v", invocation, err)
 	}
-	httpArgs := append(append([]string{}, base...), "--transport", "http", "--listen", "127.0.0.1:0", "--auth-token-env", "SCOUT_CLI_TEST_TOKEN", "--origin", "https://review.example")
+	httpArgs := append(append([]string{}, base...), "--transport", "http", "--listen", "127.0.0.1:0", "--token-env", "SCOUT_CLI_TEST_TOKEN", "--origin", "https://review.example")
 	invocation, err = parseMCPInvocation(context.Background(), httpArgs, io.Discard)
 	if err != nil || invocation.options.HTTPToken != token || len(invocation.options.AllowedOrigins) != 1 {
 		t.Fatalf("HTTP invocation lost explicit configuration: %+v %v", invocation, err)
 	}
-	for _, controls := range [][]string{{"--transport", "http", "--listen", "0.0.0.0:8000"}, {"--transport", "http"}, {"--transport", "http", "--auth-token-env", "SCOUT_MISSING_TOKEN"}, {"--transport", "unknown"}, {"--origin", "https://review.example"}} {
+	for _, controls := range [][]string{{"--transport", "http", "--listen", "0.0.0.0:8000"}, {"--transport", "http"}, {"--transport", "http", "--token-env", "SCOUT_MISSING_TOKEN"}, {"--transport", "unknown"}, {"--origin", "https://review.example"}} {
 		_, err := parseMCPInvocation(context.Background(), append(append([]string{}, base...), controls...), io.Discard)
 		if err == nil {
 			t.Fatalf("invalid transport controls accepted: %v", controls)
@@ -119,17 +119,16 @@ func TestTrustedServiceFilesAreLoadedOnlyIntoTheirConfiguredServices(t *testing.
 }
 
 func TestStdinTargetsRequireOneExplicitNameAndNoPositionalInputs(t *testing.T) {
-	r := request{input: "-", name: "candidate.md"}
+	r := request{stdinName: "candidate.md"}
 	input := strings.NewReader("inert source")
 	targets, err := r.scanTargets(input)
 	if err != nil || len(targets) != 1 || targets[0].Label() != "candidate.md" || targets[0].IsLocal() {
 		t.Fatalf("stdin identity changed: %v %v", targets, err)
 	}
-	for _, invalid := range []request{{input: "file", name: "candidate.md"}, {input: "-"}, {
-		input:   "-",
-		name:    "candidate.md",
-		targets: []string{"other"},
-	}, {name: "candidate.md"}, {}} {
+	for _, invalid := range []request{
+		{stdinName: "candidate.md", targets: []string{"other"}},
+		{},
+	} {
 		if _, err := invalid.scanTargets(input); err == nil {
 			t.Fatal("ambiguous stdin or empty target request accepted")
 		}
@@ -202,7 +201,7 @@ func TestMCPBoundaryFailuresDoNotProduceSuccessfulProtocolOutput(t *testing.T) {
 		{"--unknown"},
 		{"--fail-on", "unknown"},
 		{"--workers", "0"},
-		{"--max-concurrent", "0"},
+		{"--concurrency", "0"},
 		{"--target", "candidate=", "--target", "candidate=" + t.TempDir()},
 	} {
 		var stdout, stderr bytes.Buffer
@@ -218,17 +217,17 @@ func TestMCPBoundaryFailuresDoNotProduceSuccessfulProtocolOutput(t *testing.T) {
 }
 
 func TestArgvParsingIsPassiveAndRetainsExplicitFalse(t *testing.T) {
-	patch, err := parseArgv("scan", []string{"--config", "/missing/operator.json", "--semantic=false", "--checks", "none", "--workers", "3", "--report", "json=first.json", "--report", "sarif=second.sarif", "--", "input"}, io.Discard, nil)
+	patch, err := parseArgv("scan", []string{"--config", "/missing/operator.json", "--review=false", "--checks", "none", "--workers", "3", "--report", "json=first.json", "--report", "sarif=second.sarif", "--", "input"}, io.Discard, nil)
 	if err != nil {
 		t.Fatalf("argv parsing tried to resolve operator inputs: %v", err)
 	}
-	if !patch.present["semantic"] || !patch.present["checks"] || patch.semantic || patch.checks.value != (scout.Checks{}) || patch.values.settings.Scanner.Concurrency.Workers != 3 || len(patch.values.reports) != 2 {
+	if !patch.present["review"] || !patch.present["checks"] || patch.review || patch.checks.value != (scout.Checks{}) || patch.values.settings.Scanner.Concurrency.Workers != 3 || len(patch.values.reports) != 2 {
 		t.Fatal("typed argv patch lost explicit false, numeric value, or repeated output")
 	}
 }
 
 func TestFinalResolveDisablesConfiguredReviewBeforeCredentialAccess(t *testing.T) {
-	patch, err := parseArgv("scan", []string{"--semantic=false", "--profile", "basic", "--", "input"}, io.Discard, nil)
+	patch, err := parseArgv("scan", []string{"--review=false", "--profile", "basic", "--", "input"}, io.Discard, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +322,7 @@ func TestNamedProfilesReplaceConfiguredCustomChecks(t *testing.T) {
 		t.Run(profile, func(t *testing.T) {
 			args := []string{"--config", config, "--profile", profile}
 			if profile == "review" || profile == "semantic" {
-				args = append(args, "--semantic", "--allow-source-upload", "--llm-provider", "chat-completions", "--llm-endpoint", "https://example.invalid/review", "--llm-model", "fixture")
+				args = append(args, "--review", "--allow-source-upload", "--llm-provider", "chat-completions", "--llm-endpoint", "https://example.invalid/review", "--llm-model", "fixture")
 			}
 			r, err := parseRequest("scan", append(args, "--", "inert.txt"), io.Discard)
 			if err != nil {
@@ -422,12 +421,12 @@ func TestChecksRejectsAmbiguousListsBeforeReadingConfiguration(t *testing.T) {
 }
 
 func TestVulnFlagSelectsService(t *testing.T) {
-	r, err := parseRequest("scan", []string{"--vuln", "--allow-vulnerability-network"}, io.Discard)
+	r, err := parseRequest("scan", []string{"--osv", "--allow-osv-network"}, io.Discard)
 	if err != nil || r.settings.Scanner.Vulnerabilities == nil || !r.settings.Scanner.Vulnerabilities.Enabled || !r.settings.Scanner.Vulnerabilities.AllowNetwork {
 		t.Fatalf("vulnerability service not enabled: %+v %v", r.settings.Scanner.Vulnerabilities, err)
 	}
 
-	r, err = parseRequest("scan", []string{"--vuln=false"}, io.Discard)
+	r, err = parseRequest("scan", []string{"--osv=false"}, io.Discard)
 	if err != nil || r.settings.Scanner.Vulnerabilities != nil {
 		t.Fatalf("explicit false enabled vulnerability service: %+v %v", r.settings.Scanner.Vulnerabilities, err)
 	}
@@ -438,7 +437,7 @@ func TestConfiguredReviewerLimitsKeepProvider(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"schema":"scout.config/v1","profile":"custom","checks":{"python":false,"yaml":false,"toml":false,"yara":false},"review":{"provider":"chat-completions","endpoint":"https://example.invalid/v1/chat/completions","model":"test"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	r, err := parseRequest("scan", []string{"--config", path, "--allow-source-upload", "--semantic", "--llm-max-requests", "1", "target"}, &bytes.Buffer{})
+	r, err := parseRequest("scan", []string{"--config", path, "--allow-source-upload", "--review", "--llm-max-requests", "1", "target"}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +450,7 @@ func TestBedrockCLIUsesExplicitCredentials(t *testing.T) {
 	t.Setenv("SCOUT_TEST_ACCESS", "TESTACCESS123")
 	t.Setenv("SCOUT_TEST_SECRET", "fixture-secret-only")
 	t.Setenv("SCOUT_TEST_SESSION", "fixture-session-only")
-	common := []string{"--profile", "basic", "--semantic", "--allow-source-upload", "--llm-provider", "bedrock", "--llm-endpoint", "https://bedrock-runtime.us-east-1.amazonaws.com/model/test-model/invoke", "--llm-model", "test-model", "--llm-aws-region", "us-east-1", "--llm-aws-access-key-env", "SCOUT_TEST_ACCESS", "--llm-aws-secret-key-env", "SCOUT_TEST_SECRET"}
+	common := []string{"--profile", "basic", "--review", "--allow-source-upload", "--llm-provider", "bedrock", "--llm-endpoint", "https://bedrock-runtime.us-east-1.amazonaws.com/model/test-model/invoke", "--llm-model", "test-model", "--llm-aws-region", "us-east-1", "--llm-aws-access-key-env", "SCOUT_TEST_ACCESS", "--llm-aws-secret-key-env", "SCOUT_TEST_SECRET"}
 	for _, session := range []bool{false, true} {
 		args := append([]string(nil), common...)
 		if session {
@@ -502,7 +501,7 @@ func TestConfiguredReviewerCanBeDisabledBeforeConsentAndCredentials(t *testing.T
 		t.Fatal(err)
 	}
 	t.Setenv("SCOUT_UNAVAILABLE_TEST_KEY", "")
-	r, err := parseRequest("scan", []string{"--config", path, "--semantic=false", "--profile", "basic", "target"}, &bytes.Buffer{})
+	r, err := parseRequest("scan", []string{"--config", path, "--review=false", "--profile", "basic", "target"}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}

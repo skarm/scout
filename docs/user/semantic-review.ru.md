@@ -12,7 +12,7 @@ LLM-провайдеру. Она добавляет гипотезы и оцен
 [инструкции пресета](../../examples/configs/README.ru.md#шаблон-llm-проверки).
 
 ```bash
-scout scan --profile review --semantic --allow-source-upload \
+scout scan --profile review --review --allow-source-upload \
   --llm-provider chat-completions \
   --llm-endpoint https://trusted.example/v1/chat/completions \
   --llm-model YOUR_MODEL --llm-api-key-env REVIEW_API_KEY \

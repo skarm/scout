@@ -30,7 +30,7 @@ func integrationExport(ctx context.Context, args []string, stdout, stderr io.Wri
 	name := f.String("bundle", "", "agent-skill, claude-code, codex, pi, opencode, review-materials")
 
 	dest := f.String("output", "", "NEW ZIP path; never overwrites or installs")
-	if e := f.Parse(args); e != nil {
+	if e := parseFlags(f, args); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
 			return 0
 		}

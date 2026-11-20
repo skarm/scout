@@ -128,13 +128,17 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 	fs.Var(&a.includePaths, "include-path", "narrow discovered scan roots to this path; repeatable; cannot expand discovery")
 	fs.Var(&a.excludePaths, "exclude-path", "omit scan roots overlapping this path; repeatable; use --kind for component-level roots")
 
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return a, err
 	}
 
 	fs.Visit(func(f *flag.Flag) {
-		a.explicitHome = a.explicitHome || f.Name == "home"
-		a.explicitOutput = a.explicitOutput || f.Name == "format" || f.Name == "output"
+		switch canonicalFlagName(f.Name) {
+		case "home":
+			a.explicitHome = true
+		case "format", "output":
+			a.explicitOutput = true
+		}
 	})
 
 	a.scanArgs = fs.Args()
@@ -189,7 +193,7 @@ func scanDiscovered(ctx context.Context, a discoveryArguments, snapshot discover
 		return requestError(err, stderr)
 	}
 
-	if len(r.targets) != 0 || r.input != "" || r.name != "" {
+	if len(r.targets) != 0 || r.stdinName != "" {
 		return usageError(stderr, "discovered scan accepts scan flags only, without positional targets or stdin")
 	}
 

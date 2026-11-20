@@ -47,7 +47,7 @@ await test('only named inputs and enumerated tool arguments are accepted', () =>
   assert.deepEqual(p.args.slice(-2),['--','/review/plugin']);
   assert.equal(p.args[p.args.indexOf('--profile')+1], 'standard');
   assert.equal(p.args[p.args.indexOf('--harness')+1], 'claude-code');
-  for(const flag of ['--allow-download','--semantic','--vuln','--baseline','--output','--config']) assert.ok(!p.args.includes(flag));
+  for(const flag of ['--allow-download','--review','--osv','--baseline','--output','--config']) assert.ok(!p.args.includes(flag));
   assert.deepEqual(p.grants.map(x=>x.permission),['bash','read','external_directory']);
   for(const args of [{target:'/etc/passwd'},{target:'--help'},{target:'candidate',args:['--baseline','x']},{target:'candidate',semantic:'true'},{target:'candidate',semantic:true},{target:'constructor'}]) assert.throws(()=>invocation(args,c));
   const reduced=invocation({target:'candidate'},setup({SCOUT_REDUCED_CORE:'1'}));
@@ -63,7 +63,7 @@ await test('download and source upload have different grants and no implicit cre
   assert.ok(p.args.includes('--allow-download')); assert.ok(p.args.includes('--allow-source-upload'));
   assert.ok(p.args.includes('SCOUT_REVIEW_KEY')); assert.ok(!p.args.includes('REVIEW_KEY'));
   assert.equal(p.args[p.args.indexOf('--revision')+1],'a'.repeat(40));
-  assert.ok(!p.args.includes('--allow-vulnerability-network'));
+  assert.ok(!p.args.includes('--allow-osv-network'));
 });
 
 await test('denial and cancellation precede executable/credential access', async () => {

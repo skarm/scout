@@ -104,9 +104,9 @@ scout scan --baseline /ci-results/reviewed-baseline.json ./my-plugin
 `--revision` с полным commit SHA. См. [внешние источники](../reference/external-sources.ru.md).
 
 ```sh
-scout scan --vuln --allow-vulnerability-network \
+scout scan --osv --allow-osv-network \
   --format json ./my-plugin
-scout scan --vuln --osv-cache /ci/osv-cache.json \
+scout scan --osv --osv-cache /ci/osv-cache.json \
   --osv-cache-max-age 168h --format json ./my-plugin
 ```
 
@@ -118,7 +118,7 @@ OSV проверяет точные координаты захваченных 
 
 Доверенный кеш с `"version": 2` включает `MAL001`. Точные координаты зависимости с классификацией `malicious-package` дают находку Critical с доказательством из захваченного манифеста или lockfile. Обычные уязвимости проходят по `OSV001` (High). Префикс `MAL-` в идентификаторе сам по себе не задаёт классификацию.
 
-Используйте `--vuln --osv-cache FILE` и храните кеш вне проверяемого входа. Подставьте проверенные данные и фактическое время запроса.
+Используйте `--osv --osv-cache FILE` и храните кеш вне проверяемого входа. Подставьте проверенные данные и фактическое время запроса.
 
 ```json
 {
@@ -162,6 +162,6 @@ scout scan --rulepack /ci/agent-1.2.3.rulepack.json \
 
 Задайте `trusted_sha256` хешем пакета в нижнем регистре из доверенного процесса выпуска. Хеш проверяет все байты пакета. Доверие к издателю устанавливает процесс выпуска. Для обновления или отката меняйте путь и хеш вместе. Работающий Scanner сохраняет загруженный исходник.
 
-В конфигурации используйте `signatures.rulepack_file` и `signatures.rulepack_sha256`. Профили standard и review включают YARA. В custom добавьте `--checks yara`. Выберите один способ загрузки: `--rulepack` или `--yara-rules`.
+В конфигурации используйте `signatures.rulepack_file` и `signatures.rulepack_sha256`. Профили standard и review включают YARA. В custom добавьте `--checks yara`. Выберите один способ загрузки: `--rulepack` или `--yara`.
 
 Создание и просмотр работают без YARA-X. При сканировании Scout компилирует исходник до захвата. Неподдерживаемый синтаксис, повторяющиеся имена, include и console завершают операцию ошибкой. Лимит пакета и исходника составляет 256 КиБ. Отчёты сохраняют метаданные и хеши пакета. [Флаги rulepack](../reference/cli.ru.md#пакеты-правил)

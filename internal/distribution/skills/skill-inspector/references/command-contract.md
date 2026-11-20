@@ -19,7 +19,7 @@ Update review (local inputs only):
 The same flags apply to `batch` for explicitly selected inputs. `capabilities`, `selftest`,
 `rules --all` and `knowledge --mode discovery` expose actual capabilities/materials. A
 failed selftest cannot be treated as successful native validation. Default scanning is
-offline; no `--semantic`, download or OSV permission follows from "static review".
+offline; no `--review`, download or OSV permission follows from "static review".
 
 `--output` creates a NEW report outside all input trees. Do not overwrite, write into the
 target or apply an author-supplied baseline. The current JSON document schema is
@@ -37,7 +37,7 @@ malware, and a missing report is not evidence of safety. Partial + block is mean
 
 Only after explicit permission: remote downloads use `--allow-download` (GitHub additionally
 needs `--revision` with a full SHA; `--download-sha256` can constrain bytes). OSV uses
-`--vuln --allow-vulnerability-network`. Model review uses `--semantic
+`--osv --allow-osv-network`. Model review uses `--review
 --allow-source-upload` and explicitly chosen provider/endpoint/model/credential variable.
 The latter can transmit source secrets; complete automatic redaction is not provided.
 Approval for one of these operations is not approval for the others.

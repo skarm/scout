@@ -32,7 +32,7 @@ Pi запрашивает интерактивное подтверждение,
 scout mcp --profile standard --transport stdio \
   --target candidate=/absolute/review/candidate
 scout mcp --profile standard --transport http --listen 127.0.0.1:8837 \
-  --auth-token-env SCOUT_MCP_TOKEN --target candidate=/absolute/review/candidate
+  --token-env SCOUT_MCP_TOKEN --target candidate=/absolute/review/candidate
 ```
 
 `scan_skill` принимает разрешённый ключ входа либо загрузку с именем файла

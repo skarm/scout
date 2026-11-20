@@ -58,20 +58,19 @@ func requestError(err error, stderr io.Writer) int {
 }
 
 func (r *request) scanTargets(stdin io.Reader) ([]scout.Target, error) {
-	if r.environment && r.input != "" {
-		return nil, errors.New("environment analysis requires local paths, not stdin")
-	}
-
-	if r.input != "" {
-		target, err := r.stdinTarget(stdin)
-		if err != nil {
-			return nil, err
+	if r.stdinName != "" {
+		if r.environment {
+			return nil, errors.New("environment analysis requires local paths")
 		}
 
-		return []scout.Target{target}, nil
+		if len(r.targets) != 0 {
+			return nil, errors.New("--stdin requires a single named input without positional targets")
+		}
+
+		return []scout.Target{stdinReaderTarget(r.stdinName, stdin)}, nil
 	}
 
-	if r.name != "" || len(r.targets) == 0 || len(r.targets) > scout.MaxScanTargets {
+	if len(r.targets) == 0 || len(r.targets) > scout.MaxScanTargets {
 		return nil, errors.New("scan requires 1..32 targets")
 	}
 
@@ -233,7 +232,7 @@ func (r *request) scanTarget(name string) (scout.Target, error) {
 }
 
 func (r *request) validateComparison() error {
-	if len(r.targets) != 2 || r.input != "" || r.name != "" || r.grants.Download || r.revision != "" || r.sha256 != "" {
+	if len(r.targets) != 2 {
 		return errors.New("compare requires two local inputs")
 	}
 
@@ -246,14 +245,6 @@ func (r *request) validateComparison() error {
 	}
 
 	return nil
-}
-
-func (r *request) stdinTarget(stdin io.Reader) (scout.Target, error) {
-	if r.input != "-" || r.name == "" || len(r.targets) != 0 {
-		return scout.Target{}, errors.New("stdin requires --input - --name and no positional targets")
-	}
-
-	return stdinReaderTarget(r.name, stdin), nil
 }
 
 func executeRequest(ctx context.Context, r request, targets []scout.Target, operation report.Operation, stdout, stderr io.Writer) int {

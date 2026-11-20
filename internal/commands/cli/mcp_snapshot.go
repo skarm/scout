@@ -15,7 +15,7 @@ func mcpSnapshotCommand(ctx context.Context, args []string, stdout, stderr io.Wr
 	source := fs.String("source-id", "", "operator-chosen stable server/source identity")
 
 	output := fs.String("output", "", "snapshot output file; default stdout")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}
 

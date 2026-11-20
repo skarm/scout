@@ -15,7 +15,7 @@ import (
 
 const usage = `Usage:
   scout scan [flags] <target> [target...]
-  scout scan [flags] --input - --name <relative-name>
+  scout scan [flags] --stdin NAME
   scout compare [flags] <before> <after>
   scout snapshot create|compare|inspect --snapshot FILE [flags]
   scout discover [flags] [--scan -- <scan flags>]
@@ -32,12 +32,12 @@ const usage = `Usage:
   scout integrations list|export [flags]
   scout registry fetch|compare [flags]
   scout attestation verify --public-key KEY --envelope DSSE --artifact FILE --subject NAME
-  scout version
+  scout version | -v | --version
   scout help | -h | --help
 
 Scan flags: --config FILE --profile standard|review|custom --format text|json|sarif|markdown
   --report FORMAT=PATH (repeatable) --workers N --timeout DURATION --fail-on SEVERITY
-  --baseline FILE --allow-download --allow-vulnerability-network --allow-source-upload
+  --baseline FILE --allow-download --allow-osv-network --allow-source-upload
 Network and source upload require separate explicit grants. Configuration is never discovered in targets.
 Place flags before inputs. Use -- before a variable or a path beginning with -.
 Run scout -h for the complete flag reference; scout scan -h for scan defaults.
@@ -108,7 +108,7 @@ func informationalCommand(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "help", "-h", "--help":
 		return fullHelp(stdout)
-	case "version", "--version":
+	case "version", "--version", "-v":
 		if len(args) != 1 {
 			return usageError(stderr, "version takes no arguments")
 		}

@@ -36,7 +36,7 @@ func TestFullHelpAndManualCoverEveryCommandFlag(t *testing.T) {
 		manuals[name] = string(data)
 	}
 
-	flagName := regexp.MustCompile(`(?m)^  -([a-z][a-z0-9-]*)(?:\s|$)`)
+	flagName := regexp.MustCompile(`(?m)^  --([a-z][a-z0-9-]*)(?:,|\[|\s|$)`)
 	referenceName := regexp.MustCompile(`--([a-z][a-z0-9-]*)`)
 	for _, command := range [][]string{
 		{"scan"},

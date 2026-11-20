@@ -27,7 +27,7 @@ func attestationCommand(ctx context.Context, args []string, stdout, stderr io.Wr
 	artifact := fs.String("artifact", "", "regular artifact file whose exact bytes must match the signed subject")
 
 	subject := fs.String("subject", "", "exact signed subject name")
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := parseFlags(fs, args[1:]); err != nil {
 		return requestError(err, stderr)
 	}
 

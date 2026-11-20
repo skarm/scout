@@ -68,7 +68,7 @@ func environmentSnapshotCommand(ctx context.Context, args []string, stdout, stde
 
 	mode := args[0]
 
-	r, snapshotPath, inputs, err := parseSnapshotRequest(mode, args[1:], stderr)
+	r, snapshotPath, inputs, err := parseSnapshotRequest(mode, args[1:], stderr, "", nil)
 	if err != nil {
 		return requestError(err, stderr)
 	}
@@ -537,28 +537,25 @@ func uniqueJSON(data []byte) error {
 	return nil
 }
 
-func parseSnapshotRequest(mode string, args []string, stderr io.Writer) (request, string, map[string]string, error) {
-	command := "scan"
-	if mode == "compare" {
-		command = "compare"
-	}
-
+func parseSnapshotRequest(mode string, args []string, stderr io.Writer, snapshotPath string, discovered map[string]string) (request, string, map[string]string, error) {
 	var (
-		snapshotPath string
-		candidate    string
-		save         string
-		roots        repeated
-		empty        bool
-		diff         bool
+		candidate string
+		save      string
+		roots     repeated
+		empty     bool
+		diff      bool
 	)
 
-	r, err := resolveRequest(command, args, stderr, func(fs *flag.FlagSet) {
-		fs.BoolVar(&diff, "include-source-diff", false, "include bounded source excerpts in change reports; may contain secrets")
+	r, err := resolveRequest("snapshot "+mode, args, stderr, func(fs *flag.FlagSet) {
+		if discovered != nil {
+			return
+		}
+
 		fs.StringVar(&snapshotPath, "snapshot", "", "required environment snapshot path (create never replaces it)")
 		fs.Var(&roots, "root", "named local root ID=PATH; repeat for the complete selected environment")
-		fs.BoolVar(&empty, "empty", false, "explicitly compare against an empty environment")
-
 		if mode == "compare" {
+			fs.BoolVar(&empty, "empty", false, "explicitly compare against an empty environment")
+			fs.BoolVar(&diff, "source-diff", false, "include bounded source excerpts in change reports; may contain secrets")
 			fs.StringVar(&candidate, "candidate", "", "compare with a second saved environment snapshot")
 			fs.StringVar(&save, "save-candidate", "", "save the checked current bytes to a new snapshot file")
 		}
@@ -567,16 +564,23 @@ func parseSnapshotRequest(mode string, args []string, stderr io.Writer) (request
 		return r, "", nil, err
 	}
 
-	if snapshotPath == "" || len(r.targets) != 0 || r.input != "" || r.name != "" || r.followExternal || r.grants.Download || r.revision != "" || r.sha256 != "" {
-		return r, "", nil, errors.New("snapshot requires --snapshot and named local --root inputs; external traversal and downloads are unsupported")
+	if snapshotPath == "" || len(r.targets) != 0 {
+		return r, "", nil, errors.New("snapshot requires --snapshot and uses named local --root inputs")
 	}
 
-	inputs, err := parseSnapshotRoots(&r, roots)
-	if err != nil {
-		return r, "", nil, err
+	inputs := discovered
+	if inputs == nil {
+		inputs, err = parseSnapshotRoots(&r, roots)
+		if err != nil {
+			return r, "", nil, err
+		}
+	} else {
+		for _, id := range sortedRootIDs(inputs, nil) {
+			r.targets = append(r.targets, inputs[id])
+		}
 	}
 
-	if len(inputs) > scout.MaxScanTargets || len(inputs) == 0 && mode != "compare" || empty && (mode != "compare" || len(inputs) != 0) {
+	if len(inputs) > scout.MaxScanTargets || len(inputs) == 0 && mode != "compare" || empty && len(inputs) != 0 {
 		return r, "", nil, errors.New("select 1..32 named roots for creation; compare can reuse the saved selection")
 	}
 

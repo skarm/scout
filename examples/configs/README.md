@@ -93,8 +93,8 @@ See [build variants](../../docs/development/native-build.md).
 ## Vulnerability queries
 
 ```sh
-scout config validate --config examples/configs/vuln.json --allow-vulnerability-network
-scout scan --config examples/configs/vuln.json --allow-vulnerability-network \
+scout config validate --config examples/configs/vuln.json --allow-osv-network
+scout scan --config examples/configs/vuln.json --allow-osv-network \
   --format markdown ./my-skill
 ```
 

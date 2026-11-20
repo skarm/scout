@@ -12,9 +12,10 @@ import (
 	"github.com/skarm/scout/review"
 )
 
-func bindServices(fs *flag.FlagSet, p *argvPatch) {
-	r := &p.values
+func bindDownloads(fs *flag.FlagSet, r *request) {
 	fs.BoolVar(&r.grants.Download, "allow-download", r.grants.Download, "allow explicit downloads")
+	fs.BoolVar(&r.settings.Scanner.Download.AllowLoopback, "download-allow-loopback", r.settings.Scanner.Download.AllowLoopback, "allow explicit local download server")
+	fs.DurationVar(&r.settings.Scanner.Download.Timeout, "download-timeout", r.settings.Scanner.Download.Timeout, "download timeout")
 
 	external := scout.DefaultExternalOptions()
 
@@ -23,16 +24,16 @@ func bindServices(fs *flag.FlagSet, p *argvPatch) {
 	fs.IntVar(&r.externalDepth, "external-depth", external.MaxDepth, "maximum external reference depth")
 	fs.IntVar(&r.externalRequests, "external-max-requests", external.MaxRequests, "maximum external source requests")
 	fs.Int64Var(&r.externalBytes, "external-max-bytes", external.MaxBytes, "aggregate external response byte ceiling")
-	fs.BoolVar(&r.grants.VulnerabilityNetwork, "allow-vulnerability-network", r.grants.VulnerabilityNetwork, "allow package coordinate queries")
+}
+
+func bindServices(fs *flag.FlagSet, p *argvPatch) {
+	r := &p.values
+	fs.BoolVar(&r.grants.VulnerabilityNetwork, "allow-osv-network", r.grants.VulnerabilityNetwork, "allow package coordinate queries")
 	fs.BoolVar(&r.grants.SourceUpload, "allow-source-upload", r.grants.SourceUpload, "allow captured source upload")
-	fs.BoolVar(&r.settings.Scanner.Download.AllowLoopback, "download-allow-loopback", r.settings.Scanner.Download.AllowLoopback, "allow explicit local download server")
-	fs.DurationVar(&r.settings.Scanner.Download.Timeout, "download-timeout", r.settings.Scanner.Download.Timeout, "download timeout")
-	fs.StringVar(&r.revision, "revision", "", "pinned commit revision")
-	fs.StringVar(&r.sha256, "download-sha256", "", "pinned response hash")
-	fs.StringVar(&r.settings.ExtraRulesPath, "yara-rules", r.settings.ExtraRulesPath, "trusted additional rules file")
+	fs.StringVar(&r.settings.ExtraRulesPath, flagYARA, r.settings.ExtraRulesPath, "trusted additional YARA rules file")
 	fs.StringVar(&r.settings.RulepackPath, "rulepack", r.settings.RulepackPath, "trusted versioned YARA source artifact")
 	fs.StringVar(&r.settings.Scanner.Signatures.RulepackSHA256, "rulepack-sha256", r.settings.Scanner.Signatures.RulepackSHA256, "expected SHA-256 of all rulepack artifact bytes")
-	fs.BoolVar(&p.vulnerabilities, "vuln", p.vulnerabilities, "enable exact vulnerability queries")
+	fs.BoolVar(&p.vulnerabilities, "osv", p.vulnerabilities, "enable exact OSV queries")
 	fs.StringVar(&r.settings.OSVCachePath, "osv-cache", r.settings.OSVCachePath, "trusted exact-query cache (v1 vulnerabilities; v2 malicious packages)")
 	fs.StringVar(&r.settings.Scanner.Vulnerabilities.Endpoint, "osv-endpoint", r.settings.Scanner.Vulnerabilities.Endpoint, "query endpoint")
 	fs.BoolVar(&r.settings.Scanner.Vulnerabilities.AllowLoopback, "osv-allow-loopback", r.settings.Scanner.Vulnerabilities.AllowLoopback, "allow explicit local query endpoint")
@@ -43,7 +44,7 @@ func bindServices(fs *flag.FlagSet, p *argvPatch) {
 
 func bindReviewer(fs *flag.FlagSet, p *argvPatch) {
 	r := p.values.settings.Reviewer
-	fs.BoolVar(&p.semantic, "semantic", p.semantic, "enable explicit provider review")
+	fs.BoolVar(&p.review, "review", p.review, "enable LLM review")
 	fs.BoolVar(&r.Settings.QualityPolicy, "quality-review", r.Settings.QualityPolicy, "include quality review")
 	fs.StringVar(&r.Provider.Kind, "llm-provider", r.Provider.Kind, "chat-completions, anthropic, anthropic-proxy or bedrock")
 	fs.StringVar(&r.Provider.Endpoint, "llm-endpoint", r.Provider.Endpoint, "explicit review endpoint")
@@ -118,7 +119,7 @@ func (p argvPatch) resolveDownload(s *configfile.Settings) error {
 
 func (p argvPatch) resolveVulnerabilities(s *configfile.Settings) error {
 	enabled := s.Scanner.Vulnerabilities != nil
-	if p.present["vuln"] {
+	if p.present["osv"] {
 		enabled = p.vulnerabilities
 	}
 
@@ -146,13 +147,13 @@ func (p argvPatch) resolveVulnerabilities(s *configfile.Settings) error {
 
 func (p argvPatch) resolveReview(s *configfile.Settings) error {
 	enabled := s.Reviewer != nil
-	if p.present["semantic"] {
-		enabled = p.semantic
+	if p.present["review"] {
+		enabled = p.review
 	}
 
 	if !enabled {
 		if p.reviewerFlagsPresent() {
-			return errors.New("provider options require --semantic")
+			return errors.New("provider options require --review")
 		}
 
 		s.Reviewer, s.Scanner.Review = nil, nil

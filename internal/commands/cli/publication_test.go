@@ -143,7 +143,7 @@ func TestInitializationFailureUsesEverySelectedDestination(t *testing.T) {
 	}
 	jsonPath, sarifPath := filepath.Join(dir, "report.json"), filepath.Join(dir, "report.sarif")
 	var out, diag bytes.Buffer
-	code := cli.Run(context.Background(), []string{"scan", "--format", "json", "--yara-rules", rules, "--output", jsonPath, "--report", "sarif=" + sarifPath, input}, &out, &diag)
+	code := cli.Run(context.Background(), []string{"scan", "--format", "json", "--yara", rules, "--output", jsonPath, "--report", "sarif=" + sarifPath, input}, &out, &diag)
 	if code != 2 || out.Len() != 0 {
 		t.Fatalf("failure escaped selected output: code=%d stdout=%s diagnostics=%s", code, &out, &diag)
 	}

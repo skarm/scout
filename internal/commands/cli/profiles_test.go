@@ -34,7 +34,7 @@ func TestProfilePreflightAndDowngradeRejection(t *testing.T) {
 		{"scan", "--profile", "standard", "--checks", "python,yaml,toml,patterns", "does-not-exist"},
 		{"scan", "--profile", "standard", "--checks", "yaml,toml,yara,patterns", "does-not-exist"},
 		{"scan", "--profile", "extended", "--checks", "none", "does-not-exist"},
-		{"scan", "--profile", "semantic", "--semantic=false", "does-not-exist"},
+		{"scan", "--profile", "semantic", "--review=false", "does-not-exist"},
 		{"scan", "--profile", "semantic", "does-not-exist"},
 	} {
 		out.Reset()

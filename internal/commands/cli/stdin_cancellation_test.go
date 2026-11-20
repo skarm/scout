@@ -24,7 +24,7 @@ func TestStdinPipeRespectsOperationTimeout(t *testing.T) {
 	var out, diag bytes.Buffer
 	done := make(chan int, 1)
 	go func() {
-		done <- scanCommand(t.Context(), []string{"--profile", "custom", "--checks", "none", "--timeout", "30ms", "--format", "json", "--input", "-", "--name", "input.txt"}, read, &out, &diag)
+		done <- scanCommand(t.Context(), []string{"--profile", "custom", "--checks", "none", "--timeout", "30ms", "--format", "json", "--stdin", "input.txt"}, read, &out, &diag)
 	}()
 
 	// The CLI owns the operation deadline. This watchdog only unblocks the pipe

@@ -93,7 +93,7 @@ can contain secrets:
 
 ```sh
 scout snapshot compare --snapshot /review/checkpoints/project.json \
-  --include-source-diff --format markdown
+  --source-diff --format markdown
 ```
 
 These are bounded removed/added line excerpts, not applyable patches. Lines are

@@ -19,14 +19,14 @@ import (
 
 func TestSemanticCLIRequiresConsentAndExplicitProvider(t *testing.T) {
 	for _, args := range [][]string{
-		{"--semantic"},
-		{"--semantic", "--allow-source-upload"},
+		{"--review"},
+		{"--review", "--allow-source-upload"},
 		{"--llm-model", "x"},
 		{"--allow-source-upload"},
-		{"--semantic", "--allow-source-upload", "--llm-endpoint", "http://example.com/v1", "--llm-model", "x"},
-		{"--semantic", "--allow-source-upload", "--llm-endpoint", "http://127.0.0.1/v1", "--llm-model", "x", "--llm-api-key-env", "not-valid"},
-		{"--semantic", "--allow-source-upload", "--llm-endpoint", "http://127.0.0.1/v1", "--llm-model", "x", "--llm-api-key-env", "SCOUT_UNSET_TEST_KEY08"},
-		{"--semantic", "--allow-source-upload", "--llm-max-requests", "0"},
+		{"--review", "--allow-source-upload", "--llm-endpoint", "http://example.com/v1", "--llm-model", "x"},
+		{"--review", "--allow-source-upload", "--llm-endpoint", "http://127.0.0.1/v1", "--llm-model", "x", "--llm-api-key-env", "not-valid"},
+		{"--review", "--allow-source-upload", "--llm-endpoint", "http://127.0.0.1/v1", "--llm-model", "x", "--llm-api-key-env", "SCOUT_UNSET_TEST_KEY08"},
+		{"--review", "--allow-source-upload", "--llm-max-requests", "0"},
 	} {
 		var out, stderr bytes.Buffer
 		call := append([]string{"scan", "--profile", "basic", "--format", "json"}, args...)
@@ -113,7 +113,7 @@ func TestSemanticCLIWithLocalProtocolFixture(t *testing.T) {
 	t.Setenv("SCOUT_TEST_KEY08", "ONLY_EXPLICIT_TEST_KEY")
 	for _, format := range []string{"json", "sarif", "terminal"} {
 		var out, stderr bytes.Buffer
-		code := cli.Run(context.Background(), []string{"scan", "--profile", "basic", "--format", format, "--semantic", "--allow-source-upload", "--llm-allow-loopback", "--llm-endpoint", s.URL + "/v1/chat/completions", "--llm-model", "fixture", "--llm-api-key-env", "SCOUT_TEST_KEY08", root}, &out, &stderr)
+		code := cli.Run(context.Background(), []string{"scan", "--profile", "basic", "--format", format, "--review", "--allow-source-upload", "--llm-allow-loopback", "--llm-endpoint", s.URL + "/v1/chat/completions", "--llm-model", "fixture", "--llm-api-key-env", "SCOUT_TEST_KEY08", root}, &out, &stderr)
 		if code != 1 || stderr.Len() != 0 {
 			t.Fatalf("format=%s code=%d stderr=%s", format, code, stderr.String())
 		}
@@ -144,7 +144,7 @@ func TestSemanticHTTPFailureStillPublishesStaticEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, stderr bytes.Buffer
-	code := cli.Run(context.Background(), []string{"scan", "--profile", "basic", "--format", "json", "--semantic", "--allow-source-upload", "--llm-allow-loopback", "--llm-endpoint", s.URL + "/api", "--llm-model", "fixture", root}, &out, &stderr)
+	code := cli.Run(context.Background(), []string{"scan", "--profile", "basic", "--format", "json", "--review", "--allow-source-upload", "--llm-allow-loopback", "--llm-endpoint", s.URL + "/api", "--llm-model", "fixture", root}, &out, &stderr)
 	if code != 2 || !json.Valid(out.Bytes()) || !strings.Contains(out.String(), `"decision": "block"`) || strings.Contains(out.String(), "SECRET_ERROR_RESPONSE") {
 		t.Fatalf("code=%d stderr=%s", code, stderr.String())
 	}

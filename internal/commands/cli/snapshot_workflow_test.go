@@ -238,21 +238,21 @@ func TestSnapshotSourceDiffIsExplicitBoundedAndEscaped(t *testing.T) {
 	if content.AddedLines != 1 || content.RemovedLines != 1 || !strings.Contains(content.Explanation, "Agent instructions") {
 		t.Fatal("unhelpful change summary", content)
 	}
-	_, out = runCheckpoint(t, checkpointArgs("compare", checkpoint, "--include-source-diff", "--format", "markdown"))
+	_, out = runCheckpoint(t, checkpointArgs("compare", checkpoint, "--source-diff", "--format", "markdown"))
 	if !bytes.Contains(out, []byte("Old private sentence")) || !bytes.Contains(out, []byte("````text")) || bytes.ContainsRune(out, rune(27)) {
 		t.Fatal("source excerpt missing or unsafe")
 	}
 	if err := os.WriteFile(file, []byte(strings.Repeat("large replacement\n", 1000)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, out = runCheckpoint(t, checkpointArgs("compare", checkpoint, "--include-source-diff"))
+	_, out = runCheckpoint(t, checkpointArgs("compare", checkpoint, "--source-diff"))
 	result = comparisonResult(t, out)
 	content = result.Roots[0].Content[0]
 	if !content.DiffOmitted || len(content.Excerpt) > 64<<10 {
 		t.Fatal("source diff budget ignored")
 	}
 
-	code, out := runCheckpoint(t, checkpointArgs("compare", checkpoint, "--include-source-diff", "--format", "markdown", "--max-file-bytes", "1"))
+	code, out := runCheckpoint(t, checkpointArgs("compare", checkpoint, "--source-diff", "--format", "markdown", "--max-file-bytes", "1"))
 	if code != 2 || !bytes.Contains(out, []byte("Coverage is incomplete")) ||
 		!bytes.Contains(out, []byte("Source excerpt omitted or truncated")) || bytes.Contains(out, []byte("analysis still covers captured content")) {
 		t.Fatal("truncated excerpt misrepresents incomplete analysis coverage", code)
@@ -300,7 +300,7 @@ func TestSnapshotDiscoveryRejectsSelectionOverridesInScanFlags(t *testing.T) {
 	dir := t.TempDir()
 	snapshot := filepath.Join(dir, "saved.json")
 	other := filepath.Join(dir, "unexpected.json")
-	for _, extra := range [][]string{{"--snapshot", other}, {"-snapshot=" + other}, {"--root", "unexpected=" + home}, {"--empty"}} {
+	for _, extra := range [][]string{{"--snapshot", other}, {"-s=" + other}, {"--root", "unexpected=" + home}, {"--empty"}} {
 		args := []string{"discover", "--home", home, "--agent", "codex", "--system=false", "--no-project", "--snapshot", snapshot, "--", "--profile", "custom", "--checks", "none"}
 		code, _ := runCheckpoint(t, append(args, extra...))
 		if code != 2 {

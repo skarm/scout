@@ -23,7 +23,7 @@ func selftest(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	format := fs.String("format", "terminal", "terminal or json")
 
 	timeout := fs.Duration("timeout", defaultSelftestTimeout, "cooperative total selftest deadline, <=2m")
-	if e := fs.Parse(args); e != nil {
+	if e := parseFlags(fs, args); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
 			return 0
 		}

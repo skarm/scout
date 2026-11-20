@@ -95,7 +95,7 @@ SARIF доступен для обычного отчёта создания, н
 
 ```sh
 scout snapshot compare --snapshot /review/checkpoints/project.json \
-  --include-source-diff --format markdown
+  --source-diff --format markdown
 ```
 
 Это ограниченные фрагменты с удалёнными и добавленными строками, а не применимый

@@ -15,7 +15,7 @@ func knowledgeCommand(args []string, stdout, stderr io.Writer) int {
 	f.SetOutput(stderr)
 
 	mode := f.String("mode", "", "print the exact trusted runtime prompt for a mode; default prints pack/catalog JSON")
-	if err := f.Parse(args); err != nil {
+	if err := parseFlags(f, args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}

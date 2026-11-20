@@ -89,7 +89,7 @@ Python- и YARA-проверок. Это каталог возможностей
 
 ### Свои и сторонние YARA-правила
 
-`--yara-rules` дополняет встроенные сигнатуры одним файлом с одним или несколькими
+`--yara` дополняет встроенные сигнатуры одним файлом с одним или несколькими
 правилами, совместимыми с YARA-X. Например, сохраните доверенное правило
 в `/etc/scout/organization.yar`:
 
@@ -103,7 +103,7 @@ rule organization_review_marker {
 ```
 
 ```sh
-scout scan --yara-rules /etc/scout/organization.yar --fail-on medium ./my-plugin
+scout scan --yara /etc/scout/organization.yar --fail-on medium ./my-plugin
 ```
 
 Храните доверенный файл правил вне входа. Пример даёт `YR5` уровня Medium и задаёт тот же порог политики. Для выпуска и отката используйте [версионируемые наборы правил](usage.ru.md#версионируемые-наборы-правил).

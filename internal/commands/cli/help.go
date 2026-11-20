@@ -11,7 +11,7 @@ import (
 
 const operatorHelp = `
 snapshot create / snapshot compare / snapshot inspect:
-  --snapshot FILE            Required saved environment; create never replaces a file.
+  --snapshot, -s FILE        Required saved environment; create never replaces a file.
   --root ID=PATH             Repeat for all selected local roots; stable lowercase IDs.
   --empty                    Compare with removal of all saved roots; no --root inputs.
   --candidate FILE           Compare two saved snapshots without reading their original sources.
@@ -21,14 +21,15 @@ snapshot create / snapshot compare / snapshot inspect:
   create saves captured source bytes and the inspection, including incomplete results.
   compare without --root repeats saved discovery or rechecks saved source paths.
   Both environments are rescanned; relationship differences retain evidence and coverage.
-  --include-source-diff      Include bounded source excerpts; may disclose secrets.
+  --source-diff             Include bounded source excerpts in comparison; may disclose secrets.
   inspect displays saved discovery arguments, paths and historical status without source bytes.
+  --format, -f text|json     Output format for inspect (default: text).
   Capture failures include location and limit details; JSON uses scout.environment-snapshot-error/v1.
   Snapshot comparison formats: text, markdown, json; JSON uses scout.environment-comparison/v1.
   Snapshots may contain secrets. Store outside inputs; checksum is not approval or a signature.
 
 discover:
-  --agent all|codex|claude-code Agent to inventory (default: all).
+  --agent, -a AGENT          Agent to inventory: all, codex or claude-code (default: all).
   --home DIR                 Selected user home (default: current user's home).
   --codex-home DIR           Explicit Codex configuration directory.
   --claude-home DIR          Explicit Claude Code configuration directory.
@@ -38,33 +39,33 @@ discover:
   --max-entries N            Aggregate discovery probes/entries (default: 10000).
   --max-depth N              Skill/plugin directory depth (default: 12).
   --max-bytes N              Aggregate config/manifest bytes (default: 8388608).
-  --timeout DURATION         Discovery deadline (default: 10s; maximum: 2m).
-  --format text|json         Inventory format (default: text).
-  --output FILE              Inventory destination (default: stdout).
+  --timeout, -t DURATION     Discovery deadline (default: 10s; maximum: 2m).
+  --format, -f text|json     Inventory format (default: text).
+  --output, -o FILE          Inventory destination (default: stdout).
   --scan                     Scan discovered roots; ordinary scan flags follow --.
-  --snapshot FILE            Save discovered environment; requires one --agent; scan flags follow --.
-  --kind KIND                Select skill, plugin, mcp-server or command roots; repeatable.
+  --snapshot, -s FILE        Save discovered environment; requires one --agent; scan flags follow --.
+  --kind, -k KIND            Select skill, plugin, mcp-server or command roots; repeatable.
   --include-path PATH        Narrow discovered roots; repeatable; cannot expand discovery.
   --exclude-path PATH        Omit overlapping roots; repeatable; use --kind for precision.
   Explicit --home ignores process CODEX_HOME/CLAUDE_CONFIG_DIR overrides.
   --scan requires complete discovery and 1..32 roots; stdout is a scan report.
 
 doctor (alias: selftest):
-  --format text|json         Output format (default: terminal; alias for text).
-  --timeout DURATION         Total self-test deadline (default: 90s; maximum: 2m).
+  --format, -f text|json     Output format (default: terminal; alias for text).
+  --timeout, -t DURATION     Total self-test deadline (default: 90s; maximum: 2m).
 
 config validate:
   Uses scan configuration, policy, checks, service and budget flags.
-  --config FILE              Explicit operator configuration; omitted uses defaults.
+  --config, -c FILE          Explicit operator configuration; omitted uses defaults.
   Prints the prepared inspection plan as JSON. No targets or report outputs.
 
 baseline create / baseline approve / baseline renew:
   --from FILE                Required report JSON for create; baseline JSON for approve.
-  --output FILE              Destination outside the source; optional with --dry-run.
+  --output, -o FILE          Destination outside the source; optional with --dry-run.
   --reason TEXT              Required for create/approve; renew preserves it when omitted.
   --expires RFC3339          Future expiry; renew must extend the previous expiry.
   --fingerprint SHA256       Select exact entries for approve/renew; repeatable.
-  --dry-run                  Print a JSON change preview without writing a baseline.
+  --dry-run, -d              Print a JSON change preview without writing a baseline.
   create writes pending entries; approve selects all entries if no fingerprint is given.
   renew extends already approved entries and never approves pending entries.
 
@@ -72,9 +73,10 @@ rules list (also: rules):
   --all                      Include adapted, Python and YARA rules (default: false).
 
 rules pack create:
-  --id ID --version VERSION  Required package identity and release label.
-  --yara FILE                Required trusted UTF-8 additional YARA source.
-  --output FILE              Artifact destination; omitted writes JSON to stdout.
+  --id ID                    Required package identifier.
+  --version, -v VERSION      Required release label.
+  --yara, -y FILE            Required trusted UTF-8 additional YARA source.
+  --output, -o FILE          Artifact destination; omitted writes JSON to stdout.
   Packages source without compiling; scanner initialization compiles selected rules.
 
 rules pack inspect:
@@ -84,7 +86,7 @@ rules pack inspect:
 
 profiles / capabilities / version:
   No command flags. Print profile names, compiled backends or the build version.
-  --version is also accepted at the root.
+  --version and -v are also accepted at the root.
 
 knowledge:
   --mode MODE                Print a trusted runtime prompt instead of catalog JSON.
@@ -97,7 +99,7 @@ integrations list (also: integrations):
 integrations export:
   --bundle NAME              Required: agent-skill, claude-code, codex, pi,
                              opencode or review-materials.
-  --output FILE              Required new ZIP destination; never replaces a file.
+  --output, -o FILE          Required new ZIP destination; never replaces a file.
 
 registry fetch:
   --endpoint URL             Registry endpoint (default:
@@ -108,11 +110,11 @@ registry fetch:
   --allow-loopback           Permit a numeric loopback endpoint (default: false).
   --max-pages N              Maximum pages (default: 32).
   --max-bytes N              Aggregate response bytes (default: 8388608).
-  --output FILE              Snapshot JSON destination (default: stdout).
+  --output, -o FILE          Snapshot JSON destination (default: stdout).
 
 registry compare:
   Takes two positional snapshot paths: <previous> <current>.
-  --output FILE              Comparison JSON destination (default: stdout).
+  --output, -o FILE          Comparison JSON destination (default: stdout).
 
 attestation verify:
   --public-key FILE          Required trusted PKIX public key PEM outside inputs.
@@ -127,7 +129,7 @@ Syntax and defaults:
   Explicit flags override --config; shown defaults apply without configuration.
   Configuration, baseline, extra rules and caches must be outside inspected inputs.
   Repeat --report, --external-origin, --target or --origin for multiple values.
-  scan accepts 1..32 targets, or one --input - with --name and no positional inputs.
+  scan accepts 1..32 targets or reads one named input with --stdin NAME.
   Profile aliases: basic = builtins-only custom, extended = standard, semantic = review.
   Format alias: terminal = text. --checks replaces the optional check selection.
   A subset or none requires --profile custom; built-in checks always remain enabled.
@@ -152,7 +154,7 @@ func fullHelp(stdout io.Writer) int {
 		})
 	}
 
-	text.WriteString("\ncompare:\n  Uses scan flags except --input, --name and download/external controls.\n")
+	text.WriteString("\ncompare:\n  Uses scan configuration, reports, policy, checks, budgets, OSV and LLM review flags.\n")
 
 	_, comparison := requestFlagSet("compare", io.Discard, nil)
 	appendFlagHelp(&text, comparison.Lookup("max-changes"))
@@ -163,6 +165,7 @@ func fullHelp(stdout io.Writer) int {
 	transport := flag.NewFlagSet("mcp", flag.ContinueOnError)
 	invocation.bind(transport)
 	transport.VisitAll(func(f *flag.Flag) { appendFlagHelp(&text, f) })
+
 	text.WriteString(operatorHelp)
 
 	return writeText(stdout, text.String())
@@ -172,17 +175,17 @@ func scanFlagGroup(name string) string {
 	switch name {
 	case "format", "output", "report":
 		return "Reports"
-	case "baseline", "allow-baseline-globs", "fail-on", "block-at", "scope":
+	case "baseline", "allow-baseline-globs", "fail-on", "scope":
 		return "Policy"
-	case "checks", "yara-rules", "rulepack", "rulepack-sha256":
+	case "checks", "yara", "rulepack", "rulepack-sha256":
 		return "Checks"
 	case "allow-download", "revision":
 		return "Downloads"
 	case "follow-external":
 		return "External references"
-	case "vuln", "allow-vulnerability-network":
+	case "osv", "allow-osv-network":
 		return "Vulnerabilities"
-	case "semantic", "quality-review", "allow-source-upload":
+	case "review", "quality-review", "allow-source-upload":
 		return "LLM review"
 	case "workers", "target-workers", "timeout", "parser-timeout":
 		return "Concurrency and budgets"
@@ -204,6 +207,9 @@ func scanFlagGroup(name string) string {
 func appendFlagHelp(text *strings.Builder, f *flag.Flag) {
 	value, description := flag.UnquoteUsage(f)
 	argument := "--" + f.Name
+	if short := shortFlagNames[f.Name]; short != "" {
+		argument += ", " + short
+	}
 
 	if boolean, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && boolean.IsBoolFlag() {
 		argument += "[=BOOL]"

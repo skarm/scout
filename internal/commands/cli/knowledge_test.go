@@ -156,7 +156,7 @@ func TestKnowledgeSQLReachesActualCLIReport(t *testing.T) {
 			}))
 			defer srv.Close()
 			var out, errs bytes.Buffer
-			code := cli.Run(context.Background(), []string{"scan", "--profile", "basic", "--format", "json", "--semantic", "--allow-source-upload", "--llm-allow-loopback", "--llm-endpoint", srv.URL + "/v1/chat/completions", "--llm-model", "scripted-fixture-no-live-model", root}, &out, &errs)
+			code := cli.Run(context.Background(), []string{"scan", "--profile", "basic", "--format", "json", "--review", "--allow-source-upload", "--llm-allow-loopback", "--llm-endpoint", srv.URL + "/v1/chat/completions", "--llm-model", "scripted-fixture-no-live-model", root}, &out, &errs)
 			var result scantest.Result
 			if err := scantest.DecodeJSON(out.Bytes(), &result); err != nil || errs.Len() != 0 && code != 2 {
 				t.Fatalf("CLI failed code=%d: %s %v", code, errs.String(), err)
@@ -267,7 +267,7 @@ func TestRulepackCLISelectionBoundariesAndPins(t *testing.T) {
 		{"scan", "--profile", "custom", "--checks", "none", "--rulepack", path, input},
 		{"scan", "--profile", "custom", "--checks", "yara", "--rulepack", path, "--rulepack-sha256", strings.Repeat("0", 64), input},
 		{"scan", "--profile", "custom", "--checks", "yara", "--rulepack", inside, root},
-		{"scan", "--profile", "custom", "--checks", "yara", "--rulepack", path, "--yara-rules", input, input},
+		{"scan", "--profile", "custom", "--checks", "yara", "--rulepack", path, "--yara", input, input},
 		{"scan", "--profile", "custom", "--checks", "yara", "--rulepack", path, "--output", path, input},
 	} {
 		out.Reset()
