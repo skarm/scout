@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -603,5 +604,25 @@ func restoreFile(name string, entry Entry) error {
 	return nil
 }
 
-// ContentDigest binds this root's captured content, excluding its display source.
-func (r Root) ContentDigest() string { return identity([]Root{r}) }
+// Root looks up a root in a validated or freshly captured snapshot.
+func (s Snapshot) Root(id string) Root {
+	i, ok := slices.BinarySearchFunc(s.Roots, id, func(root Root, id string) int {
+		return strings.Compare(root.ID, id)
+	})
+	if !ok {
+		return Root{}
+	}
+
+	return s.Roots[i]
+}
+
+// ContentDigest binds a validated root's ordered inventory and file digests.
+// The file digests already bind the bytes, so comparison does not re-encode them.
+func (r Root) ContentDigest() string {
+	r.Entries = slices.Clone(r.Entries)
+	for i := range r.Entries {
+		r.Entries[i].Data = nil
+	}
+
+	return identity([]Root{r})
+}

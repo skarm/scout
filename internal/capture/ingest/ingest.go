@@ -52,6 +52,15 @@ func Read(ctx context.Context, target string, limits report.CaptureLimits) (arti
 		return artifact.Snapshot{}, err
 	}
 
+	inputs, _ := ctx.Value(stableInputsKey{}).(map[string]*stableInput)
+	if input := inputs[target]; input != nil {
+		return readStableInput(ctx, target, limits, input)
+	}
+
+	return readPath(ctx, target, limits)
+}
+
+func readPath(ctx context.Context, target string, limits report.CaptureLimits) (artifact.Snapshot, error) {
 	info, err := inspectInput(target)
 	if err != nil {
 		return artifact.Snapshot{}, err

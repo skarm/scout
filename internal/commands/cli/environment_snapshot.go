@@ -17,6 +17,7 @@ import (
 
 	"github.com/skarm/scout"
 	"github.com/skarm/scout/internal/capture/envsnapshot"
+	"github.com/skarm/scout/internal/capture/ingest"
 	"github.com/skarm/scout/internal/commands/output"
 	"github.com/skarm/scout/policy"
 	"github.com/skarm/scout/report"
@@ -188,6 +189,8 @@ func (r *request) inspectSnapshotPair(ctx context.Context, mode string, selected
 		return usageError(stderr, err.Error())
 	}
 
+	ctx = ingest.WithStableInputs(ctx, previousPaths, currentPaths)
+
 	result, err := compareEnvironment(ctx, scanner, gate, selected.checkpoint.Snapshot, current, previousPaths, currentPaths, r.compare)
 	if err != nil {
 		return usageError(stderr, err.Error())
@@ -294,25 +297,25 @@ func compareEnvironment(ctx context.Context, scanner *scout.Scanner, gate *polic
 		}
 	}
 
-	var err error
-
-	result.PreviousEnvironment, err = scanSnapshotEnvironment(ctx, scanner, gate, old)
+	previous, err := scanSnapshotEnvironment(ctx, scanner, gate, old)
 	if err != nil {
 		return result, err
 	}
 
-	result.Environment, err = scanSnapshotEnvironment(ctx, scanner, gate, current)
+	next, err := scanSnapshotEnvironment(ctx, scanner, gate, current)
 	if err != nil {
 		return result, err
 	}
 
-	if result.Environment != nil {
-		prepared, prepErr := report.Prepare(*result.Environment)
-		if prepErr != nil {
-			return result, prepErr
-		}
+	if previous.Valid() {
+		doc := previous.Snapshot()
+		result.PreviousEnvironment = &doc
+	}
 
-		result.addDecision(prepared)
+	if next.Valid() {
+		doc := next.Snapshot()
+		result.Environment = &doc
+		result.addDecision(next)
 	}
 
 	result.Relationships = compareRelationships(result.PreviousEnvironment, result.Environment, old, current, options.MaxChanges)
@@ -709,13 +712,9 @@ func directoryChanges(before, after envsnapshot.Snapshot, id string) []environme
 	directories := func(s envsnapshot.Snapshot) map[string]string {
 		paths := map[string]string{}
 
-		for _, root := range s.Roots {
-			if root.ID == id {
-				for _, entry := range root.Entries {
-					if entry.Directory {
-						paths[entry.Path] = "directory"
-					}
-				}
+		for _, entry := range s.Root(id).Entries {
+			if entry.Directory {
+				paths[entry.Path] = "directory"
 			}
 		}
 
@@ -756,21 +755,19 @@ func quoteSnapshotPath(value string, format report.Format) string {
 	return delimiter + escaped + delimiter
 }
 
-func scanSnapshotEnvironment(ctx context.Context, scanner *scout.Scanner, gate *policy.Gate, paths map[string]string) (*report.Document, error) {
+func scanSnapshotEnvironment(ctx context.Context, scanner *scout.Scanner, gate *policy.Gate, paths map[string]string) (report.PreparedDocument, error) {
 	if len(paths) == 0 {
-		return nil, nil
+		return report.PreparedDocument{}, nil
 	}
 
 	run, _ := scanner.ScanEnvironment(ctx, namedTargets(paths))
 
 	prepared, err := report.Prepare(report.NewDocument(run, gate.Evaluate(run, time.Now().UTC())))
 	if err != nil {
-		return nil, errors.New("environment analysis did not produce a valid report")
+		return report.PreparedDocument{}, errors.New("environment analysis did not produce a valid report")
 	}
 
-	document := prepared.Snapshot()
-
-	return &document, nil
+	return prepared, nil
 }
 
 func evidenceRoot(doc *report.Document, id string, roots []environmentRootChange, previous bool) string {

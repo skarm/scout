@@ -34,19 +34,15 @@ type snapshotContentChange struct {
 func rootFiles(s envsnapshot.Snapshot, id string) (map[string]envsnapshot.Entry, string) {
 	files := map[string]envsnapshot.Entry{}
 
-	for _, root := range s.Roots {
-		if root.ID == id {
-			for _, entry := range root.Entries {
-				if !entry.Directory {
-					files[entry.Path] = entry
-				}
-			}
+	root := s.Root(id)
 
-			return files, root.Source
+	for _, entry := range root.Entries {
+		if !entry.Directory {
+			files[entry.Path] = entry
 		}
 	}
 
-	return files, ""
+	return files, root.Source
 }
 
 func (r *environmentComparison) describeContent(before, after envsnapshot.Snapshot, includeSource bool) {
