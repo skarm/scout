@@ -27,12 +27,23 @@ func (r *request) publishCaptureFailure(ctx context.Context, mode string, output
 		Code      int                       `json:"exit_code"`
 	}{"scout.environment-snapshot-error/v1", mode, problem, 2}
 
-	jsonOutputs := slices.DeleteFunc(slices.Clone(outputs), func(out destination) bool { return out.format != report.JSON })
+	machineOutputs := slices.DeleteFunc(slices.Clone(outputs), func(out destination) bool {
+		return out.format != report.JSON && out.format != report.SARIF
+	})
 
 	publish, cancel := context.WithTimeout(context.WithoutCancel(ctx), reportPublicationTimeout)
 	defer cancel()
 
-	if err := r.publishOutputs(publish, jsonOutputs, stdout, func(w io.Writer, _ report.Format) error {
+	if err := r.publishOutputs(publish, machineOutputs, stdout, func(w io.Writer, format report.Format) error {
+		if format == report.SARIF {
+			operation := report.ScanOperation
+			if mode == "compare" {
+				operation = report.CompareOperation
+			}
+
+			return report.WriteFailure(w, report.SARIF, operation, report.Problem{Code: problem.Code, Phase: "capture"})
+		}
+
 		return json.NewEncoder(w).Encode(doc)
 	}); err != nil {
 		_, _ = fmt.Fprintln(stderr, "capture error publication failed:", err)

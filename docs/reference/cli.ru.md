@@ -524,6 +524,7 @@ scout discover --agent AGENT --snapshot FILE [discovery flags] -- [local scan fl
 `--snapshot FILE` (`-s`) задаёт новый снимок для create или сохранённый для compare.
 Повторяйте `--root` для полного текущего набора. `--empty` явно выбирает пустой набор.
 `snapshot inspect` принимает `--format text|json` (`-f`).
+`snapshot compare` принимает `--format text|json|markdown|sarif` и `--report FORMAT=PATH`.
 См. [снимки окружения](../user/environment-snapshots.ru.md).
 
 Без `--root`, `--empty` и `--candidate` сравнение повторяет сохранённый discovery или проверяет сохранённые пути.

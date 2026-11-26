@@ -85,8 +85,12 @@ scout snapshot compare --snapshot /review/checkpoints/manual.json --format markd
 Неизменные корни с полным allow не засоряют текстовый отчёт повторением всей проверки.
 JSON сохраняет все отчёты: схема `scout.environment-comparison/v1`, поля `roots`,
 `relationships`, `previous_environment`, `environment`, `decision` и `exit_code`.
-Вложенные отчёты имеют схему `scout.report/v1`. Доступны text, Markdown и JSON;
-SARIF доступен для обычного отчёта создания, но не объединённого сравнения.
+Вложенные отчёты имеют схему `scout.report/v1`. Для CI выберите `--format sarif`
+или добавьте второй отчёт через `--report sarif=changes.sarif`. Результаты SARIF
+показывают находки кандидата с привязкой к исходным корням и известным статусом
+изменения. Свойства корней сохраняют историю и полноту проверок. Свойства сравнения
+содержат обе совместные проверки, изменения связей, решение и код выхода.
+Фрагменты `--source-diff` доступны в text, Markdown и JSON.
 
 ## Фрагменты исходников
 

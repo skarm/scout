@@ -83,8 +83,13 @@ not proof of remediation.
 Unchanged complete/allowed roots do not repeat their full inspection in human output.
 JSON retains all reports under `scout.environment-comparison/v1`: `roots`,
 `relationships`, `previous_environment`, `environment`, `decision`, `exit_code`.
-Nested reports use `scout.report/v1`. Text, Markdown and JSON are supported; SARIF
-is available for creation's ordinary inspection, not combined comparison.
+Nested reports use `scout.report/v1`. For CI, use `--format sarif` or add a second
+destination with `--report sarif=changes.sarif`. SARIF results describe the
+candidate, with file locations resolved against their original roots and finding
+change status when known. Root properties retain historical results and per-root
+coverage. The comparison properties include both joint inspections, relationship
+changes, and the decision and exit code. Source excerpts from `--source-diff`
+are available in text, Markdown and JSON.
 
 ## Source excerpts
 

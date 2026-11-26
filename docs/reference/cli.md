@@ -493,6 +493,7 @@ scout discover --agent AGENT --snapshot FILE [discovery flags] -- [local scan fl
 `--snapshot FILE` (`-s`) selects a new checkpoint for create or an existing checkpoint for compare.
 Repeat `--root` for the complete current selection. `--empty` explicitly selects no roots.
 `snapshot inspect` accepts `--format text|json` (`-f`).
+`snapshot compare` accepts `--format text|json|markdown|sarif` and `--report FORMAT=PATH`.
 See [saved environments](../user/environment-snapshots.md).
 
 Without `--root`, `--empty` or `--candidate`, snapshot compare repeats saved discovery or rechecks saved source paths.

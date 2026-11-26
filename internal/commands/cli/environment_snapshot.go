@@ -135,11 +135,8 @@ func (r *request) snapshotDestinations(mode, snapshotPath string) (string, []des
 	}
 
 	outputs, err := r.outputs()
-	if err != nil {
-		return "", nil, err
-	}
 
-	return checkpointOutput, outputs, validateSnapshotOutputs(mode, outputs)
+	return checkpointOutput, outputs, err
 }
 
 func (r *request) inspectSnapshotPair(ctx context.Context, mode string, selected snapshotSelection, checkpointOutput string, outputs []destination, stdout, stderr io.Writer) int {
@@ -334,8 +331,11 @@ func (r *environmentComparison) addDecision(p report.PreparedDocument) {
 }
 
 func (r environmentComparison) write(w io.Writer, format report.Format) error {
-	if format == report.JSON {
+	switch format {
+	case report.JSON:
 		return json.NewEncoder(w).Encode(r)
+	case report.SARIF:
+		return r.writeSARIF(w)
 	}
 
 	var b bytes.Buffer
@@ -680,16 +680,6 @@ func writeEnvironmentCheckpoint(ctx context.Context, path string, checkpoint env
 
 	if err := output.CreateNew(publish, path, func(w io.Writer) error { _, e := w.Write(data); return e }); err != nil {
 		return fmt.Errorf("cannot publish environment snapshot: %w", err)
-	}
-
-	return nil
-}
-
-func validateSnapshotOutputs(mode string, outputs []destination) error {
-	for _, out := range outputs {
-		if mode == "compare" && out.format == report.SARIF {
-			return errors.New("snapshot comparison supports text, markdown and json")
-		}
 	}
 
 	return nil
