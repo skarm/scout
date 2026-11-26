@@ -18,12 +18,13 @@ type (
 	}
 
 	run struct {
-		Tool             tool           `json:"tool"`
-		ColumnKind       string         `json:"columnKind,omitempty"`
-		NewlineSequences []string       `json:"newlineSequences,omitempty"`
-		Results          *[]result      `json:"results,omitempty"`
-		Invocations      []invocation   `json:"invocations"`
-		Properties       map[string]any `json:"properties"`
+		Tool               tool                        `json:"tool"`
+		ColumnKind         string                      `json:"columnKind,omitempty"`
+		NewlineSequences   []string                    `json:"newlineSequences,omitempty"`
+		Results            *[]result                   `json:"results,omitempty"`
+		Invocations        []invocation                `json:"invocations"`
+		Properties         map[string]any              `json:"properties"`
+		OriginalURIBaseIDs map[string]artifactLocation `json:"originalUriBaseIds,omitempty"`
 	}
 
 	tool struct {
@@ -58,6 +59,7 @@ type (
 		Suppressions        []suppression     `json:"suppressions,omitempty"`
 		RuleID              string            `json:"ruleId"`
 		Level               string            `json:"level"`
+		BaselineState       string            `json:"baselineState,omitempty"`
 		Message             message           `json:"message"`
 		Locations           []location        `json:"locations"`
 		PartialFingerprints map[string]string `json:"partialFingerprints"`
@@ -89,7 +91,8 @@ type (
 	}
 
 	artifactLocation struct {
-		URI string `json:"uri"`
+		URI       string `json:"uri"`
+		URIBaseID string `json:"uriBaseId,omitempty"`
 	}
 
 	region struct {

@@ -25,7 +25,7 @@ snapshot create / snapshot compare / snapshot inspect:
   inspect displays saved discovery arguments, paths and historical status without source bytes.
   --format, -f text|json     Output format for inspect (default: text).
   Capture failures include location and limit details; JSON uses scout.environment-snapshot-error/v1.
-  Snapshot comparison formats: text, markdown, json; JSON uses scout.environment-comparison/v1.
+  Snapshot comparison formats: text, markdown, json, sarif; JSON uses scout.environment-comparison/v1.
   Snapshots may contain secrets. Store outside inputs; checksum is not approval or a signature.
 
 discover:
