@@ -79,6 +79,10 @@ jobs:
           make test race
           make clean
           make acceptance
+      - name: Test Pi and OpenCode adapters with the native binary
+        env:
+          GOPROXY: 'off'
+        run: make host-test BIN_DIR="$RUNNER_TEMP/scout-host-bin"
       - name: Check expected rules and Shell hook regressions
         env:
           GOPROXY: 'off'
