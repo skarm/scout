@@ -19,6 +19,51 @@ bin/scout-dev corpus collect --manifest testdata/external-corpus/sources.json \
 bin/scout-dev evaluate --split holdout /tmp/scout-external-corpus.json
 ```
 
+## Навыки, инструкции агентов и MCP
+
+`components.sources.json` фиксирует 62 вхождения файлов в 12 примерах из
+`openai/skills`, `github/awesome-copilot` и `modelcontextprotocol/servers`.
+В выборку вошли навыки, инструкции и определения агентов, конфигурация MCP для
+разработки и серверы MCP. У каждого репозитория один ID источника и одна выборка
+для всех его примеров. Манифест хранит ревизии, SHA-256, признаки исполняемости
+и исходные файлы лицензий. Переход между лицензиями MCP описан в закреплённом
+файле `LICENSE` этого репозитория.
+
+В выбранные области входят инструкции и скрипты навыков, манифесты и прямые
+исходники TypeScript серверов MCP, инструкции и определения агентов Copilot.
+Изображения, тестовые каталоги и внешние зависимости остаются за пределами
+захвата. Выборка позволяет сравнить результаты по категориям. Для оценки частоты
+ошибок во всей экосистеме пакетов нужна репрезентативная выборка.
+
+Соберите корпус на файловой системе, которая сохраняет биты исполняемости.
+Создайте шаблон разметки и передайте его вместе с корпусом независимому
+рецензенту до просмотра результатов Scout.
+
+```sh
+bin/scout-dev corpus collect --manifest testdata/external-corpus/components.sources.json \
+  --allow-download --timeout 5m --output /tmp/scout-components.json
+bin/scout-dev corpus review-template --corpus /tmp/scout-components.json \
+  --output /tmp/scout-components.review.json
+```
+
+Размечайте выбранную область по исходным файлам. Ставьте `signal`, если есть
+конкретный повод для проверки, например запуск кода без закреплённой версии,
+небезопасное обращение с чувствительными данными или действие за пределами
+заявленной области. Ставьте `benign`, если исходники подтверждают обычный
+разрешённый сценарий без такого сигнала. Ставьте `ambiguous`, если для решения
+не хватает файлов или контекста либо возможны разные трактовки. В обосновании
+укажите действие, условия и ссылку на файл закреплённой ревизии. После разметки
+сохраните рецензию вместе с точными байтами корпуса:
+
+```sh
+bin/scout-dev evaluate --profile standard --split holdout --require-independent \
+  --label-review /tmp/scout-components.review.json --trusted-label-reviewer REVIEWER_ID \
+  /tmp/scout-components.json > /tmp/scout-components.evaluation.json
+```
+
+Сравнивайте обнаруженные и пропущенные сигналы, ложные срабатывания и неполные
+проверки по категориям. Метки ожидают заполнения шаблона рецензентом.
+
 ## Shell-хуки
 
 `shell-hooks.sources.json` сохраняет все файлы плагина `gh-cli` от Trail of Bits

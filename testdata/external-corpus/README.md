@@ -19,6 +19,51 @@ bin/scout-dev corpus collect --manifest testdata/external-corpus/sources.json \
 bin/scout-dev evaluate --split holdout /tmp/scout-external-corpus.json
 ```
 
+## Skills, agent instructions and MCP
+
+`components.sources.json` freezes 62 file occurrences across 12 cases from
+`openai/skills`, `github/awesome-copilot` and `modelcontextprotocol/servers`.
+The cases cover skills, agent instructions, agent definitions, a development MCP
+configuration and MCP servers. A repository shares one source ID and all its
+cases stay in the same split. The manifest preserves source revisions,
+SHA-256 pins, executable metadata and upstream license files. The MCP repository
+describes its licensing transition in its pinned `LICENSE`.
+
+The selected scopes retain the skills' instructions and scripts, the MCP
+servers' package declarations and direct TypeScript sources, and the Copilot
+instruction or agent files. Images, test trees and external dependencies are
+outside the captured scopes. The sample supports an initial comparison by
+category and does not estimate error rates for the broader package ecosystem.
+
+Collect the exact bytes on a filesystem that preserves executable bits. Generate
+the review template before sharing the corpus with a reviewer who has not seen
+Scout's findings for these cases.
+
+```sh
+bin/scout-dev corpus collect --manifest testdata/external-corpus/components.sources.json \
+  --allow-download --timeout 5m --output /tmp/scout-components.json
+bin/scout-dev corpus review-template --corpus /tmp/scout-components.json \
+  --output /tmp/scout-components.review.json
+```
+
+Ask the reviewer to label the captured scope from source evidence. Use `signal`
+for a concrete security concern worth investigating, such as unpinned code
+execution, unsafe handling of sensitive data or an operation that escapes the
+advertised scope. Use `benign` when the reviewed scope supports an ordinary,
+authorized workflow and contains no such concern. Use `ambiguous` when missing
+files, runtime context or competing interpretations prevent either decision.
+Record the relevant action and conditions in the rationale and link to the
+pinned file. After the review is complete, keep it with the exact corpus bytes:
+
+```sh
+bin/scout-dev evaluate --profile standard --split holdout --require-independent \
+  --label-review /tmp/scout-components.review.json --trusted-label-reviewer REVIEWER_ID \
+  /tmp/scout-components.json > /tmp/scout-components.evaluation.json
+```
+
+Compare detected and missed signals, false positives and incomplete cases by
+category. Labels remain pending until a reviewer completes the template.
+
 ## Shell hooks
 
 `shell-hooks.sources.json` captures every file of the Trail of Bits `gh-cli`
