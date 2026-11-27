@@ -29,6 +29,28 @@ explicitly audits whether a receipt describes the current checkout.
 
 ## Pull requests
 
+The **PR quality changes** check compares the PR head with its merge base
+and reports potential regressions in annotations and in its job summary.
+It looks for removed or relabelled benign
+cases and removed forbidden-rule expectations in the tracked regression corpora,
+removed named Go negative controls, deleted or
+skipped Go tests, and changes to literal test selections in workflows or the
+Makefile. It also flags looser or removed literal jq evaluation thresholds and
+`scout-dev evaluate` quality flags. Warnings are advisory. Review renamed tests,
+changed build constraints and rewritten commands in context.
+
+Run the same check locally against committed revisions.
+
+```sh
+go run ./internal/dev/prquality origin/master HEAD
+```
+
+The check models literal Bash and Make commands, workflow conditions and Go
+test declarations. It recognizes test-selection flags, Go platform suffixes and
+literal jq comparisons. Shell expansion, computed thresholds, generated jobs
+and dynamically named test cases need ordinary review.
+The approach is based on [Constraint-Driven Development](https://github.com/addyosmani/agent-skills/blob/main/skills/constraint-driven-development/SKILL.md).
+
 Describe the problem, resulting behavior and validation. Record checks you could
 not run, including platform limitations. Update matching English and Russian
 guides when commands or behavior change. Preserve source attribution and include

@@ -1,0 +1,38 @@
+name: PR quality changes
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review removed tests and weakened thresholds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+          cache: false
+      - name: Download pinned shell and YAML parsers
+        env:
+          GOTOOLCHAIN: local
+        run: go mod download go.yaml.in/yaml/v4 mvdan.cc/sh/v3
+      - name: Annotate quality changes in the PR
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          GOPROXY: 'off'
+          GOTOOLCHAIN: local
+        run: go run -mod=readonly ./internal/dev/prquality -github -summary "$GITHUB_STEP_SUMMARY" "$PR_BASE" "$PR_HEAD"
