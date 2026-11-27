@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/url"
 	"strings"
+
+	"github.com/skarm/scout/internal/capture/ingest"
 )
 
 type targetKind uint8
@@ -28,6 +30,8 @@ type Target struct {
 	// pin holds operator-supplied remote constraints independently of target
 	// content.
 	pin RemotePin
+	// skillExclusions limits capture of a single operator-selected skill.
+	skillExclusions *ingest.SkillExclusions
 }
 
 // RemotePin records operator-supplied revision and checksum constraints for a
@@ -52,6 +56,24 @@ type ContextReader interface {
 // Path selects a local file or directory. The path is validated when the
 // operation starts.
 func Path(path string) Target { return Target{kind: pathTarget, name: path} }
+
+// SkillPath selects a local skill directory and operator exclusions for one
+// scan. Matched files remain uninspected entries in the report inventory.
+func SkillPath(path string, patterns ...string) (Target, error) {
+	target := Path(path)
+	if err := target.validate(); err != nil {
+		return Target{}, err
+	}
+
+	exclusions, err := ingest.CompileSkillExclusions(patterns)
+	if err != nil {
+		return Target{}, err
+	}
+
+	target.skillExclusions = &exclusions
+
+	return target, nil
+}
 
 // Reader borrows a single-use reader. An offered ContextReader is preferred.
 // Otherwise cancellation is cooperative between Read calls: the caller must

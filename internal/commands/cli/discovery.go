@@ -197,6 +197,10 @@ func scanDiscovered(ctx context.Context, a discoveryArguments, snapshot discover
 		return usageError(stderr, "discovered scan accepts scan flags only, without positional targets or stdin")
 	}
 
+	if len(r.skillExcludes) != 0 {
+		return usageError(stderr, "--exclude requires an explicitly selected skill directory with scout scan")
+	}
+
 	if r.environment && (a.options.Agent == "all" || len(a.options.Projects) > 1) {
 		return usageError(stderr, "environment analysis requires one --agent and at most one --project; split independent environments")
 	}

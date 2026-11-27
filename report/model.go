@@ -259,7 +259,12 @@ type Artifact struct {
 	Files []File `json:"files"`
 	// Skills lists discovered skill documents within the captured scope.
 	Skills []string `json:"skills"`
+	// ExcludeGlobs records caller-selected scope even when no file matched.
+	ExcludeGlobs []string `json:"exclude_globs,omitempty"`
 }
+
+// CaptureOperatorExcluded is the reason for a file skipped by a caller's glob.
+const CaptureOperatorExcluded = "operator_excluded"
 
 // Check summarizes execution of one analyzer across its selected files.
 type Check struct {

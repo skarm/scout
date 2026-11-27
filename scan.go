@@ -57,6 +57,13 @@ func (s *Scanner) executeWithin(ctx context.Context, targets []Target, operation
 		return report.Run{}, err
 	}
 
+	for _, target := range targets {
+		if target.skillExclusions != nil && (len(targets) != 1 || operation != report.ScanOperation || joint || s.options.External != nil) {
+			return report.Run{}, &Error{Code: "invalid_skill_exclusion_scope", Cause: errors.Join(ErrInvalidInput,
+				errors.New("skill exclusions require a single scan without environment or external traversal"))}
+		}
+	}
+
 	if err := s.admit(); err != nil {
 		return report.Run{}, err
 	}
@@ -242,6 +249,21 @@ func (s *Scanner) scanTarget(ctx context.Context, target Target, index int, opti
 	}
 
 	s.describeAnalysis(&analysis, source, captureErr)
+
+	if target.skillExclusions != nil {
+		analysis.Artifact.ExcludeGlobs = target.skillExclusions.Patterns()
+		count := 0
+
+		for _, file := range analysis.Artifact.Files {
+			if file.Reason == report.CaptureOperatorExcluded {
+				count++
+			}
+		}
+
+		analysis.Diagnostics = append(analysis.Diagnostics, report.Diagnostic{
+			Code: "skill_exclusion_patterns", Message: fmt.Sprintf("Excluded files: %d. Operator globs: %q.", count, analysis.Artifact.ExcludeGlobs),
+		})
+	}
 	result.Analysis = analysis
 	result.State = targetState(ctx.Err(), captureErr, analysis.Coverage.Completeness)
 
@@ -475,6 +497,10 @@ func targetState(contextErr, captureErr error, completeness report.Completeness)
 func capture(ctx context.Context, target Target, options Options) (artifact.Snapshot, *fetch.Provenance, error) {
 	switch target.kind {
 	case pathTarget:
+		if target.skillExclusions != nil {
+			snapshot, err := ingest.ReadSkill(ctx, target.name, options.captureLimits(), *target.skillExclusions)
+			return snapshot, nil, err
+		}
 		snapshot, err := ingest.Read(ctx, target.name, options.captureLimits())
 		return snapshot, nil, err
 	case readerTarget:

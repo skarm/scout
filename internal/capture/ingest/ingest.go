@@ -25,15 +25,17 @@ const (
 var errEmpty = errors.New("input contains no files")
 
 type builder struct {
-	limits      report.CaptureLimits
-	files       []artifact.File
-	skipped     []report.File
-	diagnostics []report.Diagnostic
-	complete    bool
-	consumed    int64
-	entries     int
-	fileEntries int
-	names       archiveutil.Namespace
+	limits          report.CaptureLimits
+	files           []artifact.File
+	skipped         []report.File
+	diagnostics     []report.Diagnostic
+	complete        bool
+	consumed        int64
+	entries         int
+	fileEntries     int
+	names           archiveutil.Namespace
+	exclusions      SkillExclusions
+	skillScopeError error
 }
 
 type contextReader struct {
@@ -267,6 +269,13 @@ func (b *builder) captureDirectory(ctx context.Context, root *rootfs.Root, dir s
 		return false, readErr
 	}
 
+	if dir == "." && b.exclusions.Active() {
+		if err := b.exclusions.validateRootManifest(entries); err != nil {
+			b.skillScopeError = err
+			return true, err
+		}
+	}
+
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 
 	entryLimit, visitErr := b.visitDirectoryEntries(ctx, root, dir, entries, queue)
@@ -297,6 +306,11 @@ func (b *builder) visitEntry(ctx context.Context, root *rootfs.Root, dir string,
 		name = dir + "/" + name
 	}
 
+	if dir != "." && b.exclusions.Active() && strings.EqualFold(entry.Name(), artifact.SkillManifest) {
+		b.skillScopeError = errSkillManifestScope
+		return true
+	}
+
 	if !b.inventoryEntry(name, entry.IsDir()) {
 		return false
 	}
@@ -321,6 +335,11 @@ func (b *builder) visitEntry(ctx context.Context, root *rootfs.Root, dir string,
 		b.issue("file_count_limit", name, "File count budget exhausted; remaining file contents were not captured.")
 
 		return true
+	}
+
+	if b.exclusions.matches(name) {
+		b.skip(name, "file", report.CaptureOperatorExcluded, "File omitted by an operator-supplied skill exclusion.", -1)
+		return false
 	}
 
 	b.captureFile(ctx, root, name)
@@ -429,6 +448,10 @@ func readSelectedOpenFile(ctx context.Context, f *os.File, info os.FileInfo, max
 }
 
 func readDirectory(ctx context.Context, target string, initial os.FileInfo, limits report.CaptureLimits) (artifact.Snapshot, error) {
+	return readScopedDirectory(ctx, target, initial, limits, SkillExclusions{})
+}
+
+func readScopedDirectory(ctx context.Context, target string, initial os.FileInfo, limits report.CaptureLimits, exclusions SkillExclusions) (artifact.Snapshot, error) {
 	root, err := openCapturedDirectory(target, initial)
 	if err != nil {
 		return artifact.Snapshot{}, err
@@ -436,7 +459,14 @@ func readDirectory(ctx context.Context, target string, initial os.FileInfo, limi
 	defer func() { _ = root.Close() }()
 
 	b := newBuilder(limits)
-	if err := b.walkDirectory(ctx, root); err != nil {
+	b.exclusions = exclusions
+	err = b.walkDirectory(ctx, root)
+
+	if b.skillScopeError != nil {
+		return invalidSkillSnapshot("directory", b.diagnostics, b.skillScopeError), b.skillScopeError
+	}
+
+	if err != nil {
 		b.complete = false
 		return b.snapshot("directory"), err
 	}

@@ -46,7 +46,10 @@ func initializeFileCoverage(r *report.Analysis, documents []document.File, check
 
 	for _, diagnostic := range r.Diagnostics {
 		if index, ok := fileIndex[diagnostic.Path]; ok && diagnostic.AffectsScope {
-			r.Coverage.Files[index].Gaps = append(r.Coverage.Files[index].Gaps, diagnostic.Code)
+			file := &r.Coverage.Files[index]
+			if !slices.Contains(file.Gaps, diagnostic.Code) {
+				file.Gaps = append(file.Gaps, diagnostic.Code)
+			}
 		}
 	}
 

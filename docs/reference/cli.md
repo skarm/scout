@@ -134,6 +134,19 @@ report and exit code. Declaration states do not establish component activation.
   declarations; default `auto`.
 - `--stdin NAME` (`-i`): read one input from stdin. Use a relative filename such as
   `SKILL.md` for format detection and source coordinates. Omit positional inputs.
+- `--exclude GLOB`: repeatable file exclusion for a direct scan of one local skill
+  directory. Example: `scout scan --exclude 'tests/*' --exclude 'fixtures/*.json' ./my-skill`.
+  Patterns match the entire relative POSIX path case-sensitively, and `*` can
+  span directory levels. Quote patterns so the shell passes them to Scout.
+  Pass up to 32 patterns, each up to 256 UTF-8 bytes.
+
+The directory must contain exactly one manifest at its root. Patterns that
+match `SKILL.md` or `skill.md` are rejected, and an actual manifest with a
+different spelling of those letters is protected as well. JSON records all
+requested patterns in `artifact.exclude_globs`, including patterns with no
+matches. Each excluded file is listed as `skipped` with reason
+`operator_excluded` and remains in the coverage inventory. Any matched file
+makes coverage partial and returns exit 2.
 
 Keep config, baseline, extra rules and caches outside all inspected inputs.
 See [configuration](../user/usage.md#configuration) and

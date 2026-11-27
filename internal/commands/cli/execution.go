@@ -58,6 +58,19 @@ func requestError(err error, stderr io.Writer) int {
 }
 
 func (r *request) scanTargets(stdin io.Reader) ([]scout.Target, error) {
+	if len(r.skillExcludes) != 0 {
+		if len(r.targets) != 1 || r.stdinName != "" || r.environment || r.followExternal || fetch.IsRemote(r.targets[0]) {
+			return nil, errors.New("--exclude requires one local skill directory without stdin, environment or external traversal")
+		}
+
+		target, err := scout.SkillPath(r.targets[0], r.skillExcludes...)
+		if err != nil {
+			return nil, err
+		}
+
+		return []scout.Target{target}, nil
+	}
+
 	if r.stdinName != "" {
 		if r.environment {
 			return nil, errors.New("environment analysis requires local paths")

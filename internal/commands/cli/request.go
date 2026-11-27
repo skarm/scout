@@ -62,6 +62,7 @@ type request struct {
 	snapshotEmpty                   bool
 	snapshotSourceDiff              bool
 	externalOrigins                 repeated
+	skillExcludes                   repeated
 	externalDepth, externalRequests int
 	externalBytes                   int64
 }
@@ -306,6 +307,7 @@ func bindScanInputs(fs *flag.FlagSet, r *request) {
 		return nil
 	})
 	fs.BoolVar(&r.environment, "environment", false, "treat selected local roots as one agent/project environment")
+	fs.Var(&r.skillExcludes, "exclude", "omit matching files within one local skill root; POSIX-path `GLOB`; repeatable")
 	fs.StringVar(&r.revision, "revision", "", "pinned commit revision")
 	fs.StringVar(&r.sha256, "download-sha256", "", "pinned response hash")
 }
