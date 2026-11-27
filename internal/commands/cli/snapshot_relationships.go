@@ -25,8 +25,8 @@ type environmentRelationshipDelta struct {
 	Changes      []environmentRelationshipChange `json:"changes"`
 }
 
-// Observation IDs and target indexes are run-local. Compare role/path/span identities
-// under stable root IDs; file hashes and byte offsets can change after unrelated edits.
+// Observation IDs and target indexes are run-local. Compare evidence under
+// stable root IDs. Description overlaps belong to the pair of manifest paths.
 func relationshipIndex(doc *report.Document, paths map[string]string) map[string]report.EnvironmentObservation {
 	indexed := map[string]report.EnvironmentObservation{}
 	if doc == nil || doc.Run.Environment == nil {
@@ -47,7 +47,11 @@ func relationshipIndex(doc *report.Document, paths map[string]string) map[string
 	for _, observation := range doc.Run.Environment.Observations {
 		refs := make([]string, 0, len(observation.Evidence))
 		for _, e := range observation.Evidence {
-			data, _ := json.Marshal([]string{targets[e.TargetID], e.Role, e.Source.Path, e.Source.SpanSHA256})
+			identity := []string{targets[e.TargetID], e.Role, e.Source.Path}
+			if observation.Kind != report.EnvironmentSkillDescriptionOverlap {
+				identity = append(identity, e.Source.SpanSHA256)
+			}
+			data, _ := json.Marshal(identity)
 			refs = append(refs, string(data))
 		}
 		// Roles still bind evidence. Sorting only removes irrelevant pair ordering.
@@ -138,6 +142,8 @@ func relationshipExplanation(kind string) string {
 		return "Multiple captured tools use the same unqualified name; host prefixes and precedence need review."
 	case report.EnvironmentSkillReference:
 		return "A captured skill links to another skill; the link does not establish invocation or granted authority."
+	case report.EnvironmentSkillDescriptionOverlap:
+		return "Captured skill descriptions overlap and may compete for the same requests."
 	default:
 		return "A source-bound relationship between components changed."
 	}

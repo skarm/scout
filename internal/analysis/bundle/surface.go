@@ -172,6 +172,9 @@ func (b *bundleAnalysis) surfaceSkills(docs []document.File) {
 		}
 
 		b.surfaceFact("skill", "", name, b.reference(name, 0, len(text)))
+		if addr.Namespace == artifact.RootNamespace {
+			b.observeSkillDescription(d, name)
+		}
 
 		links := skillLink.FindAllStringSubmatchIndex(text, maxSurfaceFacts+1)
 		if len(links) > maxSurfaceFacts {
@@ -196,6 +199,39 @@ func (b *bundleAnalysis) surfaceSkills(docs []document.File) {
 			if file := skills[document.Address{Namespace: addr.Namespace, Name: target}]; file != "" && file != name {
 				b.surfaceFact("skill_reference", file, name, b.reference(name, link[0], link[1]))
 			}
+		}
+	}
+}
+
+func (b *bundleAnalysis) observeSkillDescription(d document.File, name string) {
+	for _, unit := range d.Units() {
+		if unit.Origin != "frontmatter" {
+			continue
+		}
+
+		tree, ok := unit.Tree.(parse.JSONTree)
+		if !ok || tree.Root == nil || tree.Root.Kind != jsonconfig.KindObject {
+			break
+		}
+
+		node := tree.Root.Get("description")
+		value, ok := node.Text()
+		if !ok || strings.TrimSpace(value) == "" {
+			return
+		}
+
+		if len(value) <= maxSurfaceFactBytes {
+			b.surfaceFact(report.EnvironmentSkillDescription, value, name, b.unitRef(d, unit, node.Span))
+		} else {
+			b.surface.UnknownSkillDescriptions++
+		}
+		return
+	}
+
+	for _, region := range d.Regions() {
+		if region.Kind == "frontmatter" {
+			b.surface.UnknownSkillDescriptions++
+			return
 		}
 	}
 }

@@ -96,3 +96,20 @@ func TestCapabilityPairsRespectScopesAndBudgets(t *testing.T) {
 		t.Fatalf("capability relation work exceeded its quota: %+v", out)
 	}
 }
+
+func TestSkillDescriptionOverlapThresholdAndBudget(t *testing.T) {
+	surface := environment.Surface{Complete: true, Facts: []environment.SurfaceFact{
+		{Kind: report.EnvironmentSkillDescription, Value: "the Отчёты продажи CSV", Source: report.SourceRef{Path: "a/SKILL.md", ByteEnd: 1}},
+		{Kind: report.EnvironmentSkillDescription, Value: "ОТЧЁТЫ продажи CSV", Source: report.SourceRef{Path: "b/SKILL.md", ByteEnd: 1}},
+		{Kind: report.EnvironmentSkillDescription, Value: "отчёты продажи сводки", Source: report.SourceRef{Path: "c/SKILL.md", ByteEnd: 1}},
+	}}
+	targets := []report.TargetResult{{ID: "root", State: report.RunComplete}}
+	out := environment.Build(t.Context(), []environment.Surface{surface}, targets, 10, 100)
+	if out.Completeness != report.Complete || len(out.Observations) != 1 || out.Observations[0].SimilarityBasisPoints != 10000 {
+		t.Fatalf("expected one identical pair and no pairs at the threshold: %+v", out)
+	}
+	out = environment.Build(t.Context(), []environment.Surface{surface}, targets, 10, 4)
+	if out.Completeness != report.Partial || len(out.Observations) != 0 || !slices.Contains(out.Issues, "operation_limit") {
+		t.Fatalf("skipped comparison did not leave a coverage gap: %+v", out)
+	}
+}

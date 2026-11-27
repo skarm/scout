@@ -19,7 +19,8 @@ signature-base references and derived-pattern DRL-1.1 notice:
 https://github.com/Neo23x0/signature-base, licenses/Detection-Rule-License-1.1.txt.
 Operator-added rules retain their respective licenses.
 
-Scout also includes eight modified Cisco AI Defense skill-scanner YARA rules.
+Scout also adapts eight Cisco AI Defense skill-scanner YARA rules and the
+skill description overlap matcher with its English stop words.
 Copyright 2026 Cisco Systems, Inc. and its affiliates.
 Licensed under Apache-2.0: licenses/Cisco-Apache-2.0.txt.
 Upstream revision: f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1.

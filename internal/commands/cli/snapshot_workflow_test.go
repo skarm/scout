@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/skarm/scout/internal/commands/cli"
+	"github.com/skarm/scout/internal/syntax/frontend"
 	"github.com/skarm/scout/report"
 )
 
@@ -264,6 +265,114 @@ func TestSnapshotRelationshipChangesUseStableRootsAndCoverage(t *testing.T) {
 	result = comparisonResult(t, out)
 	if result.Relationships.Completeness != report.Partial {
 		t.Fatal("partial relationship coverage promoted to complete")
+	}
+}
+
+func TestSnapshotSkillDescriptionOverlapChanges(t *testing.T) {
+	if !frontend.BackendFor("yaml").Available {
+		t.Skip("YAML frontend is unavailable")
+	}
+
+	base := t.TempDir()
+	root := filepath.Join(base, "skills")
+	first := filepath.Join(root, "csv-helper", "SKILL.md")
+	second := filepath.Join(root, "csv-review", "skill.md")
+	for _, file := range []string{first, second} {
+		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(file, name, description string) {
+		t.Helper()
+		content := "---\nname: " + name + "\ndescription: " + description + "\n---\nSummarize CSV sales records.\n"
+		if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(first, "csv-helper", "'Summarize CSV sales records'")
+	write(second, "csv-review", "'Draw weather charts'")
+	before := filepath.Join(base, "before.json")
+	withOverlap := filepath.Join(base, "with-overlap.json")
+	args := func(mode, snapshot string, extra ...string) []string {
+		return append([]string{"snapshot", mode, "--snapshot", snapshot, "--scope", "selected", "--format", "json", "--root", "skills=" + root}, extra...)
+	}
+	if code, _ := runCheckpoint(t, args("create", before)); code != 0 {
+		t.Fatal(code)
+	}
+
+	write(second, "csv-review", ">-\n  Summarize the CSV\n  sales records")
+	code, out := runCheckpoint(t, args("compare", before, "--save-candidate", withOverlap))
+	delta := comparisonResult(t, out).Relationships
+	if code != 1 || delta.Introduced != 1 || len(delta.Changes) != 1 || delta.Changes[0].Kind != report.EnvironmentSkillDescriptionOverlap {
+		t.Fatalf("overlap not introduced: %d %+v", code, delta)
+	}
+	data, err := os.ReadFile(withOverlap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved struct{ Inspection report.Document }
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if err := saved.Inspection.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	overlap := saved.Inspection.Run.Environment.Observations[0]
+	if overlap.SimilarityBasisPoints != 10000 || len(overlap.Evidence) != 2 {
+		t.Fatalf("missing saved score or evidence: %+v", overlap)
+	}
+	for _, evidence := range overlap.Evidence {
+		content, err := os.ReadFile(filepath.Join(root, evidence.Source.Path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		span := string(content[evidence.Source.ByteStart:evidence.Source.ByteEnd])
+		if !strings.Contains(span, "Summarize") || strings.Contains(span, "description:") || strings.Contains(span, "---") {
+			t.Fatalf("unexpected description span %q", span)
+		}
+	}
+	if bytes.Contains(out, []byte("Summarize the CSV")) {
+		t.Fatal("comparison leaked description text")
+	}
+
+	write(second, "csv-review", "'Summarize recent CSV sales records'")
+	_, out = runCheckpoint(t, args("compare", withOverlap))
+	delta = comparisonResult(t, out).Relationships
+	if delta.Persistent != 1 || delta.Introduced != 0 || delta.NotObserved != 0 {
+		t.Fatalf("edited but persistent overlap: %+v", delta)
+	}
+
+	write(second, "csv-review", "'Draw weather charts'")
+	_, out = runCheckpoint(t, args("compare", withOverlap))
+	delta = comparisonResult(t, out).Relationships
+	if delta.NotObserved != 1 || delta.Introduced != 0 {
+		t.Fatalf("overlap disappearance missing: %+v", delta)
+	}
+	for _, format := range []string{"text", "markdown"} {
+		_, out = runCheckpoint(t, args("compare", withOverlap, "--format", format))
+		if !bytes.Contains(out, []byte("skill_description_overlap: not_observed")) || !bytes.Contains(out, []byte("100.00%")) {
+			t.Fatalf("%s did not show the removed overlap and score", format)
+		}
+	}
+	_, out = runCheckpoint(t, args("compare", withOverlap, "--format", "sarif"))
+	var sarif struct {
+		Properties struct {
+			Comparison usableComparison `json:"environmentComparison"`
+		}
+	}
+	if err := json.Unmarshal(out, &sarif); err != nil {
+		t.Fatal(err)
+	}
+	delta = sarif.Properties.Comparison.Relationships
+	if delta.NotObserved != 1 || len(delta.Changes) != 1 || delta.Changes[0].Kind != report.EnvironmentSkillDescriptionOverlap {
+		t.Fatalf("SARIF did not preserve the relationship delta: %+v", delta)
+	}
+
+	write(second, "csv-review", "[broken")
+	_, out = runCheckpoint(t, args("compare", withOverlap))
+	delta = comparisonResult(t, out).Relationships
+	if delta.Unverified != 1 || delta.NotObserved != 0 || delta.Completeness != report.Partial {
+		t.Fatalf("unreadable description treated as a confirmed removal: %+v", delta)
 	}
 }
 

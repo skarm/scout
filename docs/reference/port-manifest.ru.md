@@ -22,6 +22,12 @@ Scout применяет к адаптациям собственные лими
 Уведомления об авторских правах и Apache-2.0 сохранены в [NOTICE](../../NOTICE)
 и [лицензии Cisco](../../licenses/Cisco-Apache-2.0.txt).
 
+Сравнение описаний навыков в окружении использует адаптированный алгоритм
+Жаккара и список английских служебных слов из
+[Cisco skill-scanner](https://github.com/cisco-ai-defense/skill-scanner/blob/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/core/scanner.py#L1631).
+Scout выделяет слова по Unicode и записывает связи с исходными координатами
+при сходстве выше 0,5.
+
 ## Справочные материалы
 
 [Snyk agent-scan](https://github.com/snyk/agent-scan/tree/a69e1c354ad0812c13da15dc64770e1c21786841)

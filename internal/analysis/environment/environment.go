@@ -26,10 +26,12 @@ type builder struct {
 }
 
 type factIndex struct {
-	identifiers  map[string][]fact
-	capabilities map[string][]fact
-	links        []fact
-	skills       map[string]fact
+	identifiers         map[string][]fact
+	capabilities        map[string][]fact
+	links               []fact
+	skills              map[string]fact
+	descriptions        []skillDescription
+	unknownDescriptions int
 }
 
 // Build combines source-bound facts without merging the underlying analyses.
@@ -44,6 +46,7 @@ func Build(ctx context.Context, surfaces []Surface, targets []report.TargetResul
 			"Identifiers cover root-level mcpServers/mcp_servers aliases and captured root tools or result.tools arrays. Saved project maps are not merged; server alias collisions and unqualified tool-name collisions are distinct observations. MCP tool schemas are never fetched.",
 			"Captured identifiers and capabilities are syntactic candidates, not effective runtime names, permissions, activation or proven cross-component data flow. All cached versions and disabled declarations remain visible.",
 			"Capability observers cover selected Go/JS/TS/Python/Shell/SQL syntax. Literal relative Markdown links to captured SKILL.md files are recorded as references, not calls. Archive and other derived-object relationships are outside this environment scope.",
+			"Description overlap compares parsed top-level SKILL.md descriptions using word-set similarity. It indicates possible competition between skills for the same request.",
 			"Untrusted-input candidates cover selected HTTP response APIs, Python input and shell read; authenticated responses are not assumed safe. Command/process construction, selected file mutations and literal kubectl/terraform/helm/docker modifying verbs are capabilities, not proof of execution. Request construction alone is not an external-input fact. Python syntax requires the Python check to be enabled and its backend available.",
 			"Observations require review, independently of per-target baselines. No source excerpts, raw identifiers or endpoint values are included.",
 		},
@@ -61,6 +64,7 @@ func Build(ctx context.Context, surfaces []Surface, targets []report.TargetResul
 	index := factIndex{identifiers: map[string][]fact{}, capabilities: map[string][]fact{}, skills: map[string]fact{}}
 
 	for i, surface := range surfaces {
+		index.unknownDescriptions += surface.UnknownSkillDescriptions
 		if !surface.Complete || targets[i].State != report.RunComplete {
 			b.issue("component_context_incomplete")
 		}
@@ -93,6 +97,11 @@ func (b *builder) collect(facts []SurfaceFact, target string, index *factIndex) 
 			index.links = append(index.links, item)
 		case "skill":
 			index.skills[item.target+"\x00"+item.Source.Path] = item
+		case report.EnvironmentSkillDescription:
+			if words := descriptionWords(item.Value); len(words) != 0 {
+				item.Value = ""
+				index.descriptions = append(index.descriptions, skillDescription{item, words})
+			}
 		}
 	}
 
@@ -139,6 +148,8 @@ func (b *builder) relate(index factIndex) {
 			}
 		}
 	}
+
+	b.relateDescriptions(index.descriptions, index.unknownDescriptions)
 }
 
 func (b *builder) relateCapabilities(inputs, effects []fact) bool {
@@ -168,6 +179,10 @@ func (b *builder) result() report.EnvironmentReport {
 }
 
 func (b *builder) step() bool {
+	return b.spend(1)
+}
+
+func (b *builder) spend(operations uint64) bool {
 	if b.stopped {
 		return false
 	}
@@ -177,12 +192,12 @@ func (b *builder) step() bool {
 		return false
 	}
 
-	b.operations++
-	if b.operations > b.out.MaxOperations {
+	if operations > b.out.MaxOperations-b.operations {
 		b.issue("operation_limit")
 		return false
 	}
 
+	b.operations += operations
 	return true
 }
 
@@ -196,7 +211,11 @@ func (b *builder) issue(code string) {
 }
 
 func (b *builder) emit(kind string, a, c fact) {
-	observation := report.EnvironmentObservation{Kind: kind, Evidence: []report.EnvironmentEvidence{
+	b.emitRelationship(kind, a, c, 0)
+}
+
+func (b *builder) emitRelationship(kind string, a, c fact, similarityBasisPoints int) {
+	observation := report.EnvironmentObservation{Kind: kind, SimilarityBasisPoints: similarityBasisPoints, Evidence: []report.EnvironmentEvidence{
 		{TargetID: a.target, Role: a.Kind, Source: a.Source},
 		{TargetID: c.target, Role: c.Kind, Source: c.Source},
 	}}

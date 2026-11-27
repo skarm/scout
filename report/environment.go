@@ -15,12 +15,14 @@ const (
 )
 
 const (
-	EnvironmentCapabilityCombination = "capability_combination"
-	EnvironmentToolNameCollision     = "tool_name_collision"
-	EnvironmentMCPNameCollision      = "mcp_name_collision"
-	EnvironmentSkillReference        = "skill_reference"
-	EnvironmentToolIdentifier        = "tool_identifier"
-	EnvironmentMCPIdentifier         = "mcp_identifier"
+	EnvironmentCapabilityCombination   = "capability_combination"
+	EnvironmentToolNameCollision       = "tool_name_collision"
+	EnvironmentMCPNameCollision        = "mcp_name_collision"
+	EnvironmentSkillReference          = "skill_reference"
+	EnvironmentSkillDescriptionOverlap = "skill_description_overlap"
+	EnvironmentSkillDescription        = "skill_description"
+	EnvironmentToolIdentifier          = "tool_identifier"
+	EnvironmentMCPIdentifier           = "mcp_identifier"
 )
 
 // EnvironmentReport relates only roots explicitly selected as one environment.
@@ -41,6 +43,8 @@ type EnvironmentObservation struct {
 	ID       string                `json:"id"`
 	Kind     string                `json:"kind"`
 	Evidence []EnvironmentEvidence `json:"evidence"`
+	// SimilarityBasisPoints is the Jaccard score scaled to 0–10,000.
+	SimilarityBasisPoints int `json:"similarity_basis_points,omitempty"`
 }
 
 // EnvironmentEvidence qualifies file coordinates by their original target.
@@ -94,6 +98,14 @@ func validateEnvironment(run Run) error {
 }
 
 func validateEnvironmentObservation(o EnvironmentObservation, files map[environmentFileKey]File) error {
+	if o.Kind == EnvironmentSkillDescriptionOverlap {
+		if o.SimilarityBasisPoints <= 5000 || o.SimilarityBasisPoints > 10000 {
+			return errors.New("invalid skill description similarity")
+		}
+	} else if o.SimilarityBasisPoints != 0 {
+		return errors.New("unexpected environment similarity")
+	}
+
 	a, c := environmentRoles(o.Kind)
 	if o.Kind == EnvironmentCapabilityCombination && len(o.Evidence) == 2 && EnvironmentCapabilityPair(o.Evidence[0].Role, o.Evidence[1].Role) {
 		a, c = o.Evidence[0].Role, o.Evidence[1].Role
@@ -132,6 +144,8 @@ func environmentRoles(kind string) (string, string) {
 		return EnvironmentMCPIdentifier, EnvironmentMCPIdentifier
 	case EnvironmentSkillReference:
 		return EnvironmentSkillReference, "skill"
+	case EnvironmentSkillDescriptionOverlap:
+		return EnvironmentSkillDescription, EnvironmentSkillDescription
 	default:
 		return "", ""
 	}

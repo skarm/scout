@@ -22,6 +22,11 @@ The pack is `internal/signatures/rules/cisco_adapted.yar`. Source hashes are in 
 Copyright and Apache-2.0 notices remain in [NOTICE](../../NOTICE) and the
 [Cisco license](../../licenses/Cisco-Apache-2.0.txt).
 
+The environment skill description comparison adapts the Jaccard matcher and
+English stop words from [Cisco's scanner](https://github.com/cisco-ai-defense/skill-scanner/blob/f7824651ffeb9b89f7682ddd97d6fba8fe9c10b1/skill_scanner/core/scanner.py#L1631).
+Scout uses Unicode words, a single threshold above 0.5 and source-bound
+environment observations.
+
 ## Reference material
 
 [Snyk agent-scan](https://github.com/snyk/agent-scan/tree/a69e1c354ad0812c13da15dc64770e1c21786841)

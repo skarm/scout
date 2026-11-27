@@ -72,13 +72,27 @@ Small text files include changed line-range sizes; these are not minimal diff co
 Dependency details include package names and old/new declared versions.
 
 Both versions and **both environments** are rescanned with the current scanner
-configuration. Relationships match by stable root IDs, kind, evidence roles and
-span hashes, retaining multiplicity. Statuses are `introduced`, `persistent`,
+configuration. Relationships use stable root IDs and source evidence to match
+observations, retaining multiplicity. Statuses are `introduced`, `persistent`,
 `not_observed`, or `unverified` when absence cannot be established under incomplete
 coverage. Both reports and source coordinates remain available. Adding another
 root cannot create a new relationship merely by changing a target index.
 Capability combinations do not prove invocation or data flow; `not_observed` is
 not proof of remediation.
+
+Skill description overlaps are saved as `skill_description_overlap` observations.
+Scout compares the top-level YAML `description` values from captured `SKILL.md`
+files, including skills under the same root. It reports pairs with Jaccard
+similarity above 0.5 after case folding, Unicode word splitting and removal of
+common English stop words. Reports include the score and both source spans.
+JSON and SARIF store the score as `similarity_basis_points` (10,000 means 100%).
+This is a review signal for potentially competing skills.
+
+An overlap is identified by both stable root IDs and relative manifest paths.
+Edits that leave a pair above the threshold keep the overlap `persistent`.
+This analysis uses the YAML check and considers descriptions up to 1,024 UTF-8
+bytes. If an unavailable description could affect a pair, environment coverage
+is partial and an absent overlap is `unverified`.
 
 Unchanged complete/allowed roots do not repeat their full inspection in human output.
 JSON retains all reports under `scout.environment-comparison/v1`: `roots`,
