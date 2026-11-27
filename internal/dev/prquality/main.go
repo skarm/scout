@@ -92,7 +92,9 @@ func reviewDiff(ctx context.Context, baseRef, headRef string) ([]warning, error)
 
 	raw, err := git(ctx, "diff", "--no-ext-diff", "--no-renames", "--raw", "--no-abbrev", "-z", "--diff-filter=ADMT", base, head, "--",
 		"Makefile", ".github/workflows", "testdata/security-corpus", "testdata/knowledge-runtime/cases.json",
-		"testdata/production-replay/cases.json", ":(glob)**/*_test.go")
+		"testdata/production-replay/cases.json", ":(glob)**/*.go",
+		":(glob)**/*.js", ":(glob)**/*.jsx", ":(glob)**/*.mjs", ":(glob)**/*.cjs",
+		":(glob)**/*.ts", ":(glob)**/*.tsx", ":(glob)**/*.mts", ":(glob)**/*.cts", ":(glob)**/*.py", ":(glob)**/*.pyi")
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +111,7 @@ func reviewDiff(ctx context.Context, baseRef, headRef string) ([]warning, error)
 	before, after := newInventory(), newInventory()
 
 	if err := readGitBlobs(ctx, func(read blobReader) error {
-		return readDiffFiles(fields, before, after, read)
+		return readDiffFiles(ctx, fields, before, after, read)
 	}); err != nil {
 		return nil, err
 	}
@@ -117,8 +119,12 @@ func reviewDiff(ctx context.Context, baseRef, headRef string) ([]warning, error)
 	return compareInventories(before, after), nil
 }
 
-func readDiffFiles(fields []string, before, after inventory, read blobReader) error {
+func readDiffFiles(ctx context.Context, fields []string, before, after inventory, read blobReader) error {
 	for i := 0; i < len(fields); i += 2 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		header := strings.Fields(strings.TrimPrefix(fields[i], ":"))
 		if len(header) != 5 {
 			return errors.New("unexpected Git raw diff entry")
@@ -126,13 +132,13 @@ func readDiffFiles(fields []string, before, after inventory, read blobReader) er
 
 		path := fields[i+1]
 		if regularGitMode(header[0]) {
-			if err := before.read(read, header[2], path); err != nil {
+			if err := before.read(ctx, read, header[2], path); err != nil {
 				return err
 			}
 		}
 
 		if regularGitMode(header[1]) {
-			if err := after.read(read, header[3], path); err != nil {
+			if err := after.read(ctx, read, header[3], path); err != nil {
 				return err
 			}
 		}
@@ -194,12 +200,14 @@ func writeWarnings(out io.Writer, warnings []warning, github bool) error {
 
 func writeWarning(out io.Writer, item warning, github bool) error {
 	detail := item.detail
-	if item.base {
+	if item.base && item.line > 0 {
 		detail = fmt.Sprintf("Base revision line %d. %s", item.line, detail)
+	} else if item.base {
+		detail = "Base revision. " + detail
 	}
 
 	if !github {
-		_, err := fmt.Fprintf(out, "%q:%d: %s: %s\n", item.path, item.line, item.category, detail)
+		_, err := fmt.Fprintf(out, "%s: %s: %s\n", warningPath(item), item.category, detail)
 		return err
 	}
 
@@ -228,13 +236,21 @@ func appendSummary(path string, warnings []warning) error {
 			revision = "base"
 		}
 
-		at := fmt.Sprintf("%q:%d (%s)", item.path, item.line, revision)
+		at := warningPath(item) + " (" + revision + ")"
 		fmt.Fprintf(&out, "- **%s** at <code>%s</code>. %s\n", html.EscapeString(item.category), html.EscapeString(at), html.EscapeString(item.detail))
 	}
 
 	_, err = io.WriteString(f, out.String())
 
 	return errors.Join(err, f.Close())
+}
+
+func warningPath(item warning) string {
+	if item.line > 0 {
+		return fmt.Sprintf("%q:%d", item.path, item.line)
+	}
+
+	return fmt.Sprintf("%q", item.path)
 }
 
 func annotationEscape(value string, property bool) string {

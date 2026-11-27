@@ -29,6 +29,7 @@ func (i inventory) readGoTests(name string, data []byte) error {
 
 	prefix := path.Dir(name) + "/" + file.Name.Name + "\x00"
 	tags := goBuildTags(fset, name, file)
+	assertions := goAssertionParser{imports: assertionImports(file.Imports), guards: map[assertionGuard]bool{}}
 
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -40,7 +41,8 @@ func (i inventory) readGoTests(name string, data []byte) error {
 		key := prefix + test
 		i.addTest(key, test, location{name, fset.Position(fn.Pos()).Line})
 		i.buildTags[key] = append(i.buildTags[key], tags)
-		i.readTestBody(fset, fn.Body, prefix, test, name)
+		assertions.receiver = assertions.testReceiver(fn.Type)
+		i.readTestBody(fset, fn.Body, prefix, test, name, assertions)
 	}
 
 	return nil
@@ -72,12 +74,17 @@ func (i inventory) negativeName(name string) bool {
 	return strings.Contains(name, "negative") || strings.Contains(name, "benign") || strings.Contains(name, "falsepositive")
 }
 
-func (i inventory) readTestBody(fset *token.FileSet, body *ast.BlockStmt, prefix, test, name string) {
+func (i inventory) readTestBody(fset *token.FileSet, body *ast.BlockStmt, prefix, test, name string, parser goAssertionParser) {
 	ast.PreorderStack(body, nil, func(node ast.Node, ancestors []ast.Node) bool {
-		loc := location{name, fset.Position(node.Pos()).Line}
+		loc := location{name, fset.PositionFor(node.Pos(), false).Line}
 		switch n := node.(type) {
 		case *ast.CallExpr:
 			i.readTestCall(fset, n, ancestors, prefix, test, loc)
+
+			if checks := parser.readCall(n, ancestors, loc); len(checks) != 0 {
+				key := prefix + testPath(test, ancestors)
+				i.assertions[key] = append(i.assertions[key], checks...)
+			}
 		case *ast.KeyValueExpr:
 			field, ok := n.Key.(*ast.Ident)
 			if ok && strings.EqualFold(field.Name, "name") {

@@ -26,9 +26,12 @@ func TestScanner(t *testing.T) {
 	t.Run("benign description", func(t *testing.T) {})
 	t.Run("still here", func(t *testing.T) {
 		if testing.Short() { t.SkipNow() }
+		got, want := "actual", "expected"
+		if got != want { t.Fatal("different result") }
 	})
 }
 `)
+	writeFile(t, "scanner.go", "package scanner\nvar count = 1\n")
 	writeFile(t, "stable_test.go", "package scanner\nimport \"testing\"\nfunc TestStable(t *testing.T) {}\n")
 	writeFile(t, "replaced_test.go", "package scanner\nimport \"testing\"\nfunc TestReplacedBySymlink(t *testing.T) {}\n")
 	writeFile(t, "testdata/security-corpus/packages.json", `{"cases":[{"id":"benign-fixture","label":"benign"},{"id":"still-benign","label":"benign"}]}`)
@@ -58,9 +61,12 @@ func TestScanner(t *testing.T) {
 	// t.Skip("this comment is not a skip")
 	t.Run("still here", func(t *testing.T) {
 		t.SkipNow()
+		got := "actual"
+		if got == "" { t.Fatal("missing result") }
 	})
 }
 `)
+	writeFile(t, "scanner.go", "package scanner\nvar count = 1 //nolint:unused\n")
 	writeFile(t, "testdata/security-corpus/packages.json", `{"cases":[{"id":"benign-fixture","label":"ambiguous"},{"id":"still-benign","label":"benign"}]}`)
 	writeFile(t, "testdata/production-replay/cases.json", `{"cases":[{"id":"runner","forbidden_rules":["RULE2"]}]}`)
 	writeFile(t, ".github/workflows/ci.yml", `on:
@@ -107,6 +113,7 @@ jobs:
 		"Negative control removed", "benign-fixture", "benign description", "runner forbids RULE1",
 		"Test removed from run", "TestRemoved", "TestReplacedBySymlink",
 		"Test can now be skipped", "TestScanner/still here",
+		"Test assertion weakened", "file=scanner.go,title=Go lint suppression added,line=2",
 		"Go test build selection changed", "PR test trigger removed",
 		"Test run removed or narrowed", "host-test", "selection for \"./...\"",
 		"Quality threshold weakened", "--min-recall", "--max-fpr", ".complete_negative_benign",

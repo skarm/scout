@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -18,6 +19,9 @@ type testSkip struct {
 
 type inventory struct {
 	tests, controls    subjects
+	assertions         map[string][]testAssertion
+	suppressions       map[lintSuppression][]location
+	suppressionGaps    map[string]string
 	skips              map[testSkip][]location
 	buildTags          map[string][]taggedTests
 	commands           map[commandKey][]testCommand
@@ -34,20 +38,36 @@ type taggedTests struct {
 func newInventory() inventory {
 	return inventory{
 		tests: subjects{}, controls: subjects{}, skips: map[testSkip][]location{},
+		assertions: map[string][]testAssertion{}, suppressions: map[lintSuppression][]location{}, suppressionGaps: map[string]string{},
 		buildTags: map[string][]taggedTests{}, commands: map[commandKey][]testCommand{}, gates: map[gateKey][]bound{},
 		workflows: map[string]workflowCoverage{}, testNameSeparators: strings.NewReplacer("-", "", "_", "", " ", ""),
 	}
 }
 
-func (i inventory) read(read blobReader, blob, name string) error {
+func (i inventory) read(ctx context.Context, read blobReader, blob, name string) error {
+	lang := suppressionLanguage(path.Ext(name))
+
 	switch {
-	case strings.HasSuffix(name, "_test.go"):
+	case strings.HasSuffix(name, ".go"):
 		data, err := read(blob)
 		if err != nil {
 			return err
 		}
 
-		return i.readGoTests(name, data)
+		i.readGoSuppressions(name, data)
+
+		if strings.HasSuffix(name, "_test.go") {
+			return i.readGoTests(name, data)
+		}
+	case lang != "":
+		data, err := read(blob)
+		if err != nil {
+			return err
+		}
+
+		i.readScriptSuppressions(ctx, name, lang, data)
+
+		return ctx.Err()
 	case controlCorpus(name):
 		data, err := read(blob)
 		if err != nil {
@@ -136,6 +156,9 @@ func compareInventories(before, after inventory) []warning {
 
 	warnings = appendMissing(warnings, before.tests, after.tests, "Test removed from run",
 		"Go test or named subtest %q was removed or renamed.")
+	warnings = append(warnings, changedAssertions(before, after)...)
+	warnings = append(warnings, addedSuppressions(before, after)...)
+
 	for key, locations := range after.skips {
 		if !key.workflow && len(before.tests[key.subject]) == 0 && len(before.controls[key.subject]) == 0 {
 			continue
