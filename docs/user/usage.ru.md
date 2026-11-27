@@ -104,15 +104,20 @@ scout scan --baseline /ci-results/reviewed-baseline.json ./my-plugin
 `--revision` с полным commit SHA. См. [внешние источники](../reference/external-sources.ru.md).
 
 ```sh
+scout scan --osv --format json ./my-plugin
 scout scan --osv --allow-osv-network \
   --format json ./my-plugin
 scout scan --osv --osv-cache /ci/osv-cache.json \
   --osv-cache-max-age 168h --format json ./my-plugin
 ```
 
-OSV проверяет точные координаты захваченных зависимостей. Кеш для работы без сети задаёт
-оператор; отсутствующие и устаревшие записи оставляют пробелы проверки.
+OSV проверяет точные координаты захваченных зависимостей. `--osv` сам по себе
+включает встроенную подборку без сети. Scout также использует её для совпадений,
+если разрешённый сетевой запрос и кеш оператора не дали пригодного ответа.
+Подборка покрывает отдельные стабильные релизы npm, PyPI и Go. Scout сохраняет
+источник находки и помечает покрытие таких координат как неполное.
 Запись об уязвимости не доказывает её достижимость в проверяемом коде.
+[Источник встроенных данных](https://github.com/github/advisory-database)
 
 ### Известные вредоносные зависимости
 

@@ -38,6 +38,9 @@ type Vulnerability struct {
 // An advisory ID prefix alone never establishes this classification.
 const AdvisoryMaliciousPackage = "malicious-package"
 
+// OutcomeBundledMatch is a positive match from a subset with incomplete coverage.
+const OutcomeBundledMatch = "bundled_match"
+
 // AdvisorySource identifies the producer and pinned revision asserted by a trusted
 // cache. These fields are not authentication and URLs are never fetched.
 type AdvisorySource struct {

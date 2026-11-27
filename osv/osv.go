@@ -215,7 +215,7 @@ func CheckWithin(ctx context.Context, deps report.DependencyReport, o Options, n
 		Completeness: report.Complete,
 		Queries:      []report.VulnerabilityQuery{},
 		Matches:      []report.Vulnerability{},
-		Limitations:  []string{"Exact captured coordinates only; not dependency reachability, integrity, full install closure or proof that a package is installed.", "No built-in complete offline CVE or malware database. A supplied cache covers only its exact records and age.", "Malicious-package classification requires explicit version-2 cache metadata and operator-trusted provenance. ID prefixes and ordinary querybatch responses are not malware classification. Source URLs are never fetched."},
+		Limitations:  []string{"Exact captured coordinates only; not dependency reachability, integrity, full install closure or proof that a package is installed.", "The bundled advisory subset supplies positive matches only. A supplied cache covers only its exact records and age.", "Malicious-package classification requires explicit version-2 cache metadata and operator-trusted provenance. ID prefixes and ordinary querybatch responses are not malware classification. Source URLs are never fetched."},
 	}
 	if err := o.Validate(); err != nil {
 		return r, err
@@ -232,6 +232,10 @@ func CheckWithin(ctx context.Context, deps report.DependencyReport, o Options, n
 	}
 
 	r.Source = "OSV-querybatch"
+	if !o.AllowNetwork && len(o.Offline) == 0 {
+		r.Source = "bundled-osv"
+	}
+
 	r.QueriedAt = now.UTC().Format(time.RFC3339Nano)
 	cached, cachedAt := prepareCache(o, now, &r)
 
@@ -281,6 +285,7 @@ func CheckWithin(ctx context.Context, deps report.DependencyReport, o Options, n
 		queryBatch(ctx, groups[start:min(start+queryBatchSize, len(groups))], o, &requests, set, fallback)
 	}
 
+	applyBundledFallback(ctx, groups, &r)
 	collectMatches(groups, &r)
 	markClassificationGaps(&r)
 
@@ -385,10 +390,6 @@ func (o Options) validateLimits() error {
 func (o Options) validateMode() error {
 	if !o.Enabled && (o.AllowNetwork || o.AllowLoopback || len(o.Offline) > 0 || o.RootCAs != nil) {
 		return errors.New("vulnerability options require enabling checks")
-	}
-
-	if o.Enabled && !o.AllowNetwork && len(o.Offline) == 0 {
-		return errors.New("vulnerability checks require explicit network permission or offline cache")
 	}
 
 	return nil

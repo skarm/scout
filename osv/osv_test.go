@@ -128,8 +128,8 @@ func TestOfflineCacheFreshnessAndExactKey(t *testing.T) {
 	}
 	o := DefaultOptions()
 	o.Enabled = true
-	if o.Validate() == nil {
-		t.Fatal("implicit network")
+	if err := o.Validate(); err != nil || o.AllowNetwork {
+		t.Fatalf("bundled-only mode must work without network permission: %v", err)
 	}
 }
 
@@ -535,6 +535,7 @@ func TestCacheValidationBoundaries(t *testing.T) {
 func TestCheckRejectsInvalidEnabledConfiguration(t *testing.T) {
 	o := DefaultOptions()
 	o.Enabled = true
+	o.MaxQueries = 0
 	r, err := Check(context.Background(), report.DependencyReport{}, o, time.Now())
 	if err == nil || !r.Enabled || len(r.Queries) != 0 || len(r.Matches) != 0 {
 		t.Fatalf("invalid enabled configuration became an observation: error=%v report=%+v", err, r)
@@ -590,7 +591,7 @@ func TestVulnerabilityOptionLimitsAndMode(t *testing.T) {
 		func(o *Options) { o.MaxRequests = 0 }, func(o *Options) { o.MaxRequests = 257 },
 		func(o *Options) { o.MaxCacheAge = time.Minute - 1 }, func(o *Options) { o.MaxCacheAge = 366 * 24 * time.Hour },
 		func(o *Options) { o.AllowNetwork = true }, func(o *Options) { o.AllowLoopback = true }, func(o *Options) { o.RootCAs = x509.NewCertPool() },
-		func(o *Options) { o.Offline = []byte(`{}`) }, func(o *Options) { o.Enabled = true },
+		func(o *Options) { o.Offline = []byte(`{}`) },
 		func(o *Options) { o.Enabled = true; o.AllowNetwork = true; o.Endpoint = "file:///tmp/cache" },
 		func(o *Options) { o.Enabled = true; o.Offline = []byte(strings.Repeat("x", maxResponse+1)) },
 		func(o *Options) { o.Enabled = true; o.Offline = []byte(`{}`) },

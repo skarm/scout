@@ -492,15 +492,7 @@ func (p *vulnerabilities) apply(s *Settings, grants Grants) error {
 	assign(&o.MaxRequests, p.MaxRequests)
 	assign(&s.OSVCachePath, p.Cache)
 
-	if !o.AllowNetwork && s.OSVCachePath == "" {
-		return errors.New("vulnerabilities require network grant or explicit cache path")
-	}
-	// Validate the endpoint and scalar options without loading the offline cache
-	// or granting network access in the settings returned to the caller.
-	check := o
-
-	check.AllowNetwork = true
-	if err := check.Validate(); err != nil {
+	if err := o.Validate(); err != nil {
 		return errors.New("invalid vulnerability config")
 	}
 

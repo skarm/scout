@@ -109,10 +109,6 @@ func TestNewValidationChecksExplicitServices(t *testing.T) {
 			change: func(o *scout.Options) { v := osv.DefaultOptions(); o.Vulnerabilities = &v },
 		},
 		{
-			name:   "vulnerability consent",
-			change: func(o *scout.Options) { v := osv.DefaultOptions(); v.Enabled = true; o.Vulnerabilities = &v },
-		},
-		{
 			name:   "review profile requires provider",
 			change: func(o *scout.Options) { o.Profile = scout.Review; o.Checks = nil },
 		},
@@ -140,6 +136,12 @@ func TestNewValidationChecksExplicitServices(t *testing.T) {
 	r := review.DefaultOptions()
 	r.Enabled, r.AllowSourceUpload = true, true
 	o.Review = &scout.ReviewOptions{Provider: provider, Settings: r}
+	testScanner(t, o)
+
+	o = basicOptions()
+	v := osv.DefaultOptions()
+	v.Enabled = true
+	o.Vulnerabilities = &v
 	testScanner(t, o)
 }
 

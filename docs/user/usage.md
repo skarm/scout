@@ -102,14 +102,19 @@ Remote scans require `--allow-download`. GitHub repository roots also require
 `--revision` with a full commit SHA. See [external sources](../reference/external-sources.md).
 
 ```sh
+scout scan --osv --format json ./my-plugin
 scout scan --osv --allow-osv-network \
   --format json ./my-plugin
 scout scan --osv --osv-cache /ci/osv-cache.json \
   --osv-cache-max-age 168h --format json ./my-plugin
 ```
 
-OSV checks exact captured package coordinates. Offline caches are operator-supplied;
-missing or stale records leave gaps. An advisory does not establish reachability.
+OSV checks exact captured package coordinates. `--osv` alone uses a small bundled
+subset without networking. The subset also supplies positive matches when an
+authorized online query and the operator cache provide no usable answer. The
+subset covers selected stable npm, PyPI and Go releases. Reports record the
+advisory source and keep coverage partial for those coordinates. An advisory
+does not establish reachability. [Bundled data source](https://github.com/github/advisory-database)
 
 ### Known malicious dependencies
 

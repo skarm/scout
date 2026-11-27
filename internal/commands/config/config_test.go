@@ -100,8 +100,9 @@ func TestServiceGrantsAndOfflineCache(t *testing.T) {
 	if err != nil || got.Scanner.Vulnerabilities == nil || !got.Scanner.Vulnerabilities.AllowNetwork || got.Scanner.Download == nil {
 		t.Fatalf("explicit grants not honored: %#v %v", got, err)
 	}
-	if _, err := parseResolved([]byte(`{"schema":"scout.config/v1","vulnerabilities":{}}`), config.Grants{}, nil); err == nil {
-		t.Fatal("uncached vulnerability queries accepted without grant")
+	got, err = parseResolved([]byte(`{"schema":"scout.config/v1","vulnerabilities":{}}`), config.Grants{}, nil)
+	if err != nil || got.Scanner.Vulnerabilities == nil || got.Scanner.Vulnerabilities.AllowNetwork {
+		t.Fatalf("bundled advisories should work without granting network: %#v %v", got, err)
 	}
 }
 

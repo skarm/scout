@@ -93,13 +93,17 @@ func writeVulnerabilityExtras(b *strings.Builder, r Analysis, q func(string) str
 
 			if v.Kind == AdvisoryMaliciousPackage {
 				_, _ = fmt.Fprintf(b, "Malicious-package advisory %s matches captured exact coordinate(s) %s; source %s, revision %s, URL %s, modified %s; not proof of installation or execution.\n\n", q(v.ID), q(strings.Join(packages, ", ")), q(v.Source.Name), q(v.Source.Revision), q(v.Source.URL), q(v.DatabaseModified))
+			} else if v.Source != (AdvisorySource{}) {
+				_, _ = fmt.Fprintf(b, "Advisory %s matches captured exact coordinate(s) %s; source %s, revision %s, URL %s; not proof of exploitability.\n\n", q(v.ID), q(strings.Join(packages, ", ")), q(v.Source.Name), q(v.Source.Revision), q(v.Source.URL))
 			} else {
 				_, _ = fmt.Fprintf(b, "Advisory %s matches captured exact coordinate(s) %s; not proof of exploitability.\n\n", q(v.ID), q(strings.Join(packages, ", ")))
 			}
 		}
 
 		for _, v := range r.Vulnerabilities.Queries {
-			if v.Status != OutcomeCompleted && v.Status != OutcomeCached {
+			if v.Status == OutcomeBundledMatch {
+				_, _ = fmt.Fprintf(b, "Partial advisory coverage for %s: matched the bundled subset.\n\n", q(coordinates[v.DependencyID]))
+			} else if v.Status != OutcomeCompleted && v.Status != OutcomeCached {
 				_, _ = fmt.Fprintf(b, "Unchecked dependency %s: %s.\n\n", q(coordinates[v.DependencyID]), q(v.Status))
 			}
 		}

@@ -35,6 +35,11 @@ testdata/provenance/cisco-hardening-2026-10-29.json.
 Unicode 17.0.0 normalization/confusables data is used under Unicode License V3:
 licenses/Unicode-3.0.txt, https://www.unicode.org/license.txt.
 
+Scout's bundled advisory subset contains affected-range data adapted from the
+GitHub Advisory Database, https://github.com/github/advisory-database, under
+CC BY 4.0, https://creativecommons.org/licenses/by/4.0/. Scout selects and
+normalizes release ranges and retains links to the original records.
+
 Go modules and native Rust dependencies retain their upstream licenses and patents.
 Dependencies are obtained through authenticated module caches, not copied into
 this repository. Binary distributions must include applicable third-party notices.

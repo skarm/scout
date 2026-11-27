@@ -279,8 +279,8 @@ unless an explicit numeric loopback exception applies.
 
 ### Vulnerabilities
 
-- `--osv`: enable exact-coordinate OSV queries; default `false`.
-  Requires network permission or an explicit offline cache.
+- `--osv`: enable exact-coordinate advisory lookup; default `false`.
+  A bundled subset supplies positive matches where online and cache answers are unavailable.
 - `--allow-osv-network`: authorize package-coordinate queries independently
   of downloads and source upload; default `false`.
 - `--osv-cache FILE`: trusted exact-query cache; unset by default. A cache path also
@@ -296,8 +296,9 @@ unless an explicit numeric loopback exception applies.
 - `--osv-max-requests N`: request ceiling, including failed requests and pagination;
   default `128`, range 1..256. The shared service budget can reduce it.
 
-Use `--osv-*` tuning flags with an enabled service. Missing or stale cache records
-leave inspection gaps. See [OSV usage](../user/usage.md#network-services-and-extra-rules).
+Use `--osv-*` tuning flags with an enabled service. Bundled answers leave coverage
+partial and are omitted from exact-query cache exports.
+See [OSV usage](../user/usage.md#network-services-and-extra-rules).
 
 ### LLM review
 
