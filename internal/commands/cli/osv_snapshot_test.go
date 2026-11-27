@@ -3,11 +3,13 @@ package cli_test
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/skarm/scout/internal/commands/cli"
 	"github.com/skarm/scout/report"
@@ -44,9 +46,12 @@ func TestOSVSnapshotCLIUsesCapturedGoVendorVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("snapshot loading respects timeout", func(t *testing.T) {
+	t.Run("snapshot loading respects an expired deadline", func(t *testing.T) {
+		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+		defer cancel()
+
 		var output, stderr bytes.Buffer
-		code := cli.Run(t.Context(), []string{"scan", "--timeout", "1ns", "--osv-snapshot-dir", snapshots, "--format", "json", target}, &output, &stderr)
+		code := cli.Run(ctx, []string{"scan", "--osv-snapshot-dir", snapshots, "--format", "json", target}, &output, &stderr)
 		if code != 2 || output.Len() != 0 || !strings.HasPrefix(stderr.String(), "context deadline exceeded\n") {
 			t.Fatalf("scan exit=%d, output bytes=%d, diagnostics=%q", code, output.Len(), stderr.String())
 		}
