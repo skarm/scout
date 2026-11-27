@@ -69,6 +69,15 @@ baseline create / baseline approve / baseline renew:
   create writes pending entries; approve selects all entries if no fingerprint is given.
   renew extends already approved entries and never approves pending entries.
 
+policy shadow:
+  --report FILE              Required saved scout.report/v1 JSON from scan or compare.
+  --current FILE             Required current scout.config/v1 policy.
+  --trial FILE               Required trial scout.config/v1 policy.
+  --at RFC3339               Evaluate both policies' approvals at this instant (default: now).
+  --format, -f text|json     Output format (default: text).
+  Replays saved observations. Reports both decisions and changed finding dispositions.
+  Exit 0 means the preview was written; projected admission exit codes are reported separately.
+
 rules list (also: rules):
   --all                      Include adapted, Python and YARA rules (default: false).
 

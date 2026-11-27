@@ -123,21 +123,33 @@ func (r *request) loadTrusted() error {
 }
 
 func (r *request) loadBaseline(inputs []string) error {
-	if r.settings.BaselinePath != "" {
-		data, err := readTrusted(r.settings.BaselinePath, inputs, baseline.MaxBytes)
-		if err != nil {
-			return errors.New("cannot read operator baseline")
-		}
-
-		d, err := baseline.Parse(data)
-		if err != nil {
-			return err
-		}
-
-		r.settings.Policy.Approvals = &d
+	if r.settings.BaselinePath == "" {
+		return nil
 	}
 
+	d, err := loadOperatorBaseline(r.settings.BaselinePath, inputs)
+	if err != nil {
+		return err
+	}
+	r.settings.Policy.Approvals = d
 	return nil
+}
+
+func loadOperatorBaseline(path string, inputs []string) (*baseline.Document, error) {
+	if path == "" {
+		return nil, nil
+	}
+	data, err := readTrusted(path, inputs, baseline.MaxBytes)
+	if err != nil {
+		return nil, errors.New("cannot read operator baseline")
+	}
+
+	d, err := baseline.Parse(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &d, nil
 }
 
 func (r *request) loadTrustedServices(inputs []string) error {

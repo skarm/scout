@@ -202,6 +202,19 @@ func Parse(data []byte, grants Grants) (Settings, error) {
 	return s, nil
 }
 
+// ParsePolicy reads only the admission policy from an operator configuration.
+// Scanner options and service configuration are not applied.
+func ParsePolicy(data []byte) (policy.Options, string, error) {
+	doc, err := decode(data)
+	if err != nil {
+		return policy.Options{}, "", err
+	}
+
+	settings := DefaultSettings()
+	err = doc.applyPolicy(&settings)
+	return settings.Policy, settings.BaselinePath, err
+}
+
 func decode(data []byte) (document, error) {
 	var doc document
 	if len(data) > jsonconfig.MaxBytes {
@@ -308,16 +321,8 @@ func (d document) apply(s *Settings) error {
 }
 
 func (d document) applyPolicyAndSignatures(s *Settings) error {
-	if d.Policy != nil {
-		assign(&s.Policy.Scope, d.Policy.Scope)
-		assign(&s.Policy.FailAt, d.Policy.FailAt)
-		assign(&s.Policy.ReviewBelowThreshold, d.Policy.ReviewBelowThreshold)
-		assign(&s.Policy.AllowGlobs, d.Policy.AllowGlobs)
-		assign(&s.BaselinePath, d.Policy.Baseline)
-	}
-
-	if _, err := policy.New(s.Policy); err != nil {
-		return errors.New("invalid config policy")
+	if err := d.applyPolicy(s); err != nil {
+		return err
 	}
 
 	if d.Signatures != nil {
@@ -331,6 +336,22 @@ func (d document) applyPolicyAndSignatures(s *Settings) error {
 	}
 
 	return d.applyPins(s)
+}
+
+func (d document) applyPolicy(s *Settings) error {
+	if d.Policy != nil {
+		assign(&s.Policy.Scope, d.Policy.Scope)
+		assign(&s.Policy.FailAt, d.Policy.FailAt)
+		assign(&s.Policy.ReviewBelowThreshold, d.Policy.ReviewBelowThreshold)
+		assign(&s.Policy.AllowGlobs, d.Policy.AllowGlobs)
+		assign(&s.BaselinePath, d.Policy.Baseline)
+	}
+
+	if _, err := policy.New(s.Policy); err != nil {
+		return errors.New("invalid config policy")
+	}
+
+	return nil
 }
 
 func (d document) applyChecks(o *scout.Options) error {

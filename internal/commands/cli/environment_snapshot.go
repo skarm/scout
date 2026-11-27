@@ -23,7 +23,7 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-const maxSnapshotJSONNodes = 4_000_000
+const maxSavedJSONNodes = 4_000_000
 
 type environmentCheckpoint struct {
 	Snapshot   envsnapshot.Snapshot `json:"snapshot"`
@@ -483,8 +483,8 @@ func uniqueJSON(data []byte) error {
 
 	value = func(depth int) error {
 		nodes++
-		if depth > 64 || nodes > maxSnapshotJSONNodes {
-			return errors.New("snapshot JSON structural limit")
+		if depth > 64 || nodes > maxSavedJSONNodes {
+			return errors.New("saved JSON structural limit")
 		}
 
 		token, err := dec.Token()
@@ -514,7 +514,7 @@ func uniqueJSON(data []byte) error {
 
 				name = strings.ToLower(name)
 				if !ok || keys[name] {
-					return errors.New("duplicate snapshot JSON key")
+					return errors.New("duplicate saved JSON key")
 				}
 
 				keys[name] = true
@@ -534,7 +534,7 @@ func uniqueJSON(data []byte) error {
 	}
 
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return errors.New("trailing snapshot JSON")
+		return errors.New("trailing saved JSON")
 	}
 
 	return nil

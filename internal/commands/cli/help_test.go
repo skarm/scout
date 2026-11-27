@@ -51,6 +51,7 @@ func TestFullHelpAndManualCoverEveryCommandFlag(t *testing.T) {
 		{"baseline", "create"},
 		{"baseline", "approve"},
 		{"baseline", "renew"},
+		{"policy", "shadow"},
 		{"knowledge"},
 		{"integrations", "export"},
 		{"registry", "fetch"},

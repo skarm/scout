@@ -17,6 +17,7 @@ Contents
 - [MCP server](#mcp-server)
 - [Doctor](#doctor)
 - [Baseline](#baseline)
+- [Policy shadow](#policy-shadow)
 - [Rules, profiles and capabilities](#rules-profiles-and-capabilities)
 - [Knowledge and integrations](#knowledge-and-integrations)
 - [Registry](#registry)
@@ -60,6 +61,7 @@ scout mcp [flags]
 scout mcp snapshot --source-id ID [--output FILE] <capture.json>
 scout doctor [flags]
 scout baseline create|approve|renew [flags]
+scout policy shadow --report FILE --current FILE --trial FILE [flags]
 scout rules list [--all]
 scout rules pack create|inspect [flags]
 scout profiles
@@ -390,6 +392,41 @@ source identifier and `--output FILE` (`-o`) to write the snapshot to a file.
 extends approved entries; selecting a pending entry or a non-increasing expiry
 fails. Without selectors it leaves pending entries untouched. Other entries retain
 their reasons and expiry times. See [baseline workflow](../user/usage.md#baseline).
+
+## Policy shadow
+
+```sh
+scout policy shadow --report scan.json --current current.json --trial trial.json --format json
+```
+
+- `--report FILE` selects a saved `scout.report/v1` JSON from `scan` or
+  `compare`, up to 64 MiB.
+- `--current FILE` and `--trial FILE` select two operator-owned
+  `scout.config/v1` files. Only the `policy` section is applied, including
+  explicitly configured baseline paths. Each policy starts from the CLI
+  defaults. Include any scan-time policy flag overrides in the current config
+  to reproduce its policy settings.
+- `--at RFC3339` sets one evaluation time for both policies and their
+  approval expiry checks. The default is the time of invocation.
+- `--format text|json` (`-f`) selects output on stdout. The default is text.
+
+A trial config that raises the blocking threshold and sends lower-severity
+findings to review can be written as:
+
+```json
+{"schema":"scout.config/v1","policy":{"fail_at":"critical","review_below_threshold":true}}
+```
+
+Both policies evaluate the same validated observations offline. The saved
+evaluation supplies no approvals. The preview shows both decisions and reason
+codes, target-qualified finding changes, and threshold changes for manifest
+signals. A finding can move between `block`, `review`, `below_threshold` and
+`suppressed`. In a saved comparison, finding dispositions apply to the
+candidate side. JSON uses `scout.policy-shadow/v1` and includes policy hashes.
+
+The command returns 0 when it writes a preview and 2 on error. Each policy has
+its own projected admission exit code in the preview, including 2 for an
+incomplete run.
 
 ## Rules, profiles and capabilities
 

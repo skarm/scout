@@ -113,6 +113,10 @@ func PreparedCode(document report.PreparedDocument) int {
 // trusted time. Invalid or unfinished execution can never authorize admission;
 // a blocking finding remains blocking even when execution is incomplete.
 func (g *Gate) Evaluate(run report.Run, now time.Time) report.Evaluation {
+	return g.evaluate(run, now, report.ValidateSealedRun(run) == nil)
+}
+
+func (g *Gate) evaluate(run report.Run, now time.Time, valid bool) report.Evaluation {
 	result := gateEvaluation{evaluation: report.Evaluation{
 		Decision: report.Allow, RunDigest: run.Digest,
 		Reasons: []string{}, Suppressed: []report.Suppression{},
@@ -123,7 +127,7 @@ func (g *Gate) Evaluate(run report.Run, now time.Time) report.Evaluation {
 	}
 
 	result.evaluation.PolicyDigest = g.digest
-	validateEvaluationRun(run, &result)
+	validateEvaluationRun(run, valid, &result)
 
 	if run.Operation == report.CompareOperation {
 		g.evaluateComparison(run, &result)
@@ -166,10 +170,10 @@ func (g *Gate) evaluateComparison(run report.Run, result *gateEvaluation) {
 	}
 
 	for _, signal := range run.Comparison.ManifestSignals {
-		switch {
-		case signal.Severity.Rank() < 0:
+		switch g.disposition(signal.Severity, true) {
+		case dispositionInvalid:
 			result.review("invalid_manifest_signal_severity")
-		case signal.Severity.Rank() >= g.options.FailAt.Rank():
+		case DispositionBlock:
 			result.evaluation.Decision = report.Block
 			result.add("manifest_signal_threshold")
 		default:
@@ -238,20 +242,13 @@ func (g *Gate) activeFindings(target report.TargetResult, now time.Time, result 
 }
 
 func (g *Gate) evaluateFinding(finding report.Finding, result *gateEvaluation) {
-	rank := finding.Severity.Rank()
-	if rank < 0 {
+	switch g.disposition(finding.Severity, g.options.ReviewBelowThreshold) {
+	case dispositionInvalid:
 		result.review("invalid_finding_severity")
-		return
-	}
-
-	if rank >= g.options.FailAt.Rank() {
+	case DispositionBlock:
 		result.evaluation.Decision = report.Block
 		result.add("finding_threshold")
-
-		return
-	}
-
-	if g.options.ReviewBelowThreshold {
+	case DispositionReview:
 		result.review("findings_below_threshold_require_review")
 	}
 }
@@ -296,8 +293,8 @@ func copyApprovals(document baseline.Document, allowGlobs bool) (baseline.Docume
 	return document, nil
 }
 
-func validateEvaluationRun(run report.Run, result *gateEvaluation) {
-	if report.ValidateSealedRun(run) != nil {
+func validateEvaluationRun(run report.Run, valid bool, result *gateEvaluation) {
+	if !valid {
 		result.review("invalid_run")
 	}
 
