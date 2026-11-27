@@ -37,6 +37,10 @@ const (
 	fieldSource          = "source"
 	fieldURL             = "url"
 	fieldRevision        = "revision"
+	fieldDetail          = "detail"
+	fieldSummary         = "summary"
+	fieldAdvisoryAliases = "aliases"
+	fieldSeverity        = "severity"
 )
 
 const (
@@ -124,8 +128,9 @@ type ID struct {
 	Kind string `json:"kind,omitempty"`
 	// Source pins the operator-supplied producer and source revision for classified records.
 	Source report.AdvisorySource `json:"source,omitzero"`
+	// Detail is optional in both cache versions.
+	Detail *AdvisoryDetail `json:"detail,omitempty"`
 	online bool
-	detail *advisoryDetail
 }
 
 type query struct {
@@ -460,7 +465,7 @@ func validateCacheRecords(cache Cache) error {
 				return err
 			}
 
-			if previous, exists := ids[v.ID]; exists && cache.Version == 2 && previous != v {
+			if previous, exists := ids[v.ID]; exists && (cache.Version == 2 || previous.Detail != nil || v.Detail != nil) && !sameCachedID(previous, v) {
 				return errors.New("conflicting advisory metadata")
 			}
 
@@ -726,9 +731,9 @@ func collectMatches(groups []*queryGroup, r *report.VulnerabilityReport) {
 				Kind:             v.Kind,
 				Source:           v.Source,
 			}
-			if v.detail != nil {
-				match.Aliases = append([]string(nil), v.detail.aliases...)
-				match.Summary, match.Severity = v.detail.summary, v.detail.severity
+			if v.Detail != nil {
+				match.Aliases = append([]string(nil), v.Detail.Aliases...)
+				match.Summary, match.Severity = v.Detail.Summary, v.Detail.Severity
 			}
 
 			r.Matches = append(r.Matches, match)
@@ -748,8 +753,13 @@ func exportRecords(r report.VulnerabilityReport) []Record {
 	byDependency := map[string][]ID{}
 
 	for _, match := range r.Matches {
+		id := ID{ID: match.ID, Modified: match.DatabaseModified, Kind: match.Kind, Source: match.Source}
+		if match.Summary != "" || match.Severity != "" || len(match.Aliases) != 0 {
+			id.Detail = &AdvisoryDetail{Summary: match.Summary, Severity: match.Severity, Aliases: append([]string(nil), match.Aliases...)}
+		}
+
 		for _, dep := range match.DependencyIDs {
-			byDependency[dep] = append(byDependency[dep], ID{ID: match.ID, Modified: match.DatabaseModified, Kind: match.Kind, Source: match.Source})
+			byDependency[dep] = append(byDependency[dep], id)
 		}
 	}
 
@@ -780,8 +790,8 @@ func exportRecords(r report.VulnerabilityReport) []Record {
 
 		for _, v := range byDependency[q.DependencyID] {
 			if previous, exists := seen[at][v.ID]; exists {
-				legacy := previous.Kind == "" && v.Kind == "" && previous.Source == (report.AdvisorySource{}) && v.Source == (report.AdvisorySource{})
-				if previous == v || legacy {
+				legacy := previous.Kind == "" && v.Kind == "" && previous.Source == (report.AdvisorySource{}) && v.Source == (report.AdvisorySource{}) && previous.Detail == nil && v.Detail == nil
+				if legacy || sameCachedID(previous, v) {
 					continue
 				}
 			}
@@ -896,7 +906,9 @@ func cacheAliases(root *jsonconfig.Node) bool {
 
 			if vulnerabilities := record.Get(fieldVulnerabilities); vulnerabilities != nil {
 				for _, vulnerability := range vulnerabilities.Elements {
-					if fieldAliases(vulnerability, fieldID, fieldModified, fieldKind, fieldSource) || fieldAliases(vulnerability.Get(fieldSource), fieldName, fieldURL, fieldRevision) {
+					if fieldAliases(vulnerability, fieldID, fieldModified, fieldKind, fieldSource, fieldDetail) ||
+						fieldAliases(vulnerability.Get(fieldSource), fieldName, fieldURL, fieldRevision) ||
+						fieldAliases(vulnerability.Get(fieldDetail), fieldSummary, fieldAdvisoryAliases, fieldSeverity) {
 						return true
 					}
 				}

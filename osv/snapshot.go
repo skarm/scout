@@ -200,6 +200,8 @@ func readSnapshotRecord(file *zip.File) (advisoryRecord, bool) {
 func (s *snapshotEcosystem) indexRecord(ecosystem string, record advisoryRecord) int {
 	var count int
 
+	base := record.detail()
+
 	for _, item := range record.Affected {
 		if item.Package.Ecosystem != ecosystem {
 			continue
@@ -211,8 +213,9 @@ func (s *snapshotEcosystem) indexRecord(ecosystem string, record advisoryRecord)
 			continue
 		}
 
+		detail := base.withAffected(item)
 		s.packages[name] = append(s.packages[name], snapshotMatch{
-			id:       ID{ID: record.ID, Modified: record.Modified, detail: record.detail([]snapshotAffected{item})},
+			id:       ID{ID: record.ID, Modified: record.Modified, Detail: &detail},
 			versions: item.Versions, ranges: item.Ranges,
 		})
 		count++
@@ -249,13 +252,26 @@ func (s *Snapshot) lookup(g *queryGroup) ([]ID, string) {
 
 	var ids []ID
 
+	positions := map[string]int{}
+
 	for _, item := range matches[:min(len(matches), maxSnapshotPackageRecords)] {
-		hit, supported := item.matches(ecosystem, g.q.Version, version)
+		hit, supported := matchesSnapshotVersion(item.versions, item.ranges, ecosystem, g.q.Version, version)
 		complete = complete && supported
 
-		if hit {
-			ids = append(ids, item.id)
+		if !hit {
+			continue
 		}
+
+		if i, exists := positions[item.id.ID]; exists {
+			if item.id.Detail.Severity.Rank() > ids[i].Detail.Severity.Rank() {
+				ids[i] = item.id
+			}
+
+			continue
+		}
+
+		positions[item.id.ID] = len(ids)
+		ids = append(ids, item.id)
 	}
 
 	if complete {

@@ -43,19 +43,20 @@ func (v snapshotVersion) compare(other snapshotVersion) int {
 	return v.pep.Compare(other.pep)
 }
 
-func (a snapshotMatch) matches(ecosystem, raw string, version snapshotVersion) (bool, bool) {
-	complete := len(a.versions) != 0 || len(a.ranges) != 0
-	for _, text := range a.versions {
+func matchesSnapshotVersion(versions []string, ranges []affectedRange, ecosystem, raw string, version snapshotVersion) (bool, bool) {
+	complete := len(versions) != 0 || len(ranges) != 0
+	for _, text := range versions {
 		parsed, ok := parseSnapshotVersion(ecosystem, text)
-		if raw == text || ok && version.compare(parsed) == 0 {
+		if raw == text || ok && version.compare(parsed) == 0 && semver.Build(version.sem) == semver.Build(parsed.sem) {
 			return true, true
 		}
 
 		complete = complete && ok
 	}
 
-	for _, r := range a.ranges {
-		if r.Type == "GIT" && (len(a.versions) > 0 || len(a.ranges) > 1) {
+	hasVersionData := len(versions) != 0 || slices.ContainsFunc(ranges, func(r affectedRange) bool { return r.Type == "SEMVER" || r.Type == "ECOSYSTEM" })
+	for _, r := range ranges {
+		if r.Type == "GIT" && hasVersionData {
 			continue // Git ranges supplement a published-version list or range.
 		}
 

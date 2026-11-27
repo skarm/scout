@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	cvss20 "github.com/pandatix/go-cvss/20"
 	cvss30 "github.com/pandatix/go-cvss/30"
@@ -23,10 +24,39 @@ const (
 	maxDetailSummary = 512
 )
 
-type advisoryDetail struct {
-	summary  string
-	aliases  []string
-	severity report.Severity
+// AdvisoryDetail holds optional advisory metadata obtained with an exact lookup.
+type AdvisoryDetail struct {
+	Summary  string          `json:"summary,omitempty"`
+	Aliases  []string        `json:"aliases,omitempty"`
+	Severity report.Severity `json:"severity,omitempty"`
+}
+
+func (d AdvisoryDetail) valid(id string) bool {
+	if d.Severity != "" && d.Severity.Rank() < 0 || len(d.Aliases) > maxDetailAliases ||
+		!utf8.ValidString(d.Summary) || utf8.RuneCountInString(d.Summary) > maxDetailSummary || strings.ContainsFunc(d.Summary, func(r rune) bool {
+		return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
+	}) {
+		return false
+	}
+
+	for i, alias := range d.Aliases {
+		if alias == id || !safeID(alias) || slices.Contains(d.Aliases[:i], alias) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func sameCachedID(a, b ID) bool {
+	left, right := a.Detail, b.Detail
+	a.Detail, b.Detail = nil, nil
+
+	if a != b || (left == nil) != (right == nil) {
+		return false
+	}
+
+	return left == nil || left.Summary == right.Summary && left.Severity == right.Severity && slices.Equal(left.Aliases, right.Aliases)
 }
 
 type severityVector struct {
@@ -49,7 +79,7 @@ type advisoryRecord struct {
 	Affected  []snapshotAffected `json:"affected"`
 }
 
-func (a advisoryRecord) detail(affected []snapshotAffected) *advisoryDetail {
+func (a advisoryRecord) detail() AdvisoryDetail {
 	summary := strings.Join(strings.FieldsFunc(a.Summary, func(r rune) bool {
 		return unicode.IsControl(r) || unicode.IsSpace(r) || unicode.Is(unicode.Cf, r)
 	}), " ")
@@ -64,27 +94,29 @@ func (a advisoryRecord) detail(affected []snapshotAffected) *advisoryDetail {
 		characters++
 	}
 
-	out := &advisoryDetail{summary: summary, severity: highestSeverity(a.Severity, a.Database.Severity)}
+	out := AdvisoryDetail{Summary: summary, Severity: highestSeverity(a.Severity, a.Database.Severity)}
 	for _, alias := range a.Aliases {
-		if len(out.aliases) == maxDetailAliases {
+		if len(out.Aliases) == maxDetailAliases {
 			break
 		}
 
-		if alias != a.ID && safeID(alias) && !slices.Contains(out.aliases, alias) {
-			out.aliases = append(out.aliases, alias)
+		if alias != a.ID && safeID(alias) && !slices.Contains(out.Aliases, alias) {
+			out.Aliases = append(out.Aliases, alias)
 		}
 	}
 
-	slices.Sort(out.aliases)
-
-	for _, item := range affected {
-		severity := highestSeverity(item.Severity, item.Database.Severity, item.Ecosystem.Severity)
-		if severity.Rank() > out.severity.Rank() {
-			out.severity = severity
-		}
-	}
+	slices.Sort(out.Aliases)
 
 	return out
+}
+
+func (d AdvisoryDetail) withAffected(item snapshotAffected) AdvisoryDetail {
+	severity := highestSeverity(item.Severity, item.Database.Severity, item.Ecosystem.Severity)
+	if severity.Rank() > d.Severity.Rank() {
+		d.Severity = severity
+	}
+
+	return d
 }
 
 func highestSeverity(vectors []severityVector, labels ...string) report.Severity {
@@ -187,7 +219,7 @@ func loadOnlineDetails(ctx context.Context, groups []*queryGroup, o Options, req
 			}
 
 			if record != nil {
-				id.detail = record.detailFor(group.q.Package.Ecosystem, group.q.Package.Name)
+				id.Detail = record.detailFor(group.q)
 			}
 		}
 	}
@@ -210,18 +242,27 @@ func fetchAdvisoryDetail(ctx context.Context, address url.URL, id string, option
 	return &decoded
 }
 
-func (a advisoryRecord) detailFor(ecosystem, name string) *advisoryDetail {
-	name = snapshotPackage(ecosystem, name)
+func (a advisoryRecord) detailFor(q query) *AdvisoryDetail {
+	ecosystem := q.Package.Ecosystem
+	name := snapshotPackage(ecosystem, q.Package.Name)
+	out := a.detail()
 
-	var affected []snapshotAffected
+	version, valid := parseSnapshotVersion(ecosystem, q.Version)
+	if !valid {
+		return &out
+	}
 
 	for _, item := range a.Affected {
-		if item.Package.Ecosystem == ecosystem && snapshotPackage(ecosystem, item.Package.Name) == name {
-			affected = append(affected, item)
+		if item.Package.Ecosystem != ecosystem || snapshotPackage(ecosystem, item.Package.Name) != name {
+			continue
+		}
+
+		if hit, _ := matchesSnapshotVersion(item.Versions, item.Ranges, ecosystem, q.Version, version); hit {
+			out = out.withAffected(item)
 		}
 	}
 
-	return a.detail(affected)
+	return &out
 }
 
 func advisoryFetchOptions(o Options) fetch.Options {

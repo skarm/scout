@@ -79,7 +79,7 @@ func markdown(w io.Writer, r Analysis, evaluation Evaluation) error {
 
 		_, _ = fmt.Fprintf(&b, "Status: %s; received byte digest: %s; supplied checksum verified: **%t**.\n\n", mdCode(r.Source.Status), mdCode(r.Source.BytesSHA256), r.Source.ExpectedChecksumVerified)
 		if r.Source.Revision != "" {
-			_, _ = fmt.Fprintf(&b, "Requested immutable Git revision: %s. The revision is provenance supplied to the transport, not a signature verification.\n\n", mdCode(r.Source.Revision))
+			_, _ = fmt.Fprintf(&b, "Git revision: %s.\n\n", mdCode(r.Source.Revision))
 		}
 	}
 

@@ -55,6 +55,8 @@ func TestEnvironmentPassthroughOnlyLowersProvenLocalUse(t *testing.T) {
 		{"inline copy", "subprocess.run(['python', '--version'], env=os.environ.copy())\n", report.Low},
 		{"function local copy", "def run():\n    env = dict(os.environ)\n    subprocess.run(['python', '--version'], env=env)\n", report.Low},
 		{"entry point copy", "if __name__ == '__main__':\n    env = dict(os.environ)\n    subprocess.run(['python', '--version'], env=env)\n", report.Low},
+		{"exported method copy", "child_env = os.environ.copy()\nprint(child_env)\n", report.Medium},
+		{"method copy with dynamic consumer", "subprocess.run(command, env=os.environ.copy())\n", report.Medium},
 		{"exported module binding", "child_env = dict(os.environ)\nsubprocess.run(['python', '--version'], env=child_env)\n", report.Medium},
 		{"other use", "def run():\n    env = dict(os.environ)\n    print(env)\n    subprocess.run(['python', '--version'], env=env)\n", report.Medium},
 		{"rebound launcher", "subprocess = wrapper\nsubprocess.run(['python', '--version'], env=dict(os.environ))\n", report.Medium},

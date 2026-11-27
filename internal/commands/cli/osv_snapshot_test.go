@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/commands/cli"
@@ -42,6 +43,14 @@ func TestOSVSnapshotCLIUsesCapturedGoVendorVersion(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(snapshots, "Go", "all.zip"), archive.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("snapshot loading respects timeout", func(t *testing.T) {
+		var output, stderr bytes.Buffer
+		code := cli.Run(t.Context(), []string{"scan", "--timeout", "1ns", "--osv-snapshot-dir", snapshots, "--format", "json", target}, &output, &stderr)
+		if code != 2 || output.Len() != 0 || !strings.HasPrefix(stderr.String(), "context deadline exceeded\n") {
+			t.Fatalf("scan exit=%d, output bytes=%d, diagnostics=%q", code, output.Len(), stderr.String())
+		}
+	})
 
 	var output, stderr bytes.Buffer
 	code := cli.Run(t.Context(), []string{"scan", "--profile", "basic", "--osv-snapshot-dir", snapshots, "--format", "json", target}, &output, &stderr)

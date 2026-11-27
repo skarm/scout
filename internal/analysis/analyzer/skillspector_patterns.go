@@ -116,7 +116,7 @@ var families = []patternFamily{
 		id:          ruleE2,
 		title:       "Environment harvesting construct",
 		category:    "data-exfiltration",
-		expressions: []string{`(?:dict|list)\s*\(\s*os\.environ`, `os\.environ\.(?:items|keys|values)\s*\(`, `JSON\.stringify\s*\(\s*process\.env`, `(?:printenv|env)\s*\|`},
+		expressions: []string{`(?:dict|list)\s*\(\s*os\.environ`, `os\.environ\.(?:copy|items|keys|values)\s*\(`, `JSON\.stringify\s*\(\s*process\.env`, `(?:printenv|env)\s*\|`},
 		example:     "dict(os.environ)",
 	},
 	{

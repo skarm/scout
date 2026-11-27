@@ -15,7 +15,7 @@ import (
 //nolint:gochecknoglobals // Immutable rule template; callers receive deep copies through VulnerabilityRule.
 var vulnerabilityRule = knowledge.WithGuidance(report.Rule{
 	ID:          ruleOSV001,
-	Version:     "2",
+	Version:     "3",
 	Title:       "Known vulnerability for an exact declared package coordinate",
 	Description: "The explicitly selected database reported an advisory for the captured exact package version.",
 	Severity:    report.High,

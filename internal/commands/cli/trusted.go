@@ -91,6 +91,9 @@ func (r *request) loadTrustedSnapshot(ctx context.Context, inputs []string) erro
 		return nil
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, r.settings.Scanner.Limits.Timeout)
+	defer cancel()
+
 	archives := make(map[string]osv.SnapshotArchive)
 
 	var files []*os.File

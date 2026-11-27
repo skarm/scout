@@ -98,9 +98,9 @@ func familyVersion(id string) string {
 		return "7"
 	case ruleP2, ruleP6, ruleP8, rulePE2, rulePE3, rulePE4, ruleEA1, ruleEA3, ruleEA5, ruleOH1, ruleTM1, ruleTM3, ruleTM4, ruleRA1, ruleRA2, ruleAS3:
 		return "6"
-	case ruleE1, ruleEA2:
+	case ruleE1, ruleE2, ruleEA2:
 		return "5"
-	case ruleMP2, ruleMP3, ruleP7, ruleP9, ruleE2:
+	case ruleMP2, ruleMP3, ruleP7, ruleP9:
 		return "4"
 	case ruleP3, ruleP4, ruleP5, ruleSC1, ruleSC3, ruleSC7:
 		return "3"

@@ -33,6 +33,10 @@ func validateCachedMetadata(v ID, cache Cache) error {
 		return err
 	}
 
+	if v.Detail != nil && !v.Detail.valid(v.ID) {
+		return errors.New("invalid cached advisory detail")
+	}
+
 	if v.Kind == report.AdvisoryMaliciousPackage {
 		modified, _ := time.Parse(time.RFC3339, v.Modified)
 		if modified.After(cache.QueriedAt) {
