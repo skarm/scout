@@ -81,4 +81,17 @@ func TestRemoteGitScanUsesTreeBudgetAndConfiguredDepth(t *testing.T) {
 		len(analysis.Artifact.Files) != 1 || analysis.Artifact.Files[0].Path != path {
 		t.Fatalf("incorrect source or repository inventory: %+v, %+v", analysis.Source, analysis.Artifact.Files)
 	}
+
+	current, err := scout.Remote(server.URL+"/project.git", scout.RemotePin{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err = scanner.Scan(t.Context(), current)
+	if err != nil || run.State != report.RunComplete || len(run.Targets) != 1 {
+		t.Fatalf("Git URL without a pin did not scan completely: %s, %v", run.State, err)
+	}
+	source := run.Targets[0].Analysis.Source
+	if source == nil || source.Revision != sha || source.BytesSHA256 != analysis.Source.BytesSHA256 {
+		t.Fatalf("HEAD capture did not record the scanned revision or matching tree: %+v", source)
+	}
 }

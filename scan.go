@@ -572,6 +572,10 @@ func captureRemote(ctx context.Context, target Target, options Options) (artifac
 		download.ExpectedSHA256 = target.pin.SHA256
 	}
 
+	if download.Revision == "" && download.ExpectedSHA256 == "" && fetch.IsGitCloneURL(target.name) {
+		download.Git = true
+	}
+
 	limits := options.captureLimits()
 
 	download.MaxBytes = min(download.MaxBytes, limits.MaxTotalBytes)

@@ -20,6 +20,24 @@ import (
 	"github.com/skarm/scout/osv"
 )
 
+func TestGitCredentialsRequireExplicitGrantAndEnvironment(t *testing.T) {
+	const tokenEnv = "SCOUT_TEST_GIT_TOKEN"
+	t.Setenv(tokenEnv, "")
+	flags := []string{"--git-auth-origin", "https://git.example.org", "--git-auth-user", "user", "--git-token-env", tokenEnv}
+	if _, err := parseRequest("scan", flags, io.Discard); err == nil || !strings.Contains(err.Error(), "--allow-download") {
+		t.Fatalf("credentials accessed before network consent: %v", err)
+	}
+	args := append([]string{"--allow-download", "--git"}, flags...)
+	if _, err := parseRequest("scan", args, io.Discard); err == nil || !strings.Contains(err.Error(), "unset or empty") {
+		t.Fatalf("empty token accepted: %v", err)
+	}
+	t.Setenv(tokenEnv, "fixture-git-token")
+	r, err := parseRequest("scan", args, io.Discard)
+	if err != nil || r.settings.Scanner.Download == nil || !r.settings.Scanner.Download.Git || r.settings.Scanner.Download.GitAuth == nil {
+		t.Fatalf("explicit Git settings were not configured: %v", err)
+	}
+}
+
 func TestConfigValidationReturnsThePreparedInspectionWithoutTargets(t *testing.T) {
 	args := append([]string{"config", "validate"}, reducedCommandFlags()...)
 	var stdout, stderr bytes.Buffer

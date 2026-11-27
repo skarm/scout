@@ -22,36 +22,64 @@ const (
 	KindGitTree     = "git-tree"
 	gitRequestLimit = 8
 	gitRequestBytes = 64 << 10
+	gitCapturedRef  = "refs/scout/captured"
 )
 
-func fetchGitTree(ctx context.Context, target Target, o Options) ([]byte, error) {
+func fetchGitTree(ctx context.Context, target Target, o Options) ([]byte, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
 	defer cancel()
 
 	git, err := exec.LookPath("git")
 	if err != nil {
-		return nil, fail("git_not_available")
+		return nil, target.Revision, fail("git_not_available")
 	}
 
 	dir, err := os.MkdirTemp("", "scout-git-*")
 	if err != nil {
-		return nil, fail("git_workspace_failed")
+		return nil, target.Revision, fail("git_workspace_failed")
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	repo := gitWorkspace{git: git, dir: dir}
 	if err := repo.command(ctx, "init", "--bare", "--quiet", "--template=", "--object-format=sha1").Run(); err != nil {
-		return nil, gitFailure(ctx, "git_workspace_failed")
+		return nil, target.Revision, gitFailure(ctx, "git_workspace_failed")
 	}
 
 	if err := repo.download(ctx, target, o); err != nil {
-		return nil, err
+		return nil, target.Revision, err
 	}
 
-	return repo.archive(ctx, target.Revision, o.MaxBytes)
+	revision := target.Revision
+	if revision == "" {
+		revision, err = repo.capturedRevision(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
+	data, err := repo.archive(ctx, revision, o.MaxBytes)
+
+	return data, revision, err
 }
 
 type gitWorkspace struct{ git, dir string }
+
+func (r gitWorkspace) capturedRevision(ctx context.Context) (string, error) {
+	output := &gitBuffer{limit: gitCommitHexBytes + 1}
+	command := r.command(ctx, "rev-parse", "--verify", gitCapturedRef)
+
+	command.Stdout = output
+	if err := command.Run(); err != nil {
+		return "", gitFailure(ctx, "git_head_unavailable")
+	}
+
+	revision, ok := strings.CutSuffix(output.buffer.String(), "\n")
+	if !ok || !isHex(revision, gitCommitHexBytes) {
+		return "", fail("git_head_unavailable")
+	}
+
+	return revision, nil
+}
 
 func (r gitWorkspace) command(ctx context.Context, args ...string) *exec.Cmd {
 	// The executable comes from the operator's PATH. Commands and arguments
@@ -82,6 +110,10 @@ func (r gitWorkspace) download(ctx context.Context, target Target, o Options) er
 	defer transport.CloseIdleConnections()
 
 	proxy := &gitHTTPBridge{remote: *remote, client: client, route: "/" + rand.Text(), remaining: o.MaxBytes}
+	if o.GitAuth.applies(remote) {
+		proxy.auth = o.GitAuth
+	}
+
 	server := &http.Server{
 		Handler: proxy, ReadHeaderTimeout: o.Timeout, ReadTimeout: o.Timeout, WriteTimeout: o.Timeout,
 		BaseContext: func(net.Listener) context.Context { return ctx }, MaxHeaderBytes: 16 << 10,
@@ -103,9 +135,14 @@ func (r gitWorkspace) download(ctx context.Context, target Target, o Options) er
 
 	local := "http://" + listener.Addr().String() + proxy.route
 
+	refspec := target.Revision
+	if refspec == "" {
+		refspec = "HEAD:" + gitCapturedRef
+	}
+
 	command := r.command(ctx, "-c", "http.followRedirects=false", "-c", "credential.helper=", "-c", "fetch.unpackLimit=1",
 		"-c", "fetch.fsckObjects=true", "-c", "core.hooksPath="+os.DevNull, "-c", "fetch.writeCommitGraph=false",
-		"fetch", "--quiet", "--no-auto-maintenance", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", "--depth=1", "--", local, target.Revision)
+		"fetch", "--quiet", "--no-auto-maintenance", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", "--depth=1", "--", local, refspec)
 	if err := command.Run(); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -130,6 +167,7 @@ type gitHTTPBridge struct {
 	mu        sync.Mutex
 	remote    url.URL
 	client    *http.Client
+	auth      *GitCredentials
 	route     string
 	remaining int64
 	requests  int
@@ -204,6 +242,10 @@ func (p *gitHTTPBridge) forward(r *http.Request, suffix, mimeType string) ([]byt
 
 	req.Header.Set("User-Agent", downloadUserAgent)
 	req.Header.Set(netpolicy.HeaderAcceptEncoding, netpolicy.IdentityEncoding)
+
+	if p.auth != nil {
+		req.SetBasicAuth(p.auth.user, p.auth.token)
+	}
 
 	for _, header := range []string{"Content-Type", "Content-Encoding", "Git-Protocol"} {
 		if value := r.Header.Get(header); value != "" {

@@ -254,7 +254,12 @@ Increasing a per-target limit does not increase the corresponding run budget.
   positive and at most `2m`. Use with `--allow-download`.
 - `--download-allow-loopback`: permit explicit numeric loopback download endpoints
   and their plain HTTP URLs; default `false`. Requires `--allow-download`.
-- `--revision SHA`: full 40-character commit SHA for a Git repository URL.
+- `--git`: treat an ambiguous HTTPS URL as a Git clone URL. Requires `--allow-download`.
+- `--revision SHA`: optional full 40-character Git commit SHA. Git scans capture
+  the remote `HEAD` when omitted. Requires `--allow-download`.
+- `--git-auth-origin ORIGIN`, `--git-auth-user USER`, `--git-token-env NAME`:
+  supply all three for authenticated Git over HTTPS. Scout reads the token from
+  the named environment variable and sends it only to the exact origin.
   Requires `--allow-download`.
 - `--download-sha256 HEX`: expected SHA-256 of the complete downloaded bytes,
   64 hexadecimal characters. Requires `--allow-download`. Applies to direct

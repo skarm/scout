@@ -63,7 +63,7 @@ func (o Options) validateAPIRequest(bodyBytes int) error {
 		return fail("network_permission_required")
 	}
 
-	if o.Revision != "" || o.ExpectedSHA256 != "" {
+	if o.Git || o.GitAuth != nil || o.Revision != "" || o.ExpectedSHA256 != "" {
 		return fail("download_options_not_applicable")
 	}
 

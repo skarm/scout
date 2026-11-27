@@ -218,6 +218,7 @@ func (t *traversal) follow(raw string, u *url.URL, depth int, ref *report.Extern
 	}
 
 	options := t.download
+	options.Git, options.GitAuth = false, nil
 	options.Revision = ""
 	options.ExpectedSHA256 = ""
 

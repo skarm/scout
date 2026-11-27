@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"flag"
+	"os"
 	"strings"
 
 	"github.com/skarm/scout"
@@ -16,6 +17,10 @@ func bindDownloads(fs *flag.FlagSet, r *request) {
 	fs.BoolVar(&r.grants.Download, "allow-download", r.grants.Download, "allow explicit downloads")
 	fs.BoolVar(&r.settings.Scanner.Download.AllowLoopback, "download-allow-loopback", r.settings.Scanner.Download.AllowLoopback, "allow explicit local download server")
 	fs.DurationVar(&r.settings.Scanner.Download.Timeout, "download-timeout", r.settings.Scanner.Download.Timeout, "download timeout")
+	fs.BoolVar(&r.settings.Scanner.Download.Git, "git", r.settings.Scanner.Download.Git, "treat a remote URL as a Git clone URL")
+	fs.StringVar(&r.gitAuthOrigin, "git-auth-origin", "", "exact HTTPS origin authorized to receive Git credentials")
+	fs.StringVar(&r.gitAuthUser, "git-auth-user", "", "Git HTTPS username")
+	fs.StringVar(&r.gitTokenEnv, "git-token-env", "", "environment variable containing a Git HTTPS token")
 
 	external := scout.DefaultExternalOptions()
 
@@ -84,11 +89,22 @@ func (p argvPatch) resolveDownload(s *configfile.Settings) error {
 	patch := p.values.settings.Scanner.Download
 	applyArgument(p.present, "download-allow-loopback", &v.AllowLoopback, patch.AllowLoopback)
 	applyArgument(p.present, "download-timeout", &v.Timeout, patch.Timeout)
+	applyArgument(p.present, "git", &v.Git, patch.Git)
+	gitAuth := p.present["git-auth-origin"] || p.present["git-auth-user"] || p.present["git-token-env"]
 
 	if p.values.grants.Download {
+		if gitAuth {
+			credentials, err := p.values.gitCredentials()
+			if err != nil {
+				return err
+			}
+
+			v.GitAuth = credentials
+		}
+
 		v.Enabled = true
 		s.Scanner.Download = &v
-	} else if p.values.revision != "" || p.values.sha256 != "" || v.AllowLoopback || p.present["download-timeout"] {
+	} else if p.values.revision != "" || p.values.sha256 != "" || v.AllowLoopback || v.Git || gitAuth || p.present["download-timeout"] {
 		return errors.New("download options require --allow-download")
 	}
 
@@ -116,6 +132,19 @@ func (p argvPatch) resolveDownload(s *configfile.Settings) error {
 	}
 
 	return nil
+}
+
+func (r request) gitCredentials() (*fetch.GitCredentials, error) {
+	if r.gitAuthOrigin == "" || r.gitAuthUser == "" || r.gitTokenEnv == "" {
+		return nil, errors.New("authentication requires --git-auth-origin, --git-auth-user and --git-token-env")
+	}
+
+	token, ok := os.LookupEnv(r.gitTokenEnv)
+	if !ok || token == "" {
+		return nil, errors.New("the Git token environment variable is unset or empty")
+	}
+
+	return fetch.NewGitCredentials(r.gitAuthOrigin, r.gitAuthUser, token)
 }
 
 func (p argvPatch) resolveVulnerabilities(s *configfile.Settings) error {

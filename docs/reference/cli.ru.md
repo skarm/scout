@@ -265,7 +265,12 @@ scout version
   положительный и не больше `2m`. Используйте с `--allow-download`.
 - `--download-allow-loopback`: разрешить явные числовые loopback-адреса загрузок
   и их обычные HTTP URL; по умолчанию `false`. Требует `--allow-download`.
-- `--revision SHA`: полный SHA коммита из 40 символов для URL Git-репозитория.
+- `--git`: обработать неоднозначный HTTPS URL как адрес клонирования Git. Требует `--allow-download`.
+- `--revision SHA`: необязательный полный SHA коммита из 40 символов. Без него
+  Git-сканирование захватывает удалённый `HEAD`. Требует `--allow-download`.
+- `--git-auth-origin ORIGIN`, `--git-auth-user USER`, `--git-token-env NAME`:
+  укажите все три флага для аутентификации Git по HTTPS. Scout читает токен из
+  указанной переменной окружения и отправляет его только на заданный origin.
   Требует `--allow-download`.
 - `--download-sha256 HEX`: ожидаемый SHA-256 всех загруженных байтов, 64
   шестнадцатеричных символа. Требует `--allow-download`. Применяется к прямым

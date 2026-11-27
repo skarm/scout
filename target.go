@@ -37,7 +37,7 @@ type Target struct {
 // RemotePin records operator-supplied revision and checksum constraints for a
 // remote input.
 type RemotePin struct {
-	// Revision pins a GitHub repository to a full commit SHA.
+	// Revision pins a Git repository to a full commit SHA.
 	Revision string
 	// SHA256 optionally pins complete downloaded bytes, not the captured inventory
 	// digest.

@@ -72,10 +72,11 @@ func TestPinnedGitSmartHTTP(t *testing.T) {
 		t.Skip("git-http-backend is required for the Smart HTTP fixture")
 	}
 
-	server := httptest.NewTLSServer(&cgi.Handler{
+	backendHandler := &cgi.Handler{
 		Path: backend, Dir: root,
 		Env: []string{"GIT_PROJECT_ROOT=" + root, "GIT_HTTP_EXPORT_ALL=1"},
-	})
+	}
+	server := httptest.NewTLSServer(backendHandler)
 	defer server.Close()
 
 	options := enabled()
@@ -131,6 +132,53 @@ func TestPinnedGitSmartHTTP(t *testing.T) {
 	options.MaxBytes, options.Revision = 4096, later
 	if _, err := fetch.Get(t.Context(), address, options); code(err) != "byte_limit" {
 		t.Fatalf("expanded Git tree escaped the byte limit: %v", err)
+	}
+
+	gitCommand("checkout", "--quiet", "--detach", later)
+	checkPrivateGitHEAD(t, backendHandler, later)
+}
+
+func checkPrivateGitHEAD(t *testing.T, backend http.Handler, sha string) {
+	t.Helper()
+	const token = "fixture-token"
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, password, ok := r.BasicAuth()
+		if !ok || user != "fixture-user" || password != token {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		backend.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	options := enabled()
+	options.AllowLoopback, options.Git = true, true
+	options.RootCAs = x509.NewCertPool()
+	options.RootCAs.AddCert(server.Certificate())
+	address := server.URL + "/repository.git"
+	if _, err := fetch.Get(t.Context(), address, options); code(err) != "http_status" {
+		t.Fatalf("private HEAD accepted without credentials: %v", err)
+	}
+	var err error
+	options.GitAuth, err = fetch.NewGitCredentials(server.URL, "fixture-user", token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := fetch.Get(t.Context(), address, options)
+	if err != nil || result.Source.Revision != sha || result.Source.Kind != fetch.KindGitTree {
+		t.Fatalf("pinned private HEAD was not captured: %+v, %v", result.Source, err)
+	}
+
+	other := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Error("credential was sent to another origin")
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer other.Close()
+	options.RootCAs.AddCert(other.Certificate())
+	if _, err := fetch.Get(t.Context(), other.URL+"/repository.git", options); code(err) != "http_status" {
+		t.Fatalf("wrong origin did not produce an anonymous HTTP request: %v", err)
 	}
 }
 

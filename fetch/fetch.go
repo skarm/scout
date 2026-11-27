@@ -41,9 +41,13 @@ type Options struct {
 	Enabled bool
 	// AllowLoopback permits loopback destinations and plain HTTP to numeric
 	// loopback addresses.
-	AllowLoopback  bool
-	Revision       string // Git repository input requires an explicit full commit SHA.
-	ExpectedSHA256 string // Optional checksum of the downloaded bytes, not the snapshot.
+	AllowLoopback bool
+	// Git selects Smart HTTP for a clone URL with no explicit revision.
+	Git bool
+	// GitAuth is scoped to its validated HTTPS origin and used only for Git.
+	GitAuth        *GitCredentials `json:"-"`
+	Revision       string          // Optional full Git commit SHA. Smart HTTP otherwise captures HEAD.
+	ExpectedSHA256 string          // Optional checksum of the downloaded bytes, not the snapshot.
 	// MaxBytes limits received bytes and the captured payload.
 	MaxBytes int64
 	// Timeout limits acquisition of one target, including any Git processing.
@@ -76,7 +80,7 @@ type (
 		Name string
 		// Kind identifies a direct download, GitHub archive or pinned Git tree.
 		Kind string
-		// Revision is the full commit SHA for a Git repository.
+		// Revision is the selected commit SHA, or empty when Git must capture HEAD.
 		Revision string
 	}
 	// Error contains a stable acquisition failure code without the raw target URL.
@@ -96,8 +100,8 @@ func DefaultOptions() Options {
 // validate the URL or authorize network access.
 func IsRemote(s string) bool { return strings.Contains(s, "://") }
 
-// ResolveTarget is pure. GitHub repository URLs use a pinned codeload request;
-// a revision selects Git Smart HTTP for other hosts.
+// ResolveTarget is pure. Unauthenticated GitHub pins use codeload. Git mode or
+// a revision on another host selects Smart HTTP.
 func ResolveTarget(raw string, o Options) (Target, error) {
 	if err := o.Validate(); err != nil {
 		return Target{}, err
@@ -114,15 +118,24 @@ func ResolveTarget(raw string, o Options) (Target, error) {
 
 	t := Target{URL: u.String(), Name: "download.bin", Kind: "https"}
 	if strings.EqualFold(u.Hostname(), "github.com") {
-		return githubTarget(u, o.Revision)
+		if !o.Git && (o.Revision == "" || !o.GitAuth.applies(u)) {
+			return githubTarget(u, o.Revision)
+		}
+
+		owner, repo, err := githubRepository(u)
+		if err != nil {
+			return Target{}, err
+		}
+
+		t.URL = "https://github.com/" + owner + "/" + repo + ".git"
 	}
 
-	if o.Revision != "" {
+	if o.Git || o.Revision != "" {
 		if o.ExpectedSHA256 != "" {
 			return Target{}, fail("checksum_not_supported_for_git_tree")
 		}
 
-		return Target{URL: u.String(), Name: "repository.zip", Kind: KindGitTree, Revision: strings.ToLower(o.Revision)}, nil
+		return Target{URL: t.URL, Name: "repository.zip", Kind: KindGitTree, Revision: strings.ToLower(o.Revision)}, nil
 	}
 
 	name := path.Base(u.Path)
@@ -164,7 +177,9 @@ func Get(ctx context.Context, raw string, o Options) (Payload, error) {
 		Status:            report.OutcomeFailed,
 	}
 	if target.Kind == KindGitTree {
-		data, err := fetchGitTree(ctx, target, o)
+		data, revision, err := fetchGitTree(ctx, target, o)
+
+		out.Source.Revision = revision
 		if err != nil {
 			return out, err
 		}
@@ -230,7 +245,7 @@ func (o Options) Validate() error {
 }
 
 func (o Options) requiresNetwork() bool {
-	return o.AllowLoopback || o.Revision != "" || o.ExpectedSHA256 != "" || o.RootCAs != nil
+	return o.AllowLoopback || o.Git || o.GitAuth != nil || o.Revision != "" || o.ExpectedSHA256 != "" || o.RootCAs != nil
 }
 
 // Error returns a stable remote-input failure code without raw URL or network
@@ -300,28 +315,37 @@ func parseURL(raw string, loopback bool) (*url.URL, error) {
 func githubTarget(u *url.URL, revision string) (Target, error) {
 	t := Target{}
 
+	owner, repo, err := githubRepository(u)
+	if err != nil {
+		return t, err
+	}
+
+	if revision == "" {
+		return t, fail("github_requires_full_commit_sha")
+	}
+
+	t.Kind, t.Revision, t.Name = "github-archive", strings.ToLower(revision), "repository.zip"
+	t.URL = "https://codeload.github.com/" + owner + "/" + repo + "/zip/" + t.Revision
+
+	return t, nil
+}
+
+func githubRepository(u *url.URL) (string, string, error) {
 	if u.Port() != "" && u.Port() != "443" {
-		return Target{}, fail("invalid_github_url")
+		return "", "", fail("invalid_github_url")
 	}
 
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	if len(parts) != 2 {
-		return Target{}, fail("github_requires_repository_root")
+		return "", "", fail("github_requires_repository_root")
 	}
 
 	parts[1] = strings.TrimSuffix(parts[1], ".git")
 	for _, p := range parts {
 		if !repoPart(p) {
-			return Target{}, fail("invalid_github_url")
+			return "", "", fail("invalid_github_url")
 		}
 	}
 
-	if revision == "" {
-		return Target{}, fail("github_requires_full_commit_sha")
-	}
-
-	t.Kind, t.Revision, t.Name = "github-archive", strings.ToLower(revision), "repository.zip"
-	t.URL = "https://codeload.github.com/" + parts[0] + "/" + parts[1] + "/zip/" + t.Revision
-
-	return t, nil
+	return parts[0], parts[1], nil
 }

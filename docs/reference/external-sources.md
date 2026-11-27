@@ -8,18 +8,34 @@ cannot enable networking or choose trusted keys.
 ## Pinned Git repositories
 
 ```sh
+scout scan --allow-download --format json https://git.example.org/team/my-plugin.git
 scout scan --allow-download \
   --revision 0123456789abcdef0123456789abcdef01234567 \
   --format json https://git.example.org/team/my-plugin.git
 ```
 
-Use an anonymous HTTPS clone URL and a full 40-character commit SHA. GitHub
-repository roots use GitHub's commit ZIP endpoint. For other hosts, `--revision`
-selects Smart HTTP and requires a system `git` executable. The server must accept
-a shallow fetch by commit ID. Scout captures tracked regular files, including files marked
+Scout recognizes GitHub repository roots and HTTPS URLs ending in `.git`. Pass
+`--git` for a clone URL without a recognizable shape. Scout captures the remote
+`HEAD` by default and records its exact commit SHA. Pass `--revision` with a full
+40-character SHA for a specific commit. Anonymous pinned GitHub scans use
+GitHub's commit ZIP endpoint by default. Smart HTTP requires a system `git`
+executable and a server that permits the shallow fetch. Scout captures tracked regular files, including files marked
 `export-ignore`, without a checkout. Trees containing symlinks or submodules fail
 acquisition. Download limits apply to both received bytes and the captured tree.
 The JSON report records the pinned revision and the SHA-256 of the captured bytes.
+
+For a private repository, export a read-only token as an environment variable.
+Scope it to the exact HTTPS origin, including a nonstandard port if present.
+
+```sh
+scout scan --allow-download \
+  --git-auth-origin https://git.example.org --git-auth-user my-user \
+  --git-token-env SCOUT_GIT_TOKEN https://git.example.org/team/private.git
+```
+
+The HTTP transport handles Basic authentication on the selected Git requests.
+Credential helpers, SSH and redirects are disabled. External references do not
+inherit repository credentials.
 
 ## Bounded external traversal
 

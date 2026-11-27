@@ -65,6 +65,8 @@ type request struct {
 	skillExcludes                   repeated
 	externalDepth, externalRequests int
 	externalBytes                   int64
+
+	gitAuthOrigin, gitAuthUser, gitTokenEnv string
 }
 
 // argvPatch is passive typed input. Its populated service/check nodes are flag
