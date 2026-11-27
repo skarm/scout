@@ -21,6 +21,8 @@ const (
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var patternPolicies = map[string]patternPolicy{
+	ruleE2: {adapter: func(a familyAnalyzer) Analyzer { return environmentCheck{familyAnalyzer: a} }},
+	ruleE5: {filter: shell.CloudDownloadExempt},
 	ruleE1: {
 		python:  ruleE1,
 		shell:   shellTransmission,

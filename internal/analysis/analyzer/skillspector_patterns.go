@@ -495,9 +495,16 @@ func (a familyAnalyzer) Rule() report.Rule {
 		limitation = "Historical scout literal signal, NOT equivalent to upstream structural trigger analysis. NV-TR1M/2M/3M inspect parsed declarations separately. Neither a text match nor a declaration proves harness activation."
 	}
 
-	if a.spec.id == ruleE1 {
+	switch a.spec.id {
+	case ruleE1:
 		method = "network-transmission-pattern-and-python-ast"
 		limitation = "Parsed Python units use bounded resolved HTTP calls with a body, including aliases and multiline calls; other text uses selected literal patterns. A transmission construct does not establish sensitive data, activation, authorization or maliciousness."
+	case ruleE2:
+		method = "environment-pattern-and-python-context"
+		limitation = "A bounded Python syntax check lowers a copied environment passed only as a child process environment. Unresolved bindings, other uses and unsupported syntax retain the original signal."
+	case ruleE5:
+		method = "cloud-transfer-pattern-and-shell-direction"
+		limitation = "Complete standalone shell commands can exclude literal S3 or GCS downloads to local paths. Other cloud transfer constructs remain signals for review."
 	}
 
 	severity := report.Medium
