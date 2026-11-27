@@ -100,8 +100,7 @@ func (i inventory) readTestCall(fset *token.FileSet, call *ast.CallExpr, ancesto
 			i.addTest(prefix+testPath(test, ancestors)+"/"+name, name, loc)
 		}
 	case "Skip", "Skipf", "SkipNow":
-		var key strings.Builder
-		key.WriteString(prefix + testPath(test, ancestors) + "\x01")
+		var guard strings.Builder
 
 		for _, node := range ancestors {
 			if condition, ok := node.(*ast.IfStmt); ok {
@@ -109,15 +108,15 @@ func (i inventory) readTestCall(fset *token.FileSet, call *ast.CallExpr, ancesto
 
 				_ = format.Node(&text, fset, condition.Cond)
 				if call.Pos() > condition.Body.End() {
-					key.WriteString("else:")
+					guard.WriteString("else:")
 				}
 
-				key.WriteString(text.String() + "\x01")
+				guard.WriteString(text.String() + "\x01")
 			}
 		}
 
-		value := key.String()
-		i.skips[value] = append(i.skips[value], loc)
+		key := testSkip{subject: prefix + testPath(test, ancestors), condition: guard.String()}
+		i.skips[key] = append(i.skips[key], loc)
 	}
 }
 

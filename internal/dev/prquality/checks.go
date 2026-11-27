@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -98,8 +99,8 @@ type testCommand struct {
 	targets, filters []string
 }
 
-func parseTestCommand(loc location, kind string, args []shellWord) (testCommand, bool) {
-	cmd := testCommand{location: loc, kind: kind}
+func parseTestCommand(loc location, kind, directory string, args []shellWord) (testCommand, bool) {
+	cmd := testCommand{location: loc, kind: kind, dir: path.Clean(directory)}
 
 	var goOptions goTestOptions
 
@@ -138,7 +139,7 @@ func parseTestCommand(loc location, kind string, args []shellWord) (testCommand,
 		}
 	}
 
-	if goOptions.compileOnly || goOptions.dryRun || goOptions.listOnly || len(cmd.targets) == 0 && kind == "make" {
+	if goOptions.compileOnly || goOptions.dryRun || goOptions.listOnly || goOptions.zeroRuns || len(cmd.targets) == 0 && kind == "make" {
 		return testCommand{}, false
 	}
 
@@ -152,7 +153,7 @@ func parseTestCommand(loc location, kind string, args []shellWord) (testCommand,
 }
 
 type goTestOptions struct {
-	compileOnly, dryRun, listOnly, binaryArgs bool
+	compileOnly, dryRun, listOnly, zeroRuns, binaryArgs bool
 }
 
 func (options *goTestOptions) apply(cmd *testCommand, name, value string, inline bool, args []shellWord, index *int) bool {
@@ -176,6 +177,9 @@ func (options *goTestOptions) apply(cmd *testCommand, name, value string, inline
 		options.compileOnly = value != "false" && value != "0"
 	case "n":
 		options.dryRun = value != "false" && value != "0"
+	case "count":
+		count, err := strconv.ParseInt(optionValue(value, inline, args, index), 0, strconv.IntSize)
+		options.zeroRuns = err == nil && count <= 0
 	case "list", "C", "exec":
 		value = optionValue(value, inline, args, index)
 
@@ -183,9 +187,10 @@ func (options *goTestOptions) apply(cmd *testCommand, name, value string, inline
 		case "list":
 			options.listOnly = value != ""
 		case "C":
-			dir := path.Clean(value)
-			if dir != "." {
-				cmd.dir = dir
+			if path.IsAbs(value) {
+				cmd.dir = path.Clean(value)
+			} else {
+				cmd.dir = path.Join(cmd.dir, value)
 			}
 		case "exec":
 			clearGoFilter(cmd, "-exec")
@@ -220,7 +225,7 @@ func clearGoFilter(cmd *testCommand, flag string) {
 func goFlagTakesValue(flag string) bool {
 	switch flag {
 	case "asmflags", "bench", "benchtime", "blockprofile", "blockprofilerate", "buildmode", "compiler",
-		"count", "covermode", "coverpkg", "coverprofile", "cpu", "cpuprofile", "fuzz", "fuzztime",
+		"covermode", "coverpkg", "coverprofile", "cpu", "cpuprofile", "fuzz", "fuzztime",
 		"fuzzminimizetime", "gccgoflags", "gcflags", "installsuffix", "ldflags", "memprofile",
 		"memprofilerate", "mod", "modfile", "mutexprofile", "mutexprofilefraction", "o", "outputdir",
 		"overlay", "p", "parallel", "pkgdir", "pgo", "shuffle", "timeout", "toolexec", "trace", "vet":

@@ -144,7 +144,7 @@ func TestShellCommandsReadQuotedArgumentsWithoutMatchingExamples(t *testing.T) {
 go test -run='^Test one|Test two$' ./... && node --test --test-skip-pattern "slow case" adapter.mjs
 jq -e '"inside string .recall > 1" and .metrics.recall>9e-1 and .slack <= -0.1 # .unused < 0
 '
-`)
+`, "")
 	if err != nil || !found {
 		t.Fatalf("test commands were not parsed: %v", err)
 	}
@@ -169,10 +169,10 @@ jq -L scripts -e -- '.recall >= 0.9' second.json
 jq -e '.computed > 0.5 + $offset'
 jq -ef program.jq input.json
 `
-	if _, err := before.readShell(key, 20, base); err != nil {
+	if _, err := before.readShell(key, 20, base, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := after.readShell(key, 20, strings.Replace(base, ">= 0.9'", ">= 0.8'", 1)); err != nil {
+	if _, err := after.readShell(key, 20, strings.Replace(base, ">= 0.9'", ">= 0.8'", 1), ""); err != nil {
 		t.Fatal(err)
 	}
 	warnings := compareInventories(before, after)
@@ -194,6 +194,9 @@ func TestNarrowedTestInvocations(t *testing.T) {
 		{"go test ./...", "go test -list '.' ./...", true},
 		{"go test ./...", "go test -c ./...", true},
 		{"go test ./...", "go test -n ./...", true},
+		{"go test ./...", "go test -count=0 ./...", true},
+		{"go test ./...", "go test ./... -args -test.count -1", true},
+		{"go test ./...", "go test -count=0 -count=2 ./...", false},
 		{"go test example.org/scout/a example.org/scout/b", "go test -timeout 30s example.org/scout/b", true},
 		{"go -C ./tools test ./...", "go -C=./tools test -count 2 ./...", false},
 		{"node --test host_test.mjs", "node --test-name-pattern 'fast tests' --test host_test.mjs", true},
@@ -201,10 +204,10 @@ func TestNarrowedTestInvocations(t *testing.T) {
 	} {
 		t.Run(tc.after, func(t *testing.T) {
 			before, after := newInventory(), newInventory()
-			if _, err := before.readShell(key, 1, tc.before); err != nil {
+			if _, err := before.readShell(key, 1, tc.before, ""); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := after.readShell(key, 1, tc.after); err != nil {
+			if _, err := after.readShell(key, 1, tc.after, ""); err != nil {
 				t.Fatal(err)
 			}
 			warnings := compareInventories(before, after)
@@ -223,7 +226,7 @@ func TestGitHubExpressionsPreserveCommandAndFilterIdentity(t *testing.T) {
 		inv  inventory
 		text string
 	}{{before, script}, {after, strings.Replace(script, "matrix.filter", "matrix.narrower", 1)}} {
-		if _, err := item.inv.readShell(key, 30, maskExpressions(item.text)); err != nil {
+		if _, err := item.inv.readShell(key, 30, maskExpressions(item.text), ""); err != nil {
 			t.Fatal(err)
 		}
 		cmds := item.inv.commands[key]
@@ -279,8 +282,99 @@ jobs:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(i.prRuns) != 1 || len(i.gates) != 1 || len(i.skips) != 1 {
+	if coverage := i.workflows[".github/workflows/eval.yml"]; coverage.triggerLine == 0 || !coverage.runsChecks || len(i.gates) != 1 || len(i.skips) != 1 {
 		t.Fatalf("workflow metadata lost: %+v", i)
+	}
+}
+
+func TestWorkflowDistinguishesDisabledTestsFromRemovedPRTrigger(t *testing.T) {
+	const name = ".github/workflows/ci.yml"
+	const source = "on: pull_request\njobs:\n  scan:\n    steps:\n      - run: go test ./...\n"
+	before := newInventory()
+	if err := before.readWorkflow(name, []byte(source)); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct{ from, to, category string }{
+		{"go test ./...", "go test -count=0 ./...", "Test run removed or narrowed"},
+		{"on: pull_request", "on: push", "PR test trigger removed"},
+	} {
+		after := newInventory()
+		if err := after.readWorkflow(name, []byte(strings.Replace(source, tc.from, tc.to, 1))); err != nil {
+			t.Fatal(err)
+		}
+		if warnings := compareInventories(before, after); len(warnings) != 1 || warnings[0].category != tc.category {
+			t.Fatalf("unexpected workflow warnings: %+v", warnings)
+		}
+	}
+}
+
+func TestWorkflowWorkingDirectoryAffectsTestSelection(t *testing.T) {
+	const workflow = `on: pull_request
+defaults:
+  run:
+    working-directory: modules
+jobs:
+  scan:
+    defaults:
+      run:
+        working-directory: modules/scanner
+    steps:
+      - name: Go
+        run: go -C child test ./...
+      - name: Node
+        working-directory: ui
+        run: node --test smoke.mjs
+  fallback:
+    steps:
+      - run: go test ./...
+`
+	for _, tc := range []struct {
+		name, from, to string
+		want           int
+	}{
+		{"job directory changed", "modules/scanner", "modules/other", 1},
+		{"step directory changed", "working-directory: ui", "working-directory: extension", 1},
+		{"workflow directory changed", "working-directory: modules\n", "working-directory: packages\n", 1},
+		{"equivalent Go directory", "modules/scanner", "./modules/tmp/../scanner", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before, after := newInventory(), newInventory()
+			const name = ".github/workflows/ci.yml"
+			if err := before.readWorkflow(name, []byte(workflow)); err != nil {
+				t.Fatal(err)
+			}
+			if err := after.readWorkflow(name, []byte(strings.Replace(workflow, tc.from, tc.to, 1))); err != nil {
+				t.Fatal(err)
+			}
+			if warnings := compareInventories(before, after); len(warnings) != tc.want ||
+				tc.want != 0 && warnings[0].category != "Test run removed or narrowed" {
+				t.Fatalf("unexpected workflow warnings: %+v", warnings)
+			}
+		})
+	}
+}
+
+func TestNewGoTestsWithGuardsDoNotCountAsLostCoverage(t *testing.T) {
+	const base = `package scanner
+import "testing"
+func TestExisting(t *testing.T) {}
+`
+	const head = `package scanner
+import "testing"
+func TestExisting(t *testing.T) { if testing.Short() { t.Skip("short") } }
+func TestNew(t *testing.T) { if testing.Short() { t.Skip("short") } }
+`
+	before, after := newInventory(), newInventory()
+	if err := before.readGoTests("scan_test.go", []byte(base)); err != nil {
+		t.Fatal(err)
+	}
+	if err := after.readGoTests("scan_test.go", []byte(head)); err != nil {
+		t.Fatal(err)
+	}
+	if warnings := compareInventories(before, after); len(warnings) != 1 || warnings[0].category != "Test can now be skipped" ||
+		!strings.Contains(warnings[0].detail, "TestExisting") {
+		t.Fatalf("expected a warning for only the previously running test: %+v", warnings)
 	}
 }
 

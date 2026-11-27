@@ -15,8 +15,16 @@ type workflow struct {
 	Jobs     map[string]workflowJob `yaml:"jobs"`
 }
 
+type workflowCoverage struct {
+	triggerLine int
+	runsChecks  bool
+}
+
 type workflowDefaults struct {
-	Run struct{ Shell string } `yaml:"run"`
+	Run struct {
+		Shell     string
+		Directory string `yaml:"working-directory"`
+	} `yaml:"run"`
 }
 
 type workflowJob struct {
@@ -28,6 +36,7 @@ type workflowJob struct {
 
 type workflowStep struct {
 	ID, Name, Shell string
+	Directory       string `yaml:"working-directory"`
 	If              yaml.Node
 	Run             yaml.Node
 }
@@ -41,7 +50,7 @@ func (i inventory) readWorkflow(name string, data []byte) error {
 	hasTests := false
 
 	for id, job := range wf.Jobs {
-		found, err := i.readJob(name, id, wf.Defaults.Run.Shell, job)
+		found, err := i.readJob(name, id, wf.Defaults.Run.Shell, wf.Defaults.Run.Directory, job)
 		if err != nil {
 			return err
 		}
@@ -49,20 +58,22 @@ func (i inventory) readWorkflow(name string, data []byte) error {
 		hasTests = hasTests || found
 	}
 
-	if line := triggerLine(wf.Triggers); hasTests && line != 0 {
-		i.prRuns[name] = location{name, line}
-	}
+	i.workflows[name] = workflowCoverage{triggerLine: triggerLine(wf.Triggers), runsChecks: hasTests}
 
 	return nil
 }
 
-func (i inventory) readJob(name, id, shell string, job workflowJob) (bool, error) {
+func (i inventory) readJob(name, id, shell, directory string, job workflowJob) (bool, error) {
 	if job.Defaults.Run.Shell != "" {
 		shell = job.Defaults.Run.Shell
 	}
 
 	if shell == "" && windowsRunner(job.RunsOn) {
 		shell = "pwsh"
+	}
+
+	if job.Defaults.Run.Directory != "" {
+		directory = job.Defaults.Run.Directory
 	}
 
 	hasTests := false
@@ -87,7 +98,12 @@ func (i inventory) readJob(name, id, shell string, job workflowJob) (bool, error
 			line++
 		}
 
-		found, err := i.readShell(commandKey{name, scope}, line, maskExpressions(step.Run.Value))
+		stepDirectory := step.Directory
+		if stepDirectory == "" {
+			stepDirectory = directory
+		}
+
+		found, err := i.readShell(commandKey{name, scope}, line, maskExpressions(step.Run.Value), stepDirectory)
 		if err != nil {
 			return false, err
 		}
@@ -158,7 +174,7 @@ func (i inventory) addDisabledStep(name, scope string, node yaml.Node, hasTests 
 	}
 
 	if hasTests && value == "false" {
-		key := name + "\x00" + "workflow job or step " + scope + "\x01if:false"
+		key := testSkip{subject: name + "\x00workflow job or step " + scope, condition: value, workflow: true}
 		i.skips[key] = append(i.skips[key], location{name, node.Line})
 	}
 }
@@ -238,7 +254,7 @@ func (i inventory) readMakefile(name, text string) error {
 		}
 
 		expanded := strings.NewReplacer("$(GO)", "go", "$(NATIVE)", "scout-native", "$$", "$").Replace(script.String())
-		if _, err := i.readShell(commandKey{name, scope}, start, expanded); err != nil {
+		if _, err := i.readShell(commandKey{name, scope}, start, expanded, ""); err != nil {
 			return err
 		}
 	}

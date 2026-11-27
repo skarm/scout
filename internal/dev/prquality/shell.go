@@ -15,7 +15,7 @@ type shellWord struct {
 	line    int
 }
 
-func (i inventory) readShell(key commandKey, firstLine int, script string) (bool, error) {
+func (i inventory) readShell(key commandKey, firstLine int, script, directory string) (bool, error) {
 	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), key.path)
 	if err != nil {
 		return false, fmt.Errorf("parse shell in %s at line %d: %w", key.path, firstLine, err)
@@ -35,7 +35,7 @@ func (i inventory) readShell(key commandKey, firstLine int, script string) (bool
 			args = append(args, shellWord{text, literal, firstLine + int(arg.Pos().Line()) - 1})
 		}
 
-		hasTests = i.readCall(key, unwrapGo(args)) || hasTests
+		hasTests = i.readCall(key, directory, unwrapGo(args)) || hasTests
 
 		return true
 	})
@@ -107,7 +107,7 @@ func unwrapGo(args []shellWord) []shellWord {
 	return args
 }
 
-func (i inventory) readCall(key commandKey, words []shellWord) bool {
+func (i inventory) readCall(key commandKey, directory string, words []shellWord) bool {
 	if len(words) == 0 {
 		return false
 	}
@@ -144,7 +144,7 @@ func (i inventory) readCall(key commandKey, words []shellWord) bool {
 		return false
 	}
 
-	cmd, ok := parseTestCommand(location{key.path, words[0].line}, kind, args)
+	cmd, ok := parseTestCommand(location{key.path, words[0].line}, kind, directory, args)
 	if ok {
 		i.commands[key] = append(i.commands[key], cmd)
 	}

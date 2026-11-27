@@ -11,13 +11,19 @@ import (
 
 type subjects map[string][]location
 
+type testSkip struct {
+	subject, condition string
+	workflow           bool
+}
+
 type inventory struct {
-	tests, controls, skips subjects
-	buildTags              map[string][]taggedTests
-	commands               map[commandKey][]testCommand
-	gates                  map[gateKey][]bound
-	prRuns                 map[string]location
-	testNameSeparators     *strings.Replacer
+	tests, controls    subjects
+	skips              map[testSkip][]location
+	buildTags          map[string][]taggedTests
+	commands           map[commandKey][]testCommand
+	gates              map[gateKey][]bound
+	workflows          map[string]workflowCoverage
+	testNameSeparators *strings.Replacer
 }
 
 type taggedTests struct {
@@ -27,9 +33,9 @@ type taggedTests struct {
 
 func newInventory() inventory {
 	return inventory{
-		tests: subjects{}, controls: subjects{}, skips: subjects{},
+		tests: subjects{}, controls: subjects{}, skips: map[testSkip][]location{},
 		buildTags: map[string][]taggedTests{}, commands: map[commandKey][]testCommand{}, gates: map[gateKey][]bound{},
-		prRuns: map[string]location{}, testNameSeparators: strings.NewReplacer("-", "", "_", "", " ", ""),
+		workflows: map[string]workflowCoverage{}, testNameSeparators: strings.NewReplacer("-", "", "_", "", " ", ""),
 	}
 }
 
@@ -131,9 +137,13 @@ func compareInventories(before, after inventory) []warning {
 	warnings = appendMissing(warnings, before.tests, after.tests, "Test removed from run",
 		"Go test or named subtest %q was removed or renamed.")
 	for key, locations := range after.skips {
+		if !key.workflow && len(before.tests[key.subject]) == 0 && len(before.controls[key.subject]) == 0 {
+			continue
+		}
+
 		count := len(before.skips[key])
 		if count < len(locations) {
-			test, _, _ := strings.Cut(subjectName(key), "\x01")
+			test := subjectName(key.subject)
 			for _, loc := range locations[count:] {
 				warnings = append(warnings, warning{loc, false, "Test can now be skipped", fmt.Sprintf("%q adds a skip or changes its guard.", test)})
 			}
@@ -142,8 +152,9 @@ func compareInventories(before, after inventory) []warning {
 
 	warnings = append(warnings, changedBuildSelection(before.buildTags, after.buildTags)...)
 
-	for name, loc := range before.prRuns {
-		if _, found := after.prRuns[name]; !found {
+	for name, coverage := range before.workflows {
+		if coverage.runsChecks && coverage.triggerLine != 0 && after.workflows[name].triggerLine == 0 {
+			loc := location{name, coverage.triggerLine}
 			warnings = append(warnings, warning{loc, true, "PR test trigger removed", "This workflow no longer declares a pull_request trigger."})
 		}
 	}
