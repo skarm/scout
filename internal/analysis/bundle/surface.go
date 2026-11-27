@@ -172,6 +172,7 @@ func (b *bundleAnalysis) surfaceSkills(docs []document.File) {
 		}
 
 		b.surfaceFact("skill", "", name, b.reference(name, 0, len(text)))
+
 		if addr.Namespace == artifact.RootNamespace {
 			b.observeSkillDescription(d, name)
 		}
@@ -216,6 +217,7 @@ func (b *bundleAnalysis) observeSkillDescription(d document.File, name string) {
 
 		node := tree.Root.Get("description")
 		value, ok := node.Text()
+
 		if !ok || strings.TrimSpace(value) == "" {
 			return
 		}
@@ -225,6 +227,7 @@ func (b *bundleAnalysis) observeSkillDescription(d document.File, name string) {
 		} else {
 			b.surface.UnknownSkillDescriptions++
 		}
+
 		return
 	}
 

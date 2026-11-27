@@ -264,6 +264,7 @@ func (s *Scanner) scanTarget(ctx context.Context, target Target, index int, opti
 			Code: "skill_exclusion_patterns", Message: fmt.Sprintf("Excluded files: %d. Operator globs: %q.", count, analysis.Artifact.ExcludeGlobs),
 		})
 	}
+
 	result.Analysis = analysis
 	result.State = targetState(ctx.Err(), captureErr, analysis.Coverage.Completeness)
 
@@ -501,7 +502,9 @@ func capture(ctx context.Context, target Target, options Options) (artifact.Snap
 			snapshot, err := ingest.ReadSkill(ctx, target.name, options.captureLimits(), *target.skillExclusions)
 			return snapshot, nil, err
 		}
+
 		snapshot, err := ingest.Read(ctx, target.name, options.captureLimits())
+
 		return snapshot, nil, err
 	case readerTarget:
 		return captureReader(ctx, target, options.Limits.Capture)

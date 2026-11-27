@@ -51,6 +51,7 @@ func relationshipIndex(doc *report.Document, paths map[string]string) map[string
 			if observation.Kind != report.EnvironmentSkillDescriptionOverlap {
 				identity = append(identity, e.Source.SpanSHA256)
 			}
+
 			data, _ := json.Marshal(identity)
 			refs = append(refs, string(data))
 		}

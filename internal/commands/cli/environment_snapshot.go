@@ -837,9 +837,11 @@ func (r environmentComparison) writeRelationshipSummary(b *bytes.Buffer, format 
 		}
 
 		fmt.Fprintf(b, "Relationship %s: %s. %s", change.Kind, change.Change, relationshipExplanation(change.Kind))
+
 		if observation.SimilarityBasisPoints != 0 {
 			fmt.Fprintf(b, " Description similarity: %.2f%%.", float64(observation.SimilarityBasisPoints)/100)
 		}
+
 		b.WriteString("\n\n")
 
 		doc := r.Environment

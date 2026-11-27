@@ -212,6 +212,7 @@ func ParsePolicy(data []byte) (policy.Options, string, error) {
 
 	settings := DefaultSettings()
 	err = doc.applyPolicy(&settings)
+
 	return settings.Policy, settings.BaselinePath, err
 }
 

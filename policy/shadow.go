@@ -61,6 +61,7 @@ func Compare(run report.Run, current, trial *Gate, now time.Time) (ShadowResult,
 	if current == nil || trial == nil || !validPolicyDigest(current.digest) || !validPolicyDigest(trial.digest) || now.IsZero() {
 		return ShadowResult{}, errors.New("two valid policies and an evaluation time are required")
 	}
+
 	if err := report.ValidateSealedRun(run); err != nil {
 		return ShadowResult{}, err
 	}
@@ -72,13 +73,14 @@ func Compare(run report.Run, current, trial *Gate, now time.Time) (ShadowResult,
 		FindingChanges: []FindingPolicyChange{}, ManifestSignalChanges: []ManifestPolicyChange{},
 	}
 	result.DecisionChanged = result.Current.Decision != result.Trial.Decision
-
 	before, after := suppressionSet(result.Current.Suppressed), suppressionSet(result.Trial.Suppressed)
+
 	for _, target := range decisionTargets(run) {
 		for _, finding := range target.Analysis.Findings {
 			key := occurrence{target.ID, finding.ID}
 			a := current.findingDisposition(finding, before[key])
 			b := trial.findingDisposition(finding, after[key])
+
 			if a != b {
 				result.FindingChanges = append(result.FindingChanges, FindingPolicyChange{
 					TargetID: target.ID, FindingID: finding.ID, RuleID: finding.RuleID, Severity: finding.Severity,
@@ -96,10 +98,12 @@ func Compare(run report.Run, current, trial *Gate, now time.Time) (ShadowResult,
 					before := *signal.Before
 					signal.Before = &before
 				}
+
 				if signal.After != nil {
 					after := *signal.After
 					signal.After = &after
 				}
+
 				result.ManifestSignalChanges = append(result.ManifestSignalChanges, ManifestPolicyChange{
 					ManifestSignal: signal, Current: a, Trial: b,
 				})
@@ -113,6 +117,7 @@ func Compare(run report.Run, current, trial *Gate, now time.Time) (ShadowResult,
 func (g *Gate) shadowEvaluation(run report.Run, now time.Time) ShadowEvaluation {
 	evaluation := g.evaluate(run, now, true)
 	code := admissionCode(run.State, run.Operation, evaluation.Decision, evaluation.PolicyDigest, validComparisonRoles(run))
+
 	return ShadowEvaluation{Evaluation: evaluation, ExitCode: code}
 }
 
@@ -134,6 +139,7 @@ func (g *Gate) findingDisposition(finding report.Finding, suppressed bool) Dispo
 	if suppressed {
 		return DispositionSuppressed
 	}
+
 	return g.disposition(finding.Severity, g.options.ReviewBelowThreshold)
 }
 
@@ -144,5 +150,6 @@ func suppressionSet(suppressions []report.Suppression) map[occurrence]bool {
 	for _, suppression := range suppressions {
 		set[occurrence{suppression.TargetID, suppression.FindingID}] = true
 	}
+
 	return set
 }

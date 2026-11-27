@@ -144,7 +144,9 @@ func (r *request) loadBaseline(inputs []string) error {
 	if err != nil {
 		return err
 	}
+
 	r.settings.Policy.Approvals = d
+
 	return nil
 }
 
@@ -152,6 +154,7 @@ func loadOperatorBaseline(path string, inputs []string) (*baseline.Document, err
 	if path == "" {
 		return nil, nil
 	}
+
 	data, err := readTrusted(path, inputs, baseline.MaxBytes)
 	if err != nil {
 		return nil, errors.New("cannot read operator baseline")

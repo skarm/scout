@@ -26,7 +26,9 @@ func writeEnvironment(out *bytes.Buffer, environment *EnvironmentReport, md bool
 		if observation.SimilarityBasisPoints != 0 {
 			_, _ = fmt.Fprintf(out, " Description similarity: %.2f%%.", float64(observation.SimilarityBasisPoints)/100)
 		}
+
 		out.WriteByte('\n')
+
 		for _, ref := range observation.Evidence {
 			_, _ = fmt.Fprintf(out, "- %s: target %s, %s, bytes %d..%d; span SHA-256 %s.\n", quote(ref.Role), quote(ref.TargetID), quote(ref.Source.Path), ref.Source.ByteStart, ref.Source.ByteEnd, quote(ref.Source.SpanSHA256))
 		}
