@@ -757,7 +757,7 @@ func paginatedResult(t *testing.T, count int, duplicate bool) report.Vulnerabili
 		if !valid {
 			t.Fatal("valid provider page was rejected")
 		}
-		applyQueryResponse(out, []*queryGroup{g}, set)
+		applyQueryResponse(out, []*queryGroup{g}, set, set)
 	}
 	collectMatches([]*queryGroup{g}, &r)
 	return r

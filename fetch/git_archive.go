@@ -87,7 +87,6 @@ func parseGitTree(listing string) ([]gitFile, error) {
 		return nil, fail("git_invalid_tree")
 	}
 
-	limits := report.DefaultCaptureLimits()
 	names := archiveutil.Namespace{MaxNodes: maxGitFiles * 2}
 
 	var files []gitFile
@@ -112,7 +111,7 @@ func parseGitTree(listing string) ([]gitFile, error) {
 			return nil, fail("git_unsupported_tree_entry")
 		}
 
-		if archiveutil.ValidatePath(name, limits.MaxPathBytes, limits.MaxDepth) != nil || names.Add(name, false) != nil {
+		if archiveutil.ValidatePath(name, report.MaxArtifactPathBytes, report.MaxArtifactPathDepth) != nil || names.Add(name, false) != nil {
 			return nil, fail("git_unsafe_tree_path")
 		}
 

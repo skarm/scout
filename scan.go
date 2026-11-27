@@ -572,7 +572,16 @@ func captureRemote(ctx context.Context, target Target, options Options) (artifac
 		download.ExpectedSHA256 = target.pin.SHA256
 	}
 
-	download.MaxBytes = min(download.MaxBytes, max(options.Limits.Capture.MaxFileBytes, options.Limits.Capture.MaxArchiveBytes), options.Limits.Capture.MaxTotalBytes)
+	limits := options.captureLimits()
+
+	download.MaxBytes = min(download.MaxBytes, limits.MaxTotalBytes)
+	if fileLimit := max(limits.MaxFileBytes, limits.MaxArchiveBytes); download.MaxBytes > fileLimit {
+		// Git trees contain multiple top-level files. Get handles target errors.
+		resolved, _ := fetch.ResolveTarget(target.name, download)
+		if resolved.Kind != fetch.KindGitTree {
+			download.MaxBytes = fileLimit
+		}
+	}
 
 	payload, err := fetch.Get(ctx, target.name, download)
 	if err != nil {
@@ -580,7 +589,7 @@ func captureRemote(ctx context.Context, target Target, options Options) (artifac
 	}
 
 	if payload.Source.Kind == fetch.KindGitTree {
-		snapshot, err := ingest.ReadGitTree(ctx, payload.Data, options.captureLimits())
+		snapshot, err := ingest.ReadGitTree(ctx, payload.Data, limits)
 		if err != nil {
 			payload.Source.Status = "rejected_git_tree"
 		}

@@ -2,6 +2,7 @@ package osv
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"golang.org/x/mod/semver"
@@ -40,6 +41,10 @@ func applyBundledFallback(ctx context.Context, groups []*queryGroup, r *report.V
 		switch r.Queries[g.indices[0]].Status {
 		case "not_cached", "provider_failed", "invalid_response", "request_limit", "pagination_loop":
 			ids := bundledMatches(g.q.Package.Ecosystem, g.q.Package.Name, g.q.Version)
+
+			ids = slices.DeleteFunc(ids, func(id ID) bool {
+				return slices.ContainsFunc(g.ids, func(prior ID) bool { return prior.ID == id.ID })
+			})
 			if len(ids) != 0 && g.appendResults(ids) {
 				setQueryStatus(g, report.OutcomeBundledMatch, r)
 			}
@@ -48,7 +53,7 @@ func applyBundledFallback(ctx context.Context, groups []*queryGroup, r *report.V
 }
 
 func bundledMatches(ecosystem, name, version string) []ID {
-	version = bundledVersion(ecosystem, version)
+	version, afterTriplet := bundledVersion(ecosystem, version)
 	if version == "" {
 		return nil
 	}
@@ -66,7 +71,7 @@ func bundledMatches(ecosystem, name, version string) []ID {
 		}
 
 		end := semver.Compare(version, advisory.end)
-		if end < 0 || end == 0 && advisory.includeEnd {
+		if end < 0 || end == 0 && advisory.includeEnd && !afterTriplet {
 			ids = append(ids, ID{ID: advisory.id, Source: report.AdvisorySource{
 				Name: "GitHub-Advisory-Database", URL: "https://github.com/advisories/" + advisory.id, Revision: bundledRevision,
 			}})
@@ -76,40 +81,49 @@ func bundledMatches(ecosystem, name, version string) []ID {
 	return ids
 }
 
-func bundledVersion(ecosystem, version string) string {
+func bundledVersion(ecosystem, version string) (string, bool) {
+	var afterTriplet bool
+
 	switch ecosystem {
 	case report.EcosystemPyPI:
-		parts := strings.Split(version, ".")
-		if len(parts) > 3 {
-			return ""
-		}
-
-		for i, part := range parts {
-			if part == "" || strings.ContainsFunc(part, func(r rune) bool { return r < '0' || r > '9' }) {
-				return ""
-			}
-
-			parts[i] = strings.TrimLeft(part, "0")
-			if parts[i] == "" {
-				parts[i] = "0"
-			}
-		}
-
-		for len(parts) < 3 {
-			parts = append(parts, "0")
-		}
-
-		version = "v" + strings.Join(parts, ".")
+		version, afterTriplet = bundledPythonRelease(version)
 	case report.EcosystemNPM:
 		version = "v" + strings.TrimPrefix(version, "v")
 	case report.EcosystemGo:
 	default:
-		return ""
+		return "", false
 	}
 
 	if !semver.IsValid(version) || semver.Prerelease(version) != "" || strings.Count(strings.SplitN(version, "+", 2)[0], ".") != 2 {
-		return ""
+		return "", false
 	}
 
-	return version
+	return version, afterTriplet
+}
+
+// Advisory bounds use three release components. PEP 440 pads missing fields
+// with zeros, so a nonzero extra component sorts after the same triplet.
+func bundledPythonRelease(version string) (string, bool) {
+	parts := [3]string{"0", "0", "0"}
+
+	var afterTriplet bool
+
+	for i, part := range strings.Split(version, ".") {
+		if part == "" || strings.ContainsFunc(part, func(r rune) bool { return r < '0' || r > '9' }) {
+			return "", false
+		}
+
+		part = strings.TrimLeft(part, "0")
+		if part == "" {
+			continue
+		}
+
+		if i < len(parts) {
+			parts[i] = part
+		} else {
+			afterTriplet = true
+		}
+	}
+
+	return "v" + strings.Join(parts[:], "."), afterTriplet
 }

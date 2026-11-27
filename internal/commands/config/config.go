@@ -492,7 +492,11 @@ func (p *vulnerabilities) apply(s *Settings, grants Grants) error {
 	assign(&o.MaxRequests, p.MaxRequests)
 	assign(&s.OSVCachePath, p.Cache)
 
-	if err := o.Validate(); err != nil {
+	// Validate the configured endpoint even when this invocation has no grant.
+	check := o
+
+	check.AllowNetwork = true
+	if err := check.Validate(); err != nil {
 		return errors.New("invalid vulnerability config")
 	}
 

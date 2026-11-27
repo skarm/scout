@@ -104,6 +104,9 @@ func TestServiceGrantsAndOfflineCache(t *testing.T) {
 	if err != nil || got.Scanner.Vulnerabilities == nil || got.Scanner.Vulnerabilities.AllowNetwork {
 		t.Fatalf("bundled advisories should work without granting network: %#v %v", got, err)
 	}
+	if _, err := parseResolved([]byte(`{"schema":"scout.config/v1","vulnerabilities":{"endpoint":"file:///tmp/osv"}}`), config.Grants{}, nil); err == nil {
+		t.Fatal("invalid OSV endpoint accepted without a network grant")
+	}
 }
 
 func TestReviewConsentPrecedesCredentialLookup(t *testing.T) {

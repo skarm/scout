@@ -601,12 +601,12 @@ func queryBatch(ctx context.Context, batch []*queryGroup, o Options, requests *i
 		}
 
 		if !valid {
-			setPending(pending, "invalid_response", set)
+			setPending(pending, "invalid_response", fallback)
 
 			continue
 		}
 
-		applyQueryResponse(out, pending, set)
+		applyQueryResponse(out, pending, set, fallback)
 	}
 }
 
@@ -662,7 +662,7 @@ func validQueryResults(out response) bool {
 	return valid
 }
 
-func applyQueryResponse(out response, pending []*queryGroup, set func(*queryGroup, string)) {
+func applyQueryResponse(out response, pending []*queryGroup, set, fallback func(*queryGroup, string)) {
 	for i, g := range pending {
 		res := out.Results[i]
 
@@ -680,7 +680,7 @@ func applyQueryResponse(out response, pending []*queryGroup, set func(*queryGrou
 		if res.Next == "" {
 			set(g, report.OutcomeCompleted)
 		} else if g.tokens[res.Next] {
-			set(g, "pagination_loop")
+			fallback(g, "pagination_loop")
 		} else {
 			g.tokens[res.Next] = true
 			g.q.Token = res.Next
