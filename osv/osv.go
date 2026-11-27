@@ -69,6 +69,8 @@ type Options struct {
 	Endpoint string
 	// Offline is an explicitly supplied, exact-query cache, not a complete CVE DB.
 	Offline []byte
+	// Snapshot selects operator-supplied OSV ecosystem archives without network access.
+	Snapshot *Snapshot
 	// Timeout bounds a network advisory request.
 	Timeout time.Duration
 	// MaxQueries bounds distinct exact-coordinate advisory queries.
@@ -122,6 +124,8 @@ type ID struct {
 	Kind string `json:"kind,omitempty"`
 	// Source pins the operator-supplied producer and source revision for classified records.
 	Source report.AdvisorySource `json:"source,omitzero"`
+	online bool
+	detail *advisoryDetail
 }
 
 type query struct {
@@ -237,7 +241,13 @@ func CheckWithin(ctx context.Context, deps report.DependencyReport, o Options, n
 	}
 
 	r.QueriedAt = now.UTC().Format(time.RFC3339Nano)
+
 	cached, cachedAt := prepareCache(o, now, &r)
+	if o.Snapshot != nil {
+		r.Source = "osv-ecosystem-snapshot"
+
+		r.Snapshots = append([]report.AdvisorySnapshot(nil), o.Snapshot.provenance...)
+	}
 
 	for _, m := range deps.Manifests {
 		if !m.InventoryComplete() {
@@ -280,9 +290,17 @@ func CheckWithin(ctx context.Context, deps report.DependencyReport, o Options, n
 		}
 	}
 
-	requests := 0
-	for start := 0; start < len(groups); start += queryBatchSize {
-		queryBatch(ctx, groups[start:min(start+queryBatchSize, len(groups))], o, &requests, set, fallback)
+	if o.Snapshot != nil {
+		lookupSnapshot(ctx, groups, o.Snapshot, cached, set, fallback)
+	} else {
+		requests := 0
+		for start := 0; start < len(groups); start += queryBatchSize {
+			queryBatch(ctx, groups[start:min(start+queryBatchSize, len(groups))], o, &requests, set, fallback)
+		}
+
+		if o.AllowNetwork {
+			loadOnlineDetails(ctx, groups, o, requests)
+		}
 	}
 
 	applyBundledFallback(ctx, groups, &r)
@@ -388,8 +406,12 @@ func (o Options) validateLimits() error {
 }
 
 func (o Options) validateMode() error {
-	if !o.Enabled && (o.AllowNetwork || o.AllowLoopback || len(o.Offline) > 0 || o.RootCAs != nil) {
+	if !o.Enabled && (o.AllowNetwork || o.AllowLoopback || o.Snapshot != nil || len(o.Offline) > 0 || o.RootCAs != nil) {
 		return errors.New("vulnerability options require enabling checks")
+	}
+
+	if o.Snapshot != nil && o.AllowNetwork {
+		return errors.New("OSV ecosystem snapshots require offline mode")
 	}
 
 	return nil
@@ -540,7 +562,7 @@ func setQueryStatus(g *queryGroup, status string, r *report.VulnerabilityReport)
 
 	g.done = true
 
-	if status != report.OutcomeCompleted && status != report.OutcomeCached {
+	if !report.AdvisoryQueryComplete(status) {
 		r.Completeness = report.Partial
 	}
 }
@@ -573,14 +595,8 @@ func queryBatch(ctx context.Context, batch []*queryGroup, o Options, requests *i
 
 		data, _ := json.Marshal(payload)
 		*requests++
-		fo := fetch.DefaultOptions()
-		fo.Enabled = true
-		fo.AllowLoopback = o.AllowLoopback
-		fo.Timeout = o.Timeout
-		fo.MaxBytes = maxResponse
-		fo.RootCAs = o.RootCAs
 
-		body, err := fetch.PostJSON(ctx, o.Endpoint, data, fo)
+		body, err := fetch.PostJSON(ctx, o.Endpoint, data, advisoryFetchOptions(o))
 		if ctx.Err() != nil {
 			setPending(pending, report.OutcomeCancelled, set)
 
@@ -668,7 +684,7 @@ func applyQueryResponse(out response, pending []*queryGroup, set, fallback func(
 
 		ids := make([]ID, len(res.Vulns))
 		for i, v := range res.Vulns {
-			ids[i] = ID{ID: v.ID, Modified: v.Modified}
+			ids[i] = ID{ID: v.ID, Modified: v.Modified, online: true}
 		}
 
 		if !g.appendResults(ids) {
@@ -703,13 +719,19 @@ func collectMatches(groups []*queryGroup, r *report.VulnerabilityReport) {
 				ids = append(ids, r.Queries[i].DependencyID)
 			}
 
-			r.Matches = append(r.Matches, report.Vulnerability{
+			match := report.Vulnerability{
 				ID:               v.ID,
 				DependencyIDs:    ids,
 				DatabaseModified: v.Modified,
 				Kind:             v.Kind,
 				Source:           v.Source,
-			})
+			}
+			if v.detail != nil {
+				match.Aliases = append([]string(nil), v.detail.aliases...)
+				match.Summary, match.Severity = v.detail.summary, v.detail.severity
+			}
+
+			r.Matches = append(r.Matches, match)
 		}
 	}
 

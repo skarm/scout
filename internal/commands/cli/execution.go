@@ -119,7 +119,7 @@ const (
 	reportPublicationTimeout = 10 * time.Second
 )
 
-func (r *request) loadTrusted() error {
+func (r *request) loadTrusted(ctx context.Context) error {
 	inputs := r.localInputs()
 	// Recheck the config boundary after all targets have been parsed.
 	if r.configPath != "" {
@@ -132,7 +132,11 @@ func (r *request) loadTrusted() error {
 		return err
 	}
 
-	return r.loadTrustedServices(inputs)
+	if err := r.loadTrustedServices(inputs); err != nil {
+		return err
+	}
+
+	return r.loadTrustedSnapshot(ctx, inputs)
 }
 
 func (r *request) loadBaseline(inputs []string) error {
@@ -281,7 +285,7 @@ func executeRequest(ctx context.Context, r request, targets []scout.Target, oper
 		return usageError(stderr, err.Error())
 	}
 
-	if err = r.loadTrusted(); err != nil {
+	if err = r.loadTrusted(ctx); err != nil {
 		return usageError(stderr, err.Error())
 	}
 

@@ -114,7 +114,7 @@ func parseMCPInvocation(ctx context.Context, args []string, stderr io.Writer) (m
 		c.request.targets = append(c.request.targets, path)
 	}
 
-	if err := c.request.loadTrusted(); err != nil {
+	if err := c.request.loadTrusted(ctx); err != nil {
 		return c, err
 	}
 

@@ -16,7 +16,7 @@ func markClassificationGaps(r *report.VulnerabilityReport) {
 	}
 
 	for i := range r.Queries {
-		if r.Queries[i].Status == report.OutcomeCompleted {
+		if r.Queries[i].Status == report.OutcomeCompleted || r.Queries[i].Status == report.OutcomeSnapshot {
 			r.Queries[i].Status = "classification_not_cached"
 			r.Completeness = report.Partial
 		}

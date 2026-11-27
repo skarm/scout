@@ -31,6 +31,7 @@ type Settings struct {
 	Scanner                                                  scout.Options
 	Policy                                                   policy.Options
 	BaselinePath, OSVCachePath, ExtraRulesPath, RulepackPath string
+	OSVSnapshotDir                                           string
 	RemotePins                                               map[string]scout.RemotePin
 	Reviewer                                                 *Reviewer
 }
@@ -147,6 +148,7 @@ type reviewPatch struct {
 type vulnerabilities struct {
 	Endpoint      *string `json:"endpoint"`
 	Cache         *string `json:"cache"`
+	SnapshotDir   *string `json:"snapshot_dir"`
 	AllowLoopback *bool   `json:"allow_loopback"`
 	MaxRequests   *int    `json:"max_requests"`
 }
@@ -491,6 +493,7 @@ func (p *vulnerabilities) apply(s *Settings, grants Grants) error {
 	assign(&o.AllowLoopback, p.AllowLoopback)
 	assign(&o.MaxRequests, p.MaxRequests)
 	assign(&s.OSVCachePath, p.Cache)
+	assign(&s.OSVSnapshotDir, p.SnapshotDir)
 
 	// Validate the configured endpoint even when this invocation has no grant.
 	check := o

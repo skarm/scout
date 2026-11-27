@@ -19,6 +19,10 @@ const (
 // ValidateMetadata checks only the optional advisory classification and source.
 // Legacy unclassified vulnerability fields retain their existing semantics.
 func (v Vulnerability) ValidateMetadata() error {
+	if v.Severity != "" && v.Severity.Rank() < 0 {
+		return errors.New("invalid advisory severity")
+	}
+
 	if v.Kind != "" && v.Kind != advisoryVulnerability && v.Kind != AdvisoryMaliciousPackage {
 		return errors.New("invalid advisory kind")
 	}
@@ -68,6 +72,10 @@ func advisoryToken(s string, limit int, punctuation string) bool {
 // cached coordinate outcomes required for classified-cache coverage.
 // Legacy unclassified query metadata retains its historical semantics.
 func (r VulnerabilityReport) ValidateMetadata() error {
+	if len(r.Snapshots) > 0 && !validAdvisorySnapshots(r.Snapshots) {
+		return errors.New("invalid advisory snapshot provenance")
+	}
+
 	queried, cached, err := validateClassifiedCoverage(r)
 	if err != nil {
 		return err
@@ -103,6 +111,26 @@ func (r VulnerabilityReport) ValidateMetadata() error {
 	return nil
 }
 
+func validAdvisorySnapshots(snapshots []AdvisorySnapshot) bool {
+	seen := map[string]bool{}
+
+	for _, snapshot := range snapshots {
+		hash, err := hex.DecodeString(snapshot.SHA256)
+		if err != nil || len(hash) != sha256.Size || snapshot.Bytes < 1 || seen[snapshot.Ecosystem] {
+			return false
+		}
+
+		switch snapshot.Ecosystem {
+		case EcosystemGo, EcosystemNPM, EcosystemPyPI:
+			seen[snapshot.Ecosystem] = true
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
 func validateClassifiedCoverage(r VulnerabilityReport) (time.Time, map[string]bool, error) {
 	if !r.ClassifiedCache {
 		return time.Time{}, nil, nil
@@ -122,7 +150,7 @@ func validateClassifiedCoverage(r VulnerabilityReport) (time.Time, map[string]bo
 	seen := map[string]bool{}
 
 	for _, q := range r.Queries {
-		if q.DependencyID == "" || seen[q.DependencyID] || q.Status == OutcomeCompleted || r.Completeness == Complete && q.Status != OutcomeCached {
+		if q.DependencyID == "" || seen[q.DependencyID] || q.Status == OutcomeCompleted || q.Status == OutcomeSnapshot || r.Completeness == Complete && q.Status != OutcomeCached {
 			return time.Time{}, nil, errors.New("classified cache coverage has inconsistent coordinate outcomes")
 		}
 

@@ -39,7 +39,7 @@ func applyBundledFallback(ctx context.Context, groups []*queryGroup, r *report.V
 		}
 
 		switch r.Queries[g.indices[0]].Status {
-		case "not_cached", "provider_failed", "invalid_response", "request_limit", "pagination_loop":
+		case "not_cached", "provider_failed", "invalid_response", "request_limit", "pagination_loop", "snapshot_unavailable", "snapshot_incomplete":
 			ids := bundledMatches(g.q.Package.Ecosystem, g.q.Package.Name, g.q.Version)
 
 			ids = slices.DeleteFunc(ids, func(id ID) bool {

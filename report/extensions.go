@@ -26,6 +26,9 @@ type Vulnerability struct {
 	DependencyIDs []string `json:"dependency_ids"`
 	// Aliases lists alternate advisory identifiers reported by the database.
 	Aliases []string `json:"aliases,omitempty"`
+	// Summary and Severity retain bounded advisory detail when the source supplies it.
+	Summary  string   `json:"summary,omitempty"`
+	Severity Severity `json:"severity,omitempty"`
 	// DatabaseModified records the advisory modification time reported by the database.
 	DatabaseModified string `json:"database_modified,omitempty"`
 	// Kind is an explicit advisory classification; empty retains legacy vulnerability semantics.
@@ -40,6 +43,22 @@ const AdvisoryMaliciousPackage = "malicious-package"
 
 // OutcomeBundledMatch is a positive match from a subset with incomplete coverage.
 const OutcomeBundledMatch = "bundled_match"
+
+// OutcomeSnapshot records a complete exact-version lookup against an OSV dump.
+const OutcomeSnapshot = "snapshot_checked"
+
+// AdvisoryQueryComplete reports whether a lookup covers the exact coordinate.
+func AdvisoryQueryComplete(status string) bool {
+	return status == OutcomeCompleted || status == OutcomeCached || status == OutcomeSnapshot
+}
+
+// AdvisorySnapshot identifies an operator-supplied OSV ecosystem archive.
+type AdvisorySnapshot struct {
+	Ecosystem string `json:"ecosystem"`
+	SHA256    string `json:"sha256"`
+	Bytes     int64  `json:"bytes"`
+	Complete  bool   `json:"complete"`
+}
 
 // AdvisorySource identifies the producer and pinned revision asserted by a trusted
 // cache. These fields are not authentication and URLs are never fetched.
@@ -78,6 +97,8 @@ type VulnerabilityReport struct {
 	Source string `json:"source"`
 	// DatabaseSHA256 identifies the supplied offline advisory cache bytes.
 	DatabaseSHA256 string `json:"database_sha256,omitempty"`
+	// Snapshots identifies the supplied per-ecosystem OSV archives.
+	Snapshots []AdvisorySnapshot `json:"snapshots,omitempty"`
 	// QueriedAt records the oldest trusted query time among included advisory
 	// sources, so exporting mixed network/cache results cannot renew cached data.
 	QueriedAt string `json:"queried_at,omitempty"`

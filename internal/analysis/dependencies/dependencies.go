@@ -30,6 +30,7 @@ func Collect(ctx context.Context, docs []document.File) report.DependencyReport 
 	}
 	for _, doc := range docs {
 		collectPackages(ctx, doc, &out)
+		collectGoVendor(ctx, doc, &out)
 
 		for _, u := range doc.Units() {
 			if u.Language != language.GoMod || u.Origin != "file" {

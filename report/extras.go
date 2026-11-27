@@ -98,14 +98,22 @@ func writeVulnerabilityExtras(b *strings.Builder, r Analysis, q func(string) str
 			} else {
 				_, _ = fmt.Fprintf(b, "Advisory %s matches captured exact coordinate(s) %s; not proof of exploitability.\n\n", q(v.ID), q(strings.Join(packages, ", ")))
 			}
+
+			writeAdvisoryDetail(b, v, q)
 		}
 
 		for _, v := range r.Vulnerabilities.Queries {
 			if v.Status == OutcomeBundledMatch {
 				_, _ = fmt.Fprintf(b, "Partial advisory coverage for %s: matched the bundled subset.\n\n", q(coordinates[v.DependencyID]))
-			} else if v.Status != OutcomeCompleted && v.Status != OutcomeCached {
+			} else if !AdvisoryQueryComplete(v.Status) {
 				_, _ = fmt.Fprintf(b, "Unchecked dependency %s: %s.\n\n", q(coordinates[v.DependencyID]), q(v.Status))
 			}
 		}
+	}
+}
+
+func writeAdvisoryDetail(b *strings.Builder, v Vulnerability, q func(string) string) {
+	if v.Severity != "" || v.Summary != "" || len(v.Aliases) > 0 {
+		_, _ = fmt.Fprintf(b, "Advisory details (%s): %s %s\n\n", q(string(v.Severity)), q(v.Summary), q(strings.Join(v.Aliases, ", ")))
 	}
 }

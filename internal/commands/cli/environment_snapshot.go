@@ -91,7 +91,7 @@ func executeEnvironmentSnapshot(ctx context.Context, mode string, r request, sna
 		return usageError(stderr, err.Error())
 	}
 
-	if err = r.loadTrusted(); err != nil {
+	if err = r.loadTrusted(ctx); err != nil {
 		return usageError(stderr, err.Error())
 	}
 

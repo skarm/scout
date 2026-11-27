@@ -107,6 +107,7 @@ scout scan --osv --allow-osv-network \
   --format json ./my-plugin
 scout scan --osv --osv-cache /ci/osv-cache.json \
   --osv-cache-max-age 168h --format json ./my-plugin
+scout scan --osv-snapshot-dir /ci/osv-snapshots --format json ./my-plugin
 ```
 
 OSV checks exact captured package coordinates. `--osv` alone uses a small bundled
@@ -115,6 +116,23 @@ authorized online query and the operator cache provide no usable answer. The
 subset covers selected stable npm, PyPI and Go releases. Reports record the
 advisory source and keep coverage partial for those coordinates. An advisory
 does not establish reachability. [Bundled data source](https://github.com/github/advisory-database)
+
+### Official offline archives and advisory details
+
+Place the official [Go](https://storage.googleapis.com/osv-vulnerabilities/Go/all.zip),
+[npm](https://storage.googleapis.com/osv-vulnerabilities/npm/all.zip) and
+[PyPI](https://storage.googleapis.com/osv-vulnerabilities/PyPI/all.zip) downloads
+under their respective ecosystem directories as `all.zip`. Refresh them outside
+Scout. The report records archive hashes and coverage. Missing or unusable data
+leaves a coverage gap and can still yield positive bundled matches. Go modules
+with exact versions in a captured `vendor/modules.txt` participate in lookup.
+Go minimum versions from `go.mod` remain unresolved.
+
+Snapshot matches retain the available advisory severity, summary and aliases.
+With network access, Scout uses the remaining OSV request budget to retrieve
+details once per advisory ID on the query host. A failed detail request preserves
+the original positive match and its default severity. Exact-query cache exports
+retain the existing ID-based format and exclude snapshot-only results.
 
 ### Known malicious dependencies
 

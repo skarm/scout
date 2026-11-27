@@ -289,12 +289,15 @@ unless an explicit numeric loopback exception applies.
   also selects `MAL001` for explicitly classified malicious-package records.
   Fresh version-2 cache answers take precedence over ordinary network queries.
   A nonempty cache path also takes precedence over `--osv=false`.
+- `--osv-snapshot-dir DIR`: local OSV archive directory containing `Go/all.zip`,
+  `npm/all.zip` or `PyPI/all.zip`. Enables offline lookup and cannot be combined
+  with `--allow-osv-network`. The config equivalent is `vulnerabilities.snapshot_dir`.
 - `--osv-cache-max-age DURATION`: maximum cache age; default `168h` (7 days),
   range `1m`..`8760h`.
 - `--osv-endpoint URL`: query endpoint; default `https://api.osv.dev/v1/querybatch`.
 - `--osv-allow-loopback`: permit an explicit numeric loopback query endpoint;
   default `false`.
-- `--osv-max-requests N`: request ceiling, including failed requests and pagination;
+- `--osv-max-requests N`: request ceiling including failed requests, pagination and advisory details;
   default `128`, range 1..256. The shared service budget can reduce it.
 
 Use `--osv-*` tuning flags with an enabled service. Bundled answers leave coverage

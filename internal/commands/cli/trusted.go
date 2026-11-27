@@ -1,13 +1,16 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/skarm/scout/fetch"
 	"github.com/skarm/scout/internal/capture/rootfs"
 	"github.com/skarm/scout/internal/commands/output"
+	"github.com/skarm/scout/osv"
 )
 
 const maxTrustedPreallocation = 8 << 20
@@ -16,25 +19,57 @@ const maxTrustedPreallocation = 8 << 20
 // Reject files inside either input, symlinks and special files. The parent
 // directory is trusted operator configuration, not an artifact sandbox.
 func readTrusted(name string, inputs []string, limit int) ([]byte, error) {
-	absolute, err := filepath.Abs(name)
+	f, size, err := openTrusted(name, inputs, int64(limit))
 	if err != nil {
 		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	data, err := readTrustedSized(io.LimitReader(f, int64(limit)+1), size)
+	if len(data) > limit {
+		return nil, errors.New("trusted configuration limit")
+	}
+
+	return data, err
+}
+
+func openTrusted(name string, inputs []string, limit int64) (*os.File, int64, error) {
+	absolute, err := filepath.Abs(name)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	parent, err := filepath.EvalSymlinks(filepath.Dir(absolute))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	absolute = filepath.Join(parent, filepath.Base(absolute))
 
 	for _, input := range inputs {
 		if err := trustedInputBoundary(absolute, input); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 
-	return readTrustedFile(parent, absolute, limit)
+	root, err := rootfs.Open(parent)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = root.Close() }()
+
+	f, err := root.Open(filepath.Base(absolute))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > limit {
+		_ = f.Close()
+		return nil, 0, errors.New("invalid trusted configuration file")
+	}
+
+	return f, info.Size(), nil
 }
 
 func trustedInputBoundary(absolute, input string) error {
@@ -51,30 +86,44 @@ func trustedInputBoundary(absolute, input string) error {
 	return nil
 }
 
-func readTrustedFile(parent, absolute string, limit int) ([]byte, error) {
-	root, err := rootfs.Open(parent)
+func (r *request) loadTrustedSnapshot(ctx context.Context, inputs []string) error {
+	if r.settings.OSVSnapshotDir == "" {
+		return nil
+	}
+
+	archives := make(map[string]osv.SnapshotArchive)
+
+	var files []*os.File
+	defer func() {
+		for _, f := range files {
+			_ = f.Close()
+		}
+	}()
+
+	for _, ecosystem := range osv.SnapshotEcosystems() {
+		name := filepath.Join(r.settings.OSVSnapshotDir, ecosystem, "all.zip")
+
+		f, size, err := openTrusted(name, inputs, osv.MaxSnapshotBytes)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+
+		if err != nil {
+			return errors.New("cannot read " + ecosystem + " OSV snapshot")
+		}
+
+		files = append(files, f)
+		archives[ecosystem] = osv.SnapshotArchive{Reader: f, Size: size}
+	}
+
+	snapshot, err := osv.LoadSnapshot(ctx, archives)
 	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = root.Close() }()
-
-	f, err := root.Open(filepath.Base(absolute))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("invalid trusted configuration file")
+		return err
 	}
 
-	data, err := readTrustedSized(io.LimitReader(f, int64(limit)+1), info.Size())
-	if len(data) > limit {
-		return nil, errors.New("trusted configuration limit")
-	}
+	r.settings.Scanner.Vulnerabilities.Snapshot = snapshot
 
-	return data, err
+	return nil
 }
 
 func readTrustedSized(reader io.Reader, size int64) ([]byte, error) {

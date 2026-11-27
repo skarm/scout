@@ -20,7 +20,7 @@ func configCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return requestError(err, stderr)
 	}
 
-	if err := r.validateConfigCommand(); err != nil {
+	if err := r.validateConfigCommand(ctx); err != nil {
 		return usageError(stderr, err.Error())
 	}
 
@@ -38,12 +38,12 @@ func configCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return 0
 }
 
-func (r *request) validateConfigCommand() error {
+func (r *request) validateConfigCommand(ctx context.Context) error {
 	if len(r.targets) != 0 {
 		return errors.New("config validate has no targets")
 	}
 
-	if err := r.loadTrusted(); err != nil {
+	if err := r.loadTrusted(ctx); err != nil {
 		return err
 	}
 

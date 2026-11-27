@@ -57,7 +57,12 @@ func advisoryRule(v report.Vulnerability) report.Rule {
 		return maliciousPackageRule
 	}
 
-	return vulnerabilityRule
+	rule := vulnerabilityRule
+	if v.Severity != "" {
+		rule.Severity = v.Severity
+	}
+
+	return rule
 }
 
 func applyVulnerabilities(ctx context.Context, r *report.Analysis, docs []document.File, o osv.Options, requestLimit int, collector *findingCollector) {
@@ -120,14 +125,19 @@ func applyVulnerabilityCoverage(r *report.Analysis, byID map[string]report.Depen
 
 	for _, q := range r.Vulnerabilities.Queries {
 		if d, ok := byID[q.DependencyID]; ok {
-			if q.Status != report.OutcomeCompleted && q.Status != report.OutcomeCached {
+			if !report.AdvisoryQueryComplete(q.Status) {
 				delete(done, d.Source.Path)
 			}
 
 			if f := fc[d.Source.Path]; f != nil {
+				fileStatus := q.Status
+				if fileStatus == report.OutcomeSnapshot {
+					fileStatus = report.OutcomeCompleted
+				}
+
 				for _, rule := range rules {
-					f.Checks = append(f.Checks, report.FileCheck{AnalyzerID: rule.ID, Status: q.Status})
-					if q.Status != report.OutcomeCompleted && q.Status != report.OutcomeCached {
+					f.Checks = append(f.Checks, report.FileCheck{AnalyzerID: rule.ID, Status: fileStatus})
+					if !report.AdvisoryQueryComplete(q.Status) {
 						f.Gaps = append(f.Gaps, rule.ID+":"+q.Status)
 					}
 				}

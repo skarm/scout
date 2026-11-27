@@ -27,7 +27,7 @@ func (r *request) protectedInputs() []string {
 	inputs := r.localInputs()
 
 	inputs = append(inputs, r.publicationInputs...)
-	for _, name := range []string{r.configPath, r.settings.BaselinePath, r.settings.ExtraRulesPath, r.settings.OSVCachePath, r.settings.RulepackPath} {
+	for _, name := range []string{r.configPath, r.settings.BaselinePath, r.settings.ExtraRulesPath, r.settings.OSVCachePath, r.settings.OSVSnapshotDir, r.settings.RulepackPath} {
 		if name != "" {
 			inputs = append(inputs, name)
 		}

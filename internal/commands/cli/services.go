@@ -35,6 +35,7 @@ func bindServices(fs *flag.FlagSet, p *argvPatch) {
 	fs.StringVar(&r.settings.Scanner.Signatures.RulepackSHA256, "rulepack-sha256", r.settings.Scanner.Signatures.RulepackSHA256, "expected SHA-256 of all rulepack artifact bytes")
 	fs.BoolVar(&p.vulnerabilities, "osv", p.vulnerabilities, "enable exact OSV queries")
 	fs.StringVar(&r.settings.OSVCachePath, "osv-cache", r.settings.OSVCachePath, "trusted exact-query cache (v1 vulnerabilities; v2 malicious packages)")
+	fs.StringVar(&r.settings.OSVSnapshotDir, "osv-snapshot-dir", r.settings.OSVSnapshotDir, "trusted directory containing Go, npm or PyPI OSV all.zip archives (offline)")
 	fs.StringVar(&r.settings.Scanner.Vulnerabilities.Endpoint, "osv-endpoint", r.settings.Scanner.Vulnerabilities.Endpoint, "query endpoint")
 	fs.BoolVar(&r.settings.Scanner.Vulnerabilities.AllowLoopback, "osv-allow-loopback", r.settings.Scanner.Vulnerabilities.AllowLoopback, "allow explicit local query endpoint")
 	fs.IntVar(&r.settings.Scanner.Vulnerabilities.MaxRequests, "osv-max-requests", r.settings.Scanner.Vulnerabilities.MaxRequests, "request ceiling")
@@ -129,13 +130,18 @@ func (p argvPatch) resolveVulnerabilities(s *configfile.Settings) error {
 	}
 
 	patch := p.values.settings.Scanner.Vulnerabilities
+	applyArgument(p.present, "osv-snapshot-dir", &s.OSVSnapshotDir, p.values.settings.OSVSnapshotDir)
 	applyArgument(p.present, "osv-endpoint", &v.Endpoint, patch.Endpoint)
 	applyArgument(p.present, "osv-allow-loopback", &v.AllowLoopback, patch.AllowLoopback)
 	applyArgument(p.present, "osv-max-requests", &v.MaxRequests, patch.MaxRequests)
 	applyArgument(p.present, "osv-cache-max-age", &v.MaxCacheAge, patch.MaxCacheAge)
 
 	s.Scanner.Vulnerabilities = nil
-	if enabled || s.OSVCachePath != "" {
+	if s.OSVSnapshotDir != "" && p.values.grants.VulnerabilityNetwork {
+		return errors.New("--osv-snapshot-dir requires offline OSV checks")
+	}
+
+	if enabled || s.OSVCachePath != "" || s.OSVSnapshotDir != "" {
 		v.Enabled, v.AllowNetwork = true, p.values.grants.VulnerabilityNetwork
 		s.Scanner.Vulnerabilities = &v
 	} else if p.values.grants.VulnerabilityNetwork {
