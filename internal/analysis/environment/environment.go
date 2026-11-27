@@ -3,6 +3,7 @@
 package environment
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"slices"
@@ -23,6 +24,8 @@ type builder struct {
 	operations uint64
 	seen       map[string]bool
 	stopped    bool
+	idBuffer   bytes.Buffer
+	idEncoder  *json.Encoder
 }
 
 type factIndex struct {
@@ -198,6 +201,7 @@ func (b *builder) spend(operations uint64) bool {
 	}
 
 	b.operations += operations
+
 	return true
 }
 
@@ -219,9 +223,17 @@ func (b *builder) emitRelationship(kind string, a, c fact, similarityBasisPoints
 		{TargetID: a.target, Role: a.Kind, Source: a.Source},
 		{TargetID: c.target, Role: c.Kind, Source: c.Source},
 	}}
-	raw, _ := json.Marshal(observation)
 
-	id := artifact.Hash(raw)
+	if b.idEncoder == nil {
+		b.idEncoder = json.NewEncoder(&b.idBuffer)
+	}
+
+	b.idBuffer.Reset()
+	// An observation contains only JSON-supported values. Drop Encode's final
+	// newline so the existing observation IDs still hash the same bytes.
+	_ = b.idEncoder.Encode(observation)
+
+	id := artifact.Hash(bytes.TrimSuffix(b.idBuffer.Bytes(), []byte{'\n'}))
 	if b.seen[id] {
 		return
 	}

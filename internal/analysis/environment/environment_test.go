@@ -2,12 +2,35 @@ package environment_test
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/environment"
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/report"
 )
+
+func TestObservationIDsRetainJSONWireIdentity(t *testing.T) {
+	surface := environment.Surface{Complete: true, Facts: []environment.SurfaceFact{
+		{Kind: report.EnvironmentSkillDescription, Value: "Group local invoices", Source: report.SourceRef{Path: "a<&>/SKILL.md", ByteEnd: 7}},
+		{Kind: report.EnvironmentSkillDescription, Value: "Group local invoices", Source: report.SourceRef{Path: "b\"/SKILL.md", ByteEnd: 7}},
+		{Kind: report.EnvironmentSkillDescription, Value: "Group local invoices", Source: report.SourceRef{Path: "c/SKILL.md", ByteEnd: 7}},
+	}}
+	targets := []report.TargetResult{{ID: "root", State: report.RunComplete}}
+	got := environment.Build(t.Context(), []environment.Surface{surface}, targets, 10, 100)
+	if len(got.Observations) != 3 {
+		t.Fatalf("expected three observations, got %+v", got)
+	}
+	for _, observation := range got.Observations {
+		id := observation.ID
+		observation.ID = ""
+		data, err := json.Marshal(observation)
+		if err != nil || artifact.Hash(data) != id {
+			t.Fatalf("observation identity changed: %q, %v", id, err)
+		}
+	}
+}
 
 func TestEnvironmentBudgetsRetainEvidenceAndExposeOmissions(t *testing.T) {
 	targets := []report.TargetResult{{ID: "a", State: report.RunComplete}, {ID: "b", State: report.RunComplete}, {ID: "c", State: report.RunComplete}}

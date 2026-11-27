@@ -10,6 +10,8 @@ import (
 	"github.com/skarm/scout/internal/commands/output"
 )
 
+const maxTrustedPreallocation = 8 << 20
+
 // Operator-controlled baseline/cache files are never discovered in an artifact.
 // Reject files inside either input, symlinks and special files. The parent
 // directory is trusted operator configuration, not an artifact sandbox.
@@ -67,10 +69,36 @@ func readTrustedFile(parent, absolute string, limit int) ([]byte, error) {
 		return nil, errors.New("invalid trusted configuration file")
 	}
 
-	b, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if len(b) > limit {
+	data, err := readTrustedSized(io.LimitReader(f, int64(limit)+1), info.Size())
+	if len(data) > limit {
 		return nil, errors.New("trusted configuration limit")
 	}
 
-	return b, err
+	return data, err
+}
+
+func readTrustedSized(reader io.Reader, size int64) ([]byte, error) {
+	if size <= 512 || size > maxTrustedPreallocation {
+		return io.ReadAll(reader)
+	}
+
+	// Keep room for an EOF probe. If the file grew after stat, continue
+	// with the original bounded reader and preserve its error behavior.
+	data := make([]byte, int(size)+1) //nolint:prealloc // The size of the exceptional growth tail is unknown until after the initial read.
+	for offset := 0; offset < len(data); {
+		n, err := reader.Read(data[offset:])
+
+		offset += n
+		if err == io.EOF {
+			return data[:offset], nil
+		}
+
+		if err != nil {
+			return data[:offset], err
+		}
+	}
+
+	tail, err := io.ReadAll(reader)
+
+	return append(data, tail...), err
 }
