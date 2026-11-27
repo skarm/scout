@@ -19,7 +19,7 @@ func BackendFor(format string) Backend {
 			b.Reason = "Python grammar requires CGO-enabled build"
 		}
 	case language.YAML:
-		b.Name, b.Version = "go-yaml", buildinfo.ModuleVersion("go.yaml.in/yaml/v3")
+		b.Name, b.Version = "go-yaml", buildinfo.ModuleVersion("go.yaml.in/yaml/v4")
 	case language.TOML:
 		b.Name, b.Version = "go-toml", buildinfo.ModuleVersion("github.com/pelletier/go-toml/v2")
 	default:

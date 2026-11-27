@@ -74,7 +74,7 @@ type boundedBuffer struct {
 // SBOM. Sums must be present in a releasable Go binary, with no local replaces.
 func RequiredModules() []string {
 	return []string{
-		"github.com/VirusTotal/yara-x/go", "github.com/pelletier/go-toml/v2", "github.com/tree-sitter/go-tree-sitter", "github.com/tree-sitter/tree-sitter-python", "go.yaml.in/yaml/v3",
+		"github.com/VirusTotal/yara-x/go", "github.com/pelletier/go-toml/v2", "github.com/tree-sitter/go-tree-sitter", "github.com/tree-sitter/tree-sitter-python", "go.yaml.in/yaml/v4",
 		"github.com/tree-sitter/tree-sitter-javascript", "github.com/tree-sitter/tree-sitter-typescript",
 	}
 }
