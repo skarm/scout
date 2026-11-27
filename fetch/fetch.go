@@ -1,5 +1,5 @@
-// Package fetch captures explicitly requested remote bytes. It never clones a
-// repository, follows links inside an artifact, runs Git or starts package tools.
+// Package fetch captures explicitly requested remote bytes and pinned Git trees.
+// It does not check out repositories, follow artifact links or start package tools.
 package fetch
 
 import (
@@ -42,12 +42,11 @@ type Options struct {
 	// AllowLoopback permits loopback destinations and plain HTTP to numeric
 	// loopback addresses.
 	AllowLoopback  bool
-	Revision       string // GitHub repository input requires an explicit full commit SHA.
+	Revision       string // Git repository input requires an explicit full commit SHA.
 	ExpectedSHA256 string // Optional checksum of the downloaded bytes, not the snapshot.
-	// MaxBytes limits the response body in bytes.
+	// MaxBytes limits received bytes and the captured payload.
 	MaxBytes int64
-	// Timeout limits one HTTP request, including connection setup and response
-	// reading.
+	// Timeout limits acquisition of one target, including any Git processing.
 	Timeout time.Duration
 	RootCAs *x509.CertPool // Explicit trust from the API caller; never from an artifact.
 }
@@ -60,7 +59,7 @@ type Provenance = report.SourceProvenance
 type Payload struct {
 	// Name is the safe capture label assigned to Data.
 	Name string
-	// Data contains the complete downloaded bytes after size and checksum
+	// Data contains the complete captured bytes after size and checksum
 	// validation.
 	Data []byte
 	// Source records acquisition identity and checksum verification for Data.
@@ -75,9 +74,9 @@ type (
 		URL string
 		// Name is the safe capture filename assigned to the response.
 		Name string
-		// Kind identifies a direct HTTPS download or a GitHub repository archive.
+		// Kind identifies a direct download, GitHub archive or pinned Git tree.
 		Kind string
-		// Revision is the full commit SHA for a GitHub repository archive.
+		// Revision is the full commit SHA for a Git repository.
 		Revision string
 	}
 	// Error contains a stable acquisition failure code without the raw target URL.
@@ -97,8 +96,8 @@ func DefaultOptions() Options {
 // validate the URL or authorize network access.
 func IsRemote(s string) bool { return strings.Contains(s, "://") }
 
-// ResolveTarget is pure: GitHub URLs are converted to a commit-pinned codeload
-// request. Branch names, tags, marketplace pointers and subpaths are not guessed.
+// ResolveTarget is pure. GitHub repository URLs use a pinned codeload request;
+// a revision selects Git Smart HTTP for other hosts.
 func ResolveTarget(raw string, o Options) (Target, error) {
 	if err := o.Validate(); err != nil {
 		return Target{}, err
@@ -119,7 +118,11 @@ func ResolveTarget(raw string, o Options) (Target, error) {
 	}
 
 	if o.Revision != "" {
-		return Target{}, fail("revision_only_for_github")
+		if o.ExpectedSHA256 != "" {
+			return Target{}, fail("checksum_not_supported_for_git_tree")
+		}
+
+		return Target{URL: u.String(), Name: "repository.zip", Kind: KindGitTree, Revision: strings.ToLower(o.Revision)}, nil
 	}
 
 	name := path.Base(u.Path)
@@ -152,12 +155,21 @@ func Get(ctx context.Context, raw string, o Options) (Payload, error) {
 	}
 
 	out.Name = target.Name
+
 	out.Source = Provenance{
 		Kind:              target.Kind,
 		TargetSHA256:      hash([]byte(raw)),
 		DownloadURLSHA256: hash([]byte(target.URL)),
 		Revision:          target.Revision,
 		Status:            report.OutcomeFailed,
+	}
+	if target.Kind == KindGitTree {
+		data, err := fetchGitTree(ctx, target, o)
+		if err != nil {
+			return out, err
+		}
+
+		return out.capture(data, o)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.URL, nil)

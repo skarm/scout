@@ -113,8 +113,20 @@ func TestResolveAndValidation(t *testing.T) {
 		{name: "pinned", url: "https://github.com/owner/repository", rev: sha, want: wantArchive},
 		{name: "git-suffix-and-uppercase-revision", url: "https://github.com/owner/repository.git", rev: strings.ToUpper(sha), want: wantArchive},
 		{
+			name: "other git server", url: "https://git.example.com/group/repository.git", rev: sha,
+			want: fetch.Target{URL: "https://git.example.com/group/repository.git", Revision: sha, Name: "repository.zip", Kind: "git-tree"},
+		},
+		{
+			name: "no suffix with a pin", url: "https://git.example.com/group/repository", rev: sha,
+			want: fetch.Target{URL: "https://git.example.com/group/repository", Revision: sha, Name: "repository.zip", Kind: "git-tree"},
+		},
+		{
 			name: "direct", url: "https://example.com/SKILL.md",
 			want: fetch.Target{URL: "https://example.com/SKILL.md", Name: "SKILL.md", Kind: "https"},
+		},
+		{
+			name: "direct without a revision despite suffix", url: "https://example.com/document.git",
+			want: fetch.Target{URL: "https://example.com/document.git", Name: "document.git", Kind: "https"},
 		},
 		{
 			name: "direct-without-filename", url: "https://example.com/",
@@ -156,7 +168,6 @@ func TestResolveAndValidation(t *testing.T) {
 		{name: "percent-slash", url: "https://example.com/a%2fb", rev: "", want: "invalid_url"},
 		{name: "ftp", url: "ftp://example.com/a", rev: "", want: "https_required"},
 		{name: "bad-port", url: "https://example.com:999999999/a", rev: "", want: "invalid_port"},
-		{name: "ref-on-direct", url: "https://example.com/a", rev: sha, want: "revision_only_for_github"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := enabled()
@@ -171,6 +182,12 @@ func TestResolveAndValidation(t *testing.T) {
 		})
 	}
 	if _, err := fetch.ResolveTarget("https://example.com/SKILL.md", fetch.DefaultOptions()); code(err) != "network_permission_required" {
+		t.Fatal(err)
+	}
+
+	o := enabled()
+	o.Revision, o.ExpectedSHA256 = sha, strings.Repeat("f", 64)
+	if _, err := fetch.ResolveTarget("https://git.example.com/repository.git", o); code(err) != "checksum_not_supported_for_git_tree" {
 		t.Fatal(err)
 	}
 }

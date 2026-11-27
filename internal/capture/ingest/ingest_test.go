@@ -294,10 +294,15 @@ type member struct {
 
 func makeZIP(t testing.TB, members ...member) []byte {
 	t.Helper()
+	return makeZIPWithMethod(t, zip.Deflate, members...)
+}
+
+func makeZIPWithMethod(t testing.TB, method uint16, members ...member) []byte {
+	t.Helper()
 	var b bytes.Buffer
 	w := zip.NewWriter(&b)
 	for _, m := range members {
-		h := &zip.FileHeader{Name: m.name, Method: zip.Deflate}
+		h := &zip.FileHeader{Name: m.name, Method: method}
 		if m.mode != 0 {
 			h.SetMode(m.mode)
 		}
@@ -313,6 +318,29 @@ func makeZIP(t testing.TB, members ...member) []byte {
 		t.Fatal(err)
 	}
 	return b.Bytes()
+}
+
+func TestGitTreeUsesRepositoryPathsAndFileBudgets(t *testing.T) {
+	tree := makeZIPWithMethod(t, zip.Store,
+		member{name: "skills/demo/SKILL.md", content: "instructions"},
+		member{name: "skills/demo/script.sh", content: "echo hi", mode: 0o755},
+	)
+	limits := report.DefaultCaptureLimits()
+	snapshot, err := ingest.ReadGitTree(t.Context(), tree, limits)
+	if err != nil || !snapshot.Complete() {
+		t.Fatalf("Git tree did not capture completely: %v", err)
+	}
+	files := snapshot.Files()
+	if len(files) != 2 || files[0].Metadata().Path != "skills/demo/SKILL.md" || files[0].Content() != "instructions" || !files[1].Metadata().Executable {
+		t.Fatalf("incorrect Git tree inventory: %+v", snapshot.Metadata())
+	}
+
+	limits.MaxFileBytes = 8
+	snapshot, err = ingest.ReadGitTree(t.Context(), tree, limits)
+	metadata := snapshot.Metadata()
+	if err != nil || snapshot.Complete() || len(metadata.Files) != 2 || metadata.Files[0].Reason != "file_size_limit" || len(snapshot.Files()) != 1 {
+		t.Fatalf("Git tree ignored the file-size budget: %+v, %v", metadata, err)
+	}
 }
 
 func openZIP(ctx context.Context, data []byte, limits report.CaptureLimits) (*zip.Reader, error) {

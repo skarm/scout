@@ -579,6 +579,15 @@ func captureRemote(ctx context.Context, target Target, options Options) (artifac
 		return artifact.Snapshot{}, &payload.Source, err
 	}
 
+	if payload.Source.Kind == fetch.KindGitTree {
+		snapshot, err := ingest.ReadGitTree(ctx, payload.Data, options.captureLimits())
+		if err != nil {
+			payload.Source.Status = "rejected_git_tree"
+		}
+
+		return snapshot, &payload.Source, err
+	}
+
 	if err := ingest.ValidatePath(payload.Name, options.Limits.Capture.MaxPathBytes, options.Limits.Capture.MaxDepth); err != nil {
 		payload.Source.Status = "rejected_path"
 		return artifact.Snapshot{}, &payload.Source, err

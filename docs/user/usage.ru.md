@@ -100,8 +100,8 @@ scout scan --baseline /ci-results/reviewed-baseline.json ./my-plugin
 
 ## Сетевые сервисы и дополнительные rules
 
-Сетевой вход требует `--allow-download`. Корень GitHub-репозитория также требует
-`--revision` с полным commit SHA. См. [внешние источники](../reference/external-sources.ru.md).
+Сетевой вход требует `--allow-download`. Для URL Git-репозитория также нужен
+`--revision` с полным SHA коммита. См. [внешние источники](../reference/external-sources.ru.md).
 
 ```sh
 scout scan --osv --format json ./my-plugin

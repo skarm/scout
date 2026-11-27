@@ -5,6 +5,22 @@ English · [Русский](external-sources.ru.md)
 These features require explicit operator configuration. The inspected package
 cannot enable networking or choose trusted keys.
 
+## Pinned Git repositories
+
+```sh
+scout scan --allow-download \
+  --revision 0123456789abcdef0123456789abcdef01234567 \
+  --format json https://git.example.org/team/my-plugin.git
+```
+
+Use an anonymous HTTPS clone URL and a full 40-character commit SHA. GitHub
+repository roots use GitHub's commit ZIP endpoint. For other hosts, `--revision`
+selects Smart HTTP and requires a system `git` executable. The server must accept
+a shallow fetch by commit ID. Scout captures tracked regular files, including files marked
+`export-ignore`, without a checkout. Trees containing symlinks or submodules fail
+acquisition. Download limits apply to both received bytes and the captured tree.
+The JSON report records the pinned revision and the SHA-256 of the captured bytes.
+
 ## Bounded external traversal
 
 ```sh
@@ -18,8 +34,7 @@ Traversal requires both `--follow-external` and `--allow-download`.
 Repeat `--external-origin` to replace the default GitHub origins with an exact
 allowlist. An origin contains a scheme, host and optional port; its path must be
 empty or `/`. Traversal does not verify that a literal file URL names an immutable
-commit. Top-level GitHub repository downloads require a full commit SHA through
-`--revision`.
+commit.
 
 Supported literal URLs are captured under `.scout-external/` and scanned through
 the normal pipeline. Reports retain source references, hashes and outcomes.

@@ -250,14 +250,15 @@ Increasing a per-target limit does not increase the corresponding run budget.
 ### Downloads
 
 - `--allow-download`: authorize explicit remote acquisition; default `false`.
-- `--download-timeout DURATION`: deadline for one download request; default `30s`,
+- `--download-timeout DURATION`: deadline for acquiring one remote target; default `30s`,
   positive and at most `2m`. Use with `--allow-download`.
 - `--download-allow-loopback`: permit explicit numeric loopback download endpoints
   and their plain HTTP URLs; default `false`. Requires `--allow-download`.
-- `--revision SHA`: full 40-character commit SHA for a GitHub repository root;
-  unset by default. Requires `--allow-download`.
+- `--revision SHA`: full 40-character commit SHA for a Git repository URL.
+  Requires `--allow-download`.
 - `--download-sha256 HEX`: expected SHA-256 of the complete downloaded bytes,
-  64 hexadecimal characters; unset by default. Requires `--allow-download`.
+  64 hexadecimal characters. Requires `--allow-download`. Applies to direct
+  downloads and GitHub archives. For Smart HTTP Git, use the pinned commit SHA.
 
 Revision/checksum flags override matching `remote_pins` from config for every remote
 target in the invocation. See [remote sources](external-sources.md).

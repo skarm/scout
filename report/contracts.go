@@ -74,8 +74,8 @@ type KnowledgeManifest struct {
 // SourceProvenance records acquisition metadata without exposing the original
 // or download URL.
 type SourceProvenance struct {
-	// Kind identifies the remote acquisition form, such as HTTPS bytes or a pinned
-	// GitHub archive.
+	// Kind identifies the remote acquisition form, such as HTTPS bytes, a pinned
+	// GitHub archive or a pinned Git tree.
 	Kind string `json:"kind"`
 	// TargetSHA256 is the SHA-256 digest of the operator-supplied remote target
 	// address.
@@ -89,7 +89,7 @@ type SourceProvenance struct {
 	// ExpectedChecksumVerified reports whether a caller-supplied checksum matched
 	// the acquired bytes.
 	ExpectedChecksumVerified bool `json:"expected_checksum_verified"`
-	// Bytes is the size of the complete acquired response in bytes.
+	// Bytes is the size of the complete captured payload in bytes.
 	Bytes int64 `json:"bytes"`
 	// Status records whether remote bytes were captured or acquisition failed.
 	Status string `json:"status"`

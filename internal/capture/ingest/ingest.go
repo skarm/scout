@@ -211,12 +211,16 @@ func (b *builder) captureOpenFile(ctx context.Context, f *os.File, name string) 
 		return
 	}
 
-	if int64(len(data)) > b.limits.MaxArchiveBytes && filetype.Inspect(name, string(data), before.Mode()&0o111 != 0).Category == "archive" {
-		b.skip(name, "file", "archive_size_limit", "Source archive exceeds the archive byte budget; no prefix was scanned.", before.Size())
+	b.addFileData(name, data, before.Mode()&0o111 != 0)
+}
+
+func (b *builder) addFileData(name string, data []byte, executable bool) {
+	if int64(len(data)) > b.limits.MaxArchiveBytes && filetype.Inspect(name, string(data), executable).Category == "archive" {
+		b.skip(name, "file", "archive_size_limit", "Source archive exceeds the archive byte budget; no prefix was scanned.", int64(len(data)))
 		return
 	}
 
-	b.files = append(b.files, artifact.NewFile(name, data, before.Mode()&0o111 != 0))
+	b.files = append(b.files, artifact.NewFile(name, data, executable))
 }
 
 func (b *builder) fileBudget(size int64) (int64, string, string) {

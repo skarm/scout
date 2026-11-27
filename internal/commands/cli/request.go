@@ -308,7 +308,7 @@ func bindScanInputs(fs *flag.FlagSet, r *request) {
 	})
 	fs.BoolVar(&r.environment, "environment", false, "treat selected local roots as one agent/project environment")
 	fs.Var(&r.skillExcludes, "exclude", "omit matching files within one local skill root; POSIX-path `GLOB`; repeatable")
-	fs.StringVar(&r.revision, "revision", "", "pinned commit revision")
+	fs.StringVar(&r.revision, "revision", "", "full Git commit `SHA` (40 hexadecimal characters)")
 	fs.StringVar(&r.sha256, "download-sha256", "", "pinned response hash")
 }
 

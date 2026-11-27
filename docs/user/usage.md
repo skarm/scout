@@ -98,8 +98,8 @@ Set a future RFC3339 expiry. `create` writes pending entries. `approve` accepts 
 
 ## Network services and extra rules
 
-Remote scans require `--allow-download`. GitHub repository roots also require
-`--revision` with a full commit SHA. See [external sources](../reference/external-sources.md).
+Remote scans require `--allow-download`. Git repository URLs also require
+`--revision` with a full commit SHA. See [pinned Git repositories](../reference/external-sources.md#pinned-git-repositories).
 
 ```sh
 scout scan --osv --format json ./my-plugin
