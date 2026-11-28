@@ -11,7 +11,8 @@ func TestKimiPluginUsesNativeManifestAndContainedLaunches(t *testing.T) {
 	const manifest = "kimi.plugin.json"
 	g := inspect(t, map[string]string{
 		manifest: `{"name":"Example.tools@local","skills":["./recipes"],"commands":["./prompts","./other.md"],
-			"hooks":[{"event":"TurnStarted","command":"node ./bin/check.js"},{"event":"Stop","command":"node \"${KIMI_PLUGIN_ROOT}/bin/stop.js\""}],
+			"hooks":[{"event":"TurnStarted","command":"node ./bin/check.js","timeout":3e1},{"event":"Stop","command":"node \"${KIMI_PLUGIN_ROOT}/bin/stop.js\"","timeout":600.0},
+				{"event":"SessionEnd","command":"printf invalid","timeout":1.5},{"event":"SessionEnd","command":"printf invalid","timeout":601},{"event":"SessionEnd","command":"printf invalid","timeout":"30"}],
 			"mcpServers":{"direct":{"command":"./bin/server.js","cwd":"./bin"},
 				"runtime":{"command":"node","args":["./local.js"],"cwd":"./bin"},
 				"remote":{"command":"./bin/remote.js","environment_id":"container"}},

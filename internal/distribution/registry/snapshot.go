@@ -1,8 +1,10 @@
 package registry
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 )
@@ -12,6 +14,52 @@ import (
 const MaxSnapshotBytes = maxResponseBytes + snapshotEnvelopeAllowance
 
 const snapshotEnvelopeAllowance = 32 << 10
+
+// DecodeSnapshot reads the saved envelope using exact field names. The server
+// records retain their original bytes for the comparison parser.
+func DecodeSnapshot(data []byte) (Snapshot, error) {
+	var out Snapshot
+	if len(data) > MaxSnapshotBytes {
+		return out, errors.New("registry snapshot exceeds saved byte limit")
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+
+	if start, err := decoder.Token(); err != nil || start != json.Delim('{') {
+		return out, errors.New("invalid registry snapshot envelope")
+	}
+
+	fields := map[string]any{
+		"schema": &out.Schema, "endpoint_sha256": &out.EndpointSHA256,
+		"complete": &out.Complete, "pages": &out.Pages, "servers": &out.Servers,
+	}
+
+	for decoder.More() {
+		key, err := decoder.Token()
+
+		name, ok := key.(string)
+		if err != nil || !ok || fields[name] == nil {
+			return Snapshot{}, errors.New("unknown or repeated registry snapshot field")
+		}
+
+		if err := decoder.Decode(fields[name]); err != nil {
+			return Snapshot{}, err
+		}
+
+		delete(fields, name)
+	}
+
+	if _, err := decoder.Token(); err != nil || out.Servers == nil {
+		return Snapshot{}, errors.New("registry snapshot requires a servers array")
+	}
+
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return Snapshot{}, errors.New("trailing registry snapshot data")
+	}
+
+	return out, nil
+}
 
 // EncodeSnapshot preserves the JSON record bytes received from the registry.
 // Re-escaping a record can grow it beyond the comparison parser's limit.

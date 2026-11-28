@@ -89,7 +89,13 @@ func (s *Server) postHTTP(w http.ResponseWriter, r *http.Request, id string) {
 	}
 
 	created := sess == nil
+	published := false
+
 	if created {
+		if r.Context().Err() != nil {
+			return
+		}
+
 		if req.Method != methodInitialize || len(req.ID) == 0 {
 			http.Error(w, "session ID required", http.StatusBadRequest)
 			return
@@ -108,6 +114,16 @@ func (s *Server) postHTTP(w http.ResponseWriter, r *http.Request, id string) {
 
 			return
 		}
+
+		// Keep the session only after writing a successful reply with its ID.
+		defer func() {
+			if !published {
+				s.mu.Lock()
+				delete(s.sessions, id)
+				s.mu.Unlock()
+				cancelSession(sess)
+			}
+		}()
 	}
 
 	answer := s.dispatch(r.Context(), sess, req)
@@ -117,18 +133,20 @@ func (s *Server) postHTTP(w http.ResponseWriter, r *http.Request, id string) {
 	}
 
 	if created {
+		if r.Context().Err() != nil {
+			return
+		}
+
 		if answer.Error == nil {
 			w.Header().Set(headerMCPSessionID, id)
-		} else {
-			s.mu.Lock()
-			delete(s.sessions, id)
-			s.mu.Unlock()
-			cancelSession(sess)
 		}
 	}
 
 	w.Header().Set(netpolicy.HeaderContentType, netpolicy.JSONMediaType)
-	_, _ = w.Write(encodeResponse(answer))
+
+	data := encodeResponse(answer)
+	n, err := w.Write(data)
+	published = err == nil && n == len(data) && answer.Error == nil
 }
 
 func (s *Server) allowedOrigin(origin string) bool {

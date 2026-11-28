@@ -1,6 +1,7 @@
 package agentconfig
 
 import (
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -46,8 +47,8 @@ func KimiHookCommand(n *jsonconfig.Node) *jsonconfig.Node {
 				return nil
 			}
 		case "timeout":
-			value, err := strconv.Atoi(member.Value.String)
-			if member.Value.Kind != jsonconfig.KindNumber || err != nil || value < 1 || value > 600 {
+			value, err := strconv.ParseFloat(member.Value.String, 64)
+			if member.Value.Kind != jsonconfig.KindNumber || err != nil || math.Trunc(value) != value || value < 1 || value > 600 {
 				return nil
 			}
 		default:

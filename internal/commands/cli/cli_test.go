@@ -538,7 +538,14 @@ func TestRegistryCompareCLIReadsSnapshotsAndProtectsInputs(t *testing.T) {
 	if len(change.Identity) != 64 || len(change.Before) != 64 || len(change.After) != 64 || change.Before == change.After {
 		t.Fatalf("comparison did not bind both record versions: %+v", change)
 	}
-	for _, invalid := range []string{next + `{}`, strings.Replace(next, `"complete":true`, `"complete":false`, 1)} {
+	for _, invalid := range []string{
+		next + `{}`,
+		strings.Replace(next, `"complete":true`, `"complete":false`, 1),
+		strings.Replace(next, `"complete":true`, `"complete":true,"complete":true`, 1),
+		strings.Replace(next, `"complete":true`, `"Complete":true`, 1),
+		`{"schema":"scout.registry-snapshot/v1","complete":true}`,
+		`{"schema":"scout.registry-snapshot/v1","complete":true,"servers":null}`,
+	} {
 		writeOperatorFixture(t, after, []byte(invalid))
 		out.Reset()
 		if code := cli.Run(t.Context(), args, &out, &diagnostics); code != 2 || out.Len() != 0 {

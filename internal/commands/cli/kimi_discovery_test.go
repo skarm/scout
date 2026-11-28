@@ -24,7 +24,7 @@ func TestKimiDiscoveryUsesRegistryAndSeparatesUserFromProject(t *testing.T) {
 	const managed = "plugins/managed/demo/"
 	manifest := writeNativeFixture(t, kimi, managed+"kimi.plugin.json", `{"name":"demo","skills":"./recipes",
 		"commands":"./prompts","systemPromptPath":"./SYSTEM.txt","mcpServers":{"local":{"command":"printf"}},
-		"hooks":[{"event":"Stop","command":"printf done"}]}`)
+		"hooks":[{"event":"Stop","command":"printf done","timeout":30.0}]}`)
 	writeNativeFixture(t, kimi, managed+".kimi-plugin/plugin.json", `{"name":"shadowed"}`)
 	writeNativeFixture(t, kimi, managed+"prompts/review.md", "Review formatting.\n")
 	writeNativeFixture(t, kimi, managed+"prompts/tools/review.md", "Review tooling.\n")

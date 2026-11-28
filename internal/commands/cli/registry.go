@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"io"
 
@@ -112,25 +111,12 @@ func compareRegistry(ctx context.Context, args []string, stdout, stderr io.Write
 }
 
 func readRegistrySnapshot(path string) (registry.Snapshot, error) {
-	var out registry.Snapshot
-
 	data, err := readTrusted(path, nil, registry.MaxSnapshotBytes)
 	if err != nil {
-		return out, err
+		return registry.Snapshot{}, err
 	}
 
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.DisallowUnknownFields()
-
-	if err := d.Decode(&out); err != nil {
-		return out, err
-	}
-
-	if err := d.Decode(new(any)); err != io.EOF {
-		return out, errors.New("trailing registry snapshot data")
-	}
-
-	return out, nil
+	return registry.DecodeSnapshot(data)
 }
 
 func writeRegistrySnapshot(ctx context.Context, path string, data []byte, stdout io.Writer) error {

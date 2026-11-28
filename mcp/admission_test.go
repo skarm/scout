@@ -4,8 +4,10 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -80,3 +82,50 @@ func TestHTTPDeleteReturnsNotFoundForExpiredSession(t *testing.T) {
 		})
 	}
 }
+
+func TestHTTPInitializationDiscardsUnpublishedSession(t *testing.T) {
+	for _, name := range []string{"request cancelled", "response write failed", "session limit"} {
+		t.Run(name, func(t *testing.T) {
+			opts := DefaultOptions()
+			opts.HTTPToken = strings.Repeat("T", 40)
+			server := &Server{options: opts, sessions: map[string]*session{}}
+			handler, err := server.HTTPHandler()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			recorder := httptest.NewRecorder()
+			var writer http.ResponseWriter = recorder
+			wantSessions := 0
+			switch name {
+			case "request cancelled":
+				cancel()
+			case "response write failed":
+				writer = closedHTTPResponse{recorder}
+			case "session limit":
+				for i := range maxHTTPSessions {
+					server.sessions[strconv.Itoa(i)] = newSession()
+				}
+				wantSessions = maxHTTPSessions
+			}
+			const initialize = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/mcp", strings.NewReader(initialize))
+			req.Header.Set("Authorization", "Bearer "+opts.HTTPToken)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Accept", "application/json")
+			handler.ServeHTTP(writer, req)
+			if name == "session limit" && recorder.Code != http.StatusTooManyRequests {
+				t.Errorf("HTTP initialization returned %d at the session limit, want %d", recorder.Code, http.StatusTooManyRequests)
+			}
+			if got := len(server.sessions); got != wantSessions {
+				t.Errorf("HTTP initialization left %d sessions, want %d", got, wantSessions)
+			}
+		})
+	}
+}
+
+type closedHTTPResponse struct{ http.ResponseWriter }
+
+func (closedHTTPResponse) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
