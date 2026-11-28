@@ -227,15 +227,15 @@ func (d Document) scopeSuppressions() (Document, error) {
 		return d, nil
 	}
 
-	targets := make(map[string]map[string]bool)
+	targets := make(map[string]map[string]struct{})
 
 	for _, target := range d.Run.Targets {
 		for _, finding := range target.Analysis.Findings {
 			if targets[finding.ID] == nil {
-				targets[finding.ID] = make(map[string]bool)
+				targets[finding.ID] = make(map[string]struct{})
 			}
 
-			targets[finding.ID][target.ID] = true
+			targets[finding.ID][target.ID] = struct{}{}
 		}
 	}
 
@@ -245,7 +245,7 @@ func (d Document) scopeSuppressions() (Document, error) {
 
 		matches := targets[approval.FindingID]
 		if approval.TargetID != "" {
-			if !matches[approval.TargetID] {
+			if _, found := matches[approval.TargetID]; !found {
 				return Document{}, errors.New("suppression references an unknown target or finding")
 			}
 
@@ -311,13 +311,13 @@ func validateRun(run Run) error {
 }
 
 func validateTargets(targets []TargetResult) error {
-	seen := make(map[string]bool, len(targets))
+	seen := make(map[string]struct{}, len(targets))
 	for i, target := range targets {
-		if target.ID == "" || seen[target.ID] || target.Index != i || !knownState(target.State) {
+		if _, duplicate := seen[target.ID]; target.ID == "" || duplicate || target.Index != i || !knownState(target.State) {
 			return fmt.Errorf("invalid target identity, index or state at %d", i)
 		}
 
-		seen[target.ID] = true
+		seen[target.ID] = struct{}{}
 		if err := validateRulepack(target.Analysis.Signatures); err != nil {
 			return fmt.Errorf("target %d: %w", i, err)
 		}
@@ -353,6 +353,10 @@ func validateOperation(run Run) error {
 
 		if run.State == RunComplete && !completeComparison(*run.Comparison) {
 			return errors.New("complete run contains incomplete comparison")
+		}
+
+		if err := validateCapabilityDelta(*run.Comparison, run.Targets[1].Analysis.Artifact); err != nil {
+			return err
 		}
 	default:
 		return errors.New("unknown run operation")

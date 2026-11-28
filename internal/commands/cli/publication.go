@@ -63,7 +63,13 @@ func (r *request) outputs() ([]destination, error) {
 func (r *request) publish(ctx context.Context, outputs []destination, doc report.PreparedDocument, stdout io.Writer) error {
 	// The immutable document was validated before publication. Each destination
 	// is independently atomic; several files are not a filesystem transaction.
-	return r.publishOutputs(ctx, outputs, stdout, doc.Write)
+	return r.publishOutputs(ctx, outputs, stdout, func(w io.Writer, format report.Format) error {
+		if format == report.Markdown && r.compare.IncludeCapabilities {
+			return doc.WritePRSummary(w, r.pr)
+		}
+
+		return doc.Write(w, format)
+	})
 }
 
 func (r *request) publishFailure(ctx context.Context, outputs []destination, operation report.Operation, problem report.Problem, stdout io.Writer) error {

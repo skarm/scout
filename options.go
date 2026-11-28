@@ -193,6 +193,8 @@ type CompareOptions struct {
 	// MaxChanges bounds retained comparison changes. Omitted changes leave the
 	// comparison incomplete.
 	MaxChanges int
+	// IncludeCapabilities compares selected static capabilities at original source locations.
+	IncludeCapabilities bool
 }
 
 const (

@@ -352,6 +352,17 @@ policy, check, concurrency, budget, OSV and reviewer flags.
 
 - `--max-changes N`: maximum retained comparison deltas; default `4096`,
   range 1..20000. Truncation makes the comparison incomplete.
+- `--pr-head OWNER/REPO@SHA` enables static capability comparison and selects
+  the candidate commit for source links. For GitLab, supply `PROJECT_URL@SHA`.
+  The commit SHA must be full and lowercase. Markdown becomes the default format
+  and renders the compact summary.
+- `--pr-provider github|gitlab` selects the source-link format. Defaults to
+  `github` and requires `--pr-head` when explicitly supplied.
+- `--pr-path DIR` prefixes source links with the repository-relative POSIX
+  directory. For a standalone file, use its parent directory. Requires `--pr-head`.
+- `--approved-sha256 DIGEST` supplies the trusted candidate package snapshot
+  digest as 64 lowercase hex digits. A match can clear the change-only review
+  requirement. A mismatch requires review and incomplete checks retain exit `2`.
 
 The timeout and aggregate budgets cover both scans and comparison.
 See [update comparison](../user/update-review.md).

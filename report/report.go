@@ -351,7 +351,7 @@ func writeTerminalFindings(b *strings.Builder, r Analysis, evaluation Evaluation
 
 		writeRuleGuidance(b, guides[f.RuleID], f.ContextSignals, false)
 
-		if approved[f.ID] {
+		if _, matched := approved[f.ID]; matched {
 			b.WriteString("  Operator approved: this occurrence remains visible as evidence.\n")
 		}
 
@@ -459,10 +459,7 @@ func sarifColumn(file File, line, column int) int {
 }
 
 func sarifFindings(r Analysis, evaluation Evaluation, files map[string]File) []result {
-	suppressed := map[string]bool{}
-	for _, a := range evaluation.Suppressed {
-		suppressed[a.FindingID] = true
-	}
+	suppressed := approvedFindings(evaluation)
 
 	results := make([]result, 0, len(r.Findings))
 	for _, f := range r.Findings {
@@ -494,7 +491,7 @@ func sarifFindings(r Analysis, evaluation Evaluation, files map[string]File) []r
 				"componentContexts": f.Contexts,
 			},
 		}
-		if suppressed[f.ID] {
+		if _, matched := suppressed[f.ID]; matched {
 			item.Suppressions = []suppression{{Kind: "external", Status: "accepted"}}
 		}
 

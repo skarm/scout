@@ -60,7 +60,7 @@ func retainRunFindings(run *report.Run, limit int) {
 	}
 }
 
-func selectRunFindings(run *report.Run, limit int) map[findingPosition]bool {
+func selectRunFindings(run *report.Run, limit int) map[findingPosition]struct{} {
 	h := &runFindingHeap{run: run}
 	for i, target := range run.Targets {
 		for j := range target.Analysis.Findings {
@@ -75,24 +75,24 @@ func selectRunFindings(run *report.Run, limit int) map[findingPosition]bool {
 		}
 	}
 
-	kept := make(map[findingPosition]bool, h.Len())
+	kept := make(map[findingPosition]struct{}, h.Len())
 	for _, p := range h.positions {
-		kept[p] = true
+		kept[p] = struct{}{}
 	}
 
 	return kept
 }
 
-func retainTargetFindings(target *report.TargetResult, i int, kept map[findingPosition]bool) {
+func retainTargetFindings(target *report.TargetResult, i int, kept map[findingPosition]struct{}) {
 	findings := target.Analysis.Findings
 	retained := findings[:0]
-	omitted := map[string]bool{}
+	omitted := map[string]struct{}{}
 
 	for j, f := range findings {
-		if kept[findingPosition{target: i, finding: j}] {
+		if _, keep := kept[findingPosition{target: i, finding: j}]; keep {
 			retained = append(retained, f)
 		} else {
-			omitted[f.Location.Path] = true
+			omitted[f.Location.Path] = struct{}{}
 		}
 	}
 
@@ -106,7 +106,7 @@ func retainTargetFindings(target *report.TargetResult, i int, kept map[findingPo
 	recordRunRetentionGap(target, omitted)
 }
 
-func recordRunRetentionGap(target *report.TargetResult, omitted map[string]bool) {
+func recordRunRetentionGap(target *report.TargetResult, omitted map[string]struct{}) {
 	if target.State == report.RunComplete {
 		target.State = report.RunIncomplete
 	}
@@ -122,7 +122,7 @@ func recordRunRetentionGap(target *report.TargetResult, omitted map[string]bool)
 	})
 	for j := range target.Analysis.Coverage.Files {
 		file := &target.Analysis.Coverage.Files[j]
-		if omitted[file.Path] {
+		if _, wasOmitted := omitted[file.Path]; wasOmitted {
 			file.Completeness = report.Partial
 			file.Gaps = append(file.Gaps, "report_finding_limit")
 		}

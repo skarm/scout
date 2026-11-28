@@ -101,7 +101,7 @@ func (r VulnerabilityReport) ValidateMetadata() error {
 			}
 
 			for _, id := range v.DependencyIDs {
-				if !cached[id] {
+				if _, found := cached[id]; !found {
 					return errors.New("malicious-package advisory references an uncached coordinate")
 				}
 			}
@@ -112,17 +112,17 @@ func (r VulnerabilityReport) ValidateMetadata() error {
 }
 
 func validAdvisorySnapshots(snapshots []AdvisorySnapshot) bool {
-	seen := map[string]bool{}
+	seen := map[string]struct{}{}
 
 	for _, snapshot := range snapshots {
 		hash, err := hex.DecodeString(snapshot.SHA256)
-		if err != nil || len(hash) != sha256.Size || snapshot.Bytes < 1 || seen[snapshot.Ecosystem] {
+		if _, duplicate := seen[snapshot.Ecosystem]; err != nil || len(hash) != sha256.Size || snapshot.Bytes < 1 || duplicate {
 			return false
 		}
 
 		switch snapshot.Ecosystem {
 		case EcosystemGo, EcosystemNPM, EcosystemPyPI:
-			seen[snapshot.Ecosystem] = true
+			seen[snapshot.Ecosystem] = struct{}{}
 		default:
 			return false
 		}
@@ -131,7 +131,7 @@ func validAdvisorySnapshots(snapshots []AdvisorySnapshot) bool {
 	return true
 }
 
-func validateClassifiedCoverage(r VulnerabilityReport) (time.Time, map[string]bool, error) {
+func validateClassifiedCoverage(r VulnerabilityReport) (time.Time, map[string]struct{}, error) {
 	if !r.ClassifiedCache {
 		return time.Time{}, nil, nil
 	}
@@ -146,21 +146,21 @@ func validateClassifiedCoverage(r VulnerabilityReport) (time.Time, map[string]bo
 		return time.Time{}, nil, errors.New("classified cache coverage requires its cache hash")
 	}
 
-	cached := map[string]bool{}
-	seen := map[string]bool{}
+	cached := map[string]struct{}{}
+	seen := map[string]struct{}{}
 
 	for _, q := range r.Queries {
-		if q.DependencyID == "" || seen[q.DependencyID] || q.Status == OutcomeCompleted || q.Status == OutcomeSnapshot || r.Completeness == Complete && q.Status != OutcomeCached {
+		if _, duplicate := seen[q.DependencyID]; q.DependencyID == "" || duplicate || q.Status == OutcomeCompleted || q.Status == OutcomeSnapshot || r.Completeness == Complete && q.Status != OutcomeCached {
 			return time.Time{}, nil, errors.New("classified cache coverage has inconsistent coordinate outcomes")
 		}
 
-		seen[q.DependencyID] = true
+		seen[q.DependencyID] = struct{}{}
 		if q.Status == OutcomeCached {
 			if q.Ecosystem == "" || q.Name == "" || q.Version == "" || len(q.Name) > MaxAdvisoryCoordinateBytes || len(q.Version) > MaxAdvisoryCoordinateBytes {
 				return time.Time{}, nil, errors.New("classified cache coverage has an invalid cached coordinate")
 			}
 
-			cached[q.DependencyID] = true
+			cached[q.DependencyID] = struct{}{}
 		}
 	}
 

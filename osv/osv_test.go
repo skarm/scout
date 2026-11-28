@@ -736,7 +736,7 @@ func paginatedResult(t *testing.T, count int, duplicate bool) report.Vulnerabili
 			Status:       "pending",
 		}},
 	}
-	g := &queryGroup{indices: []int{0}, tokens: map[string]bool{}}
+	g := &queryGroup{indices: []int{0}, tokens: map[string]struct{}{}}
 	set := func(g *queryGroup, status string) { setQueryStatus(g, status, &r) }
 	for start := 0; start < count; start += 1024 {
 		end := min(start+1024, count)

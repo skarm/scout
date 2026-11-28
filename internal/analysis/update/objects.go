@@ -247,18 +247,15 @@ func standalone(r report.Analysis) bool {
 }
 
 func sortedKeys[T any](a, b map[string]T) []string {
-	set := make(map[string]bool, len(a)+len(b))
+	keys := make([]string, 0, max(len(a), len(b)))
 	for k := range a {
-		set[k] = true
+		keys = append(keys, k)
 	}
 
 	for k := range b {
-		set[k] = true
-	}
-
-	keys := make([]string, 0, len(set))
-	for k := range set {
-		keys = append(keys, k)
+		if _, exists := a[k]; !exists {
+			keys = append(keys, k)
+		}
 	}
 
 	sort.Strings(keys)

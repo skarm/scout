@@ -76,12 +76,12 @@ type generatedShellScan struct {
 	views          []source.View
 	functions      generatedFunctionScan
 	executions     []document.GeneratedShellExecution
-	seenExecutions map[document.GeneratedShellExecution]bool
+	seenExecutions map[document.GeneratedShellExecution]struct{}
 	remaining      int
 	bytes          int
 	gaps           document.GeneratedShellGaps
 	issues         []document.GeneratedShellIssue
-	seenIssues     map[document.GeneratedShellIssue]bool
+	seenIssues     map[document.GeneratedShellIssue]struct{}
 	executionLimit bool
 }
 
@@ -406,11 +406,11 @@ func (s *generatedShellScan) noteGap(at int, kinds document.GeneratedShellGaps, 
 	}
 
 	if s.seenIssues == nil {
-		s.seenIssues = make(map[document.GeneratedShellIssue]bool)
+		s.seenIssues = make(map[document.GeneratedShellIssue]struct{})
 	}
 
-	if !s.seenIssues[issue] {
-		s.seenIssues[issue] = true
+	if _, seen := s.seenIssues[issue]; !seen {
+		s.seenIssues[issue] = struct{}{}
 		s.issues = append(s.issues, issue)
 	}
 }

@@ -76,7 +76,7 @@ type RunOptions struct {
 	// VulnerabilityQuota shares the admitted advisory request budget assigned to
 	// this target.
 	VulnerabilityQuota *int
-	// Environment receives passive source-bound facts only for ScanEnvironment.
+	// Environment receives passive facts for environment scans and capability comparisons.
 	Environment *environment.Surface
 }
 

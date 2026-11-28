@@ -1,0 +1,58 @@
+name: Scout package review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+      SCOUT_REF: ${{ vars.SCOUT_REF }}
+    steps:
+      - name: Validate configuration
+        shell: bash
+        env:
+          LC_ALL: C
+        run: |
+          if [[ ${#SCOUT_REF} -ne 40 || "$SCOUT_REF" == *[!0-9a-f]* ]]; then
+            echo 'Set SCOUT_REF to a trusted Scout commit SHA.' >&2
+            exit 2
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: skarm/scout
+          ref: ${{ vars.SCOUT_REF }}
+          path: scout-source
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+          cache: false
+      - name: Build Scout from its pinned source
+        working-directory: scout-source
+        run: make deps build
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          path: pull-request
+          persist-credentials: false
+      - name: Compare packages and publish the check summary
+        shell: bash
+        working-directory: pull-request
+        env:
+          PR_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SCOUT_PACKAGE_PATH: ${{ vars.SCOUT_PACKAGE_PATH }}
+          SCOUT_APPROVED_SHA256: ${{ vars.SCOUT_APPROVED_SHA256 }}
+        run: |
+          base=$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")
+          bash "$GITHUB_WORKSPACE/scout-source/examples/scout-package-review.sh" \
+            "$GITHUB_WORKSPACE/scout-source/bin/scout" github "$PR_REPOSITORY" "$base" "$PR_HEAD_SHA" \
+            "$SCOUT_PACKAGE_PATH" >> "$GITHUB_STEP_SUMMARY"

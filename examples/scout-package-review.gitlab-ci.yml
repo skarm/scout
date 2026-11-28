@@ -1,0 +1,50 @@
+scout-package-review:
+  image: golang:1.27.3-bookworm
+  stage: test
+  timeout: 15m
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  variables:
+    GIT_DEPTH: '0'
+    GIT_SUBMODULE_STRATEGY: none
+    GOTOOLCHAIN: local
+    LC_ALL: C
+  script:
+    - |
+      set -euo pipefail
+      cd "$CI_PROJECT_DIR"
+      rm -f -- scout-review.md
+
+      base=${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}
+      case "${CI_MERGE_REQUEST_EVENT_TYPE:-}" in
+        detached) head=$CI_COMMIT_SHA ;;
+        merged_result|merge_train) head=${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-} ;;
+        *) head= ;;
+      esac
+      if [[ -z "$head" || -z "$base" ]]; then
+        echo 'Expected the GitLab MR diff base and source commit.' >&2
+        exit 2
+      fi
+
+      ref=${SCOUT_REF:-}
+      if [[ ${#ref} -ne 40 || "$ref" == *[!0-9a-f]* ]]; then
+        echo 'Set SCOUT_REF to a trusted Scout commit SHA.' >&2
+        exit 2
+      fi
+
+      work=$(mktemp -d)
+      trap 'rm -rf -- "$work"' EXIT
+
+      git init -q "$work/scout"
+      git -C "$work/scout" fetch --depth=1 --no-tags https://github.com/skarm/scout.git "$ref"
+      git -C "$work/scout" -c core.hooksPath=/dev/null checkout --detach FETCH_HEAD
+      make -C "$work/scout" deps build
+
+      bash "$work/scout/examples/scout-package-review.sh" "$work/scout/bin/scout" gitlab \
+        "$CI_MERGE_REQUEST_SOURCE_PROJECT_URL" "$base" "$head" "${SCOUT_PACKAGE_PATH:-}" \
+        --output "$CI_PROJECT_DIR/scout-review.md"
+  artifacts:
+    when: always
+    expose_as: Scout package review
+    paths:
+      - scout-review.md

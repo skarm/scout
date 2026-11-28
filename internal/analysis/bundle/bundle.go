@@ -36,7 +36,7 @@ type bundleCheck struct {
 }
 type bundleScope struct {
 	file, ns, root string
-	hosts          map[string]bool
+	hosts          map[string]struct{}
 }
 type bundleAnalysis struct {
 	ctx               context.Context
@@ -51,11 +51,11 @@ type bundleAnalysis struct {
 	err               error
 	gap               error
 	globalWriteStop   bool
-	active            map[*bundleFunction]bool
+	active            map[*bundleFunction]struct{}
 	endpoints         map[string][]bundleEndpoint
 	secrets           map[string][]report.SourceRef
 	surface           *environment.Surface
-	surfaceSeen       map[environment.SurfaceFact]bool
+	surfaceSeen       map[environment.SurfaceFact]struct{}
 }
 type bundleEndpoint struct {
 	value string
@@ -173,7 +173,7 @@ func bind(ctx context.Context, checks []analyzer, docs []document.File, extracti
 		programs:  map[string]*bundleProgram{},
 		results:   map[string]map[string]result{},
 		limit:     limit,
-		active:    map[*bundleFunction]bool{},
+		active:    map[*bundleFunction]struct{}{},
 		endpoints: map[string][]bundleEndpoint{},
 		secrets:   map[string][]report.SourceRef{},
 		surface:   surface,
@@ -367,11 +367,11 @@ func (b *bundleAnalysis) discover(docs []document.File) {
 			return
 		}
 
-		hosts := map[string]bool{}
+		hosts := map[string]struct{}{}
 
 		for _, raw := range bundleURLs.FindAllString(visible, -1) {
 			if host := canonicalHost(raw); host != "" {
-				hosts[host] = true
+				hosts[host] = struct{}{}
 			}
 		}
 
@@ -418,20 +418,31 @@ func (b *bundleAnalysis) sameScope(a, c string) bool {
 }
 
 func (b *bundleAnalysis) endpoint(file, value string, ref report.SourceRef) {
-	b.surfaceFact("network", "", file, ref)
-
 	s := b.scope(file)
+	if s == nil && b.surface == nil {
+		return
+	}
+
+	host := canonicalHost(value)
+
+	destination := ""
+	if b.surface != nil && b.surface.IncludeCapabilityDetails {
+		destination = canonicalDNSName(host)
+	}
+
+	b.surfaceFact(report.CapabilityNetwork, destination, file, ref)
+
 	if s == nil {
 		return
 	}
 
-	if canonicalHost(value) == "" {
+	if host == "" {
 		b.gap = errors.New("dynamic network destination is unresolved")
 		return
 	}
 
 	b.endpoints[s.file] = append(b.endpoints[s.file], bundleEndpoint{value: value, ref: ref})
-	if !s.hosts[canonicalHost(value)] {
+	if _, declared := s.hosts[host]; !declared {
 		b.emit(ruleNET001, ref, b.wholeFileReference(s.file))
 	}
 }

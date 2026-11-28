@@ -294,6 +294,18 @@ func writeComparison(out *bytes.Buffer, delta UpdateDelta, md bool) {
 		out.WriteString("Comparison coverage is incomplete; absence of a change does not establish equality.\n\n")
 	}
 
+	if capabilities := delta.Capabilities; capabilities != nil {
+		_, _ = fmt.Fprintf(out, "Capability changes: %d retained; %d omitted.\n\n", len(capabilities.Changes), capabilities.Omitted)
+		for _, change := range capabilities.Changes {
+			_, _ = fmt.Fprintf(out, "Capability %s: %s at %s:%d", quote(change.Kind), quote(change.Status), quote(change.Source.Path), change.Line)
+			if change.Destination != "" {
+				_, _ = fmt.Fprintf(out, " to %s", quote(change.Destination))
+			}
+
+			out.WriteString(".\n\n")
+		}
+	}
+
 	for _, change := range delta.Files {
 		name := change.Address.Root
 		if change.After != nil {

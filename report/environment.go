@@ -82,13 +82,13 @@ func validateEnvironment(run Run) error {
 		}
 	}
 
-	seen := map[string]bool{}
+	seen := make(map[string]struct{}, len(e.Observations))
 	for _, o := range e.Observations {
-		if o.ID == "" || seen[o.ID] {
+		if _, duplicate := seen[o.ID]; o.ID == "" || duplicate {
 			return errors.New("invalid environment observation")
 		}
 
-		seen[o.ID] = true
+		seen[o.ID] = struct{}{}
 		if err := validateEnvironmentObservation(o, files); err != nil {
 			return err
 		}

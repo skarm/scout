@@ -73,8 +73,11 @@ func (s *Scanner) executeWithin(ctx context.Context, targets []Target, operation
 	defer cancel()
 
 	var surfaces []environment.Surface
-	if joint {
+	if joint || comparison.IncludeCapabilities {
 		surfaces = make([]environment.Surface, len(targets))
+		for i := range surfaces {
+			surfaces[i].IncludeCapabilityDetails = comparison.IncludeCapabilities
+		}
 	}
 
 	run, targetErrors := s.inspectTargets(call, targets, operation, surfaces)
@@ -95,7 +98,7 @@ func (s *Scanner) executeWithin(ctx context.Context, targets []Target, operation
 	}
 
 	if operation == report.CompareOperation {
-		targetErrors = append(targetErrors, buildComparison(call, &run, comparison))
+		targetErrors = append(targetErrors, buildComparison(call, &run, comparison, surfaces))
 	}
 
 	return sealExecution(call, run, targetErrors)
@@ -346,8 +349,8 @@ func consolidateTargets(run *report.Run, targetErrors []error, findingsLimit int
 	}
 }
 
-func buildComparison(ctx context.Context, run *report.Run, options CompareOptions) error {
-	changes, err := update.Build(ctx, run.Targets[0].Analysis, run.Targets[1].Analysis, report.UpdateOptions{MaxChanges: options.MaxChanges})
+func buildComparison(ctx context.Context, run *report.Run, options CompareOptions, surfaces []environment.Surface) error {
+	changes, err := update.BuildWithSurfaces(ctx, run.Targets[0].Analysis, run.Targets[1].Analysis, report.UpdateOptions{MaxChanges: options.MaxChanges}, surfaces)
 
 	run.Comparison = &changes
 	if err != nil || changes.Completeness != report.Complete {

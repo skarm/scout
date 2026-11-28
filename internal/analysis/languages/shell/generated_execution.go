@@ -453,7 +453,7 @@ func (s *generatedShellScan) recordGeneratedUse(c *shellsyntax.Command, write ge
 	}
 
 	link := document.GeneratedShellExecution{Write: write.header, Body: write.body, Use: use, Transforms: write.transforms}
-	if s.seenExecutions[link] {
+	if _, seen := s.seenExecutions[link]; seen {
 		return
 	}
 
@@ -463,9 +463,9 @@ func (s *generatedShellScan) recordGeneratedUse(c *shellsyntax.Command, write ge
 	}
 
 	if s.seenExecutions == nil {
-		s.seenExecutions = make(map[document.GeneratedShellExecution]bool)
+		s.seenExecutions = make(map[document.GeneratedShellExecution]struct{})
 	}
 
-	s.seenExecutions[link] = true
+	s.seenExecutions[link] = struct{}{}
 	s.executions = append(s.executions, link)
 }

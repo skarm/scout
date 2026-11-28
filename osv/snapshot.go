@@ -120,7 +120,7 @@ func loadEcosystem(ctx context.Context, ecosystem string, archive SnapshotArchiv
 	out.complete = true
 	remaining, count := uint64(maxSnapshotExpanded), 0
 
-	seen := make(map[string]bool, len(tree.File))
+	seen := make(map[string]struct{}, len(tree.File))
 	for _, file := range tree.File {
 		if ctx.Err() != nil {
 			return out, provenance, ctx.Err()
@@ -134,12 +134,12 @@ func loadEcosystem(ctx context.Context, ecosystem string, archive SnapshotArchiv
 		remaining -= file.UncompressedSize64
 
 		record, ok := readSnapshotRecord(file)
-		if !ok || seen[record.ID] {
+		if _, duplicate := seen[record.ID]; !ok || duplicate {
 			out.complete = false
 			continue
 		}
 
-		seen[record.ID] = true
+		seen[record.ID] = struct{}{}
 		if record.Withdrawn != "" {
 			if _, err := time.Parse(time.RFC3339, record.Withdrawn); err != nil {
 				out.complete = false

@@ -40,10 +40,10 @@ func humanTargets(run Run) []TargetResult {
 	return targets
 }
 
-func approvedFindings(evaluation Evaluation) map[string]bool {
-	approved := make(map[string]bool, len(evaluation.Suppressed))
+func approvedFindings(evaluation Evaluation) map[string]struct{} {
+	approved := make(map[string]struct{}, len(evaluation.Suppressed))
 	for _, entry := range evaluation.Suppressed {
-		approved[entry.FindingID] = true
+		approved[entry.FindingID] = struct{}{}
 	}
 
 	return approved
@@ -63,9 +63,9 @@ func humanSummary(out *bytes.Buffer, document Document, md bool) {
 
 	type occurrence struct{ target, finding string }
 
-	approvals := map[occurrence]bool{}
+	approvals := make(map[occurrence]struct{}, len(document.Evaluation.Suppressed))
 	for _, approval := range document.Evaluation.Suppressed {
-		approvals[occurrence{approval.TargetID, approval.FindingID}] = true
+		approvals[occurrence{approval.TargetID, approval.FindingID}] = struct{}{}
 	}
 
 	for _, target := range document.Run.Targets {
@@ -75,7 +75,7 @@ func humanSummary(out *bytes.Buffer, document Document, md bool) {
 				retained++
 
 				severities[finding.Severity]++
-				if approvals[occurrence{target.ID, finding.ID}] {
+				if _, matched := approvals[occurrence{target.ID, finding.ID}]; matched {
 					approved++
 				}
 			}
@@ -128,6 +128,12 @@ func decisionReason(code string) string {
 		return "The conservative coverage policy requires manual review of declared language-analysis limitations"
 	case "changed_content_requires_review":
 		return "Captured content changed between versions and requires review"
+	case "package_approval_hash_matched":
+		return "The candidate matches the operator-approved package SHA-256"
+	case "package_approval_hash_mismatch":
+		return "The candidate SHA-256 differs from the approved package"
+	case "package_approval_unverified":
+		return "The package approval could not be verified against a complete captured comparison"
 	case "manifest_signal_threshold":
 		return "A declaration change meets the configured blocking threshold"
 	case "manifest_signals_require_review":

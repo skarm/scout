@@ -26,6 +26,8 @@ type Options struct {
 	FailAt report.Severity `json:"fail_at"`
 	// Approvals supplies trusted baseline entries; nil applies no approvals.
 	Approvals *baseline.Document `json:"approvals,omitempty"`
+	// ApprovedSnapshotSHA256 is a trusted comparison candidate approval.
+	ApprovedSnapshotSHA256 string `json:"approved_snapshot_sha256,omitempty"`
 	// AllowGlobs permits glob approvals only when explicitly selected by the operator.
 	AllowGlobs bool `json:"allow_globs"`
 	// ReviewBelowThreshold requires review for unsuppressed findings below FailAt.
@@ -55,7 +57,7 @@ type Gate struct {
 
 type gateEvaluation struct {
 	evaluation report.Evaluation
-	reasons    map[string]bool
+	reasons    map[string]struct{}
 }
 
 // New validates and copies the complete policy before any run is evaluated.
@@ -120,7 +122,7 @@ func (g *Gate) evaluate(run report.Run, now time.Time, valid bool) report.Evalua
 	result := gateEvaluation{evaluation: report.Evaluation{
 		Decision: report.Allow, RunDigest: run.Digest,
 		Reasons: []string{}, Suppressed: []report.Suppression{},
-	}, reasons: make(map[string]bool)}
+	}, reasons: make(map[string]struct{})}
 	if g == nil || !validPolicyDigest(g.digest) {
 		result.review("invalid_policy")
 		return result.evaluation
@@ -130,7 +132,7 @@ func (g *Gate) evaluate(run report.Run, now time.Time, valid bool) report.Evalua
 	validateEvaluationRun(run, valid, &result)
 
 	if run.Operation == report.CompareOperation {
-		g.evaluateComparison(run, &result)
+		g.evaluateComparison(run, valid, &result)
 	}
 
 	for _, target := range decisionTargets(run) {
@@ -152,17 +154,22 @@ func (g *Gate) evaluate(run report.Run, now time.Time, valid bool) report.Evalua
 	return result.evaluation
 }
 
-func (g *Gate) evaluateComparison(run report.Run, result *gateEvaluation) {
+func (g *Gate) evaluateComparison(run report.Run, valid bool, result *gateEvaluation) {
 	if !validComparisonRoles(run) {
 		return
 	}
 
-	if len(run.Targets[0].Analysis.Semantic.Proposals) != 0 {
-		result.review("previous_semantic_proposals_require_review")
-	}
-
 	if run.Comparison == nil {
 		return
+	}
+
+	approved := g.evaluatePackageApproval(run, valid, result)
+	if !approved && !run.Comparison.SameSnapshot {
+		result.review("changed_content_requires_review")
+	}
+
+	if len(run.Targets[0].Analysis.Semantic.Proposals) != 0 {
+		result.review("previous_semantic_proposals_require_review")
 	}
 
 	if len(run.Comparison.MCPChanges) > 0 {
@@ -180,6 +187,47 @@ func (g *Gate) evaluateComparison(run report.Run, result *gateEvaluation) {
 			result.review("manifest_signals_require_review")
 		}
 	}
+}
+
+func (g *Gate) evaluatePackageApproval(run report.Run, valid bool, result *gateEvaluation) bool {
+	if g.options.ApprovedSnapshotSHA256 == "" {
+		return false
+	}
+
+	if !valid || run.State != report.RunComplete {
+		result.review("package_approval_unverified")
+		return false
+	}
+
+	for _, target := range run.Targets {
+		artifact := target.Analysis.Artifact
+		if !artifact.InventoryComplete || target.Analysis.External != nil ||
+			!validPolicyDigest("sha256:"+artifact.SnapshotSHA256) || len(artifact.ExcludeGlobs) != 0 ||
+			artifact.IdentityScope != report.CapturedContentIdentity ||
+			len(artifact.Files) == 0 || !allFilesCaptured(artifact.Files) {
+			result.review("package_approval_unverified")
+			return false
+		}
+	}
+
+	if run.Targets[1].Analysis.Artifact.SnapshotSHA256 != g.options.ApprovedSnapshotSHA256 {
+		result.review("package_approval_hash_mismatch")
+		return false
+	}
+
+	result.add("package_approval_hash_matched")
+
+	return true
+}
+
+func allFilesCaptured(files []report.File) bool {
+	for _, file := range files {
+		if file.Status != report.CaptureCaptured {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (g *Gate) evaluateTarget(target report.TargetResult, now time.Time, result *gateEvaluation) {
@@ -272,6 +320,10 @@ func (o Options) normalized() (Options, error) {
 		return Options{}, errors.New("invalid policy ID or blocking threshold")
 	}
 
+	if o.ApprovedSnapshotSHA256 != "" && !validPolicyDigest("sha256:"+o.ApprovedSnapshotSHA256) {
+		return Options{}, errors.New("approved package SHA-256 must be 64 lowercase hexadecimal digits")
+	}
+
 	return o, nil
 }
 
@@ -302,18 +354,8 @@ func validateEvaluationRun(run report.Run, valid bool, result *gateEvaluation) {
 		result.review("inspection_incomplete")
 	}
 
-	if run.Operation == report.CompareOperation {
-		reviewComparison(run, result)
-	}
-}
-
-func reviewComparison(run report.Run, result *gateEvaluation) {
-	if !validComparisonRoles(run) {
+	if run.Operation == report.CompareOperation && !validComparisonRoles(run) {
 		result.review("invalid_comparison_roles")
-	}
-
-	if run.Comparison != nil && !run.Comparison.SameSnapshot {
-		result.review("changed_content_requires_review")
 	}
 }
 
@@ -342,8 +384,8 @@ func (result *gateEvaluation) review(reason string) {
 }
 
 func (result *gateEvaluation) add(reason string) {
-	if !result.reasons[reason] {
-		result.reasons[reason] = true
+	if _, exists := result.reasons[reason]; !exists {
+		result.reasons[reason] = struct{}{}
 		result.evaluation.Reasons = append(result.evaluation.Reasons, reason)
 	}
 }

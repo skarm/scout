@@ -78,8 +78,10 @@ func Compare(run report.Run, current, trial *Gate, now time.Time) (ShadowResult,
 	for _, target := range decisionTargets(run) {
 		for _, finding := range target.Analysis.Findings {
 			key := occurrence{target.ID, finding.ID}
-			a := current.findingDisposition(finding, before[key])
-			b := trial.findingDisposition(finding, after[key])
+			_, wasSuppressed := before[key]
+			_, isSuppressed := after[key]
+			a := current.findingDisposition(finding, wasSuppressed)
+			b := trial.findingDisposition(finding, isSuppressed)
 
 			if a != b {
 				result.FindingChanges = append(result.FindingChanges, FindingPolicyChange{
@@ -145,10 +147,10 @@ func (g *Gate) findingDisposition(finding report.Finding, suppressed bool) Dispo
 
 type occurrence struct{ targetID, findingID string }
 
-func suppressionSet(suppressions []report.Suppression) map[occurrence]bool {
-	set := make(map[occurrence]bool, len(suppressions))
+func suppressionSet(suppressions []report.Suppression) map[occurrence]struct{} {
+	set := make(map[occurrence]struct{}, len(suppressions))
 	for _, suppression := range suppressions {
-		set[occurrence{suppression.TargetID, suppression.FindingID}] = true
+		set[occurrence{suppression.TargetID, suppression.FindingID}] = struct{}{}
 	}
 
 	return set

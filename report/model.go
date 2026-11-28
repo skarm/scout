@@ -266,6 +266,9 @@ type Artifact struct {
 // CaptureOperatorExcluded is the reason for a file skipped by a caller's glob.
 const CaptureOperatorExcluded = "operator_excluded"
 
+// CapturedContentIdentity is the identity scope of a captured package inventory.
+const CapturedContentIdentity = "captured-content-not-install-attestation"
+
 // Check summarizes execution of one analyzer across its selected files.
 type Check struct {
 	// AnalyzerID identifies the analyzer whose execution is summarized.

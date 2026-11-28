@@ -99,8 +99,8 @@ func (p goAssertionParser) readCall(call *ast.CallExpr, ancestors []ast.Node, lo
 		return nil
 	}
 
-	for index := len(ancestors) - 1; index >= 0; index-- {
-		switch node := ancestors[index].(type) {
+	for _, ancestor := range slices.Backward(ancestors) {
+		switch node := ancestor.(type) {
 		case *ast.IfStmt:
 			guard := assertionGuard{node, call.Pos() > node.Body.End()}
 			if p.guards[guard] {

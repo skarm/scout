@@ -48,7 +48,7 @@ type shellPatternWalker struct {
 	ctx         context.Context
 	budget, ops int
 	out         result
-	seen        map[source.Span]bool
+	seen        map[source.Span]struct{}
 	halted      bool
 }
 
@@ -97,9 +97,9 @@ func Patterns(ctx context.Context, d document.File, options PatternOptions, budg
 
 	p := shellPatternWalker{options: options, ctx: ctx, budget: budget, out: out}
 
-	p.seen = map[source.Span]bool{}
+	p.seen = map[source.Span]struct{}{}
 	for _, match := range p.out.Matches {
-		p.seen[source.Span{Start: match.Start, End: match.End}] = true
+		p.seen[source.Span{Start: match.Start, End: match.End}] = struct{}{}
 	}
 
 	for _, unit := range d.Units() {
@@ -231,7 +231,7 @@ func (p *shellPatternWalker) downloadPatterns(tree *shellsyntax.File, view sourc
 	out.Truncated = out.Truncated || result.Truncated || err != nil
 	for _, m := range result.Matches {
 		at := source.Span{Start: m.Start, End: m.End}
-		if !seen[at] {
+		if _, exists := seen[at]; !exists {
 			if len(out.Matches) >= budget {
 				p.halted = true
 				out.Truncated = true
@@ -239,7 +239,7 @@ func (p *shellPatternWalker) downloadPatterns(tree *shellsyntax.File, view sourc
 				return
 			}
 
-			seen[at] = true
+			seen[at] = struct{}{}
 
 			out.Matches = append(out.Matches, m)
 		}
@@ -292,11 +292,11 @@ func (p *shellPatternWalker) command(command *shellsyntax.Command, view source.V
 	}
 
 	at, err := view.Original(command.Span)
-	if err != nil || p.seen[at] {
+	if _, seen := p.seen[at]; err != nil || seen {
 		return true
 	}
 
-	p.seen[at] = true
+	p.seen[at] = struct{}{}
 	if len(p.out.Matches) >= p.budget {
 		p.out.Truncated = true
 		return false

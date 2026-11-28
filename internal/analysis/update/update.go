@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/skarm/scout/internal/analysis/environment"
 	"github.com/skarm/scout/report"
 )
 
@@ -20,7 +21,7 @@ type builder struct {
 	delta                        report.UpdateDelta
 	old, next                    inventory
 	oldComponents, newComponents componentIndex
-	issues                       map[string]bool
+	issues                       map[string]struct{}
 	retained, operations         int
 	stopped                      bool
 }
@@ -37,6 +38,11 @@ type comparisonContract struct {
 // Build returns only a source-bound delta. It never computes, copies or applies
 // admission policy, and it cannot suppress any candidate finding.
 func Build(ctx context.Context, before, after report.Analysis, options report.UpdateOptions) (report.UpdateDelta, error) {
+	return BuildWithSurfaces(ctx, before, after, options, nil)
+}
+
+// BuildWithSurfaces optionally compares passive facts collected from both scans.
+func BuildWithSurfaces(ctx context.Context, before, after report.Analysis, options report.UpdateOptions, surfaces []environment.Surface) (report.UpdateDelta, error) {
 	if ctx == nil {
 		return report.UpdateDelta{}, errors.New("nil comparison context")
 	}
@@ -45,12 +51,16 @@ func Build(ctx context.Context, before, after report.Analysis, options report.Up
 		return report.UpdateDelta{}, err
 	}
 
+	if surfaces != nil && len(surfaces) != 2 {
+		return report.UpdateDelta{}, errors.New("capability comparison requires both surfaces")
+	}
+
 	b := builder{
 		ctx:     ctx,
 		before:  before,
 		after:   after,
 		options: options,
-		issues:  map[string]bool{},
+		issues:  map[string]struct{}{},
 		delta: report.UpdateDelta{
 			AlgorithmVersion: algorithmVersion,
 			Completeness:     report.Complete,
@@ -77,6 +87,10 @@ func Build(ctx context.Context, before, after report.Analysis, options report.Up
 	}
 
 	b.delta.SameSnapshot = before.Artifact.InventoryComplete && after.Artifact.InventoryComplete && before.Artifact.SnapshotSHA256 != "" && before.Artifact.SnapshotSHA256 == after.Artifact.SnapshotSHA256
+	if surfaces != nil {
+		b.capabilities(surfaces[0], surfaces[1])
+	}
+
 	b.files()
 	b.oldComponents, b.newComponents = b.components(before, b.old), b.components(after, b.next)
 	b.componentChanges()
@@ -116,11 +130,11 @@ func contract(r report.Analysis) comparisonContract {
 }
 
 func (b *builder) issue(code string) {
-	if b.issues[code] {
+	if _, exists := b.issues[code]; exists {
 		return
 	}
 
-	b.issues[code] = true
+	b.issues[code] = struct{}{}
 	b.delta.Issues = append(b.delta.Issues, code)
 	b.delta.Completeness = report.Partial
 }

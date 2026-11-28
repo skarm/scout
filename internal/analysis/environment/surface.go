@@ -6,6 +6,7 @@ import "github.com/skarm/scout/report"
 // Collectors supply source-bound facts without exposing their parser or flow
 // implementation. Scalar values are for internal use and belong to one scan.
 type Surface struct {
+	IncludeCapabilityDetails bool
 	Complete                 bool
 	Limited                  bool
 	Facts                    []SurfaceFact
@@ -16,4 +17,5 @@ type Surface struct {
 type SurfaceFact struct {
 	Kind, Value, Scope string
 	Source             report.SourceRef
+	Line               int
 }

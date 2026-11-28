@@ -54,6 +54,9 @@ type request struct {
 	targets                         []string
 	publicationInputs               []string
 	compare                         scout.CompareOptions
+	prHead, prPath, prProvider      string
+	pr                              report.PRSummary
+	approvedSHA256                  string
 	configPath                      string
 	grants                          configfile.Grants
 	followExternal                  bool
@@ -151,6 +154,13 @@ func requestFlagSet(command string, stderr io.Writer, extra func(*flag.FlagSet))
 		fs.IntVar(&patch.values.compare.MaxChanges, "max-changes", patch.values.compare.MaxChanges, "maximum retained comparison deltas")
 	}
 
+	if command == "compare" {
+		fs.StringVar(&patch.values.prHead, "pr-head", "", "candidate revision `OWNER/REPO@SHA` or GitLab project URL followed by @SHA")
+		fs.StringVar(&patch.values.prProvider, "pr-provider", "github", "source link provider: github or gitlab; requires --pr-head")
+		fs.StringVar(&patch.values.prPath, "pr-path", "", "repository-relative directory containing the candidate input; requires --pr-head")
+		fs.StringVar(&patch.values.approvedSHA256, "approved-sha256", "", "trusted SHA-256 of the approved comparison candidate snapshot")
+	}
+
 	return patch, fs
 }
 
@@ -179,6 +189,20 @@ func (p argvPatch) resolve(settings configfile.Settings, lookupEnv func(string) 
 	r.settings = settings
 	p.applySettings(&r.settings)
 
+	if p.present["pr-head"] || p.present["pr-path"] || p.present["pr-provider"] {
+		if err := r.configurePR(p.present["format"]); err != nil {
+			return r, err
+		}
+	}
+
+	if p.present["approved-sha256"] {
+		if r.approvedSHA256 == "" {
+			return r, errors.New("--approved-sha256 requires a nonempty digest")
+		}
+
+		r.settings.Policy.ApprovedSnapshotSHA256 = r.approvedSHA256
+	}
+
 	if err := p.resolveInspection(&r.settings.Scanner); err != nil {
 		return r, err
 	}
@@ -193,6 +217,34 @@ func (p argvPatch) resolve(settings configfile.Settings, lookupEnv func(string) 
 	}
 
 	return r, nil
+}
+
+func (r *request) configurePR(explicitFormat bool) error {
+	if r.prHead == "" {
+		return errors.New("PR summary options require --pr-head")
+	}
+
+	var err error
+
+	switch r.prProvider {
+	case "github":
+		r.pr, err = report.NewPRSummary(r.prHead, r.prPath)
+	case "gitlab":
+		r.pr, err = report.NewGitLabPRSummary(r.prHead, r.prPath)
+	default:
+		return errors.New("--pr-provider requires github or gitlab")
+	}
+
+	if err != nil {
+		return err
+	}
+
+	r.compare.IncludeCapabilities = true
+	if !explicitFormat {
+		r.format = string(report.Markdown)
+	}
+
+	return nil
 }
 
 func (p argvPatch) applySettings(s *configfile.Settings) {

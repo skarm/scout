@@ -8,17 +8,17 @@ import "github.com/skarm/scout/internal/syntax/source"
 type boundedMatches struct {
 	out    *Result
 	budget int
-	seen   map[source.Span]bool
+	seen   map[source.Span]struct{}
 }
 
 func collectMatches(out *Result, budget int) *boundedMatches {
 	collection := &boundedMatches{out: out, budget: budget}
 	if len(out.Matches) > 0 {
-		collection.seen = make(map[source.Span]bool, len(out.Matches))
+		collection.seen = make(map[source.Span]struct{}, len(out.Matches))
 	}
 
 	for _, m := range out.Matches {
-		collection.seen[source.Span{Start: m.Start, End: m.End}] = true
+		collection.seen[source.Span{Start: m.Start, End: m.End}] = struct{}{}
 	}
 
 	return collection
@@ -26,7 +26,7 @@ func collectMatches(out *Result, budget int) *boundedMatches {
 
 func (c *boundedMatches) add(m Match) bool {
 	at := source.Span{Start: m.Start, End: m.End}
-	if c.seen[at] {
+	if _, seen := c.seen[at]; seen {
 		return true
 	}
 
@@ -36,10 +36,10 @@ func (c *boundedMatches) add(m Match) bool {
 	}
 
 	if c.seen == nil {
-		c.seen = make(map[source.Span]bool)
+		c.seen = make(map[source.Span]struct{})
 	}
 
-	c.seen[at] = true
+	c.seen[at] = struct{}{}
 	c.out.Matches = append(c.out.Matches, m)
 
 	return true

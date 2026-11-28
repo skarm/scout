@@ -155,7 +155,7 @@ func TestBundleCallChargesLocalBindings(t *testing.T) {
 						fn.params = append(fn.params, name)
 					}
 				}
-				b := &bundleAnalysis{ctx: analysisbudget.WithLimit(t.Context(), quota), active: map[*bundleFunction]bool{}}
+				b := &bundleAnalysis{ctx: analysisbudget.WithLimit(t.Context(), quota), active: map[*bundleFunction]struct{}{}}
 				b.callFunction(fn, nil, 0)
 				if quota == 1 {
 					if b.err == nil || !analysisbudget.Exhausted(b.ctx) {
@@ -177,7 +177,7 @@ func TestBundleCallAndProjectionCopiesUseQuota(t *testing.T) {
 		t.Run("call/"+strconv.FormatUint(quota, 10), func(t *testing.T) {
 			program := &bundleProgram{initialized: true, globals: ordinaryBundleState(64)}
 			fn := &bundleFunction{program: program, body: []*bundleNode{{kind: nodeReturn, children: []*bundleNode{{kind: nodeName, name: "local_0"}}}}}
-			b := &bundleAnalysis{ctx: analysisbudget.WithLimit(t.Context(), quota), active: map[*bundleFunction]bool{}}
+			b := &bundleAnalysis{ctx: analysisbudget.WithLimit(t.Context(), quota), active: map[*bundleFunction]struct{}{}}
 			value := b.callFunction(fn, nil, 0)
 			if quota == 2 {
 				if b.err == nil || !analysisbudget.Exhausted(b.ctx) || value.known {

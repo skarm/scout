@@ -37,7 +37,7 @@ type nativeSource struct {
 
 type nativeSpanCollector struct {
 	spans     []Span
-	seen      map[Span]bool
+	seen      map[Span]struct{}
 	rejected  bool
 	truncated bool
 }
@@ -345,7 +345,7 @@ func (s nativeSource) promptIdentifiers(patterns []yrx.Pattern) (map[string]bool
 }
 
 func (s nativeSource) collectSpans(rule string, patterns []yrx.Pattern) (nativeSpanCollector, error) {
-	collector := nativeSpanCollector{spans: []Span{}, seen: map[Span]bool{}}
+	collector := nativeSpanCollector{spans: []Span{}, seen: map[Span]struct{}{}}
 	if err := s.seedP1Evidence(rule, patterns, &collector); err != nil {
 		return collector, err
 	}
@@ -438,7 +438,7 @@ func (c *nativeSpanCollector) add(source nativeSource, rule, pattern string, hit
 }
 
 func (c *nativeSpanCollector) appendSpan(span Span) bool {
-	if c.seen[span] {
+	if _, seen := c.seen[span]; seen {
 		return false
 	}
 
@@ -447,7 +447,7 @@ func (c *nativeSpanCollector) appendSpan(span Span) bool {
 		return true
 	}
 
-	c.seen[span] = true
+	c.seen[span] = struct{}{}
 	c.spans = append(c.spans, span)
 
 	return false

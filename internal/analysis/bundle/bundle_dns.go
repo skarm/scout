@@ -47,9 +47,13 @@ func canonicalDNSName(value string) string {
 }
 
 func (b *bundleAnalysis) dnsEndpoint(file, value string, ref report.SourceRef) {
-	b.surfaceFact("network", "", file, ref)
-
 	host := canonicalDNSName(value)
+	if b.surface != nil && b.surface.IncludeCapabilityDetails {
+		b.surfaceFact(report.CapabilityDNS, host, file, ref)
+	} else {
+		b.surfaceFact(report.CapabilityNetwork, "", file, ref)
+	}
+
 	if host == "" {
 		b.gap = errors.New("dynamic DNS query name is unresolved")
 		return
@@ -57,7 +61,7 @@ func (b *bundleAnalysis) dnsEndpoint(file, value string, ref report.SourceRef) {
 
 	if s := b.scope(file); s != nil {
 		b.endpoints[s.file] = append(b.endpoints[s.file], bundleEndpoint{value: value, ref: ref})
-		if !s.hosts[host] {
+		if _, declared := s.hosts[host]; !declared {
 			b.emit(ruleNET001, ref, b.wholeFileReference(s.file))
 		}
 	}

@@ -73,7 +73,7 @@ func (run *execution) prepare() error {
 
 	documents = harness.ApplyConfigScopes(documents, graph)
 	if run.options.Environment != nil {
-		*run.options.Environment = bundle.CollectSurface(run.ctx, documents, expanded.Report, environmentOperations)
+		*run.options.Environment = bundle.CollectSurface(run.ctx, documents, expanded.Report, environmentOperations, run.options.Environment.IncludeCapabilityDetails)
 	}
 
 	checks := analyzer.BindContexts(run.ctx, preparedChecks, documents, expanded.Report)

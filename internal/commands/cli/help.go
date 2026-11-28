@@ -166,7 +166,10 @@ func fullHelp(stdout io.Writer) int {
 	text.WriteString("\ncompare:\n  Uses scan configuration, reports, policy, checks, budgets, OSV and LLM review flags.\n")
 
 	_, comparison := requestFlagSet("compare", io.Discard, nil)
-	appendFlagHelp(&text, comparison.Lookup("max-changes"))
+	for _, name := range []string{"max-changes", "pr-head", "pr-provider", "pr-path", "approved-sha256"} {
+		appendFlagHelp(&text, comparison.Lookup(name))
+	}
+
 	text.WriteString("  Both inputs must be local; --max-changes accepts 1..20000.\n")
 	text.WriteString("\nmcp:\n  Uses scan configuration, policy, checks, service and budget flags.\n  Inputs use --target or tool uploads; reports are returned through MCP.\n  mcp snapshot --source-id ID [--output FILE] capture.json imports local MCP results.\n  Compare explicitly selected reference and candidate snapshots with scout compare.\n")
 

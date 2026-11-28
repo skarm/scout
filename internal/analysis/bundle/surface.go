@@ -24,8 +24,8 @@ var skillLink = regexp.MustCompile(`\[[^\]\r\n]*\]\(([^\s)]+)\)`)
 
 // CollectSurface reuses the bundle observers on already prepared documents under
 // a separate, explicitly reserved operation quota. It never reads the filesystem.
-func CollectSurface(ctx context.Context, docs []document.File, extraction report.ExtractionReport, operations uint64) environment.Surface {
-	surface := environment.Surface{Facts: []environment.SurfaceFact{}}
+func CollectSurface(ctx context.Context, docs []document.File, extraction report.ExtractionReport, operations uint64, includeCapabilityDetails bool) environment.Surface {
+	surface := environment.Surface{Facts: []environment.SurfaceFact{}, IncludeCapabilityDetails: includeCapabilityDetails}
 	if operations == 0 || ctx.Err() != nil {
 		return surface
 	}
@@ -57,6 +57,10 @@ func (b *bundleAnalysis) surfaceFact(kind, value, file string, ref report.Source
 		return
 	}
 
+	if b.surface.IncludeCapabilityDetails && !report.IsComparedCapability(kind) {
+		return
+	}
+
 	addr, ok := b.addresses[file]
 	if !ok || addr.Namespace != artifact.RootNamespace {
 		b.surface.Limited = true
@@ -68,13 +72,22 @@ func (b *bundleAnalysis) surfaceFact(kind, value, file string, ref report.Source
 		return
 	}
 
-	scope := file
-	if skill := b.scope(file); skill != nil {
-		scope = skill.file
+	fact := environment.SurfaceFact{Kind: kind, Value: value, Source: ref}
+	if b.surface.IncludeCapabilityDetails {
+		line, _, err := b.docs[file].Index().Position(ref.ByteStart)
+		if err != nil {
+			b.surface.Limited = true
+			return
+		}
+
+		fact.Line = line
+	} else if skill := b.scope(file); skill != nil {
+		fact.Scope = skill.file
+	} else {
+		fact.Scope = file
 	}
 
-	fact := environment.SurfaceFact{Kind: kind, Value: value, Scope: scope, Source: ref}
-	if b.surfaceSeen[fact] {
+	if _, seen := b.surfaceSeen[fact]; seen {
 		return
 	}
 
@@ -84,10 +97,10 @@ func (b *bundleAnalysis) surfaceFact(kind, value, file string, ref report.Source
 	}
 
 	if b.surfaceSeen == nil {
-		b.surfaceSeen = map[environment.SurfaceFact]bool{}
+		b.surfaceSeen = map[environment.SurfaceFact]struct{}{}
 	}
 
-	b.surfaceSeen[fact] = true
+	b.surfaceSeen[fact] = struct{}{}
 	b.surface.Facts = append(b.surface.Facts, fact)
 }
 
@@ -152,9 +165,13 @@ func (b *bundleAnalysis) observeSurfaceTools(d document.File, u document.Unit, t
 }
 
 func (b *bundleAnalysis) surfaceSkills(docs []document.File) {
-	skills := map[document.Address]string{}
-	for _, scope := range b.scopes {
-		skills[b.addresses[scope.file]] = scope.file
+	var skills map[document.Address]string
+
+	if !b.surface.IncludeCapabilityDetails {
+		skills = make(map[document.Address]string, len(b.scopes))
+		for _, scope := range b.scopes {
+			skills[b.addresses[scope.file]] = scope.file
+		}
 	}
 
 	for _, d := range docs {
@@ -171,40 +188,50 @@ func (b *bundleAnalysis) surfaceSkills(docs []document.File) {
 			continue
 		}
 
-		b.surfaceFact("skill", "", name, b.reference(name, 0, len(text)))
+		if !b.surface.IncludeCapabilityDetails {
+			b.surfaceFact("skill", "", name, b.reference(name, 0, len(text)))
+		}
 
 		if addr.Namespace == artifact.RootNamespace {
-			b.observeSkillDescription(d, name)
+			b.observeSkillFrontmatter(d, name)
 		}
 
-		links := skillLink.FindAllStringSubmatchIndex(text, maxSurfaceFacts+1)
-		if len(links) > maxSurfaceFacts {
-			b.surface.Limited = true
+		if b.surface.IncludeCapabilityDetails {
+			continue
 		}
 
-		for _, link := range links {
-			if !b.step() {
-				return
-			}
+		b.surfaceSkillLinks(text, name, addr, skills)
+	}
+}
 
-			value, _, _ := strings.Cut(text[link[2]:link[3]], "#")
-			if value == "" || strings.ContainsAny(value, ":\\?%") || path.IsAbs(value) {
-				continue
-			}
+func (b *bundleAnalysis) surfaceSkillLinks(text, name string, addr document.Address, skills map[document.Address]string) {
+	links := skillLink.FindAllStringSubmatchIndex(text, maxSurfaceFacts+1)
+	if len(links) > maxSurfaceFacts {
+		b.surface.Limited = true
+	}
 
-			target := path.Clean(path.Join(path.Dir(addr.Name), value))
-			if target == ".." || strings.HasPrefix(target, "../") {
-				continue
-			}
+	for _, link := range links {
+		if !b.step() {
+			return
+		}
 
-			if file := skills[document.Address{Namespace: addr.Namespace, Name: target}]; file != "" && file != name {
-				b.surfaceFact("skill_reference", file, name, b.reference(name, link[0], link[1]))
-			}
+		value, _, _ := strings.Cut(text[link[2]:link[3]], "#")
+		if value == "" || strings.ContainsAny(value, ":\\?%") || path.IsAbs(value) {
+			continue
+		}
+
+		target := path.Clean(path.Join(path.Dir(addr.Name), value))
+		if target == ".." || strings.HasPrefix(target, "../") {
+			continue
+		}
+
+		if file := skills[document.Address{Namespace: addr.Namespace, Name: target}]; file != "" && file != name {
+			b.surfaceFact("skill_reference", file, name, b.reference(name, link[0], link[1]))
 		}
 	}
 }
 
-func (b *bundleAnalysis) observeSkillDescription(d document.File, name string) {
+func (b *bundleAnalysis) observeSkillFrontmatter(d document.File, name string) {
 	for _, unit := range d.Units() {
 		if unit.Origin != "frontmatter" {
 			continue
@@ -213,6 +240,11 @@ func (b *bundleAnalysis) observeSkillDescription(d document.File, name string) {
 		tree, ok := unit.Tree.(parse.JSONTree)
 		if !ok || tree.Root == nil || tree.Root.Kind != jsonconfig.KindObject {
 			break
+		}
+
+		if b.surface.IncludeCapabilityDetails {
+			b.observeSkillPermissions(d, unit, tree.Root)
+			return
 		}
 
 		node := tree.Root.Get("description")
@@ -231,10 +263,54 @@ func (b *bundleAnalysis) observeSkillDescription(d document.File, name string) {
 		return
 	}
 
+	if b.surface.IncludeCapabilityDetails {
+		return
+	}
+
 	for _, region := range d.Regions() {
 		if region.Kind == "frontmatter" {
 			b.surface.UnknownSkillDescriptions++
 			return
 		}
+	}
+}
+
+func (b *bundleAnalysis) observeSkillPermissions(d document.File, unit document.Unit, root *jsonconfig.Node) {
+	for _, field := range []string{"allowed-tools", "permissions"} {
+		node := root.Get(field)
+		if node == nil {
+			continue
+		}
+
+		if node.Kind == jsonconfig.KindString {
+			b.observeSkillPermission(d, unit, field, node)
+			continue
+		}
+
+		if node.Kind != jsonconfig.KindArray {
+			b.surface.Limited = true
+			continue
+		}
+
+		for _, item := range node.Elements {
+			b.observeSkillPermission(d, unit, field, item)
+		}
+	}
+}
+
+func (b *bundleAnalysis) observeSkillPermission(d document.File, unit document.Unit, field string, node *jsonconfig.Node) {
+	if !b.step() {
+		return
+	}
+
+	value, ok := node.Text()
+	if !ok {
+		b.surface.Limited = true
+		return
+	}
+
+	if value = strings.TrimSpace(value); value != "" {
+		ref := b.unitRef(d, unit, node.Span)
+		b.surfaceFact(field, artifact.Hash([]byte(value)), ref.Path, ref)
 	}
 }

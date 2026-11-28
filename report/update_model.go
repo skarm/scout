@@ -1,6 +1,11 @@
 package report
 
-import "errors"
+import (
+	"errors"
+	"io/fs"
+	"strings"
+	"unicode"
+)
 
 const (
 	defaultUpdateChanges = 4096
@@ -161,6 +166,8 @@ type UpdateCounts struct {
 // UpdateDelta compares two fresh scans while retaining each side's full
 // findings separately.
 type UpdateDelta struct {
+	// Capabilities is present when the comparison requested static capability observations.
+	Capabilities *CapabilityDelta `json:"capabilities,omitempty"`
 	// MCPChanges records source-bound MCP server and tool declaration changes.
 	MCPChanges []MCPChange `json:"mcp_changes,omitempty"`
 	// ManifestSignals records selected security-relevant declaration changes
@@ -189,6 +196,87 @@ type UpdateDelta struct {
 	OmittedChanges int `json:"omitted_changes"`
 	// Issues lists gaps that prevent a complete comparison.
 	Issues []string `json:"issues"`
+}
+
+// CapabilityDelta retains new capability representatives per original file.
+type CapabilityDelta struct {
+	Changes []CapabilityChange `json:"changes"`
+	Omitted int                `json:"omitted"`
+}
+
+// CapabilityChange gives source evidence for a selected static observation.
+// Status is introduced or unverified when the previous surface was incomplete.
+type CapabilityChange struct {
+	Kind        string    `json:"kind"`
+	Status      string    `json:"status"`
+	Destination string    `json:"destination,omitempty"`
+	Source      SourceRef `json:"source"`
+	Line        int       `json:"line"`
+}
+
+const (
+	// CapabilityNetwork covers a selected network operation.
+	CapabilityNetwork = "network"
+	// CapabilityDNS covers a selected DNS query.
+	CapabilityDNS = "dns_query"
+)
+
+// IsComparedCapability identifies the passive facts exposed by comparisons.
+func IsComparedCapability(kind string) bool {
+	switch kind {
+	case CapabilityNetwork, CapabilityDNS, "sensitive_read", "untrusted_input", "command_execution", "file_write", "infrastructure_mutation",
+		"allowed-tools", "permissions", EnvironmentMCPIdentifier, EnvironmentToolIdentifier:
+		return true
+	default:
+		return false
+	}
+}
+
+// CapabilityHasDestination identifies observations that can carry a literal host.
+func CapabilityHasDestination(kind string) bool {
+	return kind == CapabilityNetwork || kind == CapabilityDNS
+}
+
+func validComparisonSourcePath(name string) bool {
+	return name != "." && fs.ValidPath(name) && !strings.ContainsRune(name, '\\') && !strings.ContainsFunc(name, unicode.IsControl)
+}
+
+func validateCapabilityDelta(delta UpdateDelta, candidate Artifact) error {
+	capabilities := delta.Capabilities
+	if capabilities == nil {
+		return nil
+	}
+
+	if capabilities.Omitted < 0 || capabilities.Omitted > delta.OmittedChanges || len(capabilities.Changes) > maxUpdateChanges {
+		return errors.New("invalid capability retention")
+	}
+
+	files := make(map[string]File, len(candidate.Files))
+	for _, file := range candidate.Files {
+		files[file.Path] = file
+	}
+
+	for _, change := range capabilities.Changes {
+		if !validCapabilitySource(change, files[change.Source.Path]) || !IsComparedCapability(change.Kind) || len(change.Destination) > 253 ||
+			!CapabilityHasDestination(change.Kind) && change.Destination != "" {
+			return errors.New("invalid capability source evidence")
+		}
+
+		if change.Status != "introduced" && (change.Status != "unverified" || delta.Completeness == Complete) {
+			return errors.New("invalid capability evidence status")
+		}
+	}
+
+	return nil
+}
+
+func validCapabilitySource(change CapabilityChange, file File) bool {
+	ref := change.Source
+
+	return file.Status == CaptureCaptured && file.Kind == FileKindText && file.SHA256 == ref.SHA256 &&
+		environmentSpanHash(ref.SHA256) && environmentSpanHash(ref.SpanSHA256) && ref.ByteStart >= 0 &&
+		ref.ByteEnd > ref.ByteStart && int64(ref.ByteEnd) <= file.Size && change.Line > 0 && change.Line-1 <= ref.ByteStart &&
+		validComparisonSourcePath(ref.Path)
 }
 
 // MCPChange compares passive declarations without copying descriptions, schema

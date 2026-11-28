@@ -22,7 +22,7 @@ type builder struct {
 	ctx        context.Context
 	out        report.EnvironmentReport
 	operations uint64
-	seen       map[string]bool
+	seen       map[string]struct{}
 	stopped    bool
 	idBuffer   bytes.Buffer
 	idEncoder  *json.Encoder
@@ -40,7 +40,7 @@ type factIndex struct {
 // Build combines source-bound facts without merging the underlying analyses.
 // Both work and observation limits are independent of hostile identifier counts.
 func Build(ctx context.Context, surfaces []Surface, targets []report.TargetResult, limit int, operations uint64) report.EnvironmentReport {
-	b := builder{ctx: ctx, seen: map[string]bool{}, out: report.EnvironmentReport{
+	b := builder{ctx: ctx, seen: map[string]struct{}{}, out: report.EnvironmentReport{
 		Schema: "scout.environment-analysis/v1", Completeness: report.Complete,
 		MaxObservations: min(limit, report.MaxEnvironmentObservations), MaxOperations: min(operations, report.MaxEnvironmentOperations),
 		Observations: []report.EnvironmentObservation{}, Issues: []string{},
@@ -234,7 +234,7 @@ func (b *builder) emitRelationship(kind string, a, c fact, similarityBasisPoints
 	_ = b.idEncoder.Encode(observation)
 
 	id := artifact.Hash(bytes.TrimSuffix(b.idBuffer.Bytes(), []byte{'\n'}))
-	if b.seen[id] {
+	if _, seen := b.seen[id]; seen {
 		return
 	}
 
@@ -245,7 +245,7 @@ func (b *builder) emitRelationship(kind string, a, c fact, similarityBasisPoints
 		return
 	}
 
-	b.seen[id] = true
+	b.seen[id] = struct{}{}
 	observation.ID = id
 	b.out.Observations = append(b.out.Observations, observation)
 }

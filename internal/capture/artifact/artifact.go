@@ -160,7 +160,7 @@ func (s Snapshot) Metadata() report.Artifact {
 
 	return report.Artifact{
 		SourceKind: s.kind, SnapshotSHA256: s.digest,
-		InventoryComplete: s.complete, IdentityScope: "captured-content-not-install-attestation",
+		InventoryComplete: s.complete, IdentityScope: report.CapturedContentIdentity,
 		Files: inventory, Skills: skills,
 	}
 }

@@ -134,7 +134,7 @@ func writeMarkdownFindings(b *strings.Builder, r Analysis, evaluation Evaluation
 		b.WriteString(".\n\n")
 		writeRuleGuidance(b, guides[f.RuleID], f.ContextSignals, true)
 
-		if approved[f.ID] {
+		if _, matched := approved[f.ID]; matched {
 			b.WriteString("**Operator approved:** this occurrence remains visible as evidence.\n\n")
 		}
 

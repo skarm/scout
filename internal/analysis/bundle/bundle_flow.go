@@ -675,12 +675,12 @@ func (b *bundleAnalysis) callFunction(fn *bundleFunction, args []bundleValue, de
 		return bundleValue{}
 	}
 
-	if b.active[fn] || len(b.active) >= maxActiveBundleCalls || depth > maxBundleCallDepth {
+	if _, active := b.active[fn]; active || len(b.active) >= maxActiveBundleCalls || depth > maxBundleCallDepth {
 		b.gap = errors.New("bundle call graph depth or recursion limit")
 		return bundleValue{}
 	}
 
-	b.active[fn] = true
+	b.active[fn] = struct{}{}
 	defer delete(b.active, fn)
 
 	env := map[string]bundleValue{}

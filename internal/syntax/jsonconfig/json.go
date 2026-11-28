@@ -240,7 +240,7 @@ func (r *reader) value(depth int) (*Node, error) {
 
 func (r *reader) object(n *Node, depth int) (*Node, error) {
 	n.Kind = KindObject
-	keys := make(map[string]bool)
+	keys := make(map[string]struct{})
 
 	for r.decoder.More() {
 		if err := r.charge(); err != nil {
@@ -257,11 +257,11 @@ func (r *reader) object(n *Node, depth int) (*Node, error) {
 			return nil, &Error{Code: valueSyntaxError}
 		}
 		// Compare decoded keys, including their escaped spellings.
-		if keys[name] {
+		if _, duplicate := keys[name]; duplicate {
 			return nil, &Error{Code: "duplicate_key"}
 		}
 
-		keys[name] = true
+		keys[name] = struct{}{}
 
 		child, err := r.value(depth + 1)
 		if err != nil {

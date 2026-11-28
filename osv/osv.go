@@ -161,7 +161,7 @@ type queryGroup struct {
 	indices []int
 	ids     []ID
 	done    bool
-	tokens  map[string]bool
+	tokens  map[string]struct{}
 }
 
 type queryPayload struct {
@@ -440,7 +440,7 @@ func validateCacheRecords(cache Cache) error {
 		return errors.New("cache record limit")
 	}
 
-	seen := map[coordinateKey]bool{}
+	seen := map[coordinateKey]struct{}{}
 
 	for _, r := range cache.Records {
 		if !cacheRecordValid(r) {
@@ -448,11 +448,11 @@ func validateCacheRecords(cache Cache) error {
 		}
 
 		k := key(r.Ecosystem, r.Name, r.Version)
-		if seen[k] {
+		if _, duplicate := seen[k]; duplicate {
 			return errors.New("duplicate cache record")
 		}
 
-		seen[k] = true
+		seen[k] = struct{}{}
 
 		ids := map[string]ID{}
 
@@ -546,7 +546,7 @@ func groupQueries(deps report.DependencyReport, o Options, r *report.Vulnerabili
 		r.Queries = append(r.Queries, q)
 
 		if g == nil {
-			g = &queryGroup{tokens: map[string]bool{}}
+			g = &queryGroup{tokens: map[string]struct{}{}}
 			g.q.Package.Name = d.Module
 			g.q.Package.Ecosystem = d.Ecosystem
 			g.q.Version = d.DeclaredVersion
@@ -700,10 +700,10 @@ func applyQueryResponse(out response, pending []*queryGroup, set, fallback func(
 
 		if res.Next == "" {
 			set(g, report.OutcomeCompleted)
-		} else if g.tokens[res.Next] {
+		} else if _, seen := g.tokens[res.Next]; seen {
 			fallback(g, "pagination_loop")
 		} else {
-			g.tokens[res.Next] = true
+			g.tokens[res.Next] = struct{}{}
 			g.q.Token = res.Next
 		}
 	}
@@ -711,13 +711,13 @@ func applyQueryResponse(out response, pending []*queryGroup, set, fallback func(
 
 func collectMatches(groups []*queryGroup, r *report.VulnerabilityReport) {
 	for _, g := range groups {
-		seen := map[string]bool{}
+		seen := map[string]struct{}{}
 		for _, v := range g.ids {
-			if seen[v.ID] {
+			if _, duplicate := seen[v.ID]; duplicate {
 				continue
 			}
 
-			seen[v.ID] = true
+			seen[v.ID] = struct{}{}
 
 			ids := make([]string, 0, len(g.indices))
 			for _, i := range g.indices {

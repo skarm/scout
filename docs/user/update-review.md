@@ -30,7 +30,7 @@ unavailable objects make affected comparisons `unverified`.
 ## Decision and output
 
 A blocked candidate remains blocked. Incompleteness on either side or in the delta
-prevents admission. Changed content requires review even without new findings.
+prevents admission. Changed content requires review without exact package approval.
 Identical, fully checked inputs can receive allow under the selected policy.
 
 JSON retains both target roles and `run.comparison`. SARIF has separate runs for
@@ -43,6 +43,62 @@ upload consent for both versions.
 
 Go callers use `Scanner.Compare` with `scout.DefaultCompareOptions()`.
 See [API contracts](../development/go-api.md).
+
+## Pull request summary and package approval
+
+```sh
+scout compare --pr-head "$PR_HEAD_REPO@$PR_HEAD_SHA" --pr-path skills/example \
+  --report json=/ci-results/update.json -- ./previous ./candidate
+```
+
+Use the candidate's actual GitHub repository and full head commit SHA. Scout
+uses this information to build source links. Your CI checkout supplies the
+matching contents. The summary shows new static operations and declarations per
+source file, including recognized network and DNS destinations, command execution, file
+mutations, and selected tool and permission declarations. It shows a hostname
+when resolved and excludes URL paths and query parameters. The Markdown lists up
+to 100 changes. JSON retains the comparison's full bounded results. Observed
+capabilities describe the selected static coverage and may differ from runtime
+behavior or effective permissions.
+
+After reviewing the output, supply **Candidate package SHA-256** with
+`--approved-sha256` from a trusted CI setting. Use the snapshot digest in the
+summary or `run.targets[1].analysis.artifact.snapshot_sha256` in JSON. The
+comparison hashes the freshly captured files, including their paths, contents
+and executable bits. A different digest requires review. An exact match clears
+the change-only review requirement. Findings, declaration changes and coverage
+still affect the decision under the current policy.
+
+Copy the [GitHub Actions example](../../examples/scout-package-review.yml) into
+`.github/workflows` for a package directory present in both PR revisions. Set
+`SCOUT_PACKAGE_PATH`, pin a Scout commit that includes these flags in `SCOUT_REF`,
+and set `SCOUT_APPROVED_SHA256` after review. Rerun the check after setting the
+digest. The job compares the merge base with the PR head and publishes Markdown
+in the run summary linked from the PR's Checks tab. For a mandatory gate, use a
+trusted workflow and configuration controlled by maintainers so the candidate
+cannot change how the check runs.
+
+## GitLab merge requests
+
+```sh
+scout compare --pr-provider gitlab --pr-head "$GITLAB_PROJECT_URL@$SOURCE_SHA" \
+  --pr-path skills/example -- ./previous ./candidate
+```
+
+Use the source project's full HTTP(S) URL, such as
+`https://gitlab.example.com/group/subgroup/project`. Links go to the exact
+source commit and line. This works for GitLab.com and self-managed instances.
+
+Copy the job from the [GitLab CI example](../../examples/scout-package-review.gitlab-ci.yml)
+into the project's `.gitlab-ci.yml`. Use a package directory present in both
+revisions, and set `SCOUT_PACKAGE_PATH` and `SCOUT_REF` as for GitHub. Both examples
+use the package staging script from the pinned Scout revision. The GitLab job
+compares the MR diff base with the source commit, including in merged-results
+pipelines. The merge request exposes `scout-review.md` as **Scout package review**,
+including when the job exits with review, block or incomplete. After reviewing
+the artifact, set the recorded digest as `SCOUT_APPROVED_SHA256` in the trusted
+CI/CD configuration and start a new pipeline. For a mandatory gate, keep the
+job definition and approval setting under maintainer control.
 
 ## MCP reference snapshots
 
