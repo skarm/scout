@@ -28,7 +28,7 @@ shows a representative fixture. The last column links Scout MCP stdio setup exam
 
 | Agent | `--agent` / `--harness` | Native input verified end to end | Scout MCP stdio example |
 | --- | --- | --- | --- |
-| Codex | `codex` | `.codex/config.toml` with `[mcp_servers]` | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
+| Codex | `codex` | `.codex/config.toml` with `[mcp_servers]` and `hooks/hooks.json` in an Agent Plugins package | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
 | Claude Code | `claude-code` | `.claude.json` MCP and grouped hooks in `.claude/settings.local.json` | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
 | Cursor | `cursor` | `.cursor/hooks.json` with flat lifecycle hooks | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
 | GitHub Copilot CLI | `copilot-cli` | `.github/mcp.json` and `.github/hooks/*.json` | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
@@ -216,8 +216,10 @@ file-based MCP maps. Paths must stay within the plugin. Scout reads Agent Plugin
 1.0 and 1.1 packages in the Codex cache from root `plugin.json`, immediate
 `skills/<name>/SKILL.md` declarations, and root `mcp.json`. Version 1.1 also
 uses root `hooks.json`. Each component configuration must declare the manifest's
-schema version. Package scans use the inline `extensions.com.openai` object for
-Codex settings when present and consult `.codex-plugin/plugin.json` as a fallback.
+schema version. Discovery and package scans use the inline `extensions.com.openai`
+object for Codex settings when present and consult `.codex-plugin/plugin.json`
+as a fallback. `--kind hook` selects packages with portable or Codex-native hooks,
+including the default `hooks/hooks.json` when no native hook setting is declared.
 Marketplace catalogs are not searched as installed plugin packages.
 
 Claude plugins can omit `.claude-plugin/plugin.json`. Their default `skills/` and

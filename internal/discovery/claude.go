@@ -7,6 +7,10 @@ import (
 )
 
 func (t *tree) claudeHooks(hooks *jsonconfig.Node, file string) {
+	t.claudeHookGroups(hooks, file, file, "/hooks")
+}
+
+func (t *tree) claudeHookGroups(hooks *jsonconfig.Node, location, file, key string) {
 	if hooks == nil {
 		return
 	}
@@ -26,7 +30,7 @@ func (t *tree) claudeHooks(hooks *jsonconfig.Node, file string) {
 			continue
 		}
 
-		t.groupedHookItems(event, file, "/hooks/"+pointer(event.Key), claudeHook)
+		t.groupedHookItems(event, location, file, key+"/"+pointer(event.Key), claudeHook)
 	}
 }
 

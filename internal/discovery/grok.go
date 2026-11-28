@@ -10,6 +10,7 @@ import (
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/hookevent"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+	"github.com/skarm/scout/report"
 )
 
 const (
@@ -101,11 +102,11 @@ func (t *tree) grokHookGroups(n *jsonconfig.Node, file, key string) {
 			continue
 		}
 
-		t.groupedHookItems(event, file, key+"/"+pointer(event.Key), func(n *jsonconfig.Node) bool { return agentconfig.GrokHookTarget(n) != nil })
+		t.groupedHookItems(event, file, file, key+"/"+pointer(event.Key), func(n *jsonconfig.Node) bool { return agentconfig.GrokHookTarget(n) != nil })
 	}
 }
 
-func (t *tree) groupedHookItems(event jsonconfig.Member, file, key string, valid func(*jsonconfig.Node) bool) {
+func (t *tree) groupedHookItems(event jsonconfig.Member, location, file, key string, valid func(*jsonconfig.Node) bool) {
 	for i, group := range event.Value.Elements {
 		if !t.b.step(t.absolute(file)) {
 			return
@@ -128,7 +129,7 @@ func (t *tree) groupedHookItems(event jsonconfig.Member, file, key string, valid
 			}
 
 			item := key + "/" + strconv.Itoa(i) + "/hooks/" + strconv.Itoa(j)
-			t.component(kindHook, event.Key, file, file, item, "unknown")
+			t.component(kindHook, event.Key, location, file, item, "unknown")
 		}
 	}
 }
@@ -242,7 +243,7 @@ func (t *tree) pluginConfigPaths(n *jsonconfig.Node, dir, file, key string, load
 
 	raw, _ := n.Text()
 
-	rel, reason := artifactpath.Reference(raw, false)
+	rel, reason := artifactpath.Reference(raw, t.agent == report.HostCodex)
 	if reason != "" || rel == "." {
 		t.b.issue(codeUnsupportedPluginReference, t.absolute(file))
 		return

@@ -137,8 +137,15 @@ func TestDiscoverySnapshotPinsAgentHomeAndReadsLegacyCheckpoints(t *testing.T) {
 		t.Fatalf("wrong saved paths: %s, %v", result, err)
 	}
 	writeLegacyDiscoveryCheckpoint(t, checkpoint, legacy)
-	if code, _ := runCheckpoint(t, checkpointArgs("compare", legacy)); code != 0 {
+	candidate := filepath.Join(filepath.Dir(checkpoint), "updated.json")
+	if code, _ := runCheckpoint(t, checkpointArgs("compare", legacy, "--save-candidate", candidate)); code != 0 {
 		t.Fatalf("legacy discovery checkpoint stopped replaying: %d", code)
+	}
+	code, result = runCheckpoint(t, []string{"snapshot", "inspect", "--snapshot", candidate, "--format", "json"})
+	summary.Bindings = nil
+	if code != 0 || json.Unmarshal(result, &summary) != nil || len(summary.Bindings) != 2 ||
+		summary.Bindings[1].Path != alias || summary.Bindings[1].Resolved != resolved {
+		t.Fatalf("candidate saved from legacy checkpoint is missing current bindings: %s", result)
 	}
 	if err := os.Remove(alias); err != nil {
 		t.Fatal(err)

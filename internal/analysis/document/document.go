@@ -414,7 +414,7 @@ func (f *filePreparation) unitBackend(lang, origin string) (parse.Backend, bool)
 		case f.qwenJSONWithComments():
 			backend = parse.WithJSONCommentsAndBOM(backend)
 		default:
-			if _, gemini := artifact.GeminiSettingsRoot(f.file.Metadata().Path, f.budget.host); gemini {
+			if _, gemini := artifact.GeminiSettingsRoot(f.hostConfigName, f.budget.host); gemini {
 				backend = parse.WithJSONComments(backend, false)
 			}
 		}

@@ -28,7 +28,7 @@ scout discover --home /review/home --system=false --no-project --format json
 
 | Агент | `--agent` / `--harness` | Нативный вход в сквозной проверке | Пример MCP stdio для Scout |
 | --- | --- | --- | --- |
-| Codex | `codex` | `.codex/config.toml` с `[mcp_servers]` | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
+| Codex | `codex` | `.codex/config.toml` с `[mcp_servers]` и `hooks/hooks.json` в пакете Agent Plugins | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
 | Claude Code | `claude-code` | MCP в `.claude.json` и групповые хуки в `.claude/settings.local.json` | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
 | Cursor | `cursor` | Плоские хуки в `.cursor/hooks.json` | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
 | GitHub Copilot CLI | `copilot-cli` | `.github/mcp.json` и `.github/hooks/*.json` | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
@@ -221,8 +221,11 @@ MCP-конфигурации, встроенные либо указанные �
 плагина. Для Agent Plugins 1.0 и 1.1 в кеше Codex Scout читает корневые
 `plugin.json` и `mcp.json`, а также навыки `skills/<имя>/SKILL.md`. Версия 1.1
 также использует корневой `hooks.json`. Конфигурации компонентов указывают ту же
-версию схемы, что и манифест. При сканировании пакета настройки Codex берутся из
-объекта `extensions.com.openai`, если он есть, или из `.codex-plugin/plugin.json`.
+версию схемы, что и манифест. При инвентаризации и сканировании настройки Codex
+берутся из объекта `extensions.com.openai`, если он есть, или из
+`.codex-plugin/plugin.json`. Фильтр `--kind hook` выбирает пакеты с переносимыми
+или нативными хуками Codex, включая стандартный `hooks/hooks.json`, если в
+настройках пакета не объявлены нативные хуки.
 Каталоги marketplace не обходятся как установленные плагины.
 
 Плагины Claude могут не содержать `.claude-plugin/plugin.json`. Их стандартные

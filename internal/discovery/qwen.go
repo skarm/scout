@@ -104,7 +104,7 @@ func (t *tree) qwenHooks(n *jsonconfig.Node, file, key string) {
 			continue
 		}
 
-		t.groupedHookItems(event, file, key+"/"+pointer(event.Key), agentconfig.QwenHookValid)
+		t.groupedHookItems(event, file, file, key+"/"+pointer(event.Key), agentconfig.QwenHookValid)
 	}
 }
 

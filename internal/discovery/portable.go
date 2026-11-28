@@ -7,6 +7,7 @@ import (
 
 	"github.com/skarm/scout/internal/agentconfig"
 	"github.com/skarm/scout/internal/agentplugins"
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/report"
 )
@@ -54,6 +55,40 @@ func (t *tree) portablePlugin(dir, file string, manifest *jsonconfig.Node, versi
 
 	if t.agent == report.HostCopilotCLI && version == agentplugins.V1_0 {
 		plugin.portableCopilot(path.Join(dir, agentconfig.CopilotExtension))
+	}
+
+	if t.agent == report.HostCodex {
+		plugin.portableCodexHooks(dir, file, manifest)
+	}
+}
+
+func (t *tree) portableCodexHooks(dir, file string, manifest *jsonconfig.Node) {
+	settings := agentplugins.OpenAISettings(manifest)
+	key := "/extensions/com.openai/hooks"
+
+	if settings == nil {
+		file = path.Join(dir, artifact.CodexPluginManifest)
+		settings = t.config(file, false)
+		key = "/hooks"
+	}
+
+	inspect := func(n *jsonconfig.Node, source, pointer string) {
+		if wrapped := n.Get("hooks"); wrapped != nil {
+			n, pointer = wrapped, pointer+"/hooks"
+		}
+
+		t.claudeHookGroups(n, dir, source, pointer)
+	}
+	load := func(source string, required bool) {
+		if n := t.config(source, required); n != nil {
+			inspect(n, source, "")
+		}
+	}
+
+	if hooks := settings.Get("hooks"); hooks != nil {
+		t.pluginConfigPaths(hooks, dir, file, key, load, inspect)
+	} else {
+		load(path.Join(dir, "hooks/hooks.json"), false)
 	}
 }
 

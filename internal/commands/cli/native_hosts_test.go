@@ -261,6 +261,47 @@ func assertNativeGraph(t *testing.T, doc *report.Document, host, kind string) {
 	}
 }
 
+func TestArchivedGeminiSettingsWithComments(t *testing.T) {
+	archive := portablePluginZIP(t, map[string]string{
+		".gemini/settings.json": `{// comment retained in a captured archive
+			"mcpServers":{"example":{"httpUrl":"https://example.invalid/mcp"}}
+		}`,
+	})
+	_, raw := runCheckpoint(t, []string{"scan", "--profile", "custom", "--checks", "none", "--scope", "selected", "--format", "json", archive})
+	var doc report.Document
+	if err := json.Unmarshal(raw, &doc); err != nil || doc.Validate() != nil || len(doc.Run.Targets) != 1 {
+		t.Fatalf("invalid archive scan: %v: %s", err, raw)
+	}
+	graph := doc.Run.Targets[0].Analysis.Components
+	if !slices.ContainsFunc(graph.Components, func(c report.Component) bool {
+		return c.Host == report.HostGeminiCLI && c.Kind == "mcp_server" && c.Source != nil
+	}) {
+		t.Fatalf("missing Gemini MCP declaration: %+v", graph)
+	}
+}
+
+func TestNativeSkillAssetsDoNotRegisterPlugins(t *testing.T) {
+	for host, location := range map[string]string{
+		report.HostQwenCode: ".qwen", report.HostKimiCode: ".kimi-code",
+	} {
+		t.Run(host, func(t *testing.T) {
+			home := t.TempDir()
+			root := location + "/skills/example/"
+			writeNativeFixture(t, home, root+"SKILL.md", "# Example\nFormat text.\n")
+			manifest := writeNativeFixture(t, home, root+"plugin.json", `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"example-data"}`)
+			code, raw := runCheckpoint(t, []string{"discover", "--agent", host, "--home", home, "--system=false", "--no-project", "--format", "json"})
+			var inventory discovery.Snapshot
+			if err := json.Unmarshal(raw, &inventory); err != nil || code != 0 || !inventory.Complete {
+				t.Fatalf("invalid inventory, exit %d: %s", code, raw)
+			}
+			if len(inventory.Components) != 1 || inventory.Components[0].Kind != "skill" || inventory.Components[0].Name != "example" ||
+				slices.ContainsFunc(inventory.Sources, func(source discovery.Source) bool { return source.Path == manifest }) {
+				t.Fatalf("a skill asset was treated as an installed plugin: %+v", inventory)
+			}
+		})
+	}
+}
+
 func writeNativeFixture(t *testing.T, root, name, data string) string {
 	t.Helper()
 	file := filepath.Join(root, filepath.FromSlash(name))

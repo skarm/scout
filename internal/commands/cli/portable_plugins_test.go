@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/commands/cli"
@@ -95,6 +96,80 @@ func TestPortablePluginsDiscoverAndScan(t *testing.T) {
 				if links != wantLinks {
 					t.Fatalf("%s lost a handler reference: %+v", target, graph.References)
 				}
+			}
+		})
+	}
+}
+
+func TestPortableCodexNativeHookSelection(t *testing.T) {
+	const hooks = `{"SessionStart":[{"hooks":[{"type":"command","command":"printf ready"}]}]}`
+	for _, tt := range []struct {
+		name, extension, fallback, source, key string
+	}{
+		{name: "default", source: "hooks/hooks.json", key: "/hooks/SessionStart/0/hooks/0"},
+		{name: "fallback", fallback: `{"name":"portable-demo","hooks":"./settings/native.json"}`, source: "settings/native.json", key: "/SessionStart/0/hooks/0"},
+		{
+			name: "inline", extension: `,"extensions":{"com.openai":{"hooks":` + hooks + `}}`, fallback: `{"name":"portable-demo","hooks":"./settings/native.json"}`,
+			source: "plugin.json", key: "/extensions/com.openai/hooks/SessionStart/0/hooks/0",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			root := filepath.Join(home, ".codex", "plugins", "cache", "market", "demo", "1.1.0")
+			writeNativeFixture(t, root, "plugin.json", `{"$schema":"https://agent-plugins.org/schemas/1.1.0/plugin.schema.json","name":"portable-demo"`+tt.extension+`}`)
+			writeNativeFixture(t, root, "hooks/hooks.json", `{"hooks":`+hooks+`}`)
+			if tt.fallback != "" {
+				writeNativeFixture(t, root, ".codex-plugin/plugin.json", tt.fallback)
+				writeNativeFixture(t, root, "settings/native.json", hooks)
+			}
+			root, err := filepath.EvalSymlinks(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"discover", "--agent", "codex", "--home", home, "--system=false", "--no-project", "--kind", "hook"}
+			code, raw := runCheckpoint(t, append(slices.Clone(args), "--format", "json"))
+			var inventory discovery.Snapshot
+			if err := json.Unmarshal(raw, &inventory); err != nil || code != 0 || !inventory.Complete || !slices.Equal(inventory.Targets, []string{root}) {
+				t.Fatalf("native hook selection, exit %d: %s", code, raw)
+			}
+			var discovered []discovery.Component
+			for _, c := range inventory.Components {
+				if c.Kind == "hook" {
+					discovered = append(discovered, c)
+				}
+			}
+			if len(discovered) != 1 || discovered[0].Source != filepath.Join(root, tt.source) || discovered[0].Key != tt.key {
+				t.Fatalf("wrong native hook provenance: %+v", discovered)
+			}
+			scanFlags := []string{"--", "--profile", "custom", "--checks", "none", "--scope", "selected", "--format", "json"}
+			_, raw = runCheckpoint(t, append(append(slices.Clone(args), "--scan"), scanFlags...))
+			var doc report.Document
+			if err := json.Unmarshal(raw, &doc); err != nil || doc.Validate() != nil {
+				t.Fatalf("invalid selected scan: %v: %s", err, raw)
+			}
+			assertNativeGraph(t, &doc, report.HostCodex, report.ComponentHook)
+			if tt.name == "default" {
+				// Explicit auto reproduces the context captured before discovery carried
+				// the Codex profile for packages with only default native hooks.
+				checkpoint, candidate := filepath.Join(t.TempDir(), "before.json"), filepath.Join(t.TempDir(), "after.json")
+				beforeArgs := append(append(slices.Clone(args), "--snapshot", checkpoint), scanFlags...)
+				runCheckpoint(t, append(beforeArgs, "--harness", report.HostAuto))
+				writeNativeFixture(t, root, tt.source, `{"hooks":`+strings.ReplaceAll(hooks, "printf ready", "printf updated")+`}`)
+				code, raw = runCheckpoint(t, checkpointArgs("compare", checkpoint, "--scope", "selected", "--save-candidate", candidate))
+				comparison := comparisonResult(t, raw)
+				if code != 2 || len(comparison.Roots) != 1 || comparison.Roots[0].Change != "modified" {
+					t.Fatalf("native hook edit missing from snapshot comparison: exit %d, %+v", code, comparison.Roots)
+				}
+				assertNativeGraph(t, comparison.Previous, report.HostCodex, report.ComponentHook)
+				assertNativeGraph(t, comparison.Current, report.HostCodex, report.ComponentHook)
+
+				code, raw = runCheckpoint(t, checkpointArgs("compare", checkpoint, "--scope", "selected", "--candidate", candidate))
+				archived := comparisonResult(t, raw)
+				if code != 2 || archived.Before != comparison.Before || archived.After != comparison.After {
+					t.Fatalf("archived comparison lost the Codex context: exit %d, %+v", code, archived.Roots)
+				}
+				assertNativeGraph(t, archived.Previous, report.HostCodex, report.ComponentHook)
+				assertNativeGraph(t, archived.Current, report.HostCodex, report.ComponentHook)
 			}
 		})
 	}

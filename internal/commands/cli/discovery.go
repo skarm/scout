@@ -230,7 +230,7 @@ func scanDiscovered(ctx context.Context, a discoveryArguments, snapshot discover
 
 	r.targets = snapshot.Targets
 	r.publicationInputs = snapshot.ProtectedInputs()
-	r.useDiscoveryHarness(discoveryHarness(a.options.Agent, snapshot.Targets))
+	r.useDiscoveryHarness(selectedDiscoveryHarness(a.options.Agent, snapshot))
 
 	targets, err := r.scanTargets(nil)
 	if err != nil {
@@ -248,6 +248,16 @@ func (r *request) useDiscoveryHarness(agent string) {
 	if agent != discovery.AllAgents && discovery.ValidAgent(agent) {
 		r.settings.Scanner.Harness.Host = agent
 	}
+}
+
+func selectedDiscoveryHarness(agent string, snapshot discovery.Snapshot) string {
+	// The cache location supplies Codex context even when a portable package
+	// uses native defaults without declaring a Codex overlay in its manifest.
+	if agent == report.HostCodex && snapshot.HasSelectedPlugin(agent) {
+		return agent
+	}
+
+	return discoveryHarness(agent, snapshot.Targets)
 }
 
 func discoveryHarness(agent string, targets []string) string {

@@ -27,6 +27,22 @@ type Selection struct {
 	OriginalTargets int `json:"original_targets"`
 }
 
+// HasSelectedPlugin reports whether a selected scan root contains a discovered plugin.
+func (s Snapshot) HasSelectedPlugin(agent string) bool {
+	roots := make(map[string]bool, len(s.Targets))
+	for _, root := range s.Targets {
+		roots[root] = true
+	}
+
+	for _, component := range s.Components {
+		if component.Agent == agent && component.Kind == "plugin" && coveredBy(roots, component.Path) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Select retains the full inventory and its issues, narrowing only scan targets.
 // Exclusion removes an entire overlapping root: it never silently scans an
 // excluded descendant. A kind filter selects individual component paths instead

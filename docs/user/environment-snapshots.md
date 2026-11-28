@@ -33,9 +33,11 @@ locations and filters. New snapshots record the resolved locations and where the
 project ancestor search stops. If a link redirects a path or the project boundary
 changes, live comparison stops. Use `--candidate`
 to compare captured bytes or `--root` to choose the current inputs explicitly.
-Older snapshots still open and use their saved discovery arguments. Repeat discovery
-finds new components and reports missing components as removed. Incomplete discovery
-stops comparison.
+Older snapshots still open and use their saved discovery arguments. When
+`--save-candidate` saves a live comparison against an older snapshot, the candidate
+records the resolved locations and project boundaries. Repeat discovery finds new
+components and reports missing components as removed. Incomplete discovery stops
+comparison.
 
 Use `inspect` to see the saved arguments, resolved locations and historical status:
 

@@ -221,7 +221,7 @@ func pluginManifests(host string) []string {
 		return append([]string{agentplugins.ManifestFile}, agentconfig.GrokLegacyManifests()...)
 	case report.HostZCode:
 		return agentconfig.ZCodeManifests()
-	case report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw, report.HostDeepSeekHarness:
+	case report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw, report.HostDeepSeekHarness, report.HostQwenCode, report.HostKimiCode:
 		return nil
 	default:
 		return []string{agentplugins.ManifestFile, artifact.CodexPluginManifest, artifact.ClaudePluginManifest}

@@ -59,12 +59,12 @@ func resolveSnapshotSelection(ctx context.Context, mode, path string, r *request
 				return out, err
 			}
 
-			inventory, err := completeDiscovery(ctx, &a, saved.RootBindings)
+			inventory, bindings, err := completeDiscovery(ctx, &a, saved.RootBindings)
 			if err != nil {
 				return out, err
 			}
 
-			host := discoveryHarness(a.options.Agent, inventory.Targets)
+			host := selectedDiscoveryHarness(a.options.Agent, inventory)
 			if host == report.HostAuto && capturedDiscoveryHarness(out.checkpoint) == a.options.Agent {
 				host = a.options.Agent
 			}
@@ -78,7 +78,7 @@ func resolveSnapshotSelection(ctx context.Context, mode, path string, r *request
 				return out, err
 			}
 
-			out.selection = &checkpointDiscovery{Arguments: saved.Arguments, Inventory: inventory, RootBindings: saved.RootBindings}
+			out.selection = &checkpointDiscovery{Arguments: saved.Arguments, Inventory: inventory, RootBindings: bindings}
 		} else {
 			out.inputs, err = savedRoots(out.checkpoint.Snapshot)
 			if err != nil {
@@ -142,6 +142,12 @@ func archivedDiscoveryHarness(before, after environmentCheckpoint) string {
 		if host != report.HostAuto && host != agent {
 			return ""
 		}
+	}
+
+	if agent == report.HostCodex &&
+		(previous == agent && before.Discovery.Inventory.HasSelectedPlugin(agent) ||
+			current == agent && after.Discovery.Inventory.HasSelectedPlugin(agent)) {
+		return agent
 	}
 
 	// Older discovery checkpoints recorded auto for Codex and Claude even
@@ -276,7 +282,7 @@ func snapshotDiscovered(ctx context.Context, a discoveryArguments, inventory dis
 	}
 
 	r.publicationInputs = inventory.ProtectedInputs()
-	r.useDiscoveryHarness(discoveryHarness(a.options.Agent, inventory.Targets))
+	r.useDiscoveryHarness(selectedDiscoveryHarness(a.options.Agent, inventory))
 
 	plan, err := savedDiscoveryArguments(a)
 	if err != nil {
@@ -290,11 +296,10 @@ func (a *discoveryArguments) pinRoots(saved []discovery.RootBinding) ([]discover
 	return a.options.PinRoots(saved, append(slices.Clone(a.includePaths), a.excludePaths...)...)
 }
 
-func completeDiscovery(ctx context.Context, a *discoveryArguments, bindings []discovery.RootBinding) (discovery.Snapshot, error) {
-	if bindings != nil {
-		if _, err := a.pinRoots(bindings); err != nil {
-			return discovery.Snapshot{}, err
-		}
+func completeDiscovery(ctx context.Context, a *discoveryArguments, saved []discovery.RootBinding) (discovery.Snapshot, []discovery.RootBinding, error) {
+	bindings, err := a.pinRoots(saved)
+	if err != nil {
+		return discovery.Snapshot{}, nil, err
 	}
 
 	call, cancel := context.WithTimeout(ctx, a.timeout)
@@ -302,15 +307,15 @@ func completeDiscovery(ctx context.Context, a *discoveryArguments, bindings []di
 
 	inventory, err := discovery.Discover(call, a.options)
 	if err != nil || !inventory.Complete {
-		return inventory, errors.New("discovery incomplete; snapshot comparison refused")
+		return inventory, nil, errors.New("discovery incomplete; snapshot comparison refused")
 	}
 
 	selected, err := discovery.Select(call, inventory, discovery.Filters{Kinds: a.kinds, IncludePaths: a.includePaths, ExcludePaths: a.excludePaths})
 	if err != nil || !selected.Complete {
-		return selected, errors.New("discovery selection incomplete; snapshot comparison refused")
+		return selected, nil, errors.New("discovery selection incomplete; snapshot comparison refused")
 	}
 
-	return selected, nil
+	return selected, bindings, nil
 }
 
 func savedDiscoveryArguments(a discoveryArguments) ([]string, error) {
