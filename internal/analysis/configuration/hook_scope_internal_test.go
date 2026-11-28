@@ -1,5 +1,5 @@
-//nolint:testpackage // Exercises discovered whole-file scopes on bundled checks.
-package analyzer
+// Exercises discovered whole-file scopes on bundled checks.
+package configuration
 
 import (
 	"testing"

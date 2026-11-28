@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Adapted dependency-name heuristics with bounded, captured-source evidence.
 
-package analyzer
+package supplychain
 
 import (
 	"context"
 	"slices"
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/dependencies"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/syntax/source"
@@ -35,8 +36,8 @@ var (
 
 type dependencySignal struct{ id string }
 
-func DependencyRules() []Analyzer {
-	return []Analyzer{dependencySignal{id: ruleNVSC5}, dependencySignal{id: ruleNVSC6}, sourceRedirection{}}
+func DependencyRules() []check.Analyzer {
+	return []check.Analyzer{dependencySignal{id: ruleNVSC5}, dependencySignal{id: ruleNVSC6}, sourceRedirection{}}
 }
 
 func (a dependencySignal) Rule() report.Rule {
@@ -62,10 +63,10 @@ func (a dependencySignal) Rule() report.Rule {
 
 func (dependencySignal) AppliesTo(document.File) bool { return true }
 
-func (a dependencySignal) Find(ctx context.Context, f document.File, budget int) (Result, error) {
+func (a dependencySignal) Find(ctx context.Context, f document.File, budget int) (check.Result, error) {
 	inv := dependencies.Collect(ctx, []document.File{f})
-	out := Result{}
-	collected := collectMatches(&out, budget)
+	out := check.Result{}
+	collected := check.NewMatchCollector(&out, budget)
 
 	for _, d := range inv.Declarations {
 		if ctx.Err() != nil {
@@ -75,7 +76,7 @@ func (a dependencySignal) Find(ctx context.Context, f document.File, budget int)
 		match := a.matchesDependencyName(d.Ecosystem, d.Module)
 
 		at := source.Span{Start: d.Source.ByteStart, End: d.Source.ByteEnd}
-		if match && !collected.span(at.Start, at.End) {
+		if match && !collected.Span(at.Start, at.End) {
 			break
 		}
 	}

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SC10 concept adapted to supported parsed sources. No source is contacted.
 
-package analyzer
+package supplychain
 
 import (
 	"context"
@@ -39,11 +39,11 @@ func (sourceRedirection) Rule() report.Rule {
 }
 
 func (sourceRedirection) AppliesTo(document.File) bool { return true }
-func (a sourceRedirection) Find(ctx context.Context, f document.File, budget int) (Result, error) {
+func (a sourceRedirection) Find(ctx context.Context, f document.File, budget int) (check.Result, error) {
 	file := f.Artifact()
-	out := Result{}
-	collected := collectMatches(&out, budget)
-	emit := func(at source.Span) { collected.span(at.Start, at.End) }
+	out := check.Result{}
+	collected := check.NewMatchCollector(&out, budget)
+	emit := func(at source.Span) { collected.Span(at.Start, at.End) }
 
 	if a.declarations != nil {
 		cached, err := a.declarations[file.Metadata().Path].Result(budget)

@@ -57,22 +57,6 @@ func TestPatternZeroBudgetDistinguishesOmissions(t *testing.T) {
 	}
 }
 
-func TestMatchCollectionRetainsOnlyAdmittedSpans(t *testing.T) {
-	var out Result
-	collector := collectMatches(&out, 1)
-	if !collector.span(0, 1) || collector.span(1, 2) || !collector.span(0, 1) {
-		t.Fatal("collection changed distinct admission or deduplication")
-	}
-	for start := 2; start < 128; start++ {
-		if collector.span(start, start+1) {
-			t.Fatal("collection admitted an observation after the limit")
-		}
-	}
-	if len(collector.seen) != 1 || len(out.Matches) != 1 || !out.Truncated {
-		t.Fatalf("rejected matches consumed retention state: seen=%d result=%+v", len(collector.seen), out)
-	}
-}
-
 func TestPatternShellRetainsPartialFactsOnError(t *testing.T) {
 	d := document.Prepare(context.Background(), artifact.NewFile("input.txt", []byte("plain text"), false))
 	failure := errors.New("later shell failure")

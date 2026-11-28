@@ -89,8 +89,8 @@ func (a literal) Find(ctx context.Context, d document.File, budget int) (Result,
 		return out, err
 	}
 
-	collected := collectMatches(&out, budget)
-	_, err = matcher.inspectSecurityViews(ctx, d, collected)
+	collected := check.NewMatchCollector(&out, budget)
+	_, err = matcher.inspectSecurityViews(ctx, d, budget, &out, collected)
 
 	return out, err
 }

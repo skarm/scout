@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/configuration"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/report"
@@ -114,7 +115,7 @@ func TestPermissionsAreScopedAndEvidenceBound(t *testing.T) {
 		artifact.NewFile("two/helper.go", []byte("package main\nfunc f(){fmt.Println(1)}"), false),
 	}
 	docs := document.PrepareAll(context.Background(), files)
-	checks := analyzer.BindContexts(context.Background(), analyzer.PermissionRules(), docs, report.ExtractionReport{})
+	checks := configuration.Bind(context.Background(), configuration.PermissionRules(), docs, report.ExtractionReport{})
 	for _, a := range checks {
 		if !strings.HasPrefix(a.Rule().ID, "NV-LP") {
 			continue
@@ -153,7 +154,7 @@ func TestPermissionWildcardAndMissing(t *testing.T) {
 	}} {
 		t.Run(tc.id, func(t *testing.T) {
 			docs := document.PrepareAll(context.Background(), []artifact.File{artifact.NewFile(".claude-plugin/plugin.json", []byte(tc.manifest), false), artifact.NewFile("main.go", []byte("package p\nfunc f(){os.Getenv(\"TOKEN\")}"), false)})
-			checks := analyzer.BindContexts(context.Background(), analyzer.PermissionRules(), docs, report.ExtractionReport{})
+			checks := configuration.Bind(context.Background(), configuration.PermissionRules(), docs, report.ExtractionReport{})
 			for _, a := range checks {
 				if a.Rule().ID == tc.id {
 					r, e := a.Find(context.Background(), prepared(context.Background(), docs[0].Artifact()), 10)

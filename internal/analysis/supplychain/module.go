@@ -1,9 +1,10 @@
-package analyzer
+package supplychain
 
 import (
 	"context"
 	"errors"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
@@ -47,16 +48,16 @@ func (a moduleCheck) Rule() report.Rule {
 	return r
 }
 
-func (moduleCheck) AppliesTo(f document.File) bool { return hasParsedUnit[parse.GoModTree](f) }
+func (moduleCheck) AppliesTo(f document.File) bool { return document.HasParsedUnit[parse.GoModTree](f) }
 
-func (a moduleCheck) Find(ctx context.Context, f document.File, budget int) (Result, error) {
-	var out Result
+func (a moduleCheck) Find(ctx context.Context, f document.File, budget int) (check.Result, error) {
+	var out check.Result
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
 
-	for u := range parsedUnits[parse.GoModTree](f) {
-		tree := u.tree
+	for u := range document.ParsedUnits[parse.GoModTree](f) {
+		tree := u.Tree
 		if tree.File == nil {
 			continue
 		}
@@ -82,7 +83,7 @@ func (a moduleCheck) Find(ctx context.Context, f document.File, budget int) (Res
 				return out, errors.New("go.mod source mapping failed")
 			}
 
-			out.Matches = append(out.Matches, Match{Start: at.Start, End: at.End})
+			out.Matches = append(out.Matches, check.Match{Start: at.Start, End: at.End})
 		}
 	}
 

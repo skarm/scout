@@ -1,4 +1,4 @@
-package analyzer
+package configuration
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hookpolicy"
 	"github.com/skarm/scout/internal/analysis/languages/literals"
@@ -84,9 +84,9 @@ var launcherFamilies = map[string]string{
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var (
 	pythonLauncherPrefixes    = map[string][]string{"uv": {"tool", "run"}, "pip": {"install"}, "pip3": {"install"}}
-	pythonLauncherFlags       = stringSet("--no-cache --quiet -q")
-	containerLauncherFlags    = stringSet("--rm -i -t -it")
-	containerLauncherCommands = stringSet("run pull create")
+	pythonLauncherFlags       = textmatch.WordSet("--no-cache --quiet -q")
+	containerLauncherFlags    = textmatch.WordSet("--rm -i -t -it")
+	containerLauncherCommands = textmatch.WordSet("run pull create")
 )
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
@@ -218,9 +218,9 @@ func (agentConfigCheck) AppliesTo(f document.File) bool {
 	return false
 }
 
-func (a agentConfigCheck) Find(ctx context.Context, f document.File, budget int) (Result, error) {
+func (a agentConfigCheck) Find(ctx context.Context, f document.File, budget int) (check.Result, error) {
 	var (
-		out     Result
+		out     check.Result
 		problem error
 	)
 
@@ -252,7 +252,7 @@ func (a agentConfigCheck) Find(ctx context.Context, f document.File, budget int)
 	return out, errors.Join(problem, ctx.Err())
 }
 
-func (a agentConfigCheck) inspectConfigUnit(ctx context.Context, f document.File, u document.Unit, root *jsonconfig.Node, out *Result, emit func(source.Span), mappingErr *error) {
+func (a agentConfigCheck) inspectConfigUnit(ctx context.Context, f document.File, u document.Unit, root *jsonconfig.Node, out *check.Result, emit func(source.Span), mappingErr *error) {
 	state := a.hookState(f, u, root)
 
 	actualHook := u.Origin == "file" && (hookpolicy.IsSettings(f.Artifact().Metadata().Path) || path.Base(f.Artifact().Metadata().Path) == "hooks.json")
@@ -268,7 +268,7 @@ func (a agentConfigCheck) inspectConfigUnit(ctx context.Context, f document.File
 	a.inspectConfigScopes(ctx, f, u, root, state, out, emit, mappingErr)
 }
 
-func configEmitter(u document.Unit, out *Result, mappingErr *error, seen map[source.Span]bool, budget int) func(source.Span) {
+func configEmitter(u document.Unit, out *check.Result, mappingErr *error, seen map[source.Span]bool, budget int) func(source.Span) {
 	return func(span source.Span) {
 		if out.Truncated || *mappingErr != nil {
 			return
@@ -290,7 +290,7 @@ func configEmitter(u document.Unit, out *Result, mappingErr *error, seen map[sou
 		}
 
 		seen[at] = true
-		out.Matches = append(out.Matches, Match{Start: at.Start, End: at.End})
+		out.Matches = append(out.Matches, check.Match{Start: at.Start, End: at.End})
 	}
 }
 
@@ -311,7 +311,7 @@ func (a agentConfigCheck) hookState(f document.File, u document.Unit, root *json
 	return state
 }
 
-func (a agentConfigCheck) inspectConfigScopes(ctx context.Context, f document.File, u document.Unit, root *jsonconfig.Node, state hookpolicy.State, out *Result, emit func(source.Span), mappingErr *error) {
+func (a agentConfigCheck) inspectConfigScopes(ctx context.Context, f document.File, u document.Unit, root *jsonconfig.Node, state hookpolicy.State, out *check.Result, emit func(source.Span), mappingErr *error) {
 	if u.Origin == "file" {
 		for _, scope := range f.ConfigScopes() {
 			if out.Truncated || ctx.Err() != nil {
@@ -618,48 +618,6 @@ func (a agentConfigCheck) inspectServerScope(ctx context.Context, n *jsonconfig.
 
 			a.server(m.Value, emit)
 		}
-	}
-}
-
-// Agent checks focus on installable instructions/configuration rather than
-// generic language quality. Config declarations are NOT effective permissions:
-// trust, precedence and external host policy remain outside this offline scan.
-//
-//nolint:gochecknoglobals // Cached rules contain only immutable descriptors and compiled regexps; callers receive detached lists.
-var compiledAgentRules = sync.OnceValue(buildAgentRules)
-
-func agentRules() []Analyzer {
-	return append([]Analyzer(nil), compiledAgentRules()...)
-}
-
-func buildAgentRules() []Analyzer {
-	return []Analyzer{
-		agentSignal(rulePI002, "Instruction to conceal actions from the user", `(?i)\b(?:do not|don't|never)[\t ]+(?:tell|inform|notify)[\t ]+(?:the[\t ]+)?user\b|(?i:не)[\t ]+(?:сообщай(?:те)?|рассказывай(?:те)?|уведомляй(?:те)?)[\t ]+пользовател(?:ю|я)`, "prompt-injection", "Narrow English/Russian concealment wording only; quotation, legitimate privacy instructions and negation require review."),
-		agentSignal(ruleAG001, "Agent approval or sandbox bypass flag is referenced", `(?:--dangerously-skip-permissions|--dangerously-bypass-approvals-and-sandbox)\b`, "approval-bypass", "A literal flag reference, not proof of invocation. A prohibition or example can match; host restrictions are not evaluated."),
-		agentSignal(ruleAG002, "Claude-style dynamic context command marker", "(?m)(?:^|[\\t ])!`[^`\\r\\n]+`", "preprocessing-execution", "Recognizes a single-line marker, not all Claude preprocessing forms. It can be an example, is not executed, and is not classified as malicious by itself."),
-		agentConfigCheck{id: ruleAC001},
-		agentConfigCheck{id: ruleAC002},
-		agentConfigCheck{id: ruleAC003},
-		agentConfigCheck{id: ruleSC001},
-		agentConfigCheck{id: ruleMC001},
-		agentConfigCheck{id: ruleMC002},
-		agentConfigCheck{id: ruleMC003},
-		agentConfigCheck{id: ruleMC004},
-		bundledSurface{id: ruleBH1},
-		bundledSurface{id: ruleBH2},
-		bundledSurface{id: ruleBH3},
-		bundledSurface{id: ruleBH4},
-	}
-}
-
-func agentSignal(id, title, expression, category, limitation string) Analyzer {
-	return literal{
-		rule: report.Rule{
-			ID: id, Version: "1", Title: title, Description: title,
-			Severity: report.Medium, Category: category, Method: "literal-agent-signal", Limitation: limitation,
-		},
-		expression: regexp.MustCompile(expression),
-		hint:       literalFilter(expression),
 	}
 }
 

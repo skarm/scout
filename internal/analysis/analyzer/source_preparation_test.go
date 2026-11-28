@@ -170,7 +170,7 @@ func TestDerivedConfigurationLimitCountsDistinctInputs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			text := strings.Repeat(one, document.MaxRegions-1) + tc.last
 			doc := document.Prepare(t.Context(), artifact.NewFile("setup.sh", []byte(text), false))
-			prepared := analyzer.PrepareDerived(t.Context(), []document.File{doc})[0]
+			prepared := prepareDerived(t.Context(), []document.File{doc})[0]
 			children, limited := prepared.DerivedConfigs()
 			if len(children) != document.MaxRegions || limited != tc.gap {
 				t.Fatalf("retained %d configurations, limited=%v; want %d, %v", len(children), limited, document.MaxRegions, tc.gap)

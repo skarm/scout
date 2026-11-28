@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/skarm/scout/internal/analysis/analyzer"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/frontend"
@@ -39,7 +38,7 @@ func TestDerivedConfigurationFailureRetainsExplicitOutcome(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			text := "cat > .yarnrc.yml <<'EOF'\n" + tc.body + "EOF\n"
-			docs := analyzer.PrepareDerived(context.Background(), document.PrepareAllWithRegistry(context.Background(), []artifact.File{artifact.NewFile("input.sh", []byte(text), false)}, registry))
+			docs := prepareDerived(context.Background(), document.PrepareAllWithRegistry(context.Background(), []artifact.File{artifact.NewFile("input.sh", []byte(text), false)}, registry))
 			out, err := pluginRule(t, "NV-SC10").Find(context.Background(), docs[0], 16)
 			if err != nil || len(out.Matches) != tc.count || out.Truncated != tc.gap {
 				children, gap := docs[0].DerivedConfigs()
@@ -72,7 +71,7 @@ func TestDerivedConfigurationSharesAggregateParserBudget(t *testing.T) {
 		inputs = append(inputs, artifact.NewFile(fmt.Sprintf("%d.yaml", i), []byte("key: "+strings.Repeat("x", parse.MaxUnitBytes-len("key: \n"))+"\n"), false))
 	}
 	inputs = append(inputs, artifact.NewFile("input.sh", []byte("cat > .yarnrc.yml <<'EOF'\nnpmRegistryServer: https://private.invalid\nEOF\n"), false))
-	docs := analyzer.PrepareDerived(context.Background(), document.PrepareAllWithRegistry(context.Background(), inputs, registry))
+	docs := prepareDerived(context.Background(), document.PrepareAllWithRegistry(context.Background(), inputs, registry))
 	out, err := pluginRule(t, "NV-SC10").Find(context.Background(), docs[len(docs)-1], 16)
 	if err != nil || len(out.Matches) > 0 || !out.Truncated {
 		t.Fatalf("nested parser reset aggregate quota: %+v %v", out, err)

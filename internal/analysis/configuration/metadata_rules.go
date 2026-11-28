@@ -3,7 +3,7 @@
 // Adapted detector concepts from SkillSpector mcp_tool_poisoning and
 // mcp_least_privilege. Modified bounded parser/evidence implementation.
 
-package analyzer
+package configuration
 
 import (
 	"context"
@@ -11,10 +11,11 @@ import (
 	"errors"
 	"regexp"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/securitytext"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
@@ -38,27 +39,20 @@ var (
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var metadataTextPolicies = map[string]func(string, bool, bool) bool{
 	ruleNVTP1: func(value string, _, _ bool) bool { return hiddenText(value) },
-	ruleNVTP2: func(value string, identifier, _ bool) bool { return identifier && confusingIdentifier(value) },
+	ruleNVTP2: func(value string, identifier, _ bool) bool {
+		return identifier && securitytext.ConfusingIdentifier(value)
+	},
 	ruleNVTP3: func(value string, _, parameter bool) bool {
 		return parameter && (poisonParameter.MatchString(value) || len([]rune(value)) > maxParameterDescriptionRunes)
 	},
 }
 
-//nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
-var invisibleMetadataRunes = &unicode.RangeTable{R16: []unicode.Range16{
-	{Lo: 0x200b, Hi: 0x200d, Stride: 1}, {Lo: 0x202a, Hi: 0x202e, Stride: 1}, {Lo: 0x2066, Hi: 0x2069, Stride: 1}, {
-		Lo:     0xfeff,
-		Hi:     0xfeff,
-		Stride: 1,
-	},
-}}
-
 type pluginCheck struct{ id string }
 
 const maxParameterDescriptionRunes = 500
 
-func MetadataRules() []Analyzer {
-	return []Analyzer{pluginCheck{id: ruleNVTP1}, pluginCheck{id: ruleNVTP2}, pluginCheck{id: ruleNVTP3}}
+func MetadataRules() []check.Analyzer {
+	return []check.Analyzer{pluginCheck{id: ruleNVTP1}, pluginCheck{id: ruleNVTP2}, pluginCheck{id: ruleNVTP3}}
 }
 
 func (a pluginCheck) Rule() report.Rule {
@@ -83,10 +77,12 @@ func (a pluginCheck) Rule() report.Rule {
 	}
 }
 
-func (a pluginCheck) AppliesTo(f document.File) bool { return hasParsedUnit[parse.JSONTree](f) }
+func (a pluginCheck) AppliesTo(f document.File) bool {
+	return document.HasParsedUnit[parse.JSONTree](f)
+}
 
-func (a pluginCheck) Find(ctx context.Context, f document.File, budget int) (Result, error) {
-	var out Result
+func (a pluginCheck) Find(ctx context.Context, f document.File, budget int) (check.Result, error) {
+	var out check.Result
 
 	seen := map[source.Span]bool{}
 	ops := 0
@@ -109,7 +105,7 @@ func (a pluginCheck) Find(ctx context.Context, f document.File, budget int) (Res
 	return out, ctx.Err()
 }
 
-func pluginEmitter(u document.Unit, out *Result, seen map[source.Span]bool, budget int) func(*jsonconfig.Node) {
+func pluginEmitter(u document.Unit, out *check.Result, seen map[source.Span]bool, budget int) func(*jsonconfig.Node) {
 	return func(n *jsonconfig.Node) {
 		if n == nil {
 			return
@@ -131,7 +127,7 @@ func pluginEmitter(u document.Unit, out *Result, seen map[source.Span]bool, budg
 			return
 		}
 
-		out.Matches = append(out.Matches, Match{Start: p.Start, End: p.End})
+		out.Matches = append(out.Matches, check.Match{Start: p.Start, End: p.End})
 	}
 }
 
@@ -145,19 +141,19 @@ func (a pluginCheck) pluginTextCheck(emit func(*jsonconfig.Node)) func(*jsonconf
 	}
 }
 
-func (a pluginCheck) walkMetadata(ctx context.Context, n *jsonconfig.Node, depth int, ops *int, out *Result, check func(*jsonconfig.Node, bool, bool), emit func(*jsonconfig.Node)) {
-	for entry := range configurationNodes(ctx, n, 32-depth, configurationForward) {
+func (a pluginCheck) walkMetadata(ctx context.Context, n *jsonconfig.Node, depth int, ops *int, out *check.Result, check func(*jsonconfig.Node, bool, bool), emit func(*jsonconfig.Node)) {
+	for entry := range jsonconfig.Walk(ctx, n, 32-depth, jsonconfig.SourceOrder) {
 		if out.Truncated || *ops >= maxMetadataOperations {
 			return
 		}
 
 		*ops++
 
-		if entry.depth+depth > maxMetadataDepth || entry.node.Kind != jsonconfig.KindObject {
+		if entry.Depth+depth > maxMetadataDepth || entry.Node.Kind != jsonconfig.KindObject {
 			continue
 		}
 
-		node := entry.node
+		node := entry.Node
 		check(node.Get("name"), true, false)
 		check(node.Get("description"), false, false)
 
@@ -198,32 +194,8 @@ func (a pluginCheck) checkToolProperties(n *jsonconfig.Node, check func(*jsoncon
 	}
 }
 
-func invisibleMetadata(text string) bool {
-	return strings.ContainsFunc(text, func(char rune) bool { return unicode.Is(invisibleMetadataRunes, char) })
-}
-
-func confusingIdentifier(s string) bool {
-	if invisibleMetadata(s) {
-		return true
-	}
-
-	latin, other := false, false
-
-	for _, r := range s {
-		if unicode.In(r, unicode.Latin) {
-			latin = true
-		}
-
-		if unicode.In(r, unicode.Cyrillic, unicode.Greek) {
-			other = true
-		}
-	}
-
-	return latin && other // Natural-language non-Latin descriptions are not identifiers.
-}
-
 func hiddenText(s string) bool {
-	if hiddenMetadata.MatchString(s) || invisibleMetadata(s) {
+	if hiddenMetadata.MatchString(s) || securitytext.HasInvisibleControls(s) {
 		return true
 	}
 

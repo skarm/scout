@@ -103,6 +103,14 @@ func TestPackageDependencyBoundaries(t *testing.T) {
 		},
 		{root: "internal/commands/devcli", forbidden: []string{"internal/commands/cli"}},
 		{root: "internal/analysis/hooktrace", forbidden: []string{"internal/analysis/harness", "internal/commands", "internal/dev"}},
+		{
+			root:      "internal/analysis/configuration",
+			forbidden: []string{"internal/analysis/analyzer", "internal/analysis/engine", "internal/analysis/supplychain", "internal/commands", "internal/dev"},
+		},
+		{
+			root:      "internal/analysis/supplychain",
+			forbidden: []string{"internal/analysis/analyzer", "internal/analysis/configuration", "internal/analysis/engine", "internal/commands", "internal/dev"},
+		},
 		{root: "internal/envcompare", forbidden: []string{"internal/commands", "internal/dev"}},
 		{
 			root:      "cmd/scout",

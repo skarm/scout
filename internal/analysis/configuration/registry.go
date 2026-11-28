@@ -3,7 +3,7 @@
 // Adapted offline MCP Registry posture checks. Captured-byte evidence, bounded
 // JSON parsing and static integration are Scout-specific; no acquisition/trust.
 
-package analyzer
+package configuration
 
 import (
 	"context"
@@ -26,7 +26,7 @@ const (
 )
 
 //nolint:gochecknoglobals // Immutable lookup data shared by concurrent scans; initialized once to avoid rebuilding it per input.
-var mutableRegistryVersions = stringSet("latest next beta alpha stable canary edge main master dev nightly preview")
+var mutableRegistryVersions = textmatch.WordSet("latest next beta alpha stable canary edge main master dev nightly preview")
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var registryRecordInspectors = map[string]registryRecordInspector{
@@ -56,9 +56,9 @@ const (
 	registryObjectCollection
 )
 
-func RegistryRules() []Analyzer {
-	out := make([]Analyzer, 0, 5)
-	for _, id := range []string{ruleMCPPackageVersion, "MCP-PACKAGE-SHA256", ruleMCPRepository, ruleMCPOfficialStatus, ruleMCPPlainHTTP} {
+func RegistryRules() []check.Analyzer {
+	out := make([]check.Analyzer, 0, 5)
+	for _, id := range []string{ruleMCPPackageVersion, ruleMCPPackageSHA256, ruleMCPRepository, ruleMCPOfficialStatus, ruleMCPPlainHTTP} {
 		out = append(out, registryCheck{id: id})
 	}
 
@@ -68,7 +68,7 @@ func RegistryRules() []Analyzer {
 func (a registryCheck) Rule() report.Rule {
 	title := map[string]string{
 		ruleMCPPackageVersion: "Registry package version requires review",
-		"MCP-PACKAGE-SHA256":  "Registry package content digest requires review",
+		ruleMCPPackageSHA256:  "Registry package content digest requires review",
 		ruleMCPRepository:     "Registry repository reference is unavailable",
 		ruleMCPOfficialStatus: "Registry status is unavailable or not active",
 		ruleMCPPlainHTTP:      "Registry record declares a plaintext HTTP endpoint",
@@ -97,13 +97,13 @@ func (a registryCheck) Rule() report.Rule {
 
 func (registryCheck) AppliesTo(document.File) bool { return true }
 
-func (a registryCheck) Find(ctx context.Context, d document.File, budget int) (Result, error) {
-	out := Result{}
+func (a registryCheck) Find(ctx context.Context, d document.File, budget int) (check.Result, error) {
+	out := check.Result{}
 	seen := map[source.Span]bool{}
 	partial := false
 	operations := 0
 
-	for u := range parsedUnits[parse.JSONTree](d) {
+	for u := range document.ParsedUnits[parse.JSONTree](d) {
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
@@ -158,7 +158,7 @@ func (a registryCheck) inspectRegistryPackages(record *jsonconfig.Node, operatio
 		}
 
 		key := "version"
-		if a.id == "MCP-PACKAGE-SHA256" {
+		if a.id == ruleMCPPackageSHA256 {
 			key = "fileSha256"
 		}
 
@@ -173,7 +173,7 @@ func (a registryCheck) inspectRegistryPackages(record *jsonconfig.Node, operatio
 		kind, _ := p.Get("registryType").Text()
 
 		valid := specificRegistryVersion(kind, value)
-		if a.id == "MCP-PACKAGE-SHA256" {
+		if a.id == ruleMCPPackageSHA256 {
 			valid = textmatch.LowerHex(value, 64)
 		}
 
@@ -185,7 +185,7 @@ func (a registryCheck) inspectRegistryPackages(record *jsonconfig.Node, operatio
 	return nil
 }
 
-func registryEmitter(u document.Unit, out *Result, partial *bool, seen map[source.Span]bool, budget int) func(*jsonconfig.Node, report.Severity, bool) {
+func registryEmitter(u document.Unit, out *check.Result, partial *bool, seen map[source.Span]bool, budget int) func(*jsonconfig.Node, report.Severity, bool) {
 	return func(n *jsonconfig.Node, severity report.Severity, unavailable bool) {
 		if n == nil || out.Truncated {
 			return
@@ -213,7 +213,7 @@ func registryEmitter(u document.Unit, out *Result, partial *bool, seen map[sourc
 			signal = check.EvidenceUnavailable
 		}
 
-		out.Matches = append(out.Matches, Match{
+		out.Matches = append(out.Matches, check.Match{
 			Start:          at.Start,
 			End:            at.End,
 			Severity:       severity,
@@ -287,8 +287,8 @@ func registryVersionWildcard(value string) bool {
 
 // Registry envelopes and collection shapes are explicit admission grammars;
 // their fields remain untrusted assertions after the grammar accepts them.
-func registryEnvelopeRecords(unit typedUnit[parse.JSONTree]) []*jsonconfig.Node {
-	root := unit.tree.Root
+func registryEnvelopeRecords(unit document.TypedUnit[parse.JSONTree]) []*jsonconfig.Node {
+	root := unit.Tree.Root
 	if unit.Language != language.JSON || root == nil || root.Kind != jsonconfig.KindObject {
 		return nil
 	}

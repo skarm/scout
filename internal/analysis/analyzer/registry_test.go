@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/configuration"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 )
@@ -146,7 +147,7 @@ func TestMalformedRegistryNeverInventsFacts(t *testing.T) {
 		`{"servers":[{"server":{"name":"a/b","remotes":[1]}}]}`,
 		`{"servers":[{"server":{"name":"a/b","repository":"owner"}}]}`,
 	} {
-		for _, a := range analyzer.RegistryRules() {
+		for _, a := range configuration.RegistryRules() {
 			r, e := a.Find(context.Background(), prepared(context.Background(), artifact.NewFile("snapshot.json", []byte(text), false)), 10)
 			if e == nil || len(r.Matches) != 0 {
 				t.Fatalf("%s %s: %+v %v", a.Rule().ID, text, r, e)
@@ -162,7 +163,7 @@ func TestRegistryBudgetAndMappedFenceEvidence(t *testing.T) {
 		t.Fatal(r, e)
 	}
 	raw := "🙂 registry example\n```json\n" + text + "\n```"
-	for _, a := range analyzer.RegistryRules() {
+	for _, a := range configuration.RegistryRules() {
 		if a.Rule().ID != "MCP-REPOSITORY" {
 			continue
 		}
@@ -179,7 +180,7 @@ func TestRegistryBudgetAndMappedFenceEvidence(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	r, e = analyzer.RegistryRules()[0].Find(ctx, prepared(ctx, artifact.NewFile("snapshot.json", []byte(text), false)), 1)
+	r, e = configuration.RegistryRules()[0].Find(ctx, prepared(ctx, artifact.NewFile("snapshot.json", []byte(text), false)), 1)
 	if e == nil {
 		t.Fatal("cancelled inspection completed", r)
 	}
@@ -187,7 +188,7 @@ func TestRegistryBudgetAndMappedFenceEvidence(t *testing.T) {
 
 func registryResult(t *testing.T, id, text string, budget int) (analyzer.Result, error) {
 	t.Helper()
-	for _, a := range analyzer.RegistryRules() {
+	for _, a := range configuration.RegistryRules() {
 		if a.Rule().ID == id {
 			return a.Find(context.Background(), prepared(context.Background(), artifact.NewFile("snapshot.json", []byte(text), false)), budget)
 		}

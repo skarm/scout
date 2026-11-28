@@ -18,8 +18,10 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/languages/python"
+	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
 	"github.com/skarm/scout/knowledge"
@@ -595,8 +597,8 @@ func (a familyAnalyzer) inspectDocumentViews(ctx context.Context, d document.Fil
 		}
 	}
 
-	collected := collectMatches(&out, budget)
-	if stop, err := a.inspectSecurityViews(ctx, d, collected); stop || err != nil {
+	collected := check.NewMatchCollector(&out, budget)
+	if stop, err := a.inspectSecurityViews(ctx, d, budget, &out, collected); stop || err != nil {
 		return out, err
 	}
 
@@ -613,19 +615,18 @@ func (a familyAnalyzer) preferPython(ctx context.Context, d document.File, budge
 	return err
 }
 
-func (a familyAnalyzer) inspectSecurityViews(ctx context.Context, d document.File, collected *boundedMatches) (bool, error) {
+func (a familyAnalyzer) inspectSecurityViews(ctx context.Context, d document.File, budget int, out *Result, collected *check.MatchCollector) (bool, error) {
 	views := d.SecurityViews()
 	if len(views) == 0 {
 		return false, nil
 	}
 
-	return a.inspectTransformedViews(ctx, d, views, collected)
+	return a.inspectTransformedViews(ctx, d, views, budget, out, collected)
 }
 
 // Allocate captured match-filter state only when there are transformed views.
 // Keep it shared by all views of the document, rather than allocating per view.
-func (a familyAnalyzer) inspectTransformedViews(ctx context.Context, d document.File, views []source.View, collected *boundedMatches) (bool, error) {
-	budget, out := collected.budget, collected.out
+func (a familyAnalyzer) inspectTransformedViews(ctx context.Context, d document.File, views []source.View, budget int, out *Result, collected *check.MatchCollector) (bool, error) {
 	for _, v := range views {
 		result, scanErr := a.findTextWhere(ctx, a.patternInput(v.Text()), budget+1, func(start, end int) bool {
 			return a.acceptsSecurityMatch(d, v, start, end)
@@ -638,7 +639,7 @@ func (a familyAnalyzer) inspectTransformedViews(ctx context.Context, d document.
 				return false, errors.Join(scanErr, e)
 			}
 
-			if !collected.span(at.Start, at.End) {
+			if !collected.Span(at.Start, at.End) {
 				return true, scanErr
 			}
 		}
@@ -651,11 +652,15 @@ func (a familyAnalyzer) inspectTransformedViews(ctx context.Context, d document.
 	return false, nil
 }
 
-func (a familyAnalyzer) inspectScalars(ctx context.Context, d document.File, u typedUnit[parse.JSONTree], collected *boundedMatches) (bool, error) {
-	out := collected.out
-	t := u.tree
+func (a familyAnalyzer) inspectScalars(ctx context.Context, d document.File, u document.TypedUnit[parse.JSONTree], out *Result, collected *check.MatchCollector) (bool, error) {
+	t := u.Tree
 
-	for n := range configStringNodes(ctx, t.Root) {
+	for entry := range jsonconfig.Walk(ctx, t.Root, 64, jsonconfig.ReverseSourceOrder) {
+		n := entry.Node
+		if n.Kind != jsonconfig.KindString {
+			continue
+		}
+
 		at, e := u.View.Original(n.Span)
 		if e != nil {
 			return false, e
@@ -669,7 +674,7 @@ func (a familyAnalyzer) inspectScalars(ctx context.Context, d document.File, u t
 		// Scalar provenance can be enclosing (not an invented decoded offset).
 		scalar, e := a.findText(ctx, n.String, 1)
 		if len(scalar.Matches) > 0 {
-			if !collected.span(at.Start, at.End) {
+			if !collected.Span(at.Start, at.End) {
 				return true, e
 			}
 		} else if scalar.Truncated {
@@ -699,7 +704,7 @@ func (a familyAnalyzer) findTextWhere(ctx context.Context, input patternInput, b
 		return Result{Truncated: probe.Truncated || len(probe.Matches) > 0}, err
 	}
 
-	emit := collectMatches(&result, budget).span
+	emit := check.NewMatchCollector(&result, budget).Span
 	if accepts != nil {
 		appendMatch := emit
 		emit = func(start, end int) bool { return !accepts(start, end) || appendMatch(start, end) }
@@ -768,14 +773,14 @@ func (a familyAnalyzer) findPatternMatches(ctx context.Context, input patternInp
 	return true
 }
 
-func (a familyAnalyzer) inspectPreparedUnits(ctx context.Context, d document.File, budget int, out *Result, collected *boundedMatches, stages patternStages) error {
+func (a familyAnalyzer) inspectPreparedUnits(ctx context.Context, d document.File, budget int, out *Result, collected *check.MatchCollector, stages patternStages) error {
 	for _, u := range d.Units() {
 		if stages.unit != nil {
 			stages.unit(u, out, budget)
 		}
 
 		if tree, ok := u.Tree.(parse.JSONTree); ok {
-			if stop, err := a.inspectScalars(ctx, d, typedUnit[parse.JSONTree]{Unit: u, tree: tree}, collected); stop || err != nil {
+			if stop, err := a.inspectScalars(ctx, d, document.TypedUnit[parse.JSONTree]{Unit: u, Tree: tree}, out, collected); stop || err != nil {
 				return err
 			}
 		}

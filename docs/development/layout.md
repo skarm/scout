@@ -20,7 +20,11 @@ Scout uses one Go module. Public packages are `scout`, `report`, `policy`, `base
 Language semantics belong to `internal/analysis/languages/<language>`; parsing and
 coordinates belong to `internal/syntax`. Language packages export
 `Rules() []check.Analyzer` and do not import each other or the common registry.
-Shared checks belong to `analyzer`, facts to `check`, and quotas to `analysisbudget`.
+`analyzer` assembles the catalog, coordinates preparation quotas, and owns shared
+text and instruction checks. `configuration` owns structured agent, plugin and MCP
+checks and their context binding. `supplychain` owns dependency and source
+declaration checks and the preparation of derived source declarations. Rule
+contracts and facts belong to `check`. Quotas belong to `analysisbudget`.
 Consumers use check contracts directly from `check`. Filename-based display
 surfaces live in `syntax/filetype`; they never grant trust or suppress checks.
 

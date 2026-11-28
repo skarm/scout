@@ -8,16 +8,13 @@ import (
 	"github.com/skarm/scout/internal/analysis/analyzer"
 	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/analysis/check"
-	"github.com/skarm/scout/internal/analysis/hooktrace"
-	"github.com/skarm/scout/internal/capture/artifact"
-
+	"github.com/skarm/scout/internal/analysis/configuration"
 	"github.com/skarm/scout/internal/analysis/document"
-	"github.com/skarm/scout/internal/capture/extract"
-
 	"github.com/skarm/scout/internal/analysis/harness"
-
+	"github.com/skarm/scout/internal/analysis/hooktrace"
 	"github.com/skarm/scout/internal/analysis/validation"
-
+	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/internal/capture/extract"
 	"github.com/skarm/scout/report"
 )
 
@@ -77,7 +74,7 @@ func (run *execution) prepare() error {
 		*run.options.Environment = bundle.CollectSurface(run.ctx, documents, expanded.Report, environmentOperations, run.options.Environment.IncludeCapabilityDetails)
 	}
 
-	checks := analyzer.BindContexts(run.ctx, preparedChecks, documents, expanded.Report)
+	checks := configuration.Bind(run.ctx, preparedChecks, documents, expanded.Report)
 	checks = analyzer.BindBundle(run.ctx, checks, documents, expanded.Report, candidates, run.options.MaxOperations)
 	checks = analyzer.BindGraph(checks, documents, graph)
 	operationTasks := analyzer.OperationTasks(checks)

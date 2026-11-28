@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/configuration"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/report"
@@ -35,7 +36,7 @@ func TestPermissionEvidenceRetainsArchiveNamespace(t *testing.T) {
 		},
 		{Role: "archive_member", ParentPath: "two.tar", MemberName: "helper.go", File: files[3].Metadata()},
 	}}
-	checks := analyzer.BindContexts(ctx, []analyzer.Analyzer{pluginRule(t, "NV-LP1")}, docs, extraction)
+	checks := configuration.Bind(ctx, []analyzer.Analyzer{pluginRule(t, "NV-LP1")}, docs, extraction)
 	for _, index := range []int{0, 2} {
 		result, err := checks[0].Find(ctx, docs[index], 10)
 		if err != nil {
@@ -71,7 +72,7 @@ func TestPermissionDeclarationsRequireOwnedParsedConfig(t *testing.T) {
 				artifact.NewFile(tc.name, []byte(tc.declaration), false),
 				artifact.NewFile("helper.go", []byte("package p\nfunc f(){os.Getenv(\"TOKEN\")}"), false),
 			})
-			checks := analyzer.BindContexts(ctx, []analyzer.Analyzer{pluginRule(t, "NV-LP2"), pluginRule(t, "NV-LP3")}, docs, report.ExtractionReport{})
+			checks := configuration.Bind(ctx, []analyzer.Analyzer{pluginRule(t, "NV-LP2"), pluginRule(t, "NV-LP3")}, docs, report.ExtractionReport{})
 			for _, check := range checks {
 				if check.AppliesTo(docs[0]) {
 					t.Fatal("unparsed or example content created a permission scope", check.Rule().ID)
@@ -103,7 +104,7 @@ func TestPermissionScopesRequireManifestDirectoryComponent(t *testing.T) {
 				artifact.NewFile("helper.go", []byte(helper), false),
 				artifact.NewFile("module/helper.go", []byte(helper), false),
 			})
-			checks := analyzer.BindContexts(t.Context(), []analyzer.Analyzer{pluginRule(t, "NV-LP1")}, docs, report.ExtractionReport{})
+			checks := configuration.Bind(t.Context(), []analyzer.Analyzer{pluginRule(t, "NV-LP1")}, docs, report.ExtractionReport{})
 			result, err := checks[0].Find(t.Context(), docs[0], 1)
 			if err != nil || result.Truncated || checks[0].AppliesTo(docs[0]) != tc.want || (len(result.Matches) == 1) != tc.want {
 				t.Fatalf("permission scope from %q matched=%t, result=%+v, err=%v", tc.manifest, tc.want, result, err)

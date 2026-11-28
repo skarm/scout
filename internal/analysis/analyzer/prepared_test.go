@@ -5,6 +5,7 @@ import (
 
 	"github.com/skarm/scout/internal/analysis/analyzer"
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/supplychain"
 	"github.com/skarm/scout/internal/capture/artifact"
 )
 
@@ -12,10 +13,15 @@ import (
 func prepared(ctx context.Context, input any) document.File {
 	switch value := input.(type) {
 	case document.File:
-		return analyzer.PrepareDerived(ctx, []document.File{value})[0]
+		return prepareDerived(ctx, []document.File{value})[0]
 	case artifact.File:
-		return analyzer.PrepareDerived(ctx, document.PrepareAll(ctx, []artifact.File{value}))[0]
+		return prepareDerived(ctx, document.PrepareAll(ctx, []artifact.File{value}))[0]
 	default:
 		panic("unsupported analysis fixture")
 	}
+}
+
+func prepareDerived(ctx context.Context, docs []document.File) []document.File {
+	out, _ := analyzer.PrepareDerivedWithin(ctx, supplychain.DependencyRules(), docs, 1, 0)
+	return out
 }

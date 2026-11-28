@@ -220,7 +220,7 @@ func suspiciousUnicode(ctx context.Context, text string) (bool, error) {
 	}
 
 	for word := range strings.FieldsFuncSeq(text, func(r rune) bool { return !unicode.IsLetter(r) }) {
-		if confusingIdentifier(word) {
+		if securitytext.ConfusingIdentifier(word) {
 			return true, nil
 		}
 	}

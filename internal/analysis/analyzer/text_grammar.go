@@ -41,11 +41,3 @@ func paddingDelimiter(s string) bool {
 
 	return s != "" && strings.Trim(s, "-") == ""
 }
-
-func requirementsSourceFlag(s string) bool {
-	return strings.Contains(s, "--index-url") || strings.Contains(s, "--extra-index-url") || strings.Contains(s, "--find-links") || strings.HasPrefix(s, "-i ") || strings.HasPrefix(s, "-f ")
-}
-
-func sourceConfigComment(s string) bool {
-	return strings.HasPrefix(s, "#") || strings.HasPrefix(s, ";")
-}

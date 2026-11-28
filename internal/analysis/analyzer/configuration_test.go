@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/skarm/scout/internal/analysis/analyzer"
+	"github.com/skarm/scout/internal/analysis/configuration"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
@@ -194,7 +195,7 @@ func TestHookScopeDisableProofIsHostBoundAndBudgetVisible(t *testing.T) {
 			Host: host,
 			Span: tree.Get("inline").Span,
 		}})
-		checks := analyzer.BindContexts(context.Background(), analyzer.NewCatalog(analyzer.Selection{}).Analyzers(), docs, report.ExtractionReport{})
+		checks := configuration.Bind(context.Background(), analyzer.NewCatalog(analyzer.Selection{}).Analyzers(), docs, report.ExtractionReport{})
 		for _, check := range checks {
 			if check.Rule().ID != "AC003" && check.Rule().ID != "NV-BH1" {
 				continue

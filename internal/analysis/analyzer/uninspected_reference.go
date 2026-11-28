@@ -9,11 +9,12 @@ import (
 	"context"
 
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
 )
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
-var uncapturedLocalReasons = stringSet("handler_not_captured component_not_captured")
+var uncapturedLocalReasons = textmatch.WordSet("handler_not_captured component_not_captured")
 
 type (
 	uninspectedReference struct{ records map[string][]Match }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Modified direct curl/wget/scp/rsync BH2 argument proofs.
 
-package analyzer
+package configuration
 
 import (
 	"path"

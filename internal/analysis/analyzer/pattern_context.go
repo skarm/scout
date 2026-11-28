@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/skarm/scout/internal/promptguard"
+	"github.com/skarm/scout/internal/textmatch"
 )
 
 const (
@@ -63,7 +64,7 @@ var emojiBases = &unicode.RangeTable{
 }
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
-var safeSubdivisionFlags = stringSet("gbeng gbsct gbwls")
+var safeSubdivisionFlags = textmatch.WordSet("gbeng gbsct gbwls")
 
 // An unmatched quotation from earlier in the paragraph makes a prohibition
 // referential/ambiguous. Apostrophes inside words are not quotation delimiters.

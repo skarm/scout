@@ -1,0 +1,28 @@
+package configuration
+
+const (
+	ruleAC001             = "AC001"
+	ruleAC002             = "AC002"
+	ruleAC003             = "AC003"
+	ruleBH1               = "NV-BH1"
+	ruleBH2               = "NV-BH2"
+	ruleBH3               = "NV-BH3"
+	ruleBH4               = "NV-BH4"
+	ruleMC001             = "MC001"
+	ruleMC002             = "MC002"
+	ruleMC003             = "MC003"
+	ruleMC004             = "MC004"
+	ruleMCPOfficialStatus = "MCP-OFFICIAL-STATUS"
+	ruleMCPPackageSHA256  = "MCP-PACKAGE-SHA256"
+	ruleMCPPackageVersion = "MCP-PACKAGE-VERSION"
+	ruleMCPPlainHTTP      = "MCP-PLAIN-HTTP"
+	ruleMCPRepository     = "MCP-REPOSITORY"
+	ruleNVLP1             = "NV-LP1"
+	ruleNVLP2             = "NV-LP2"
+	ruleNVLP3             = "NV-LP3"
+	ruleNVLP4             = "NV-LP4"
+	ruleNVTP1             = "NV-TP1"
+	ruleNVTP2             = "NV-TP2"
+	ruleNVTP3             = "NV-TP3"
+	ruleSC001             = "SC001"
+)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/capture/artifact"
 )
@@ -87,7 +88,7 @@ func TestContextRepetitionCancellationKeepsEarlierRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	got := Result{}
-	emit := collectMatches(&got, 10).span
+	emit := check.NewMatchCollector(&got, 10).Span
 	got.Truncated = repeatedContext(ctx, text, func(start, end int) bool {
 		accepted := emit(start, end)
 		cancel()

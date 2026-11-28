@@ -3,7 +3,7 @@
 // Adapted LP1-LP4 concepts; immutable, namespace-scoped observations with
 // captured evidence. Permission strings are declarations, never enforcement.
 
-package analyzer
+package configuration
 
 import (
 	"context"
@@ -13,13 +13,14 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
-	"github.com/skarm/scout/internal/analysis/hookpolicy"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
 )
 
@@ -88,10 +89,10 @@ var (
 )
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
-var wildcardPermissions = stringSet("* all full any")
+var wildcardPermissions = textmatch.WordSet("* all full any")
 
-func PermissionRules() []Analyzer {
-	return []Analyzer{permissionCheck{id: ruleNVLP1}, permissionCheck{id: ruleNVLP2}, permissionCheck{id: ruleNVLP3}, permissionCheck{id: ruleNVLP4}}
+func PermissionRules() []check.Analyzer {
+	return []check.Analyzer{permissionCheck{id: ruleNVLP1}, permissionCheck{id: ruleNVLP2}, permissionCheck{id: ruleNVLP3}, permissionCheck{id: ruleNVLP4}}
 }
 
 type permissionCheck struct {
@@ -113,49 +114,6 @@ type (
 		r              permissionRecord
 	}
 )
-
-// BindContexts supplies only immutable captured scope facts, not filesystem or
-// network access. The four LP rules share one bounded discovery pass per scan.
-func BindContexts(ctx context.Context, checks []Analyzer, docs []document.File, extraction report.ExtractionReport) []Analyzer {
-	hooks := hookpolicy.Bind(ctx, docs, extraction)
-
-	checks = append([]Analyzer(nil), checks...)
-	for i, a := range checks {
-		switch v := a.(type) {
-		case agentConfigCheck:
-			v.hooks = hooks
-			checks[i] = v
-		case bundledSurface:
-			v.hooks = hooks
-			checks[i] = v
-		}
-	}
-
-	needed := false
-
-	for _, a := range checks {
-		if _, ok := a.(permissionCheck); ok {
-			needed = true
-			break
-		}
-	}
-
-	if !needed {
-		return checks
-	}
-
-	records, failed := permissionRecords(ctx, docs, extraction)
-
-	out := append([]Analyzer(nil), checks...)
-	for i, a := range out {
-		if p, ok := a.(permissionCheck); ok {
-			p.records, p.failure = records, failed
-			out[i] = p
-		}
-	}
-
-	return out
-}
 
 func (a permissionCheck) Rule() report.Rule {
 	title := map[string]string{
@@ -187,29 +145,29 @@ func (a permissionCheck) AppliesTo(f document.File) bool {
 	return ok || a.failure
 }
 
-func (a permissionCheck) Find(ctx context.Context, f document.File, budget int) (Result, error) {
+func (a permissionCheck) Find(ctx context.Context, f document.File, budget int) (check.Result, error) {
 	if ctx.Err() != nil {
-		return Result{}, ctx.Err()
+		return check.Result{}, ctx.Err()
 	}
 
 	if a.failure {
-		return Result{}, errors.New("permission scope discovery limited")
+		return check.Result{}, errors.New("permission scope discovery limited")
 	}
 
 	r, ok := a.records[f.Artifact().Metadata().Path]
 	if !ok || !r.code {
-		return Result{}, nil
+		return check.Result{}, nil
 	}
 
 	if !r.signals()[a.id] {
-		return Result{}, nil
+		return check.Result{}, nil
 	}
 
 	if budget < 1 {
-		return Result{Truncated: true}, nil
+		return check.Result{Truncated: true}, nil
 	}
 
-	m := Match{Start: r.span.Start, End: r.span.End}
+	m := check.Match{Start: r.span.Start, End: r.span.End}
 
 	keys := make([]string, 0, len(r.observed))
 	for c := range r.observed {
@@ -222,7 +180,7 @@ func (a permissionCheck) Find(ctx context.Context, f document.File, budget int) 
 		m.Related = append(m.Related, r.observed[c])
 	}
 
-	return Result{Matches: []Match{m}}, nil
+	return check.Result{Matches: []check.Match{m}}, nil
 }
 
 // Permission posture compares declared and observed capability sets once per

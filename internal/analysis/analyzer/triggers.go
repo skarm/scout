@@ -11,9 +11,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
+	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
 )
 
@@ -24,10 +26,10 @@ const (
 var (
 
 	//nolint:gochecknoglobals // Immutable lookup data shared by concurrent scans; initialized once to avoid rebuilding it per input.
-	builtinTriggers = stringSet("help search find run test build deploy install create delete update list show get set open close start stop restart status log debug commit push pull merge branch checkout rebase diff blame stash tag release version lint format fix refactor review explain chat ask edit write read save load copy move")
+	builtinTriggers = textmatch.WordSet("help search find run test build deploy install create delete update list show get set open close start stop restart status log debug commit push pull merge branch checkout rebase diff blame stash tag release version lint format fix refactor review explain chat ask edit write read save load copy move")
 
 	//nolint:gochecknoglobals // Immutable lookup data shared by concurrent scans; initialized once to avoid rebuilding it per input.
-	broadTriggers = stringSet("the a an is it do go make thing stuff code file data text work good bad yes no ok please thanks hi hello hey")
+	broadTriggers = textmatch.WordSet("the a an is it do go make thing stuff code file data text work good bad yes no ok please thanks hi hello hey")
 
 	//nolint:gochecknoglobals // Immutable lookup data shared by concurrent scans; initialized once to avoid rebuilding it per input.
 	baitingTriggers = []*regexp.Regexp{
@@ -81,11 +83,11 @@ func (a triggerCheck) AppliesTo(f document.File) bool {
 
 func (a triggerCheck) Find(ctx context.Context, f document.File, budget int) (Result, error) {
 	out := Result{}
-	collected := collectMatches(&out, budget)
+	collected := check.NewMatchCollector(&out, budget)
 	ops := 0
 
-	for u := range parsedUnits[parse.JSONTree](f) {
-		list := u.tree.Root.GetOrEmpty("triggers")
+	for u := range document.ParsedUnits[parse.JSONTree](f) {
+		list := u.Tree.Root.GetOrEmpty("triggers")
 		if list.Kind != jsonconfig.KindArray {
 			continue
 		}
@@ -111,7 +113,7 @@ func (a triggerCheck) Find(ctx context.Context, f document.File, budget int) (Re
 				continue
 			}
 
-			if more, _ := collected.addMapped(u.View, n.Span); !more {
+			if more, _ := collected.Mapped(u.View, n.Span); !more {
 				return out, nil
 			}
 		}

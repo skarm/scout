@@ -2,12 +2,14 @@ package analyzer
 
 import (
 	"github.com/skarm/scout/internal/analysis/bundle"
+	"github.com/skarm/scout/internal/analysis/configuration"
 	"github.com/skarm/scout/internal/analysis/languages/golang"
 	"github.com/skarm/scout/internal/analysis/languages/javascript"
 	"github.com/skarm/scout/internal/analysis/languages/python"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
 	"github.com/skarm/scout/internal/analysis/languages/sql"
 	"github.com/skarm/scout/internal/analysis/rendertext"
+	"github.com/skarm/scout/internal/analysis/supplychain"
 	"github.com/skarm/scout/report"
 )
 
@@ -25,11 +27,13 @@ type Catalog struct {
 func NewCatalog(selection Selection) Catalog {
 	catalog := Catalog{base: literalRules()}
 	catalog.base = append(catalog.base, providerTokenRules()...)
-	catalog.base = append(catalog.base, opaque{}, moduleCheck{id: ruleSC002}, moduleCheck{id: ruleSC003})
+	catalog.base = append(catalog.base, opaque{})
+	catalog.base = append(catalog.base, supplychain.ModuleRules()...)
 	catalog.base = append(catalog.base, rendertext.Rules()...)
 	catalog.base = append(catalog.base, golang.FlowRules()...)
 	catalog.base = append(catalog.base, shell.Rules()...)
 	catalog.base = append(catalog.base, agentRules()...)
+	catalog.base = append(catalog.base, configuration.Rules()...)
 	catalog.base = append(catalog.base, instructionRules()...)
 	catalog.base = append(catalog.base, javascript.Rules()...)
 	catalog.base = append(catalog.base, sql.Rules()...)
@@ -44,8 +48,8 @@ func NewCatalog(selection Selection) Catalog {
 
 	if selection.Patterns {
 		catalog.supplemental = combineRules(
-			PatternRules(), MetadataRules(), PermissionRules(), ReferenceRules(),
-			DependencyRules(), ActivationRules(), DeserializationPatternRules(), RegistryRules(),
+			PatternRules(), configuration.MetadataRules(), configuration.PermissionRules(), ReferenceRules(),
+			supplychain.DependencyRules(), ActivationRules(), DeserializationPatternRules(), configuration.RegistryRules(),
 		)
 	}
 

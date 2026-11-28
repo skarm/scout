@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Modified Go implementation of SkillSpector BH1-BH4 declaration/transfer checks.
 
-package analyzer
+package configuration
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hookpolicy"
 	"github.com/skarm/scout/internal/analysis/languages/shell"
@@ -20,11 +21,12 @@ import (
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
 )
 
 //nolint:gochecknoglobals // The sensitive-event vocabulary is initialized once and only read by concurrent scans.
-var sensitiveEvents = stringSet("UserPromptSubmit UserPromptExpansion MessageDisplay PreToolUse PermissionRequest PermissionDenied PostToolUse PostToolUseFailure PostToolBatch SubagentStop TaskCreated TaskCompleted Stop StopFailure PreCompact PostCompact Elicitation ElicitationResult")
+var sensitiveEvents = textmatch.WordSet("UserPromptSubmit UserPromptExpansion MessageDisplay PreToolUse PermissionRequest PermissionDenied PostToolUse PostToolUseFailure PostToolBatch SubagentStop TaskCreated TaskCompleted Stop StopFailure PreCompact PostCompact Elicitation ElicitationResult")
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var surfaceTextFields = map[string][]struct {
@@ -48,16 +50,16 @@ var wrappedAutomaticCommands = map[string]bool{"statusLine": true, "fileSuggesti
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var (
-	executableEnvironment = stringSet("CLAUDE_CODE_SHELL_PREFIX LD_PRELOAD DYLD_INSERT_LIBRARIES GIT_SSH_COMMAND")
-	endpointEnvironment   = stringSet("ANTHROPIC_BASE_URL ANTHROPIC_BEDROCK_BASE_URL ANTHROPIC_VERTEX_BASE_URL")
-	proxyEnvironment      = stringSet("HTTP_PROXY HTTPS_PROXY http_proxy https_proxy")
+	executableEnvironment = textmatch.WordSet("CLAUDE_CODE_SHELL_PREFIX LD_PRELOAD DYLD_INSERT_LIBRARIES GIT_SSH_COMMAND")
+	endpointEnvironment   = textmatch.WordSet("ANTHROPIC_BASE_URL ANTHROPIC_BEDROCK_BASE_URL ANTHROPIC_VERTEX_BASE_URL")
+	proxyEnvironment      = textmatch.WordSet("HTTP_PROXY HTTPS_PROXY http_proxy https_proxy")
 )
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var (
-	criticalPermissionTools  = stringSet("Bash Bash(*) PowerShell PowerShell(*) Read Edit Write")
-	criticalPermissionPaths  = stringSet("// //** ~ ~/**")
-	sensitivePermissionPaths = stringSet("~/.aws/credentials ~/.npmrc ~/.pypirc ~/.docker/config.json")
+	criticalPermissionTools  = textmatch.WordSet("Bash Bash(*) PowerShell PowerShell(*) Read Edit Write")
+	criticalPermissionPaths  = textmatch.WordSet("// //** ~ ~/**")
+	sensitivePermissionPaths = textmatch.WordSet("~/.aws/credentials ~/.npmrc ~/.pypirc ~/.docker/config.json")
 )
 
 type bundledSurface struct {
@@ -83,7 +85,7 @@ func (a bundledSurface) Rule() report.Rule {
 	}
 
 	return report.Rule{
-		ID:          rulePrefixNVIDIA + a.id,
+		ID:          a.id,
 		Version:     "3",
 		Title:       title,
 		Description: title,
@@ -96,8 +98,8 @@ func (a bundledSurface) Rule() report.Rule {
 
 func (bundledSurface) AppliesTo(document.File) bool { return true }
 
-func (a bundledSurface) Find(ctx context.Context, d document.File, budget int) (Result, error) {
-	out := Result{}
+func (a bundledSurface) Find(ctx context.Context, d document.File, budget int) (check.Result, error) {
+	out := check.Result{}
 	seen := map[source.Span]bool{}
 	partial := false
 
@@ -143,7 +145,7 @@ func (a bundledSurface) inspectSurfaceUnit(ctx context.Context, d document.File,
 	}
 }
 
-func (a bundledSurface) surfaceEmitter(u document.Unit, out *Result, partial *bool, seen map[source.Span]bool, budget int) func(*jsonconfig.Node, ...report.Severity) {
+func (a bundledSurface) surfaceEmitter(u document.Unit, out *check.Result, partial *bool, seen map[source.Span]bool, budget int) func(*jsonconfig.Node, ...report.Severity) {
 	return func(n *jsonconfig.Node, severity ...report.Severity) {
 		if n == nil || out.Truncated {
 			return
@@ -166,7 +168,7 @@ func (a bundledSurface) surfaceEmitter(u document.Unit, out *Result, partial *bo
 			return
 		}
 
-		m := Match{Start: at.Start, End: at.End}
+		m := check.Match{Start: at.Start, End: at.End}
 		if len(severity) > 0 {
 			m.Severity = severity[0]
 		} else if a.id == ruleBH3 {
@@ -500,15 +502,6 @@ func nodeImportOptions(text string) int {
 	}
 
 	return count
-}
-
-func stringSet(text string) map[string]bool {
-	m := map[string]bool{}
-	for s := range strings.FieldsSeq(text) {
-		m[s] = true
-	}
-
-	return m
 }
 
 func nodeBool(n *jsonconfig.Node) bool { return n != nil && n.Kind == jsonconfig.KindBool && n.Bool }

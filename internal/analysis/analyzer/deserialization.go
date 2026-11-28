@@ -9,6 +9,7 @@ import (
 	"context"
 	"regexp"
 
+	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/source"
@@ -70,7 +71,7 @@ func (deserialization) AppliesTo(document.File) bool { return true }
 
 func (a deserialization) Find(ctx context.Context, d document.File, budget int) (Result, error) {
 	out := Result{}
-	collected := collectMatches(&out, budget)
+	collected := check.NewMatchCollector(&out, budget)
 
 	for _, u := range d.Units() {
 		if !deserializationLanguages[a.language][u.Language] {
@@ -88,7 +89,7 @@ func (a deserialization) Find(ctx context.Context, d document.File, budget int) 
 					return out, e
 				}
 
-				if !collected.span(at.Start, at.End) {
+				if !collected.Span(at.Start, at.End) {
 					return out, nil
 				}
 			}

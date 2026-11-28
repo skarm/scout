@@ -20,9 +20,6 @@ func FuzzFixedTextGrammars(f *testing.F) {
 	}{
 		{old: `^(?:[^'"]|'[^']*'|"[^"]*")*$`, match: completeQuotes},
 		{old: `^[\t ]*:?-+:?[\t ]*$`, match: paddingDelimiter},
-		{old: `--(?:index-url|extra-index-url|find-links)|^-(?:i|f) `, match: requirementsSourceFlag},
-		{old: `^[#;]`, match: sourceConfigComment},
-		{old: `(?:^|\.)[xX*](?:\.|$)`, match: registryVersionWildcard},
 	}
 	old := make([]*regexp.Regexp, len(cases))
 	for i, tc := range cases {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Selected additional SC10 direct configuration surfaces; never resolved online.
 
-package analyzer
+package supplychain
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/skarm/scout/report"
-
 	"github.com/skarm/scout/internal/analysis/sourcepolicy"
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/internal/textmatch"
+	"github.com/skarm/scout/report"
 )
 
 const (
@@ -24,8 +24,8 @@ const (
 
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var (
-	lineSourceKeys  = stringSet("registry index-url extra-index-url find-links repository")
-	nodeLineConfigs = stringSet(".yarnrc .npmrc")
+	lineSourceKeys  = textmatch.WordSet("registry index-url extra-index-url find-links repository")
+	nodeLineConfigs = textmatch.WordSet(".yarnrc .npmrc")
 )
 
 type sourceConfigAssignment struct {
@@ -178,4 +178,12 @@ func inspectMavenSource(text string, span source.Span, emit func(source.Span)) {
 	if v != "" && v != "https://repo.maven.apache.org/maven2" && v != "https://repo1.maven.org/maven2" {
 		emit(span)
 	}
+}
+
+func requirementsSourceFlag(s string) bool {
+	return strings.Contains(s, "--index-url") || strings.Contains(s, "--extra-index-url") || strings.Contains(s, "--find-links") || strings.HasPrefix(s, "-i ") || strings.HasPrefix(s, "-f ")
+}
+
+func sourceConfigComment(s string) bool {
+	return strings.HasPrefix(s, "#") || strings.HasPrefix(s, ";")
 }
