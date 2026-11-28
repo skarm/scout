@@ -15,6 +15,8 @@ func Bind(ctx context.Context, checks []check.Analyzer, docs []document.File, ex
 	hooks := hookpolicy.Bind(ctx, docs, extraction)
 
 	checks = append([]check.Analyzer(nil), checks...)
+	hasPermissionChecks := false
+
 	for i, a := range checks {
 		switch v := a.(type) {
 		case agentConfigCheck:
@@ -23,31 +25,23 @@ func Bind(ctx context.Context, checks []check.Analyzer, docs []document.File, ex
 		case bundledSurface:
 			v.hooks = hooks
 			checks[i] = v
+		case permissionCheck:
+			hasPermissionChecks = true
 		}
 	}
 
-	needed := false
-
-	for _, a := range checks {
-		if _, ok := a.(permissionCheck); ok {
-			needed = true
-			break
-		}
-	}
-
-	if !needed {
+	if !hasPermissionChecks {
 		return checks
 	}
 
 	records, failed := permissionRecords(ctx, docs, extraction)
 
-	out := append([]check.Analyzer(nil), checks...)
-	for i, a := range out {
+	for i, a := range checks {
 		if p, ok := a.(permissionCheck); ok {
 			p.records, p.failure = records, failed
-			out[i] = p
+			checks[i] = p
 		}
 	}
 
-	return out
+	return checks
 }

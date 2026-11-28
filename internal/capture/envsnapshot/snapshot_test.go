@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/skarm/scout/internal/capture/envsnapshot"
@@ -77,6 +78,42 @@ func TestCaptureRestoreAndIdentity(t *testing.T) {
 	decoded.Roots[0].Entries[len(decoded.Roots[0].Entries)-1].Data = []byte("tampered")
 	if _, err = decoded.Materialize(context.Background(), t.TempDir()); err == nil {
 		t.Fatal("restored corrupt content")
+	}
+}
+
+func TestRootSameContentPreservesOrderedInventory(t *testing.T) {
+	original := envsnapshot.Root{ID: "main", Source: "/previous", Directory: true, Entries: []envsnapshot.Entry{
+		{Path: "nested", Directory: true},
+		{Path: "notes.txt", SHA256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+	}}
+	for _, tc := range []struct {
+		name string
+		edit func(*envsnapshot.Root)
+		same bool
+	}{
+		{name: "source", edit: func(root *envsnapshot.Root) { root.Source = "/candidate" }, same: true},
+		{name: "entry order", edit: func(root *envsnapshot.Root) { slices.Reverse(root.Entries) }},
+		{name: "entry kind", edit: func(root *envsnapshot.Root) { root.Entries[0].Directory = false }},
+		{name: "file digest", edit: func(root *envsnapshot.Root) { root.Entries[1].SHA256 = "changed" }},
+		{name: "executable bits", edit: func(root *envsnapshot.Root) { root.Entries[1].Executable = 0o111 }},
+		{name: "path", edit: func(root *envsnapshot.Root) { root.Entries[1].Path = "other.txt" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			other := original
+			other.Entries = slices.Clone(original.Entries)
+			tc.edit(&other)
+			if got := original.SameContent(other); got != tc.same {
+				t.Fatalf("SameContent = %v, want %v", got, tc.same)
+			}
+		})
+	}
+}
+
+func TestRootSameContentDistinguishesEmptyInventoryRepresentations(t *testing.T) {
+	empty := envsnapshot.Root{ID: "main", Directory: true, Entries: []envsnapshot.Entry{}}
+	null := envsnapshot.Root{ID: "main", Directory: true}
+	if !empty.SameContent(empty) || !null.SameContent(null) || empty.SameContent(null) || null.SameContent(empty) {
+		t.Fatal("the checkpoint's null and empty inventory identities changed")
 	}
 }
 

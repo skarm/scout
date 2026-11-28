@@ -34,7 +34,7 @@ func (w *hookSourceWalk) applyFileGlob(e *File, view source.View, cmd *shellsynt
 		return false
 	}
 
-	for rest := range w.scope.Descendants(glob.Directory) {
+	for rest := range w.scope.Files.Descendants(glob.Directory) {
 		if !w.trace.work.Spend(1) {
 			w.commandGap(e, view, cmd.Span, "hook_source_control_unverified", "The shell file glob exceeded the source inspection budget.")
 			break

@@ -43,14 +43,20 @@ type File struct {
 	Doc  *document.File
 }
 
+// FileTree exposes captured entries under a single plugin root. Descendants
+// yields names relative to the supplied directory in namespace order.
+type FileTree interface {
+	LookupFile(string) *File
+	HasDirectory(string) bool
+	Descendants(string) iter.Seq[string]
+}
+
 // Scope describes the host and the captured files visible to one hook declaration.
 type Scope struct {
 	Host            string
 	Inactive        bool
 	ProjectSettings bool
-	LookupFile      func(string) *File
-	HasDirectory    func(string) bool
-	Descendants     func(string) iter.Seq[string] // names relative to the supplied directory
+	Files           FileTree
 }
 
 // Tracer collects paths, commands and diagnostics in declaration order and

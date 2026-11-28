@@ -96,7 +96,7 @@ func (w *hookSourceWalk) capturedHookDirectory(value string) (string, bool) {
 			}
 
 			dir = path.Join(dir, component)
-			if !w.scope.HasDirectory(dir) {
+			if !w.scope.Files.HasDirectory(dir) {
 				return "", false
 			}
 		}

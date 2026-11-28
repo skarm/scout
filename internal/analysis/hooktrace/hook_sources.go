@@ -833,7 +833,7 @@ func (w *hookSourceWalk) unverifiedExec(e *File, view source.View, cmd *shellsyn
 	if !state.lookupUnknown && len(cmd.Words) > 2 {
 		if value, known := w.value(cmd.Words[2], *state, false); known {
 			rel, reason := w.resolveFile(value, state.cwd)
-			if candidate := w.scope.LookupFile(rel); reason == "" && candidate != nil && candidate.Doc != nil {
+			if candidate := w.scope.Files.LookupFile(rel); reason == "" && candidate != nil && candidate.Doc != nil {
 				w.commandGap(e, view, cmd.Words[1].Span, "hook_source_exec_runtime_unverified",
 					"Exec has a captured file argument, but its executable and dispatch are unverified.")
 
@@ -1557,7 +1557,7 @@ func (w *hookSourceWalk) knownLaunchBash(rel string, steps []report.SourceRef, n
 		return name == language.ExecutableBash || name == language.BinBash || name == language.UserBinBash || name == bashExecutable
 	}
 
-	handler := w.scope.LookupFile(rel)
+	handler := w.scope.Files.LookupFile(rel)
 
 	if handler == nil || handler.Doc == nil {
 		return false
@@ -1848,7 +1848,7 @@ func (w *hookSourceWalk) follow(rel string, state hookSourceState, chain []repor
 		return state, false
 	}
 
-	e := w.scope.LookupFile(rel)
+	e := w.scope.Files.LookupFile(rel)
 	if e == nil || e.Doc == nil {
 		w.gap(last, "hook_source_not_captured", "A referenced shell file was not captured in the plugin.")
 		return state, false

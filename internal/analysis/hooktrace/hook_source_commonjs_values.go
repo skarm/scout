@@ -241,7 +241,7 @@ func (w *nodeHookWalk) pathReturn(m nodeHookModule, callee nodeHookValue, arg no
 		}
 
 		rel := strings.TrimPrefix(resolved.text, "/")
-		if candidate := w.scope.LookupFile(rel); candidate != nil && candidate.Doc != nil {
+		if candidate := w.scope.Files.LookupFile(rel); candidate != nil && candidate.Doc != nil {
 			return resolved
 		}
 	}

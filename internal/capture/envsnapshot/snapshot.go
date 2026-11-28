@@ -615,13 +615,13 @@ func (s Snapshot) Root(id string) Root {
 	return s.Roots[i]
 }
 
-// ContentDigest binds a validated root's ordered inventory and file digests.
-// The file digests already bind the bytes, so comparison does not re-encode them.
-func (r Root) ContentDigest() string {
-	r.Entries = slices.Clone(r.Entries)
-	for i := range r.Entries {
-		r.Entries[i].Data = nil
-	}
-
-	return identity([]Root{r})
+// SameContent compares the ordered inventory of validated roots. The file
+// digests bind their contents, while Source is display metadata.
+func (r Root) SameContent(other Root) bool {
+	return r.ID == other.ID && r.Directory == other.Directory &&
+		(r.Entries == nil) == (other.Entries == nil) &&
+		slices.EqualFunc(r.Entries, other.Entries, func(a, b Entry) bool {
+			return a.Path == b.Path && a.Directory == b.Directory &&
+				a.Executable == b.Executable && a.SHA256 == b.SHA256
+		})
 }

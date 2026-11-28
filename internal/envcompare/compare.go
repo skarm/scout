@@ -4,7 +4,8 @@ package envcompare
 import (
 	"context"
 	"errors"
-	"sort"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/skarm/scout"
@@ -55,7 +56,7 @@ type Comparison struct {
 
 // NamedTargets builds scan targets in stable root ID order.
 func NamedTargets(paths map[string]string) []scout.Target {
-	ids := sortedRootIDs(paths, nil)
+	ids := slices.Sorted(maps.Keys(paths))
 
 	targets := make([]scout.Target, 0, len(ids))
 	for _, id := range ids {
@@ -65,24 +66,21 @@ func NamedTargets(paths map[string]string) []scout.Target {
 	return targets
 }
 
-func sortedRootIDs(a, b map[string]string) []string {
-	seen := map[string]struct{}{}
-	for id := range a {
-		seen[id] = struct{}{}
+func sortedUnion[A, B any](a map[string]A, b map[string]B) []string {
+	keys := make([]string, 0, len(a))
+	for key := range a {
+		keys = append(keys, key)
 	}
 
-	for id := range b {
-		seen[id] = struct{}{}
+	for key := range b {
+		if _, exists := a[key]; !exists {
+			keys = append(keys, key)
+		}
 	}
 
-	ids := make([]string, 0, len(seen))
-	for id := range seen {
-		ids = append(ids, id)
-	}
+	slices.Sort(keys)
 
-	sort.Strings(ids)
-
-	return ids
+	return keys
 }
 
 // Compare rescans both snapshots with the current scanner and policy, and
@@ -94,7 +92,7 @@ func Compare(ctx context.Context, scanner *scout.Scanner, gate *policy.Gate, pre
 
 	result := Comparison{Schema: "scout.environment-comparison/v1", Before: before.Digest, After: after.Digest, Decision: report.Allow, Roots: []environmentRootChange{}}
 
-	for _, id := range sortedRootIDs(old, current) {
+	for _, id := range sortedUnion(old, current) {
 		previous, candidate := old[id], current[id]
 		change := "unchanged"
 
@@ -116,7 +114,8 @@ func Compare(ctx context.Context, scanner *scout.Scanner, gate *policy.Gate, pre
 			return result, errors.New("environment comparison did not produce a valid report")
 		}
 
-		if change == "unchanged" && rootDigest(before, id) != rootDigest(after, id) {
+		priorRoot, nextRoot := before.Root(id), after.Root(id)
+		if change == "unchanged" && !priorRoot.SameContent(nextRoot) {
 			change = "modified"
 		}
 
@@ -129,14 +128,18 @@ func Compare(ctx context.Context, scanner *scout.Scanner, gate *policy.Gate, pre
 			result.addDecision(prepared)
 		}
 
-		result.Roots = append(result.Roots, environmentRootChange{ID: id, Change: change, Report: prepared.Snapshot(), Directories: directoryChanges(before, after, id)})
+		root := environmentRootChange{ID: id, Change: change, Report: prepared.Snapshot()}
 		if change != "unchanged" {
+			root.Directories = directoryChanges(priorRoot, nextRoot)
+
 			if result.Decision == report.Allow {
 				result.Decision = report.Review
 			}
 
 			result.Code = max(1, result.Code)
 		}
+
+		result.Roots = append(result.Roots, root)
 	}
 
 	previous, err := scanSnapshotEnvironment(ctx, scanner, gate, old)
@@ -180,23 +183,13 @@ func (r *Comparison) addDecision(p report.PreparedDocument) {
 	}
 }
 
-func rootDigest(s envsnapshot.Snapshot, id string) string {
-	for _, r := range s.Roots {
-		if r.ID == id {
-			return r.ContentDigest()
-		}
-	}
+func directoryChanges(before, after envsnapshot.Root) []environmentDirectoryChange {
+	directories := func(root envsnapshot.Root) map[string]struct{} {
+		paths := map[string]struct{}{}
 
-	return ""
-}
-
-func directoryChanges(before, after envsnapshot.Snapshot, id string) []environmentDirectoryChange {
-	directories := func(s envsnapshot.Snapshot) map[string]string {
-		paths := map[string]string{}
-
-		for _, entry := range s.Root(id).Entries {
+		for _, entry := range root.Entries {
 			if entry.Directory {
-				paths[entry.Path] = "directory"
+				paths[entry.Path] = struct{}{}
 			}
 		}
 
@@ -206,13 +199,16 @@ func directoryChanges(before, after envsnapshot.Snapshot, id string) []environme
 
 	var changes []environmentDirectoryChange
 
-	for _, path := range sortedRootIDs(old, current) {
-		if old[path] == current[path] {
+	for _, path := range sortedUnion(old, current) {
+		_, existed := old[path]
+		_, exists := current[path]
+
+		if existed == exists {
 			continue
 		}
 
 		change := "added"
-		if current[path] == "" {
+		if !exists {
 			change = "removed"
 		}
 

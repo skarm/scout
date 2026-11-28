@@ -31,10 +31,8 @@ type snapshotContentChange struct {
 	DiffOmitted  bool   `json:"diff_omitted,omitempty"`
 }
 
-func rootFiles(s envsnapshot.Snapshot, id string) (map[string]envsnapshot.Entry, string) {
+func rootFiles(root envsnapshot.Root) map[string]envsnapshot.Entry {
 	files := map[string]envsnapshot.Entry{}
-
-	root := s.Root(id)
 
 	for _, entry := range root.Entries {
 		if !entry.Directory {
@@ -42,7 +40,7 @@ func rootFiles(s envsnapshot.Snapshot, id string) (map[string]envsnapshot.Entry,
 		}
 	}
 
-	return files, root.Source
+	return files
 }
 
 func (r *Comparison) describeContent(before, after envsnapshot.Snapshot, includeSource bool) {
@@ -50,20 +48,15 @@ func (r *Comparison) describeContent(before, after envsnapshot.Snapshot, include
 
 	for i := range r.Roots {
 		root := &r.Roots[i]
-		old, oldPath := rootFiles(before, root.ID)
-		next, newPath := rootFiles(after, root.ID)
-		root.BeforePath, root.AfterPath = oldPath, newPath
+		previous, candidate := before.Root(root.ID), after.Root(root.ID)
+		root.BeforePath, root.AfterPath = previous.Source, candidate.Source
 
-		keys := map[string]string{}
-		for path := range old {
-			keys[path] = ""
+		if root.Change == "unchanged" {
+			continue
 		}
 
-		for path := range next {
-			keys[path] = ""
-		}
-
-		for _, path := range sortedRootIDs(keys, nil) {
+		old, next := rootFiles(previous), rootFiles(candidate)
+		for _, path := range sortedUnion(old, next) {
 			b, bok := old[path]
 
 			a, aok := next[path]

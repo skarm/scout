@@ -22,8 +22,7 @@ func (p *plugin) traceHook(e *entry, hook *jsonconfig.Node, event, matcher strin
 
 	paths, limited := p.b.hookTracer.Trace(&e.File, hook, event, matcher, hooktrace.Scope{
 		Host: p.host, Inactive: p.activation == "inactive_for_profile",
-		ProjectSettings: p.projectSettings, LookupFile: p.traceFile, HasDirectory: p.hasDirectory,
-		Descendants: p.traceDescendants,
+		ProjectSettings: p.projectSettings, Files: p,
 	})
 	if limited {
 		p.issue("hook_source_command_limit", e.Meta.Path, report.OutcomePartial)
@@ -32,7 +31,7 @@ func (p *plugin) traceHook(e *entry, hook *jsonconfig.Node, event, matcher strin
 	return paths
 }
 
-func (p *plugin) traceFile(name string) *hooktrace.File {
+func (p *plugin) LookupFile(name string) *hooktrace.File {
 	if e := p.entry(name); e != nil {
 		return &e.File
 	}
@@ -40,8 +39,8 @@ func (p *plugin) traceFile(name string) *hooktrace.File {
 	return nil
 }
 
-// traceDescendants yields names relative to a directory inside the plugin root.
-func (p *plugin) traceDescendants(dir string) iter.Seq[string] {
+// Descendants yields names relative to a directory inside the plugin root.
+func (p *plugin) Descendants(dir string) iter.Seq[string] {
 	name := path.Join(p.root, dir)
 
 	return func(yield func(string) bool) {

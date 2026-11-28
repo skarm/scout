@@ -120,12 +120,16 @@ type budgetNodeWalk struct {
 	reason analysisbudget.StopReason
 }
 
+func (w *budgetNodeWalk) BudgetStopped(reason analysisbudget.StopReason) {
+	w.reason = reason
+}
+
 func commonJSBudgetWalk(ctx context.Context, operations int) *budgetNodeWalk {
 	walk := &budgetNodeWalk{}
 	work := &analysisbudget.Sequence{
-		Context: ctx,
-		Limit:   operations,
-		OnStop:  func(reason analysisbudget.StopReason) { walk.reason = reason },
+		Context:  ctx,
+		Limit:    operations,
+		Observer: walk,
 	}
 	trace := &Tracer{work: work, sources: Sources{Paths: []Path{{Target: "earlier.js"}}}}
 	walk.nodeHookWalk = &nodeHookWalk{hookSourceWalk: &hookSourceWalk{trace: trace}, active: map[nodeHookCall]bool{}}
@@ -216,6 +220,12 @@ func commonJSMinimumWork(operation string, names int) int {
 	return 2 * names
 }
 
+type stopReasons []analysisbudget.StopReason
+
+func (r *stopReasons) BudgetStopped(reason analysisbudget.StopReason) {
+	*r = append(*r, reason)
+}
+
 func TestShellHookBranchesRespectRemainingGraphWork(t *testing.T) {
 	var declarations strings.Builder
 	for i := range 32 {
@@ -231,10 +241,10 @@ func TestShellHookBranchesRespectRemainingGraphWork(t *testing.T) {
 		{"sufficient", 1024, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var reasons []analysisbudget.StopReason
+			var reasons stopReasons
 			work := &analysisbudget.Sequence{
 				Context: t.Context(), Limit: 500_000,
-				OnStop: func(reason analysisbudget.StopReason) { reasons = append(reasons, reason) },
+				Observer: &reasons,
 			}
 			walk := hookSourceWalk{trace: &Tracer{work: work}}
 			file := &File{Meta: report.File{Path: "setup.sh"}}

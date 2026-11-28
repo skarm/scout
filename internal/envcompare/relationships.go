@@ -3,6 +3,7 @@ package envcompare
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/skarm/scout/report"
@@ -33,7 +34,7 @@ func relationshipIndex(doc *report.Document, paths map[string]string) map[string
 		return indexed
 	}
 
-	ids := sortedRootIDs(paths, nil)
+	ids := slices.Sorted(maps.Keys(paths))
 	targets := map[string]string{}
 
 	for _, t := range doc.Run.Targets {
@@ -77,20 +78,11 @@ func compareRelationships(before, after *report.Document, old, current map[strin
 	delta := environmentRelationshipDelta{Completeness: report.Complete, Changes: []environmentRelationshipChange{}}
 	prior, next := relationshipIndex(before, old), relationshipIndex(after, current)
 
-	keys := map[string]string{}
-	for key := range prior {
-		keys[key] = ""
-	}
-
-	for key := range next {
-		keys[key] = ""
-	}
-
 	if !environmentComplete(before) || !environmentComplete(after) {
 		delta.Completeness = report.Partial
 	}
 
-	for _, key := range sortedRootIDs(keys, nil) {
+	for _, key := range sortedUnion(prior, next) {
 		b, bok := prior[key]
 		a, aok := next[key]
 

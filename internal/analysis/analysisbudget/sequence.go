@@ -9,13 +9,18 @@ const (
 	LimitReached
 )
 
+// StopObserver receives the first refusal of a shared operation quota.
+type StopObserver interface {
+	BudgetStopped(StopReason)
+}
+
 // Sequence shares one operation quota between sequential analysis stages.
 type Sequence struct {
-	Context context.Context
-	Limit   int
-	OnStop  func(StopReason)
-	used    int
-	stopped bool
+	Context  context.Context
+	Limit    int
+	Observer StopObserver
+	used     int
+	stopped  bool
 }
 
 func (q *Sequence) Used() int     { return q.used }
@@ -41,8 +46,8 @@ func (q *Sequence) Spend(n int) bool {
 
 func (q *Sequence) stop(reason StopReason) bool {
 	q.stopped = true
-	if q.OnStop != nil {
-		q.OnStop(reason)
+	if q.Observer != nil {
+		q.Observer.BudgetStopped(reason)
 	}
 
 	return false

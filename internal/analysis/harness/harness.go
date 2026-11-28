@@ -134,7 +134,7 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 		return b.r
 	}
 
-	b.work = analysisbudget.Sequence{Context: ctx, Limit: b.r.Limits.Operations, OnStop: b.workStopped}
+	b.work = analysisbudget.Sequence{Context: ctx, Limit: b.r.Limits.Operations, Observer: &b}
 	if !b.work.Spend(0) {
 		return b.r
 	}
@@ -273,7 +273,7 @@ func (b *builder) standaloneSkills() {
 
 func (b *builder) step() bool { return b.work.Spend(1) }
 
-func (b *builder) workStopped(reason analysisbudget.StopReason) {
+func (b *builder) BudgetStopped(reason analysisbudget.StopReason) {
 	code := "harness_operation_limit"
 	if reason == analysisbudget.Cancelled {
 		code = "harness_cancelled"

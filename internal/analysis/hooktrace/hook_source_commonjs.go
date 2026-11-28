@@ -608,10 +608,10 @@ func (w *nodeHookWalk) localModule(filename string) (nodeHookModule, bool) {
 		return nodeHookModule{}, false
 	}
 
-	entry := w.scope.LookupFile(rel)
+	entry := w.scope.Files.LookupFile(rel)
 	if entry == nil && path.Ext(rel) == "" {
 		rel += ".js"
-		entry = w.scope.LookupFile(rel)
+		entry = w.scope.Files.LookupFile(rel)
 	}
 
 	return nodeHookScript(entry, rel)

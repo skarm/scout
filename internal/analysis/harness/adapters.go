@@ -89,7 +89,7 @@ func (p *plugin) discover() {
 func (p *plugin) rootSkill(root *jsonconfig.Node) {
 	if e := p.entry(artifact.SkillManifest); e != nil {
 		act := p.activation
-		if root.Get("skills") != nil || p.hasDirectory("skills") {
+		if root.Get("skills") != nil || p.HasDirectory("skills") {
 			act = "inactive_for_profile"
 		}
 
@@ -225,7 +225,7 @@ func (p *plugin) component(kind string, e *entry, activation, basis string, s *r
 	return id
 }
 
-func (p *plugin) hasDirectory(name string) bool {
+func (p *plugin) HasDirectory(name string) bool {
 	return len(p.ns.descendants(path.Join(p.root, name))) != 0
 }
 

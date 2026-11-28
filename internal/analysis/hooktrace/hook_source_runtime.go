@@ -50,7 +50,7 @@ func (w *hookSourceWalk) traceRuntimeLaunch(e *File, view source.View, cmd *shel
 		return false, false
 	}
 
-	target := w.scope.LookupFile(rel)
+	target := w.scope.Files.LookupFile(rel)
 	if target == nil || target.Doc == nil {
 		w.gap(*at, "hook_source_not_captured", "A referenced hook script was not captured in the plugin.")
 		return false, false

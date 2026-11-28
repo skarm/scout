@@ -13,29 +13,33 @@ import (
 	"testing"
 )
 
-func TestReportContractDoesNotImportRuntime(t *testing.T) {
-	root := filepath.Join("..", "..", "report")
-	files, err := os.ReadDir(root)
-	if err != nil {
-		t.Fatal("public report contract is missing: ", err)
-	}
-	for _, entry := range files {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			continue
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, entry.Name()), nil, parser.ImportsOnly)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, spec := range file.Imports {
-			path, err := strconv.Unquote(spec.Path.Value)
+func TestPassivePackagesUseOnlyStandardLibrary(t *testing.T) {
+	for _, name := range []string{"report", "internal/artifactpath"} {
+		t.Run(name, func(t *testing.T) {
+			root := filepath.Join("..", "..", filepath.FromSlash(name))
+			files, err := os.ReadDir(root)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(strings.Split(path, "/")[0], ".") {
-				t.Errorf("report must be independent of runtime and dependencies: %s imports %s", entry.Name(), path)
+			for _, entry := range files {
+				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+					continue
+				}
+				file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, entry.Name()), nil, parser.ImportsOnly)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, spec := range file.Imports {
+					path, err := strconv.Unquote(spec.Path.Value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if strings.Contains(strings.Split(path, "/")[0], ".") {
+						t.Errorf("%s imports %s outside the standard library", entry.Name(), path)
+					}
+				}
 			}
-		}
+		})
 	}
 }
 
