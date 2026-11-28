@@ -166,11 +166,11 @@ func Limits() report.HarnessLimits {
 	return report.HarnessLimits{Plugins: maxPlugins, Components: maxComponents, Edges: maxEdges, References: maxReferences, Operations: maxGraphOperations}
 }
 
-// Discover reuses whole-file JSON trees from bounded preparation. Fenced JSON is
-// never mistaken for an installed manifest. Only actual archive members form
+// Discover reuses whole-file trees from bounded preparation and prepares
+// captured files selected by native manifests. Only actual archive members form
 // virtual directory namespaces; decoded strings and metadata cannot impersonate files.
 func Discover(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions) report.ComponentGraph {
-	return discover(ctx, inventory, docs, extraction, opts, nil)
+	return discover(ctx, inventory, document.ForkPreparation(docs), extraction, opts, nil)
 }
 
 // DiscoverWithHookShell prepares captured hook files as their manifest paths
@@ -182,7 +182,7 @@ func DiscoverWithHookShell(ctx context.Context, inventory []report.File, docs []
 
 // DiscoverWithHookSources also retains the local source paths of command hooks.
 func DiscoverWithHookSources(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions) (report.ComponentGraph, []document.File, hooktrace.Sources) {
-	out := slices.Clone(docs)
+	out := document.ForkPreparation(docs)
 
 	var sources hooktrace.Sources
 
@@ -313,6 +313,10 @@ func (s *candidateSet) addFile(ns *namespace, name, host string) {
 	s.b.marketplace(ns, name)
 
 	if c, ok := nativeWorkspaceCandidate(ns, name, host); ok {
+		s.add(c)
+	}
+
+	if c, ok := deepSeekCandidate(ns, name, host); ok {
 		s.add(c)
 	}
 
@@ -748,12 +752,17 @@ func (p *plugin) object(e *entry) *jsonconfig.Node {
 }
 
 func (p *plugin) jsonObject(e *entry, u document.Unit) *jsonconfig.Node {
-	if t, ok := u.Tree.(parse.JSONTree); ok && t.Root != nil {
-		if t.Root.Kind != jsonconfig.KindObject {
-			p.issue(issuePluginObjectExpected, e.Meta.Path, formatInvalid)
-			return nil
-		}
+	root := p.configRoot(e, u)
+	if root != nil && root.Kind != jsonconfig.KindObject {
+		p.issue(issuePluginObjectExpected, e.Meta.Path, formatInvalid)
+		return nil
+	}
 
+	return root
+}
+
+func (p *plugin) configRoot(e *entry, u document.Unit) *jsonconfig.Node {
+	if t, ok := u.Tree.(parse.JSONTree); ok && t.Root != nil {
 		return t.Root
 	}
 
@@ -763,6 +772,10 @@ func (p *plugin) jsonObject(e *entry, u document.Unit) *jsonconfig.Node {
 
 	if u.Language == language.TOML {
 		code, invalid = issuePluginTOMLUnavailable, issuePluginTOMLInvalid
+	}
+
+	if u.Language == language.YAML {
+		code, invalid = "plugin_yaml_unavailable", "plugin_yaml_invalid"
 	}
 
 	if u.Status == report.OutcomeFailed || u.Status == report.UnitParseError {

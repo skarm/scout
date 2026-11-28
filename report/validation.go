@@ -315,9 +315,9 @@ type ValidationReport struct {
 // interpretation.
 func (o HarnessOptions) Validate() error {
 	switch o.Host {
-	case "", HostAuto, HostClaudeCode, HostCodex, HostGeminiCLI, HostAgentSkills, HostCursor, HostCopilotCLI, HostOpenCode, HostOpenClaw, HostGrokCLI:
+	case "", HostAuto, HostClaudeCode, HostCodex, HostGeminiCLI, HostAgentSkills, HostCursor, HostCopilotCLI, HostOpenCode, HostOpenClaw, HostGrokCLI, HostDeepSeekHarness:
 	default:
-		return errors.New("harness must be auto, claude-code, codex, gemini-cli, agent-skills, cursor, copilot-cli, opencode, openclaw or grok-cli")
+		return errors.New("harness must be auto, claude-code, codex, gemini-cli, agent-skills, cursor, copilot-cli, opencode, openclaw, grok-cli or deepseek-harness")
 	}
 
 	if o.ShellHookRoot != (ShellHookRoot{}) {

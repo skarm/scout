@@ -2,7 +2,7 @@
 
 [English](discovery.md) · Русский
 
-`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw и Grok CLI перед проверкой
+`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI и DeepSeek Harness перед проверкой
 их файлов. Команда читает конфигурации и манифесты без запуска MCP-серверов,
 выполнения команд, подстановки переменных окружения из файлов и сетевых запросов.
 
@@ -137,6 +137,30 @@ Scout находит `lsp.json`, агентов, навыки, команды и
 внутри пакета. Выполнение хуков и Rhai, расчёт доверия и загрузка источников
 marketplace находятся за пределами анализа.
 [Плагины Grok](https://docs.x.ai/build/features/skills-plugins-marketplaces) · [Процессы Grok](https://docs.x.ai/build/modes-and-commands)
+
+Для DeepSeek Harness Scout читает `~/.dsh/settings.yaml`, общий
+`cordis.patch.yml` и `profiles/<имя>/{package.json,cordis.patch.yml}`. Флаг
+`--deepseek-home` указывает непосредственно на каталог конфигурации. В
+выбранных проектах Scout также читает корневые файлы разработки `cordis.yml`
+и `cordis.patch.yml`. В `package.json` поле `dsh.bundle.patch` может указывать
+на один или несколько YAML-файлов внутри пакета, а `dsh.profile.bundles`
+перечисляет пакеты профиля. [Профили и пакеты DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/reference/README.md)
+
+Scout разбирает строки MCP-клиентов, отдельные серверы менеджера и карту
+`config.servers`, в том числе внутри `insert` и групп Cordis. Выражения
+`!!js` остаются непрозрачными, а ссылки на учётные данные сохраняются без
+подстановки. Scout учитывает явно заданное отключение и отклоняет YAML с
+повторяющимися ключами, псевдонимами и несколькими документами. Подключаемые
+файлы отмечаются как неразрешённые. Итоговое объединение слоёв и разрешение
+npm-пакетов находятся за пределами статической проверки.
+[MCP в DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/mcp.md)
+
+В известных каталогах `.dsh/skills` и `.agents/skills` поддерживаются
+`<имя>/SKILL.md` и отдельные файлы `<имя>.md`. Scout учитывает общие
+пользовательские `AGENTS.md` и проектные файлы инструкций на основе
+`AGENTS.md` и `CLAUDE.md`. Хранилища учётных данных и состояние запущенных
+сессий остаются вне области discovery.
+[Навыки DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md) · [Файлы инструкций](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/context/agent-instructions/README.md)
 
 Переменные `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса сканирования могут менять
 каталоги конфигурации. Явный `--home` отключает эти неявные переопределения;

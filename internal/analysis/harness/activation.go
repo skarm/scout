@@ -594,7 +594,8 @@ func (p *plugin) serverEndpoints(e *entry, id string, endpoints []*jsonconfig.No
 
 		count++
 
-		if value, ok := endpoint.Text(); !ok || p.host == report.HostGeminiCLI && strings.TrimSpace(value) == "" {
+		if value, ok := endpoint.Text(); (!ok || p.host == report.HostGeminiCLI && strings.TrimSpace(value) == "") &&
+			!(p.host == report.HostDeepSeekHarness && endpoint.Kind == jsonconfig.KindExpression) {
 			p.issue(issuePluginServerURLInvalid, e.Meta.Path, formatInvalid)
 		}
 
@@ -605,6 +606,11 @@ func (p *plugin) serverEndpoints(e *entry, id string, endpoints []*jsonconfig.No
 }
 
 func (p *plugin) serverCommand(e *entry, n *jsonconfig.Node, id string, s *report.SourceRef, activation string) {
+	if p.host == report.HostDeepSeekHarness && deepSeekDynamicCommand(n) {
+		p.reference(id, referenceKindCommand, report.ReferenceUnresolved, reasonDynamicCommand, "", s)
+		return
+	}
+
 	text, ok := n.Get(fieldCommand).Text()
 	args, valid := stringValues(n.Get(fieldArgs))
 

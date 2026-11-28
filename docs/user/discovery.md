@@ -2,7 +2,7 @@
 
 English · [Русский](discovery.ru.md)
 
-`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw and Grok CLI declarations before
+`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI and DeepSeek Harness declarations before
 scanning their files. It reads configuration and manifests without starting MCP
 servers, running commands, expanding environment variables from files or making
 network requests.
@@ -136,6 +136,28 @@ and `hooks/hooks.json`. Scout inspects captured declarations and records
 package-local references without running hooks or workflows, resolving
 runtime trust or loading marketplace sources.
 [Grok plugins](https://docs.x.ai/build/features/skills-plugins-marketplaces) · [Grok workflows](https://docs.x.ai/build/modes-and-commands)
+
+DeepSeek Harness discovery reads `~/.dsh/settings.yaml`, the home-level
+`cordis.patch.yml`, and `profiles/<name>/{package.json,cordis.patch.yml}`. Use
+`--deepseek-home` to select the directory directly. Scout also reads root
+`cordis.yml` and `cordis.patch.yml` in selected projects as authoring files.
+Project bundle manifests in `package.json` may declare one or more contained
+YAML layers in `dsh.bundle.patch`. Profile manifests record bundle names in
+`dsh.profile.bundles`. [DeepSeek Harness profiles and bundles](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/reference/README.md)
+
+Scout reads MCP client rows, manager server rows and the manager's
+`config.servers` map, including entries under `insert` and Cordis groups.
+`!!js` expressions remain opaque and credential references remain unresolved.
+Local disablement is recorded independently of effective configuration. The
+parser rejects duplicate keys, aliases and additional YAML documents. Includes
+are reported as unresolved, and profile layering and npm resolution are
+outside the static interpretation. [DeepSeek Harness MCP](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/mcp.md)
+
+Known skill roots under `.dsh/skills` and `.agents/skills` support both
+`<name>/SKILL.md` and flat `<name>.md` files. Scout includes the user-global
+`AGENTS.md` files and the project instruction candidates based on `AGENTS.md`
+and `CLAUDE.md`. Discovery skips credential stores and runtime state.
+[DeepSeek Harness skills](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md) · [Instruction files](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/context/agent-instructions/README.md)
 
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` from the scanning process can relocate their
 configuration directories. Explicit `--home` disables these implicit overrides;

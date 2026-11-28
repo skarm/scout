@@ -196,6 +196,8 @@ func (p *plugin) discoverNativeWorkspace() {
 		p.openClawWorkspace()
 	case report.HostGrokCLI:
 		p.grokWorkspace()
+	case report.HostDeepSeekHarness:
+		p.deepSeekWorkspace()
 	}
 }
 

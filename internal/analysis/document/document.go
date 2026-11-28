@@ -7,6 +7,7 @@ import (
 	"context"
 	"go/ast"
 	"go/token"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -161,6 +162,32 @@ func PrepareAllForHarness(ctx context.Context, files []artifact.File, registry p
 // run. Diagnostics contain neither parser errors nor source excerpts.
 func Prepare(ctx context.Context, file artifact.File) (out File) {
 	return prepare(ctx, file, &parseBudget{consumed: make(map[string]int)}, parse.Defaults(), "")
+}
+
+// ForkPreparation gives a follow-on preparation pass its own documents and
+// parser counters while retaining the limits already consumed by each input.
+func ForkPreparation(files []File) []File {
+	out := slices.Clone(files)
+	budgets := make(map[*parseBudget]*parseBudget)
+
+	for i := range out {
+		original := out[i].budget
+		if original == nil {
+			continue
+		}
+
+		budget := budgets[original]
+		if budget == nil {
+			cloned := *original
+			cloned.consumed = maps.Clone(original.consumed)
+			budget = &cloned
+			budgets[original] = budget
+		}
+
+		out[i].budget = budget
+	}
+
+	return out
 }
 
 func (f File) WithConfigScopes(scopes []ConfigScope) File {
@@ -345,28 +372,34 @@ func (f *filePreparation) admitUnit(ctx context.Context, descriptor parse.Descri
 	return true
 }
 
-func (f *filePreparation) parseUnit(ctx context.Context, lang, origin string, span source.Span, view source.View) (unit Unit) {
-	defer func() {
-		if recover() != nil {
-			unit.Status = report.OutcomeFailed
+func (f *filePreparation) parseUnit(ctx context.Context, lang, origin string, span source.Span, view source.View) Unit {
+	unit := Unit{Language: lang, Origin: origin, Span: span, View: view, Status: report.OutcomeUnsupported}
 
-			unit.preparationDiagnostic = report.Diagnostic{
-				Code:    "parser_panic",
-				Message: "Document preparation failed; raw-text checks remain available.",
-			}
-		}
-	}()
+	backend, supported := f.unitBackend(lang, origin)
+	if !supported {
+		return unit
+	}
 
-	unit = Unit{Language: lang, Origin: origin, Span: span, View: view, Status: report.OutcomeUnsupported}
+	return f.parseWith(ctx, unit, backend)
+}
 
+func (f *filePreparation) unitBackend(lang, origin string) (parse.Backend, bool) {
 	backend, supported := f.registry.Lookup(lang)
-	if !supported && lang == language.TOML && origin == "file" {
+	if lang == language.YAML && (origin == "file" && f.cordisFile() || origin == "frontmatter" && f.deepSeekSkillFrontmatter()) {
+		return parse.CordisYAML(), true
+	}
+
+	if origin != "file" {
+		return backend, supported
+	}
+
+	if !supported && lang == language.TOML {
 		if _, grok := artifact.GrokTOMLRoot(f.hostConfigName, f.budget.host); grok {
 			backend, supported = parse.NativeTOML(), true
 		}
 	}
 
-	if lang == language.JSON && origin == "file" {
+	if lang == language.JSON {
 		name := f.file.BaseName()
 		switch {
 		case artifact.JSON5ConfigName(name):
@@ -380,12 +413,27 @@ func (f *filePreparation) parseUnit(ctx context.Context, lang, origin string, sp
 		}
 	}
 
-	if !supported || !f.admitUnit(ctx, backend.Descriptor(), &unit) {
+	return backend, supported
+}
+
+func (f *filePreparation) parseWith(ctx context.Context, unit Unit, backend parse.Backend) (result Unit) {
+	defer func() {
+		if recover() != nil {
+			result = unit
+			result.Status = report.OutcomeFailed
+			result.preparationDiagnostic = report.Diagnostic{
+				Code:    "parser_panic",
+				Message: "Document preparation failed; raw-text checks remain available.",
+			}
+		}
+	}()
+
+	if !f.admitUnit(ctx, backend.Descriptor(), &unit) {
 		return unit
 	}
 
 	unit.Status = "parsing"
-	tree, err := backend.Parse(ctx, view)
+	tree, err := backend.Parse(ctx, unit.View)
 
 	unit.Tree, unit.Status = tree, report.UnitParsedLimited
 	if identity, ok := tree.(interface{ RuntimeIdentity() string }); ok && identity.RuntimeIdentity() != "" {
@@ -497,7 +545,7 @@ func (f *filePreparation) markdownFrontmatter(ctx context.Context, text string, 
 
 	f.region(region{Kind: "frontmatter", Language: language.YAML, Span: envelope.span})
 
-	_, supported := f.registry.Lookup(language.YAML)
+	_, supported := f.unitBackend(language.YAML, "frontmatter")
 	if supported && envelope.closed && envelope.body.End > envelope.body.Start {
 		view, err := source.NewView(text, []source.Span{envelope.body})
 		if err != nil {

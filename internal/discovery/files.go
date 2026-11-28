@@ -86,6 +86,10 @@ func (b *builder) open(base, agent, scope string, required bool, visit func(*tre
 func (t *tree) absolute(name string) string { return filepath.Join(t.base, filepath.FromSlash(name)) }
 
 func (t *tree) read(name string, required bool) []byte {
+	return t.readIf(name, required, nil)
+}
+
+func (t *tree) readIf(name string, required bool, keep func([]byte) bool) []byte {
 	absolute := t.absolute(name)
 	if !t.b.step(absolute) {
 		return nil
@@ -125,7 +129,7 @@ func (t *tree) read(name string, required bool) []byte {
 		return nil
 	}
 
-	if t.b.ctx.Err() != nil {
+	if t.b.ctx.Err() != nil || keep != nil && !keep(data) {
 		return nil
 	}
 

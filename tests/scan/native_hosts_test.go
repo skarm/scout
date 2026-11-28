@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/scantest"
@@ -93,6 +94,32 @@ func TestNativeConfigurationFindings(t *testing.T) {
 				"UnknownEvent":[{"hooks":[{"type":"command","command":"printf ignored"}]}]}}`,
 			rules: []string{"AC003"},
 		},
+		{
+			host: report.HostAuto, file: "cordis.patch.yml",
+			config: `# Маркер UTF-8 перед YAML-данными.
+- insert:
+    - name: '@deepseek-ai/cordis-plugin-group'
+      config:
+        - name: '@deepseek-ai/dsh-mcp-client'
+          config:
+            serverName: formatter
+            transport: stdio
+            command: npx
+            args: ['example-mcp@latest']
+            env:
+              API_TOKEN: !!js process.env.TEST_TOKEN
+- id: mcp-manager
+  config:
+    servers:
+      example:
+        enabled: false
+        transport: streamable-http
+        url: http://example.invalid/mcp
+        headers:
+          Authorization: 'Bearer ${credential:EXAMPLE_TOKEN}'
+`,
+			rules: []string{"MC001", "SC001"},
+		},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			root := t.TempDir()
@@ -111,6 +138,12 @@ func TestNativeConfigurationFindings(t *testing.T) {
 					}
 					if path.Ext(tc.file) == ".toml" && (f.Location.ByteStart != 0 || f.Location.ByteEnd != len(tc.config)) {
 						t.Fatalf("TOML evidence should cover the original input: %+v", f.Location)
+					}
+					if tc.file == "cordis.patch.yml" {
+						marker := map[string]string{"MC001": "http://example.invalid/mcp", "SC001": "'example-mcp@latest'"}[f.RuleID]
+						if f.Location.ByteStart != strings.Index(tc.config, marker) {
+							t.Fatalf("Cordis evidence should start at the original scalar: %+v", f.Location)
+						}
 					}
 					rules = append(rules, f.RuleID)
 				}

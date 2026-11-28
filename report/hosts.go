@@ -24,4 +24,6 @@ const (
 	HostOpenClaw = "openclaw"
 	// HostGrokCLI identifies Grok Build CLI declarations.
 	HostGrokCLI = "grok-cli"
+	// HostDeepSeekHarness identifies DeepSeek Harness profiles and Cordis declarations.
+	HostDeepSeekHarness = "deepseek-harness"
 )

@@ -33,7 +33,10 @@ const (
 
 var environmentReference = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*`)
 
-var openCodeEnvironmentReference = regexp.MustCompile(`\{env:[A-Za-z_][A-Za-z0-9_]*\}`)
+var (
+	openCodeEnvironmentReference = regexp.MustCompile(`\{env:[A-Za-z_][A-Za-z0-9_]*\}`)
+	deepSeekCredentialReference  = regexp.MustCompile(`\$\{credential:[^}\r\n]+\}`)
+)
 
 var npmPackageName = regexp.MustCompile(`^(?:@[a-z0-9._-]+/)?[a-z0-9._-]+$`)
 
@@ -202,7 +205,7 @@ func (a agentConfigCheck) Rule() report.Rule {
 		version = "4"
 	}
 
-	limitation := "Supported configuration shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. YAML and general TOML use explicitly selected trusted parsers. Native Grok TOML is supported in core; TOML positions cover the whole unit." + metadata.limitation
+	limitation := "Supported configuration shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. General YAML and TOML use explicitly selected trusted parsers. Native Grok TOML and DeepSeek Cordis YAML are supported in core. TOML evidence covers the whole unit." + metadata.limitation
 	if metadata.harness {
 		limitation += " Includes harness-linked inline/custom-path config objects without assuming activation."
 	}
@@ -577,8 +580,12 @@ func inspectServerCredentials(server *jsonconfig.Node, host string, emit func(so
 			}
 
 			text, ok := m.Value.Text()
-			if host == report.HostOpenCode {
+
+			switch host {
+			case report.HostOpenCode:
 				text = openCodeEnvironmentReference.ReplaceAllString(text, "")
+			case report.HostDeepSeekHarness:
+				text = deepSeekCredentialReference.ReplaceAllString(text, "")
 			}
 
 			if ok && credentialLiteral(text) {
@@ -613,6 +620,10 @@ func inspectURLCredential(n *jsonconfig.Node, emit func(source.Span)) {
 // Scoped trees retain ORIGINAL source spans; only a wrapper role is supplied by
 // discovery. This is not execution or trust in configuration field contents.
 func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, scope document.ConfigScope, emit func(source.Span)) error {
+	if scope.Host == report.HostDeepSeekHarness && scope.Role == report.ComponentMCPConfig && serverConfigRules[a.id] {
+		return a.inspectDeepSeekServers(ctx, n, emit)
+	}
+
 	if n.Kind != jsonconfig.KindObject {
 		return nil
 	}
@@ -647,6 +658,20 @@ func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, 
 		}
 
 		inspectCommandHooks(ctx, hooks, scope.Host, emit)
+	}
+
+	return nil
+}
+
+func (a agentConfigCheck) inspectDeepSeekServers(ctx context.Context, n *jsonconfig.Node, emit func(source.Span)) error {
+	for row := range agentconfig.DeepSeekRows(n) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		if row.Kind == agentconfig.DeepSeekMCP {
+			a.serverWithHost(row.Node, report.HostDeepSeekHarness, emit)
+		}
 	}
 
 	return nil

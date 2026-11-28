@@ -36,7 +36,49 @@ const (
 	GrokPluginManifest         = ".grok-plugin/plugin.json"
 	GrokMarketplaceManifest    = ".grok-plugin/marketplace.json"
 	GrokLSP                    = "lsp.json"
+	DeepSeekDirectory          = ".dsh"
+	DeepSeekCordis             = "cordis.yml"
+	DeepSeekPatch              = "cordis.patch.yml"
+	DeepSeekSettings           = "settings.yaml"
+	DeepSeekProfiles           = "profiles"
 )
+
+func DeepSeekCordisName(name string) bool {
+	stem := strings.TrimSuffix(path.Base(name), path.Ext(name))
+
+	return DeepSeekYAMLName(name) && (stem == "cordis" || stem == "cordis.patch" || stem == "cordis.snapshot" ||
+		strings.HasSuffix(stem, ".cordis") || strings.HasSuffix(stem, ".cordis.snapshot"))
+}
+
+func DeepSeekYAMLName(name string) bool {
+	ext := path.Ext(name)
+	return ext == ".yml" || ext == ".yaml"
+}
+
+func DeepSeekSettingsName(name, host string) bool {
+	dir := path.Dir(name)
+
+	return path.Base(name) == DeepSeekSettings &&
+		(path.Base(dir) == DeepSeekDirectory || host == report.HostDeepSeekHarness && dir == ".")
+}
+
+// DeepSeekSkillRoot identifies a conventional flat or directory skill.
+func DeepSeekSkillRoot(name, host string) (string, bool) {
+	parts := strings.Split(name, "/")
+	for i := range len(parts) - 2 {
+		base := parts[i]
+		if parts[i+1] != "skills" || base != DeepSeekDirectory && (base != ".agents" || host != report.HostDeepSeekHarness) {
+			continue
+		}
+
+		if len(parts) == i+3 && path.Ext(parts[i+2]) == ".md" ||
+			len(parts) == i+4 && parts[i+3] == SkillManifest && parts[i+2] != ".system" {
+			return path.Join(parts[:i+1]...), true
+		}
+	}
+
+	return "", false
+}
 
 // GrokTOMLRoot recognizes named Grok config files and explicitly interpreted standalone files.
 func GrokTOMLRoot(name, host string) (string, bool) {

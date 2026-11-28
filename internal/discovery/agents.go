@@ -128,6 +128,24 @@ var agentLayouts = []agentLayout{
 		system:        []location{{artifact.GrokManagedConfig, (*tree).grokTOML}, {artifact.GrokRequirements, (*tree).grokTOML}},
 		systemDefault: "/etc/grok", systemUnixOnly: true,
 	},
+	{
+		id: report.HostDeepSeekHarness, label: "DeepSeek Harness", homeFlag: "deepseek-home", homeEnv: "DSH_HOME",
+		homeOverride: func(o *Options) *string { return &o.DeepSeekHome },
+		user:         []location{{".agents", (*tree).deepSeekShared}},
+		defaultHome:  []location{{artifact.DeepSeekDirectory, (*tree).deepSeekHome}},
+		relocated:    []location{{".", (*tree).deepSeekHome}},
+		project: []location{
+			{".agents/skills", (*tree).deepSeekSkills},
+			{".dsh/skills", (*tree).deepSeekSkills},
+			{"AGENTS.md", (*tree).geminiContext},
+			{"AGENTS.local.md", (*tree).geminiContext},
+			{"CLAUDE.md", (*tree).geminiContext},
+			{"CLAUDE.local.md", (*tree).geminiContext},
+			{artifact.DeepSeekCordis, (*tree).deepSeekConfig},
+			{artifact.DeepSeekPatch, (*tree).deepSeekConfig},
+			{"package.json", (*tree).deepSeekManifest},
+		},
+	},
 }
 
 // AgentSelectors returns the discovery selectors in CLI help order.
