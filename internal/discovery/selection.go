@@ -40,7 +40,7 @@ func Select(ctx context.Context, snapshot Snapshot, filters Filters) (Snapshot, 
 		return snapshot, nil
 	}
 
-	if err := filters.resolve(); err != nil {
+	if err := filters.resolve(snapshot.boundRoots); err != nil {
 		return snapshot, err
 	}
 
@@ -139,7 +139,7 @@ func filterTargets(ctx context.Context, candidates []string, filters Filters) ([
 	return targets, nil
 }
 
-func (f *Filters) resolve() error {
+func (f *Filters) resolve(boundRoots map[string]string) error {
 	for _, values := range [][]string{f.Kinds, f.IncludePaths, f.ExcludePaths} {
 		if len(values) > maxDiscoveryFilterValues {
 			return errors.New("at most 32 values per discovery filter")
@@ -155,16 +155,16 @@ func (f *Filters) resolve() error {
 	f.Kinds = slices.Clone(f.Kinds)
 
 	var err error
-	if f.IncludePaths, err = selectionPaths(f.IncludePaths); err != nil {
+	if f.IncludePaths, err = selectionPaths(f.IncludePaths, boundRoots); err != nil {
 		return err
 	}
 
-	f.ExcludePaths, err = selectionPaths(f.ExcludePaths)
+	f.ExcludePaths, err = selectionPaths(f.ExcludePaths, boundRoots)
 
 	return err
 }
 
-func selectionPaths(values []string) ([]string, error) {
+func selectionPaths(values []string, boundRoots map[string]string) ([]string, error) {
 	result := make([]string, len(values))
 	for i, name := range values {
 		if name == "" || len(name) > maxDiscoveryFilterPathBytes {
@@ -176,9 +176,13 @@ func selectionPaths(values []string) ([]string, error) {
 			return nil, err
 		}
 
-		resolved, err := resolveSelectionPath(absolute)
+		resolved, err := resolvePath(absolute)
 		if err != nil {
-			return nil, err
+			return nil, errors.New("cannot resolve discovery path filter")
+		}
+
+		if expected, bound := boundRoots[absolute]; bound && resolved != expected {
+			return nil, errors.New("saved discovery path filter resolves differently")
 		}
 
 		result[i] = resolved
@@ -189,7 +193,7 @@ func selectionPaths(values []string) ([]string, error) {
 
 // A missing suffix must not hide an existing symlink ancestor. Resolve the
 // existing prefix before retaining names that have not been created yet.
-func resolveSelectionPath(name string) (string, error) {
+func resolvePath(name string) (string, error) {
 	var tail []string
 
 	for {
@@ -203,18 +207,18 @@ func resolveSelectionPath(name string) (string, error) {
 		}
 
 		if !errors.Is(err, os.ErrNotExist) {
-			return "", errors.New("cannot resolve discovery path filter")
+			return "", err
 		}
 
 		// A dangling link exists: it must not be peeled off as if it were
 		// merely an absent filename beneath the discovered root.
-		if _, err := os.Lstat(name); !errors.Is(err, os.ErrNotExist) {
-			return "", errors.New("cannot resolve discovery path filter")
+		if _, statErr := os.Lstat(name); !errors.Is(statErr, os.ErrNotExist) {
+			return "", err
 		}
 
 		parent := filepath.Dir(name)
 		if parent == name {
-			return "", errors.New("cannot resolve discovery path filter ancestor")
+			return "", err
 		}
 
 		tail = append(tail, filepath.Base(name))

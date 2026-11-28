@@ -1,41 +1,22 @@
 package discovery
 
-import (
-	"path/filepath"
-
-	"github.com/skarm/scout/internal/capture/artifact"
-	"github.com/skarm/scout/report"
-)
+import "path/filepath"
 
 // Plan publication boundaries independently of traversal budgets. Only known
 // configuration locations are protected, so ordinary reports in the selected
 // home or project remain writable even when the inventory is incomplete.
 func (b *builder) protectLocations() {
-	if b.selects(report.HostCodex) {
-		b.protect(filepath.Join(b.options.Home, ".agents", "skills"))
+	for _, agent := range b.agents {
+		b.protectRelative(b.options.Home, agent.user)
 
-		if b.options.CodexHome == "" {
-			b.protect(filepath.Join(b.options.Home, codexHomeDirectory))
+		if override := *agent.homeOverride(&b.options); override != "" {
+			b.protect(override)
 		} else {
-			b.protect(b.options.CodexHome)
+			b.protect(filepath.Join(b.options.Home, filepath.FromSlash(agent.defaultHome.path)))
 		}
-	}
 
-	if b.selects(report.HostClaudeCode) {
-		b.protect(filepath.Join(b.options.Home, claudeGlobalConfig))
-
-		if b.options.ClaudeHome == "" {
-			b.protect(filepath.Join(b.options.Home, claudeHomeDirectory))
-		} else {
-			b.protect(b.options.ClaudeHome)
-		}
-	}
-
-	if b.options.System {
-		for _, agent := range []string{report.HostCodex, report.HostClaudeCode} {
-			if b.selects(agent) {
-				b.protect(systemRoot(agent))
-			}
+		if root := agent.systemRoot(); b.options.System && root != "" {
+			b.protect(root)
 		}
 	}
 }
@@ -44,14 +25,8 @@ func (b *builder) protectProjectAncestors(dir string) {
 	// Do not depend on discovering .git or on successful source reads: an early
 	// stop must still protect possible inputs in the bounded ancestor chain.
 	for range maxDiscoveryAncestorDepth {
-		if b.selects(report.HostCodex) {
-			b.protect(filepath.Join(dir, codexHomeDirectory))
-			b.protect(filepath.Join(dir, ".agents", "skills"))
-		}
-
-		if b.selects(report.HostClaudeCode) {
-			b.protect(filepath.Join(dir, claudeHomeDirectory))
-			b.protect(filepath.Join(dir, artifact.MCPConfig))
+		for _, agent := range b.agents {
+			b.protectRelative(dir, agent.project)
 		}
 
 		parent := filepath.Dir(dir)
@@ -60,6 +35,12 @@ func (b *builder) protectProjectAncestors(dir string) {
 		}
 
 		dir = parent
+	}
+}
+
+func (b *builder) protectRelative(base string, paths []location) {
+	for _, item := range paths {
+		b.protect(filepath.Join(base, filepath.FromSlash(item.path)))
 	}
 }
 

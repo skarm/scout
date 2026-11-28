@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/skarm/scout/internal/commands/output"
@@ -16,8 +17,6 @@ import (
 )
 
 const (
-	flagClaudeHome  = "claude-home"
-	flagCodexHome   = "codex-home"
 	flagExcludePath = "exclude-path"
 	flagHome        = "home"
 	flagIncludePath = "include-path"
@@ -54,6 +53,14 @@ func discoverCommand(ctx context.Context, args []string, stdout, stderr io.Write
 		return requestError(err, stderr)
 	}
 
+	var rootBindings []discovery.RootBinding
+	if a.snapshot != "" {
+		rootBindings, err = a.pinRoots(nil)
+		if err != nil {
+			return usageError(stderr, err.Error())
+		}
+	}
+
 	call, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 
@@ -80,7 +87,7 @@ func discoverCommand(ctx context.Context, args []string, stdout, stderr io.Write
 		}
 
 		if a.snapshot != "" {
-			return snapshotDiscovered(ctx, a, snapshot, stdout, stderr)
+			return snapshotDiscovered(ctx, a, snapshot, rootBindings, stdout, stderr)
 		}
 
 		return scanDiscovered(ctx, a, snapshot, stdout, stderr)
@@ -122,10 +129,13 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 	a := discoveryArguments{options: discovery.DefaultOptions(""), timeout: defaultDiscoveryTimeout, format: "text"}
 	fs := flag.NewFlagSet("discover", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&a.options.Agent, flagAgent, a.options.Agent, "agent to inventory: all, codex or claude-code")
+	fs.StringVar(&a.options.Agent, flagAgent, a.options.Agent, "agent to inventory: "+strings.Join(discovery.AgentSelectors(), ", "))
 	fs.StringVar(&a.options.Home, flagHome, "", "selected user home; default current user's home")
-	fs.StringVar(&a.options.CodexHome, flagCodexHome, "", "explicit Codex configuration directory")
-	fs.StringVar(&a.options.ClaudeHome, flagClaudeHome, "", "explicit Claude Code configuration directory")
+
+	for _, override := range a.options.HomeOverrides() {
+		fs.StringVar(override.Path, override.Flag, "", "explicit "+override.Label+" configuration directory")
+	}
+
 	fs.Var(&a.projects, flagProject, "selected project directory; repeatable; default current directory")
 	fs.BoolVar(&a.noProject, flagNoProject, false, "omit project discovery")
 	fs.BoolVar(&a.options.System, flagSystem, true, "include known system configuration locations")
@@ -178,12 +188,10 @@ func (a *discoveryArguments) resolve() error {
 	}
 
 	if !a.explicitHome {
-		if a.options.CodexHome == "" {
-			a.options.CodexHome = os.Getenv("CODEX_HOME")
-		}
-
-		if a.options.ClaudeHome == "" {
-			a.options.ClaudeHome = os.Getenv("CLAUDE_CONFIG_DIR")
+		for _, override := range a.options.HomeOverrides() {
+			if *override.Path == "" {
+				*override.Path = os.Getenv(override.Env)
+			}
 		}
 	}
 
@@ -214,7 +222,7 @@ func scanDiscovered(ctx context.Context, a discoveryArguments, snapshot discover
 		return usageError(stderr, "--exclude requires an explicitly selected skill directory with scout scan")
 	}
 
-	if r.environment && (a.options.Agent == "all" || len(a.options.Projects) > 1) {
+	if r.environment && (a.options.Agent == discovery.AllAgents || len(a.options.Projects) > 1) {
 		return usageError(stderr, "environment analysis requires one --agent and at most one --project; split independent environments")
 	}
 

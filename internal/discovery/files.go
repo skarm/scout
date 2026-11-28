@@ -50,7 +50,7 @@ func (b *builder) open(base, agent, scope string, required bool, visit func(*tre
 		return
 	}
 
-	resolved, err := filepath.EvalSymlinks(absolute)
+	resolved, err := b.options.resolveRoot(absolute)
 	if errors.Is(err, fs.ErrNotExist) && !required {
 		return
 	}

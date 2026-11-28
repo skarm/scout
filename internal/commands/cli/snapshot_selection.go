@@ -20,8 +20,9 @@ import (
 // Discovery arguments contain the resolved operator context, never executable commands.
 // The inventory is informational; publication protection is rebuilt on each discovery.
 type checkpointDiscovery struct {
-	Arguments []string           `json:"arguments"`
-	Inventory discovery.Snapshot `json:"inventory"`
+	Arguments    []string                `json:"arguments"`
+	Inventory    discovery.Snapshot      `json:"inventory"`
+	RootBindings []discovery.RootBinding `json:"root_bindings,omitempty"`
 }
 
 type snapshotSelection struct {
@@ -61,13 +62,8 @@ func resolveSnapshotSelection(ctx context.Context, mode, path string, r *request
 
 	// Explicit roots and --empty override saved discovery; no ambient context is merged.
 	if len(inputs) == 0 && !r.snapshotEmpty {
-		if out.checkpoint.Discovery != nil {
-			a, err := restoreDiscovery(out.checkpoint.Discovery.Arguments)
-			if err != nil {
-				return out, err
-			}
-
-			inventory, err := completeDiscovery(ctx, a)
+		if saved := out.checkpoint.Discovery; saved != nil {
+			inventory, err := completeDiscovery(ctx, saved)
 			if err != nil {
 				return out, err
 			}
@@ -80,7 +76,7 @@ func resolveSnapshotSelection(ctx context.Context, mode, path string, r *request
 				return out, err
 			}
 
-			out.selection = &checkpointDiscovery{Arguments: out.checkpoint.Discovery.Arguments, Inventory: inventory}
+			out.selection = &checkpointDiscovery{Arguments: saved.Arguments, Inventory: inventory, RootBindings: saved.RootBindings}
 		} else {
 			out.inputs, err = savedRoots(out.checkpoint.Snapshot)
 			if err != nil {
@@ -188,8 +184,8 @@ func discoveredRoots(paths []string) (map[string]string, error) {
 	return inputs, nil
 }
 
-func snapshotDiscovered(ctx context.Context, a discoveryArguments, inventory discovery.Snapshot, stdout, stderr io.Writer) int {
-	if a.options.Agent == "all" || len(a.options.Projects) > 1 {
+func snapshotDiscovered(ctx context.Context, a discoveryArguments, inventory discovery.Snapshot, bindings []discovery.RootBinding, stdout, stderr io.Writer) int {
+	if a.options.Agent == discovery.AllAgents || len(a.options.Projects) > 1 {
 		return usageError(stderr, "environment snapshot requires one --agent and at most one --project")
 	}
 
@@ -214,10 +210,25 @@ func snapshotDiscovered(ctx context.Context, a discoveryArguments, inventory dis
 		return usageError(stderr, err.Error())
 	}
 
-	return executeEnvironmentSnapshot(ctx, "create", r, path, roots, &checkpointDiscovery{Arguments: plan, Inventory: inventory}, stdout, stderr)
+	return executeEnvironmentSnapshot(ctx, "create", r, path, roots, &checkpointDiscovery{Arguments: plan, Inventory: inventory, RootBindings: bindings}, stdout, stderr)
 }
 
-func completeDiscovery(ctx context.Context, a discoveryArguments) (discovery.Snapshot, error) {
+func (a *discoveryArguments) pinRoots(saved []discovery.RootBinding) ([]discovery.RootBinding, error) {
+	return a.options.PinRoots(saved, append(slices.Clone(a.includePaths), a.excludePaths...)...)
+}
+
+func completeDiscovery(ctx context.Context, saved *checkpointDiscovery) (discovery.Snapshot, error) {
+	a, err := restoreDiscovery(saved.Arguments)
+	if err != nil {
+		return discovery.Snapshot{}, err
+	}
+
+	if saved.RootBindings != nil {
+		if _, err := a.pinRoots(saved.RootBindings); err != nil {
+			return discovery.Snapshot{}, err
+		}
+	}
+
 	call, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 
@@ -258,8 +269,16 @@ func savedDiscoveryArguments(a discoveryArguments) ([]string, error) {
 
 		return nil
 	}
-	for _, entry := range []struct{ flag, path string }{{"--" + flagHome, a.options.Home}, {"--" + flagCodexHome, a.options.CodexHome}, {"--" + flagClaudeHome, a.options.ClaudeHome}} {
-		if err := appendPath(entry.flag, entry.path); err != nil {
+	if err := appendPath("--"+flagHome, a.options.Home); err != nil {
+		return nil, err
+	}
+
+	for _, override := range a.options.HomeOverrides() {
+		if override.Agent != a.options.Agent {
+			continue
+		}
+
+		if err := appendPath("--"+override.Flag, *override.Path); err != nil {
 			return nil, err
 		}
 	}
@@ -300,11 +319,21 @@ func restoreDiscovery(args []string) (discoveryArguments, error) {
 	}
 
 	a, err := parseDiscoveryArguments(args, io.Discard)
-	if err != nil || a.options.Agent == "all" || len(a.options.Projects) > 1 || a.scan || a.snapshot != "" || a.explicitOutput || len(a.scanArgs) != 0 || !a.explicitHome {
+	if err != nil || !discovery.ValidAgent(a.options.Agent) || a.options.Agent == discovery.AllAgents || len(a.options.Projects) > 1 ||
+		(!a.noProject && len(a.projects) == 0) || a.scan || a.snapshot != "" || a.explicitOutput || len(a.scanArgs) != 0 || !a.explicitHome {
 		return a, errors.New("invalid saved discovery context")
 	}
 
-	for _, path := range append([]string{a.options.Home, a.options.CodexHome, a.options.ClaudeHome}, a.options.Projects...) {
+	paths := []string{a.options.Home}
+	for _, override := range a.options.HomeOverrides() {
+		paths = append(paths, *override.Path)
+	}
+
+	paths = append(paths, a.options.Projects...)
+	paths = append(paths, a.includePaths...)
+
+	paths = append(paths, a.excludePaths...)
+	for _, path := range paths {
 		if path != "" && !filepath.IsAbs(path) {
 			return a, errors.New("saved discovery paths must be absolute")
 		}

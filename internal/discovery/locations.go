@@ -4,14 +4,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
-	"github.com/skarm/scout/report"
 )
 
 const (
@@ -41,35 +39,25 @@ const kindMCPServer = "mcp-server"
 const codeInvalidRoot = "invalid_root"
 
 func (b *builder) user() {
-	if b.selects(report.HostCodex) {
-		b.open(b.options.Home, report.HostCodex, "user", true, func(t *tree) {
-			t.skills(".agents/skills")
+	for _, agent := range b.agents {
+		override := *agent.homeOverride(&b.options)
+		b.open(b.options.Home, agent.id, "user", true, func(t *tree) {
+			t.readLocations(agent.user)
 
-			if b.options.CodexHome == "" {
-				t.codex(codexHomeDirectory)
+			if override == "" {
+				agent.defaultHome.read(t, agent.defaultHome.path)
 			}
 		})
 
-		if b.options.CodexHome != "" {
-			b.open(b.options.CodexHome, report.HostCodex, "user", false, func(t *tree) { t.codex(".") })
+		if override != "" {
+			b.open(override, agent.id, "user", false, func(t *tree) { t.readLocations(agent.relocated) })
 		}
 	}
+}
 
-	if b.selects(report.HostClaudeCode) {
-		b.open(b.options.Home, report.HostClaudeCode, "user", true, func(t *tree) {
-			t.claudeGlobal(claudeGlobalConfig)
-
-			if b.options.ClaudeHome == "" {
-				t.claude(claudeHomeDirectory)
-			}
-		})
-
-		if b.options.ClaudeHome != "" {
-			b.open(b.options.ClaudeHome, report.HostClaudeCode, "user", false, func(t *tree) {
-				t.claudeGlobal(claudeGlobalConfig)
-				t.claude(".")
-			})
-		}
+func (t *tree) readLocations(locations []location) {
+	for _, item := range locations {
+		item.read(t, item.path)
 	}
 }
 
@@ -140,7 +128,7 @@ func (b *builder) prepareProjects() {
 
 		b.protectProjectAncestors(absolute)
 
-		resolved, err := filepath.EvalSymlinks(absolute)
+		resolved, err := b.options.resolveRoot(absolute)
 		if err != nil {
 			b.issue(codeProjectUnreadable, absolute)
 			continue
@@ -172,24 +160,27 @@ func (b *builder) projects() {
 			return
 		}
 
-		b.ancestors(b.sourcePaths.canonical(root))
+		b.ancestors(b.sourcePaths.canonical(root), b.options.projectBoundaries[root])
 	}
 }
 
-func (b *builder) ancestors(dir string) {
+func (b *builder) ancestors(dir, boundary string) {
 	for depth := 0; depth < maxDiscoveryAncestorDepth && !b.stopped && b.ctx.Err() == nil; depth++ {
-		for _, agent := range []string{report.HostCodex, report.HostClaudeCode} {
-			if b.selects(agent) {
-				b.open(dir, agent, "project", true, func(t *tree) { t.projectFiles() })
-			}
+		for _, agent := range b.agents {
+			b.open(dir, agent.id, "project", true, func(t *tree) {
+				t.project = t.base
+				t.readLocations(agent.project)
+			})
 		}
 
-		_, gitErr := os.Lstat(filepath.Join(dir, ".git"))
-		if gitErr == nil || filepath.Dir(dir) == dir || samePath(dir, b.options.Home) {
+		if dir == boundary {
 			return
 		}
 
-		dir = filepath.Dir(dir)
+		dir = projectParent(dir, b.options.Home)
+		if dir == "" {
+			return
+		}
 	}
 
 	if !b.stopped && b.ctx.Err() == nil {
@@ -197,57 +188,36 @@ func (b *builder) ancestors(dir string) {
 	}
 }
 
+func projectParent(dir, home string) string {
+	_, gitErr := os.Lstat(filepath.Join(dir, ".git"))
+	if parent := filepath.Dir(dir); gitErr != nil && parent != dir && !samePath(dir, home) {
+		return parent
+	}
+
+	return ""
+}
+
 func samePath(a, b string) bool {
 	absolute, err := filepath.EvalSymlinks(b)
 	return err == nil && a == absolute
 }
 
-func (t *tree) projectFiles() {
-	t.project = t.base
-	if t.agent == report.HostCodex {
-		t.codexConfig(".codex/config.toml")
-		t.skills(".agents/skills")
-	} else {
-		t.mcpFile(artifact.MCPConfig)
-		t.settings(artifact.ClaudeProjectSettings)
-		t.settings(artifact.ClaudeProjectLocalSettings)
-		t.skills(".claude/skills")
-		t.commands(".claude/commands")
-	}
+func (t *tree) codexProject(base string) {
+	t.codexConfig(path.Join(base, "config.toml"))
+}
+
+func (t *tree) claudeProject(base string) {
+	t.settings(path.Join(base, artifact.ClaudeSettings))
+	t.settings(path.Join(base, artifact.ClaudeLocalSettings))
+	t.skills(path.Join(base, "skills"))
+	t.commands(path.Join(base, "commands"))
 }
 
 func (b *builder) system() {
-	if b.selects(report.HostCodex) {
-		b.open(systemRoot(report.HostCodex), report.HostCodex, "system", false, func(t *tree) {
-			t.codexConfig("config.toml")
-			t.skills("skills")
-		})
-	}
-
-	if b.selects(report.HostClaudeCode) {
-		b.open(systemRoot(report.HostClaudeCode), report.HostClaudeCode, "system", false, func(t *tree) {
-			t.mcpFile("managed-mcp.json")
-			t.settings("managed-settings.json")
-		})
-	}
-}
-
-func systemRoot(agent string) string {
-	if agent == report.HostCodex {
-		if runtime.GOOS == "windows" {
-			return `C:\ProgramData\OpenAI\Codex`
+	for _, agent := range b.agents {
+		if root := agent.systemRoot(); root != "" {
+			b.open(root, agent.id, "system", false, func(t *tree) { t.readLocations(agent.system) })
 		}
-
-		return "/etc/codex"
-	}
-
-	switch runtime.GOOS {
-	case "darwin":
-		return "/Library/Application Support/ClaudeCode"
-	case "windows":
-		return `C:\Program Files\ClaudeCode`
-	default:
-		return "/etc/claude-code"
 	}
 }
 

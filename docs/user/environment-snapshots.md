@@ -28,12 +28,16 @@ After an update, run:
 scout snapshot compare --snapshot /review/checkpoints/project.json --format markdown
 ```
 
-Scout repeats saved discovery: home, agent, absolute project paths, system locations
-and filters. A changed working directory or process home overrides do not select a
-new context. New components are discovered again and missing components are reported
-as removed. Incomplete discovery refuses comparison; unknown content is not deletion.
+Scout repeats the saved agent, home and configuration overrides, project, system
+locations and filters. New snapshots record the resolved locations and where the
+project ancestor search stops. If a link redirects a path or the project boundary
+changes, live comparison stops. Use `--candidate`
+to compare captured bytes or `--root` to choose the current inputs explicitly.
+Older snapshots still open and use their saved discovery arguments. Repeat discovery
+finds new components and reports missing components as removed. Incomplete discovery
+stops comparison.
 
-Preview context and historical status without printing source bytes:
+Use `inspect` to see the saved arguments, resolved locations and historical status:
 
 ```sh
 scout snapshot inspect --snapshot /review/checkpoints/project.json

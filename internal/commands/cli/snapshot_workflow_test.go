@@ -106,6 +106,114 @@ func TestSnapshotDiscoverRepeatDetectsNewAndRemovedComponents(t *testing.T) {
 	}
 }
 
+func TestDiscoverySnapshotPinsAgentHomeAndReadsLegacyCheckpoints(t *testing.T) {
+	home, original, other := t.TempDir(), t.TempDir(), t.TempDir()
+	checkpoint := filepath.Join(t.TempDir(), "saved.json")
+	legacy := filepath.Join(filepath.Dir(checkpoint), "legacy.json")
+	alias := filepath.Join(home, "agent-home")
+	for _, root := range []string{original, other} {
+		skill := filepath.Join(root, "skills", "example", "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(skill), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(skill, []byte("# Example\nSummarize local text.\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(original, alias); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	args := []string{"discover", "--agent", "codex", "--home", home, "--codex-home", alias, "--system=false", "--no-project", "--kind", "skill", "--snapshot", checkpoint, "--", "--profile", "custom", "--checks", "none", "--format", "json"}
+	if code, _ := runCheckpoint(t, args); code != 0 {
+		t.Fatalf("cannot create discovery snapshot: %d", code)
+	}
+	code, result := runCheckpoint(t, []string{"snapshot", "inspect", "--snapshot", checkpoint, "--format", "json"})
+	var summary struct {
+		Bindings []struct{ Path, Resolved string } `json:"discovery_root_bindings"`
+	}
+	resolved, err := filepath.EvalSymlinks(original)
+	if err != nil || code != 0 || json.Unmarshal(result, &summary) != nil || len(summary.Bindings) != 2 ||
+		summary.Bindings[1].Path != alias || summary.Bindings[1].Resolved != resolved {
+		t.Fatalf("wrong saved paths: %s, %v", result, err)
+	}
+	writeLegacyDiscoveryCheckpoint(t, checkpoint, legacy)
+	if code, _ := runCheckpoint(t, checkpointArgs("compare", legacy)); code != 0 {
+		t.Fatalf("legacy discovery checkpoint stopped replaying: %d", code)
+	}
+	if err := os.Remove(alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, alias); err != nil {
+		t.Fatal(err)
+	}
+	var out, diagnostics bytes.Buffer
+	code = cli.Run(t.Context(), checkpointArgs("compare", checkpoint), &out, &diagnostics)
+	if code != 2 || out.Len() != 0 || !strings.Contains(diagnostics.String(), "saved discovery paths resolve differently") {
+		t.Fatalf("checkpoint accepted the replacement home: %d, %s, %s", code, &out, &diagnostics)
+	}
+	if code, _ := runCheckpoint(t, checkpointArgs("compare", checkpoint, "--candidate", legacy)); code != 0 {
+		t.Fatalf("captured comparison consulted live paths: %d", code)
+	}
+}
+
+func writeLegacyDiscoveryCheckpoint(t *testing.T, source, target string) {
+	t.Helper()
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var checkpoint, context map[string]json.RawMessage
+	if err := json.Unmarshal(data, &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(checkpoint["discovery"], &context); err != nil {
+		t.Fatal(err)
+	}
+	delete(context, "root_bindings")
+	checkpoint["discovery"], err = json.Marshal(context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := json.Marshal(checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiscoverySnapshotPinsProjectBoundary(t *testing.T) {
+	parent, home := t.TempDir(), t.TempDir()
+	project := filepath.Join(parent, "repo")
+	nested := filepath.Join(project, "work")
+	if err := os.MkdirAll(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(project, ".git")
+	if err := os.WriteFile(marker, []byte("fixture boundary\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	discoverySkill(t, project, "local", "# Local helper\nFormat local text.\n")
+	discoverySkill(t, parent, "outside", "# Other helper\nOutside the project.\n")
+	checkpoint := filepath.Join(t.TempDir(), "saved.json")
+	args := []string{"discover", "--agent", "codex", "--home", home, "--project", nested, "--system=false", "--kind", "skill", "--snapshot", checkpoint, "--", "--profile", "custom", "--checks", "none", "--format", "json"}
+	if code, _ := runCheckpoint(t, args); code != 0 {
+		t.Fatalf("cannot create project snapshot: %d", code)
+	}
+	if code, _ := runCheckpoint(t, checkpointArgs("compare", checkpoint)); code != 0 {
+		t.Fatalf("unchanged project replay failed: %d", code)
+	}
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+	var out, diagnostics bytes.Buffer
+	code := cli.Run(t.Context(), checkpointArgs("compare", checkpoint), &out, &diagnostics)
+	if code != 2 || out.Len() != 0 || !strings.Contains(diagnostics.String(), "project boundary changed") {
+		t.Fatalf("checkpoint widened the project search: %d, %s, %s", code, &out, &diagnostics)
+	}
+}
+
 func TestSnapshotSavedManualPathsAndProtectedOutputs(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, "SKILL.md")

@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-
-	"github.com/skarm/scout/report"
 )
 
 const (
@@ -38,12 +36,14 @@ type Options struct {
 	System                      bool
 	MaxEntries, MaxDepth        int
 	MaxBytes                    int64
+	boundRoots                  map[string]string
+	projectBoundaries           map[string]string
 }
 
-// DefaultOptions selects both agents and bounded discovery of known locations.
+// DefaultOptions selects all agents and bounded discovery of known locations.
 // Projects and environment overrides are supplied explicitly by the caller.
 func DefaultOptions(home string) Options {
-	return Options{Home: home, Agent: "all", System: true, MaxEntries: defaultEntries, MaxDepth: defaultDepth, MaxBytes: defaultBytes}
+	return Options{Home: home, Agent: AllAgents, System: true, MaxEntries: defaultEntries, MaxDepth: defaultDepth, MaxBytes: defaultBytes}
 }
 
 // Snapshot is an inventory, not evidence that a component is active or safe.
@@ -60,6 +60,7 @@ type Snapshot struct {
 	Selection   *Selection   `json:"selection,omitempty"`
 
 	protectedInputs []string
+	boundRoots      map[string]string
 }
 
 // ProtectedInputs returns local boundaries for report publication, including
@@ -112,6 +113,7 @@ type Enablement struct {
 type builder struct {
 	ctx                        context.Context
 	options                    Options
+	agents                     []agentLayout
 	out                        Snapshot
 	entries                    int
 	bytes                      int64
@@ -128,14 +130,16 @@ type builder struct {
 // locations. It never runs commands, contacts MCP servers or loads Scout settings.
 // Operational failures retain a partial Snapshot; invalid options return no inventory.
 func Discover(ctx context.Context, options Options) (Snapshot, error) {
-	if ctx == nil || options.Home == "" || !slices.Contains([]string{"all", report.HostCodex, report.HostClaudeCode}, options.Agent) ||
+	agents := selectedAgents(options.Agent)
+	if ctx == nil || options.Home == "" || len(agents) == 0 ||
 		options.MaxEntries < 1 || options.MaxEntries > maxEntries || options.MaxDepth < 1 || options.MaxDepth > maxDepth ||
 		options.MaxBytes < 1 || options.MaxBytes > maxBytes || len(options.Projects) > maxProjects {
 		return Snapshot{}, errors.New("invalid discovery options")
 	}
 
-	b := &builder{ctx: ctx, options: options, seen: map[Component]bool{}, sources: map[string]string{}, projectVisits: map[string]bool{}, out: Snapshot{
+	b := &builder{ctx: ctx, options: options, agents: agents, seen: map[Component]bool{}, sources: map[string]string{}, projectVisits: map[string]bool{}, out: Snapshot{
 		Schema: discoverySchema, Complete: true,
+		boundRoots: options.boundRoots,
 		Components: []Component{}, Sources: []Source{}, Targets: []string{}, Issues: []Issue{}, Enablement: []Enablement{},
 		Limitations: []string{
 			"On-disk declarations only; activation, precedence, approvals and runtime tool availability are not resolved.",
@@ -154,10 +158,6 @@ func Discover(ctx context.Context, options Options) (Snapshot, error) {
 	}
 
 	return b.finish()
-}
-
-func (b *builder) selects(agent string) bool {
-	return b.options.Agent == "all" || b.options.Agent == agent
 }
 
 func (b *builder) issue(code, name string) {

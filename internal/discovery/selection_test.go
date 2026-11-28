@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/skarm/scout/internal/discovery"
@@ -49,6 +50,36 @@ func TestSelectionRejectsInvalidFiltersAndCancellation(t *testing.T) {
 	cancel()
 	if _, err := discovery.Select(ctx, snapshot, discovery.Filters{Kinds: []string{"skill"}}); err == nil {
 		t.Fatal("cancelled selection accepted")
+	}
+}
+
+func TestSelectionRefusesRetargetedPinnedFilter(t *testing.T) {
+	home, aliasParent := canonicalTemp(t), canonicalTemp(t)
+	write(t, home, ".agents/skills/first/SKILL.md", "First fixture")
+	write(t, home, ".agents/skills/second/SKILL.md", "Second fixture")
+	first := filepath.Join(home, ".agents", "skills", "first")
+	second := filepath.Join(home, ".agents", "skills", "second")
+	alias := filepath.Join(aliasParent, "filter")
+	if err := os.Symlink(first, alias); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	o := options(home)
+	o.Agent = "codex"
+	if _, err := o.PinRoots(nil, alias); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := discovery.Discover(t.Context(), o)
+	if err != nil || !inventory.Complete {
+		t.Fatalf("discovery failed: %v %+v", err, inventory.Issues)
+	}
+	if err := os.Remove(alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(second, alias); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := discovery.Select(t.Context(), inventory, discovery.Filters{IncludePaths: []string{alias}}); err == nil || !strings.Contains(err.Error(), "resolves differently") {
+		t.Fatalf("selection accepted a different target for a pinned path: %v", err)
 	}
 }
 

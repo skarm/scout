@@ -35,11 +35,9 @@ snapshot create / snapshot compare / snapshot inspect:
   Snapshots may contain secrets. Store outside inputs; checksum is not approval or a signature.
 
 discover:
-  --agent, -a AGENT          Agent to inventory: all, codex or claude-code (default: all).
+  --agent, -a AGENT          Agent to inventory: %s (default: all).
   --home DIR                 Selected user home (default: current user's home).
-  --codex-home DIR           Explicit Codex configuration directory.
-  --claude-home DIR          Explicit Claude Code configuration directory.
-  --project DIR              Selected project; repeatable (default: current directory).
+%s  --project DIR              Selected project; repeatable (default: current directory).
   --no-project               Omit project discovery (default: false).
   --system[=BOOL]            Include known system locations (default: true).
   --max-entries N            Aggregate discovery probes/entries (default: %d).
@@ -53,7 +51,7 @@ discover:
   --kind, -k KIND            Select skill, plugin, mcp-server, command or hook roots; repeatable.
   --include-path PATH        Narrow discovered roots; repeatable; cannot expand discovery.
   --exclude-path PATH        Omit overlapping roots; repeatable; use --kind for precision.
-  Explicit --home ignores process CODEX_HOME/CLAUDE_CONFIG_DIR overrides.
+  Explicit --home ignores process %s overrides.
   --scan requires complete discovery and 1..%d roots; stdout is a scan report.
 
 doctor (alias: selftest):
@@ -186,9 +184,19 @@ func fullHelp(stdout io.Writer) int {
 
 	discoveryDefaults := discovery.DefaultOptions("")
 	registryDefaults := registry.DefaultOptions()
+	homeOverrides := discoveryDefaults.HomeOverrides()
+	homeEnvs := make([]string, 0, len(homeOverrides))
+
+	var homeFlags strings.Builder
+	for _, override := range homeOverrides {
+		_, _ = fmt.Fprintf(&homeFlags, "  %-26s Explicit %s configuration directory.\n", "--"+override.Flag+" DIR", override.Label)
+		homeEnvs = append(homeEnvs, override.Env)
+	}
+
 	_, _ = fmt.Fprintf(&text, operatorHelp,
 		snapshotFailureSchema, envcompare.ComparisonSchema,
-		discoveryDefaults.MaxEntries, discoveryDefaults.MaxDepth, discoveryDefaults.MaxBytes, envsnapshot.MaxRoots,
+		strings.Join(discovery.AgentSelectors(), ", "), homeFlags.String(),
+		discoveryDefaults.MaxEntries, discoveryDefaults.MaxDepth, discoveryDefaults.MaxBytes, strings.Join(homeEnvs, "/"), envsnapshot.MaxRoots,
 		registryDefaults.Endpoint, registryDefaults.MaxPages, registryDefaults.MaxBytes,
 		scout.MaxScanTargets,
 	)

@@ -8,6 +8,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/skarm/scout/internal/discovery"
 )
 
 type checkpointRootSummary struct {
@@ -26,6 +28,7 @@ type checkpointSummary struct {
 	Decision  string                  `json:"historical_decision"`
 	Roots     []checkpointRootSummary `json:"roots"`
 	Discovery []string                `json:"discovery_arguments,omitempty"`
+	Bindings  []discovery.RootBinding `json:"discovery_root_bindings,omitempty"`
 }
 
 func inspectEnvironmentSnapshot(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -62,6 +65,7 @@ func inspectEnvironmentSnapshot(ctx context.Context, args []string, stdout, stde
 
 	if saved.Discovery != nil {
 		summary.Discovery = saved.Discovery.Arguments
+		summary.Bindings = saved.Discovery.RootBindings
 	}
 
 	if ctx.Err() != nil {
@@ -97,9 +101,25 @@ func inspectEnvironmentSnapshot(ctx context.Context, args []string, stdout, stde
 		_, err = fmt.Fprintln(stdout, "Compare without --root to recheck these saved paths; missing roots are reported as removed.")
 	}
 
-	if err != nil {
+	if err != nil || writeDiscoveryBindings(stdout, summary.Bindings) != nil {
 		return 2
 	}
 
 	return 0
+}
+
+func writeDiscoveryBindings(w io.Writer, bindings []discovery.RootBinding) error {
+	for _, binding := range bindings {
+		if _, err := fmt.Fprintf(w, "Saved discovery path %q resolves to %q.\n", binding.Path, binding.Resolved); err != nil {
+			return err
+		}
+
+		if binding.ProjectBoundary != "" {
+			if _, err := fmt.Fprintf(w, "Project search stops at %q.\n", binding.ProjectBoundary); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

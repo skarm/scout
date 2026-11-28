@@ -259,6 +259,29 @@ func TestExplicitAgentHomeCanShareTheUserHome(t *testing.T) {
 	})
 }
 
+func TestDiscoveryProtectsRegisteredLocationsBeforeSpendingBudget(t *testing.T) {
+	home, project, override := canonicalTemp(t), canonicalTemp(t), canonicalTemp(t)
+	o := options(home)
+	o.CodexHome, o.Projects, o.MaxEntries = override, []string{project}, 1
+	result, err := discovery.Discover(t.Context(), o)
+	if err != nil || result.Complete || !hasIssue(result, "entry_limit") {
+		t.Fatalf("expected exhausted discovery: %v, %+v", err, result)
+	}
+	for _, want := range []string{
+		override,
+		filepath.Join(home, ".agents", "skills"), filepath.Join(home, ".claude"), filepath.Join(home, ".claude.json"),
+		filepath.Join(project, ".codex"), filepath.Join(project, ".agents", "skills"),
+		filepath.Join(project, ".claude"), filepath.Join(project, ".mcp.json"),
+	} {
+		if !slices.Contains(result.ProtectedInputs(), want) {
+			t.Errorf("missing protection for %q", want)
+		}
+	}
+	if slices.Contains(result.ProtectedInputs(), filepath.Join(home, ".codex")) {
+		t.Fatal("overridden default directory was protected as an input")
+	}
+}
+
 func TestRefuseLinksAndEscapingPluginReferences(t *testing.T) {
 	home, outside := canonicalTemp(t), canonicalTemp(t)
 	write(t, outside, "payload/SKILL.md", "SECRET_OUTSIDE")
