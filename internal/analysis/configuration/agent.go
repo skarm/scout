@@ -613,13 +613,18 @@ func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, 
 	}
 
 	if scope.Role == report.ComponentMCPConfig && serverConfigRules[a.id] {
-		if scope.Host == report.HostOpenCode {
+		if scope.Host == report.HostOpenCode || scope.Host == report.HostOpenClaw {
 			for _, item := range n.Members {
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
 
-				a.serverWithHost(agentconfig.OpenCodeForMCPChecks(item.Value), report.HostOpenCode, emit)
+				server := item.Value
+				if scope.Host == report.HostOpenCode {
+					server = agentconfig.OpenCodeForMCPChecks(server)
+				}
+
+				a.serverWithHost(server, scope.Host, emit)
 			}
 		} else {
 			a.inspectServerScope(ctx, n, scope.Host, emit)

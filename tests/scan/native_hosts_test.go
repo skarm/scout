@@ -55,6 +55,17 @@ func TestNativeConfigurationFindings(t *testing.T) {
 			rules:  []string{"AC003"},
 		},
 		{
+			host: report.HostAuto, file: "openclaw.json",
+			config: `{
+				// Unquoted native keys and single-quoted values.
+				mcp: { servers: {
+					local: { command: 'npx', args: ['sample-mcp@latest'], },
+					mcpServers: { url: 'http://example.invalid/mcp', enabled: false, },
+				}, },
+			}`,
+			rules: []string{"MC001", "SC001"},
+		},
+		{
 			host: report.HostOpenCode, file: "opencode.jsonc",
 			config: `{// retain byte evidence
 				"mcp": {"servers": {

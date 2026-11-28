@@ -19,6 +19,10 @@ const (
 
 func nativeWorkspaceCandidate(ns *namespace, name, requested string) (candidate, bool) {
 	root, host := nativeWorkspace(name, requested)
+	if host == "" && path.Base(name) == artifact.OpenClawHookManifest && openClawStandaloneHook(ns, name, requested) {
+		root, host = path.Dir(name), report.HostOpenClaw
+	}
+
 	if host == "" && path.Ext(name) == ".json" && hasNativeHooks(ns.entries[name]) {
 		root, host = copilotHookWorkspace(name, requested, len(ns.names) == 1)
 	}
@@ -67,6 +71,10 @@ func portableManifestAt(ns *namespace, root string) bool {
 
 func nativeWorkspace(name, requested string) (root, host string) {
 	dir, file := path.Dir(name), path.Base(name)
+	if file == artifact.OpenClawConfig {
+		return dir, report.HostOpenClaw
+	}
+
 	if root, ok := geminiWorkspaceRoot(name, requested); ok {
 		return root, report.HostGeminiCLI
 	}
@@ -177,6 +185,8 @@ func (p *plugin) discoverNativeWorkspace() {
 		p.openCodeWorkspace()
 	case report.HostGeminiCLI:
 		p.geminiWorkspace()
+	case report.HostOpenClaw:
+		p.openClawWorkspace()
 	}
 }
 

@@ -82,14 +82,15 @@ scout version
 
 ## Обнаружение окружения
 
-`scout discover` выводит инвентарь Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode и Gemini CLI; `--scan` передаёт найденные
+`scout discover` выводит инвентарь Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI и OpenClaw; `--scan` передаёт найденные
 корни существующему Scanner. См. [расположения, формат и ограничения](../user/discovery.ru.md).
 
-- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli` (`-a`): агент; по умолчанию `all`.
+- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli|openclaw` (`-a`): агент; по умолчанию `all`.
 - `--home DIR`: домашний каталог; по умолчанию каталог текущего пользователя.
 - `--codex-home DIR`, `--claude-home DIR`, `--cursor-home DIR`, `--copilot-home DIR`, `--opencode-home DIR`: явные каталоги конфигурации агентов.
   Без `--home` учитываются `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса.
 - `--gemini-home DIR`: каталог, содержащий `.gemini` и `.agents`. Без `--home` учитывается `GEMINI_CLI_HOME`.
+- `--openclaw-home DIR`: каталог состояния OpenClaw. Без `--home` учитывается `OPENCLAW_STATE_DIR`.
 - `--project DIR`: повторяемый выбранный проект; по умолчанию текущий каталог.
 - `--no-project`: исключить проекты; по умолчанию `false`.
 - `--system[=BOOL]`: известные системные расположения; по умолчанию `true`.
@@ -132,7 +133,7 @@ scout version
   reviewer; `custom` допускает явный выбор проверок. Aliases CLI: `extended` =
   `standard`, `semantic` = `review`, `basic` = `custom` со всеми отключёнными
   необязательными статическими проверками.
-- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|agent-skills`: интерпретация деклараций агентов
+- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|openclaw|agent-skills`: интерпретация деклараций агентов
   и плагинов; по умолчанию `auto`.
 - `--stdin NAME` (`-i`) читает один вход из stdin. Укажите относительное имя файла,
   например `SKILL.md`, для определения формата и координат исходников.

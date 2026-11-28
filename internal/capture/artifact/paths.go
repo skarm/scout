@@ -25,7 +25,16 @@ const (
 	GeminiDirectory            = ".gemini"
 	GeminiSettings             = "settings.json"
 	GeminiSystemDefaults       = "system-defaults.json"
+	OpenClawDirectory          = ".openclaw"
+	OpenClawConfig             = "openclaw.json"
+	OpenClawManifest           = "openclaw.plugin.json"
+	OpenClawHookManifest       = "HOOK.md"
 )
+
+// JSON5ConfigName identifies explicitly named JSON5 configuration files.
+func JSON5ConfigName(name string) bool {
+	return name == OpenClawConfig || name == OpenClawManifest || strings.EqualFold(path.Ext(name), ".json5")
+}
 
 // GeminiSettingsRoot recognizes an unambiguous workspace path or a standalone
 // settings file interpreted with an explicit Gemini CLI profile.

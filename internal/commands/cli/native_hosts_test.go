@@ -16,6 +16,7 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 	tests := []struct {
 		host, config, initial, updated string
 		kind, name, key, state         string
+		userConfig                     bool
 	}{
 		{
 			host: report.HostCursor, config: ".cursor/hooks.json",
@@ -40,6 +41,16 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 			kind: "mcp-server", name: "example", key: "/mcpServers/example", state: "unknown",
 		},
 		{
+			host: report.HostOpenClaw, config: ".openclaw/openclaw.json", userConfig: true,
+			initial: `{// OpenClaw JSON5
+				mcp: { servers: { example: { url: 'https://example.invalid/old', enabled: false, }, }, },
+			}`,
+			updated: `{// OpenClaw JSON5
+				mcp: { servers: { example: { url: 'https://example.invalid/new', enabled: false, }, }, },
+			}`,
+			kind: "mcp-server", name: "example", key: "/mcp/servers/example", state: "disabled",
+		},
+		{
 			host: report.HostOpenCode, config: "opencode.jsonc",
 			initial: `{// example
 				"mcp":{"servers":{"example":{"type":"remote","url":"https://example.invalid/old","disabled":true},},},
@@ -54,7 +65,11 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 		t.Run(tt.host, func(t *testing.T) {
 			project, home := t.TempDir(), t.TempDir()
 			writeNativeFixture(t, project, ".git/HEAD", "ref: refs/heads/main\n")
-			file := writeNativeFixture(t, project, tt.config, tt.initial)
+			root, scope := project, "project"
+			if tt.userConfig {
+				root, scope = home, "user"
+			}
+			file := writeNativeFixture(t, root, tt.config, tt.initial)
 			args := []string{"discover", "--home", home, "--project", project, "--agent", tt.host, "--system=false", "--kind", tt.kind}
 
 			code, raw := runCheckpoint(t, append(slices.Clone(args), "--format", "json"))
@@ -63,7 +78,7 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 				t.Fatalf("invalid inventory, exit %d: %s", code, raw)
 			}
 			c := inventory.Components[0]
-			if c.Agent != tt.host || c.Scope != "project" || c.Source != file || c.Kind != tt.kind || c.Name != tt.name || c.Key != tt.key || c.State != tt.state {
+			if c.Agent != tt.host || c.Scope != scope || c.Source != file || c.Kind != tt.kind || c.Name != tt.name || c.Key != tt.key || c.State != tt.state {
 				t.Fatalf("unexpected declaration: %+v", c)
 			}
 
@@ -91,7 +106,7 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 				t.Fatalf("unchanged comparison exited %d: %+v", code, comparison.Roots)
 			}
 
-			writeNativeFixture(t, project, tt.config, tt.updated)
+			writeNativeFixture(t, root, tt.config, tt.updated)
 			candidate := filepath.Join(t.TempDir(), "after.json")
 			code, raw = runCheckpoint(t, checkpointArgs("compare", checkpoint, "--scope", "selected", "--source-diff", "--save-candidate", candidate))
 			comparison = comparisonResult(t, raw)
@@ -186,6 +201,7 @@ func TestNativeInstalledPluginsAndSharedSkills(t *testing.T) {
 		"cursor/skill/shared":                "unknown",
 		"opencode/skill/shared":              "unknown",
 		"gemini-cli/skill/shared":            "unknown",
+		"openclaw/skill/shared":              "unknown",
 	}
 	sharedTargets := 0
 	for _, target := range inventory.Targets {

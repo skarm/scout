@@ -20,4 +20,6 @@ const (
 	HostCopilotCLI = "copilot-cli"
 	// HostOpenCode identifies OpenCode configuration and extensions.
 	HostOpenCode = "opencode"
+	// HostOpenClaw identifies OpenClaw configuration and native packages.
+	HostOpenClaw = "openclaw"
 )

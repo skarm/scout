@@ -245,13 +245,22 @@ type JSONTree struct {
 // parsed tree.
 func (t JSONTree) RuntimeIdentity() string { return t.Runtime }
 
-type jsonBackend struct{ comments, trailingCommas bool }
+type jsonBackend struct{ comments, trailingCommas, json5 bool }
 
 // WithJSONComments selects a known JSON dialect for a physical file.
 // A caller-supplied JSON backend retains its own format policy.
 func WithJSONComments(backend Backend, trailingCommas bool) Backend {
 	if _, ok := backend.(jsonBackend); ok {
 		return jsonBackend{comments: true, trailingCommas: trailingCommas}
+	}
+
+	return backend
+}
+
+// WithJSON5 selects the bounded JSON5 reader for a native config file.
+func WithJSON5(backend Backend) Backend {
+	if _, ok := backend.(jsonBackend); ok {
+		return jsonBackend{json5: true}
 	}
 
 	return backend
@@ -269,7 +278,9 @@ func (jsonBackend) Descriptor() Descriptor {
 
 func (b jsonBackend) Parse(ctx context.Context, v source.View) (any, error) {
 	decode, runtime := jsonconfig.Parse, ""
-	if b.trailingCommas {
+	if b.json5 {
+		decode, runtime = jsonconfig.ParseJSON5, "json5"
+	} else if b.trailingCommas {
 		decode, runtime = jsonconfig.ParseJSONC, "jsonc"
 	} else if b.comments {
 		decode, runtime = jsonconfig.ParseWithComments, "json-with-comments"

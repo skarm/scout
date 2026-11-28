@@ -2,7 +2,7 @@
 
 English · [Русский](discovery.ru.md)
 
-`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode and Gemini CLI declarations before
+`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI and OpenClaw declarations before
 scanning their files. It reads configuration and manifests without starting MCP
 servers, running commands, expanding environment variables from files or making
 network requests.
@@ -93,6 +93,29 @@ directories. Extension context paths must stay inside the package. Static MCP
 analysis recognizes stdio, SSE `url` and Streamable HTTP `httpUrl`. The loader's
 custom system file overrides, external links and effective extension enablement
 are outside this coverage. [Gemini CLI extension reference](https://geminicli.com/docs/extensions/reference/)
+
+OpenClaw discovery reads JSON5 `openclaw.json` and inventories the state
+directory's `skills`, `hooks` and `extensions`. The default state is
+`~/.openclaw`. Select another state with `--openclaw-home` or
+`OPENCLAW_STATE_DIR` when `--home` is omitted. Scout also inspects the usual
+state-relative `workspace` and explicit `--project` roots for `skills/`,
+`.agents/skills/`, `hooks/` and `.openclaw/extensions/`. In the default state
+Scout includes personal `~/.agents/skills/`.
+[OpenClaw configuration](https://docs.openclaw.ai/gateway/configuration/) · [OpenClaw skill locations](https://docs.openclaw.ai/agent)
+
+Scout reads `mcp.servers`, local enablement declarations, native
+`openclaw.plugin.json` manifests, OpenClaw metadata in `package.json` and
+`HOOK.md` hook directories. Extension skill roots and declared package
+entrypoints are checked against the package boundary. Hook labels identify
+their directories, and scan links captured handlers by filename precedence.
+[OpenClaw plugin manifest](https://docs.openclaw.ai/plugins/manifest) · [OpenClaw hook discovery](https://docs.openclaw.ai/automation/hooks/configuration)
+
+Use `--project` for a workspace stored elsewhere. Scout reports `$include`
+directives as unresolved and leaves discovery incomplete. Paths in load
+configuration, alternative config filenames, profile selection, linked
+packages, and compatible bundle loading across hosts are outside this
+OpenClaw discovery coverage. Session and credential stores are outside the
+known discovery locations.
 
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` from the scanning process can relocate their
 configuration directories. Explicit `--home` disables these implicit overrides;

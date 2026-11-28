@@ -26,6 +26,11 @@ func StringView(parent source.View, node *Node, maxEscapes int) (source.View, bo
 
 	token := parent.Text()[node.Span.Start:node.Span.End]
 
+	decode := decodeEscape
+	if node.json5 {
+		decode = decodeJSON5Escape
+	}
+
 	var changes []source.Replacement
 
 	for at := 0; at < len(text); {
@@ -36,7 +41,7 @@ func StringView(parent source.View, node *Node, maxEscapes int) (source.View, bo
 
 		at += next
 
-		end, decoded, ok := decodeEscape(token, at+1)
+		end, decoded, ok := decode(token, at+1)
 		if !ok || len(changes) >= maxEscapes {
 			return source.View{}, false
 		}

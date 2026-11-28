@@ -105,6 +105,18 @@ var agentLayouts = []agentLayout{
 		},
 		systemDefault: "/etc/gemini-cli", systemDarwin: "/Library/Application Support/GeminiCli", systemWindows: `C:\ProgramData\gemini-cli`,
 	},
+	{
+		id: report.HostOpenClaw, label: "OpenClaw", homeFlag: "openclaw-home", homeEnv: "OPENCLAW_STATE_DIR",
+		homeOverride: func(o *Options) *string { return &o.OpenClawHome },
+		defaultHome:  []location{{artifact.OpenClawDirectory, (*tree).openClawState}, {".agents/skills", (*tree).skills}},
+		relocated:    []location{{".", (*tree).openClawState}},
+		project: []location{
+			{"skills", (*tree).skills},
+			{".agents/skills", (*tree).skills},
+			{"hooks", (*tree).openClawHooks},
+			{".openclaw/extensions", (*tree).openClawPackages},
+		},
+	},
 }
 
 // AgentSelectors returns the discovery selectors in CLI help order.

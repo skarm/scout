@@ -104,6 +104,11 @@ func (p *plugin) discover() {
 		return
 	}
 
+	if p.host == report.HostOpenClaw {
+		p.discoverOpenClawPackage()
+		return
+	}
+
 	if p.portable != "" {
 		p.discoverPortable()
 		return
@@ -384,7 +389,9 @@ func (p *plugin) selectedFile(key, name, kind, activation, basis string, s *repo
 	e := p.ns.entries[key]
 	effective := activation
 
-	if nestedComponent(kind, key, name) && !(p.host == report.HostGeminiCLI && kind == componentCommand) {
+	supportsNested := p.host == report.HostGeminiCLI && kind == componentCommand ||
+		p.host == report.HostOpenClaw && kind == report.ComponentSkill
+	if !supportsNested && nestedComponent(kind, key, name) {
 		if effective != activationInactiveForProfile {
 			effective = "unknown"
 		}

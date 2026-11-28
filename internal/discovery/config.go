@@ -40,7 +40,9 @@ const codeInvalidEnablement = "invalid_enablement"
 
 func (t *tree) config(name string, required bool) *jsonconfig.Node {
 	decode := jsonconfig.Parse
-	if strings.EqualFold(path.Ext(name), ".jsonc") {
+	if artifact.JSON5ConfigName(path.Base(name)) {
+		decode = jsonconfig.ParseJSON5
+	} else if strings.EqualFold(path.Ext(name), ".jsonc") {
 		decode = jsonconfig.ParseJSONC
 	}
 
@@ -224,7 +226,7 @@ func pluginManifests(host string) []string {
 		return []string{agentplugins.ManifestFile, artifact.CursorPluginManifest}
 	case report.HostCopilotCLI:
 		return append([]string{agentplugins.ManifestFile}, agentconfig.CopilotLegacyManifests()...)
-	case report.HostOpenCode, report.HostGeminiCLI:
+	case report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw:
 		return nil
 	default:
 		return []string{agentplugins.ManifestFile, artifact.CodexPluginManifest, artifact.ClaudePluginManifest}

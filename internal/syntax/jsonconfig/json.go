@@ -46,6 +46,7 @@ type Node struct {
 	Bool     bool
 	Members  []Member
 	Elements []*Node
+	json5    bool
 }
 
 type Member struct {

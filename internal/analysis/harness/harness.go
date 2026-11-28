@@ -278,6 +278,12 @@ func (b *builder) candidates(host string) []candidate {
 				found = true
 			case agentconfig.GeminiManifest:
 				set.add(candidate{ns: ns, root: path.Dir(name), host: report.HostGeminiCLI, manifest: name})
+			case artifact.OpenClawManifest:
+				set.add(candidate{ns: ns, root: path.Dir(name), host: report.HostOpenClaw, manifest: name})
+			case "package.json":
+				if openClawPackageCandidate(ns, name) {
+					set.add(candidate{ns: ns, root: path.Dir(name), host: report.HostOpenClaw, manifest: name})
+				}
 			}
 
 			b.marketplace(ns, name)

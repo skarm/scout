@@ -353,10 +353,16 @@ func (f *filePreparation) parseUnit(ctx context.Context, lang, origin string, sp
 
 	backend, supported := f.registry.Lookup(lang)
 	if lang == language.JSON && origin == "file" {
-		if strings.EqualFold(path.Ext(f.file.BaseName()), ".jsonc") {
+		name := f.file.BaseName()
+		switch {
+		case artifact.JSON5ConfigName(name):
+			backend = parse.WithJSON5(backend)
+		case strings.EqualFold(path.Ext(name), ".jsonc"):
 			backend = parse.WithJSONComments(backend, true)
-		} else if _, gemini := artifact.GeminiSettingsRoot(f.file.Metadata().Path, f.budget.host); gemini {
-			backend = parse.WithJSONComments(backend, false)
+		default:
+			if _, gemini := artifact.GeminiSettingsRoot(f.file.Metadata().Path, f.budget.host); gemini {
+				backend = parse.WithJSONComments(backend, false)
+			}
 		}
 	}
 

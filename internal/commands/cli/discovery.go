@@ -244,7 +244,7 @@ func (r *request) useDiscoveryHarness(agent string) {
 	}
 
 	switch agent {
-	case report.HostCursor, report.HostCopilotCLI, report.HostOpenCode, report.HostGeminiCLI:
+	case report.HostCursor, report.HostCopilotCLI, report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw:
 		r.settings.Scanner.Harness.Host = agent
 	}
 }

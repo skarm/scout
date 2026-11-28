@@ -2,7 +2,7 @@
 
 [English](discovery.md) · Русский
 
-`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode и Gemini CLI перед проверкой
+`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI и OpenClaw перед проверкой
 их файлов. Команда читает конфигурации и манифесты без запуска MCP-серверов,
 выполнения команд, подстановки переменных окружения из файлов и сетевых запросов.
 
@@ -92,6 +92,30 @@ Scout находит пакеты в `.gemini/extensions/` по `gemini-extensio
 SSE через `url` и Streamable HTTP через `httpUrl`. Пользовательские пути к
 системным файлам, внешние ссылки и фактическое включение расширений находятся
 за пределами этой поддержки. [Справочник расширений Gemini CLI](https://geminicli.com/docs/extensions/reference/)
+
+Для OpenClaw Scout читает `openclaw.json` в формате JSON5 и ищет компоненты в
+`skills`, `hooks` и `extensions` каталога состояния. По умолчанию это
+`~/.openclaw`. Другой каталог можно указать через `--openclaw-home` или
+`OPENCLAW_STATE_DIR`, если флаг `--home` опущен. В обычном `workspace` внутри
+каталога состояния и в явно выбранном `--project` Scout проверяет `skills/`,
+`.agents/skills/`, `hooks/` и `.openclaw/extensions/`. При стандартном
+расположении состояния учитываются личные навыки в `~/.agents/skills/`.
+[Конфигурация OpenClaw](https://docs.openclaw.ai/gateway/configuration/) · [Расположения навыков OpenClaw](https://docs.openclaw.ai/agent)
+
+Scout разбирает `mcp.servers`, локальные настройки включения, манифесты
+`openclaw.plugin.json`, метаданные OpenClaw в `package.json` и каталоги хуков с
+`HOOK.md`. Навыки и точки входа плагинов должны находиться внутри пакета.
+В инвентаре хуки названы по каталогам. При сканировании Scout связывает
+захваченные обработчики по порядку имён файлов.
+[Манифест плагина OpenClaw](https://docs.openclaw.ai/plugins/manifest) · [Обнаружение хуков OpenClaw](https://docs.openclaw.ai/automation/hooks/configuration)
+
+Рабочую область в другом месте можно указать через `--project`. Директивы
+`$include` отмечаются как неразрешённые, а discovery возвращает неполный
+инвентарь. Пути из настроек загрузки, альтернативные имена конфигурации,
+профили, пакеты по символическим ссылкам и загрузка совместимых форматов
+других агентов остаются за пределами поддержки OpenClaw в discovery.
+Хранилища сессий и учётных данных находятся вне известных расположений
+discovery.
 
 Переменные `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса сканирования могут менять
 каталоги конфигурации. Явный `--home` отключает эти неявные переопределения;
