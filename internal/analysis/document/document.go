@@ -94,6 +94,7 @@ type File struct {
 	registry             parse.Registry
 	diagnostics          []report.Diagnostic
 	budget               *parseBudget
+	hostConfigName       string
 	derived              []derivedConfig
 	derivedReady         bool
 	derivedGap           bool
@@ -134,16 +135,23 @@ func PrepareAll(ctx context.Context, files []artifact.File) []File {
 // PrepareAllWithRegistry allows future languages without language switches in
 // the preparation engine. A registered parser does not imply semantic coverage.
 func PrepareAllWithRegistry(ctx context.Context, files []artifact.File, registry parse.Registry) []File {
-	return PrepareAllForHarness(ctx, files, registry, "")
+	return PrepareAllForHarness(ctx, files, registry, "", report.ExtractionReport{})
 }
 
 // PrepareAllForHarness also selects physical file dialects that require a host hint.
-func PrepareAllForHarness(ctx context.Context, files []artifact.File, registry parse.Registry, host string) []File {
+func PrepareAllForHarness(ctx context.Context, files []artifact.File, registry parse.Registry, host string, extraction report.ExtractionReport) []File {
 	budget := parseBudget{consumed: make(map[string]int), host: host}
+	memberNames := make(map[string]string)
+
+	for _, object := range extraction.Objects {
+		if object.Role == report.DerivedRoleArchiveMember {
+			memberNames[object.File.Path] = object.MemberName
+		}
+	}
 
 	documents := make([]File, len(files))
 	for i, file := range files {
-		documents[i] = prepare(ctx, file, &budget, registry)
+		documents[i] = prepare(ctx, file, &budget, registry, memberNames[file.Metadata().Path])
 	}
 
 	return documents
@@ -152,7 +160,7 @@ func PrepareAllForHarness(ctx context.Context, files []artifact.File, registry p
 // Prepare retains the raw file even if parsing fails: literal checks must still
 // run. Diagnostics contain neither parser errors nor source excerpts.
 func Prepare(ctx context.Context, file artifact.File) (out File) {
-	return prepare(ctx, file, &parseBudget{consumed: make(map[string]int)}, parse.Defaults())
+	return prepare(ctx, file, &parseBudget{consumed: make(map[string]int)}, parse.Defaults(), "")
 }
 
 func (f File) WithConfigScopes(scopes []ConfigScope) File {
@@ -352,6 +360,12 @@ func (f *filePreparation) parseUnit(ctx context.Context, lang, origin string, sp
 	unit = Unit{Language: lang, Origin: origin, Span: span, View: view, Status: report.OutcomeUnsupported}
 
 	backend, supported := f.registry.Lookup(lang)
+	if !supported && lang == language.TOML && origin == "file" {
+		if _, grok := artifact.GrokTOMLRoot(f.hostConfigName, f.budget.host); grok {
+			backend, supported = parse.NativeTOML(), true
+		}
+	}
+
 	if lang == language.JSON && origin == "file" {
 		name := f.file.BaseName()
 		switch {
@@ -502,9 +516,13 @@ func (f *filePreparation) markdownFrontmatter(ctx context.Context, text string, 
 	return envelope.span.End, true
 }
 
-func prepare(ctx context.Context, file artifact.File, budget *parseBudget, registry parse.Registry) (out File) {
+func prepare(ctx context.Context, file artifact.File, budget *parseBudget, registry parse.Registry, memberName string) (out File) {
+	if memberName == "" {
+		memberName = file.Metadata().Path
+	}
+
 	out = File{
-		file: file, budget: budget, registry: registry,
+		file: file, budget: budget, registry: registry, hostConfigName: memberName,
 		classification: filetype.Inspect(file.Metadata().Path, file.Content(), file.Metadata().Executable),
 	}
 

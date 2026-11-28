@@ -7,7 +7,7 @@ import { lstat, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { isAbsolute, relative, sep, join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const HOSTS = new Set(['auto', 'claude-code', 'codex', 'cursor', 'copilot-cli', 'opencode', 'gemini-cli', 'openclaw', 'agent-skills']);
+const HOSTS = new Set(['auto', 'claude-code', 'codex', 'cursor', 'copilot-cli', 'opencode', 'gemini-cli', 'openclaw', 'grok-cli', 'agent-skills']);
 const PROVIDERS = new Set(['chat-completions', 'anthropic', 'anthropic-proxy']);
 const MAX_STDOUT = 8 * 1024 * 1024;
 const MAX_STDERR = 64 * 1024;

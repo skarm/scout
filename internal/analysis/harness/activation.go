@@ -227,7 +227,7 @@ func findingContextAdder(f *report.Finding, truncated *bool) func(report.Compone
 
 func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) {
 	state := p.b.hooks[e.Meta.Path]
-	if state.Uncertain && p.host != report.HostGeminiCLI {
+	if state.Uncertain && p.host != report.HostGeminiCLI && p.host != report.HostGrokCLI {
 		p.issue(issuePluginHookDisableUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 
@@ -261,7 +261,7 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 }
 
 func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation string, eventIndex int) bool {
-	if p.host == report.HostGeminiCLI && !hookevent.Gemini(event.Key) {
+	if p.host == report.HostGeminiCLI && !hookevent.Gemini(event.Key) || p.host == report.HostGrokCLI && !hookevent.Grok(event.Key) {
 		p.issue(issuePluginHookEventUnverified, e.Meta.Path, report.OutcomePartial)
 		return true
 	}
@@ -296,6 +296,11 @@ func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation
 }
 
 func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, event, matcher string, eventIndex, gi, hi int) {
+	if p.host == report.HostGrokCLI && agentconfig.GrokHookTarget(h) == nil {
+		p.issue(issuePluginHookTypeUnverified, e.Meta.Path, report.OutcomePartial)
+		return
+	}
+
 	s := ref(e, h.Span)
 	id := p.component(report.ComponentHook, e, activation, basisConfiguration, s, fmt.Sprintf("hook:%d:%d:%d", eventIndex, gi, hi))
 	p.b.edge(parent, id, relationRegisters, basisConfiguration, activation, s)
@@ -330,6 +335,12 @@ func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event
 		return
 	}
 
+	s := ref(e, h.Span)
+	if p.host == report.HostGrokCLI {
+		p.grokHookCommand(e, id, text, activation, s)
+		return
+	}
+
 	args, valid := stringValues(h.Get(fieldArgs))
 	argv := h.Get(fieldArgs) != nil
 
@@ -338,7 +349,6 @@ func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event
 		return
 	}
 
-	s := ref(e, h.Span)
 	if p.b.hookTracer != nil && p.linkTracedHook(e, h, event, matcher, id, activation, s) {
 		return
 	}
@@ -534,6 +544,12 @@ func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
 }
 
 func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activation string, i int) {
+	if p.host == report.HostGrokCLI && kind == report.ComponentMCPConfig {
+		if enabled := n.Get("enabled"); enabled != nil && enabled.Kind == jsonconfig.KindBool && !enabled.Bool {
+			activation = activationInactiveForProfile
+		}
+	}
+
 	s := ref(e, n.Span)
 
 	role := "mcp_server"
@@ -609,6 +625,10 @@ func (p *plugin) serverCommand(e *entry, n *jsonconfig.Node, id string, s *repor
 // NEVER treats an arbitrary substring in an echo, comment or shell string as a
 // handler. Relative working directories and environment expansion are unknown.
 func (p *plugin) command(component, text string, args []string, argv bool, s *report.SourceRef, activation string, hook bool) {
+	p.commandFrom(component, text, args, argv, s, activation, hook, "")
+}
+
+func (p *plugin) commandFrom(component, text string, args []string, argv bool, s *report.SourceRef, activation string, hook bool, relativeDir string) {
 	if strings.ContainsRune(text, 0) {
 		p.reference(component, referenceKindCommand, report.ReferenceUnresolved, reasonInvalidCommandBytes, "", s)
 		return
@@ -639,10 +659,10 @@ func (p *plugin) command(component, text string, args []string, argv bool, s *re
 		}
 	}
 
-	p.resolveCommand(component, words, argv, s, activation, hook)
+	p.resolveCommand(component, words, argv, s, activation, hook, relativeDir)
 }
 
-func (p *plugin) resolveCommand(component string, words []string, argv bool, s *report.SourceRef, activation string, hook bool) {
+func (p *plugin) resolveCommand(component string, words []string, argv bool, s *report.SourceRef, activation string, hook bool, relativeDir string) {
 	candidate, externalRuntime, reason := commandOperand(words)
 	if reason != "" {
 		p.reference(component, referenceKindCommand, report.ReferenceUnresolved, reason, "", s)
@@ -654,6 +674,12 @@ func (p *plugin) resolveCommand(component string, words []string, argv bool, s *
 	}
 
 	rel, kind, reason := p.handlerPath(candidate, argv, hook)
+	if relativeDir != "" && candidate == words[0] && reason != "" {
+		if local, ok := grokRelativeExecutable(relativeDir, candidate); ok {
+			rel, kind, reason = local, referenceKindHandler, ""
+		}
+	}
+
 	if reason != "" {
 		p.reference(component, kind, report.ReferenceUnresolved, reason, "", s)
 		return

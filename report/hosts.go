@@ -22,4 +22,6 @@ const (
 	HostOpenCode = "opencode"
 	// HostOpenClaw identifies OpenClaw configuration and native packages.
 	HostOpenClaw = "openclaw"
+	// HostGrokCLI identifies Grok Build CLI declarations.
+	HostGrokCLI = "grok-cli"
 )

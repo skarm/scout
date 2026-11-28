@@ -60,6 +60,18 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 			}`,
 			kind: "mcp-server", name: "example", key: "/mcp/servers/example", state: "disabled",
 		},
+		{
+			host: report.HostGrokCLI, config: ".grok/config.toml",
+			initial: "[mcp_servers.example]\nurl = \"https://example.invalid/old\"\nenabled = false\n",
+			updated: "[mcp_servers.example]\nurl = \"https://example.invalid/new\"\nenabled = false\n",
+			kind:    "mcp-server", name: "example", key: "/mcp_servers/example", state: "disabled",
+		},
+		{
+			host: report.HostGrokCLI, config: ".grok/hooks/cancel.json",
+			initial: `{"hooks":{"StopCancelled":[{"hooks":[{"type":"command","command":"printf hello"}]}]}}`,
+			updated: `{"hooks":{"StopCancelled":[{"hooks":[{"type":"command","command":"printf updated"}]}]}}`,
+			kind:    "hook", name: "StopCancelled", key: "/hooks/StopCancelled/0/hooks/0", state: "unknown",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.host, func(t *testing.T) {
@@ -202,6 +214,7 @@ func TestNativeInstalledPluginsAndSharedSkills(t *testing.T) {
 		"opencode/skill/shared":              "unknown",
 		"gemini-cli/skill/shared":            "unknown",
 		"openclaw/skill/shared":              "unknown",
+		"grok-cli/skill/shared":              "unknown",
 	}
 	sharedTargets := 0
 	for _, target := range inventory.Targets {

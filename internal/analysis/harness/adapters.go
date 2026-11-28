@@ -114,6 +114,11 @@ func (p *plugin) discover() {
 		return
 	}
 
+	if p.host == report.HostGrokCLI {
+		p.discoverGrokPackage()
+		return
+	}
+
 	if p.host == report.HostCursor || p.host == report.HostCopilotCLI {
 		p.discoverNativePackage()
 		return
@@ -378,8 +383,8 @@ func (p *plugin) componentFileMatches(kind, key string) bool {
 	switch kind {
 	case report.ComponentSkill:
 		return path.Base(key) == artifact.SkillManifest
-	case "workflow":
-		return true
+	case componentWorkflow:
+		return p.host != report.HostGrokCLI || agentconfig.InstructionFile(p.host, kind, key)
 	default:
 		return agentconfig.InstructionFile(p.host, kind, key)
 	}

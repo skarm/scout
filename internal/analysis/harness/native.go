@@ -25,6 +25,9 @@ func nativeWorkspaceCandidate(ns *namespace, name, requested string) (candidate,
 
 	if host == "" && path.Ext(name) == ".json" && hasNativeHooks(ns.entries[name]) {
 		root, host = copilotHookWorkspace(name, requested, len(ns.names) == 1)
+		if host == "" && requested == report.HostGrokCLI && len(ns.names) == 1 && path.Dir(name) == "." {
+			root, host = path.Dir(name), requested
+		}
 	}
 
 	switch host {
@@ -79,6 +82,10 @@ func nativeWorkspace(name, requested string) (root, host string) {
 		return root, report.HostGeminiCLI
 	}
 
+	if root, ok := grokWorkspaceRoot(name, requested); ok {
+		return root, report.HostGrokCLI
+	}
+
 	if agentconfig.OpenCodeConfigFile(file) {
 		if path.Base(dir) == agentconfig.OpenCodeDirectory {
 			dir = path.Dir(dir)
@@ -122,7 +129,7 @@ func workspaceDirectory(name, directory string, entries ...string) (string, bool
 }
 
 func (p *plugin) nativePaths() bool {
-	return p.host == report.HostCursor || p.host == report.HostCopilotCLI
+	return p.host == report.HostCursor || p.host == report.HostCopilotCLI || p.host == report.HostGrokCLI
 }
 
 func (p *plugin) discoverNativePackage() {
@@ -187,6 +194,8 @@ func (p *plugin) discoverNativeWorkspace() {
 		p.geminiWorkspace()
 	case report.HostOpenClaw:
 		p.openClawWorkspace()
+	case report.HostGrokCLI:
+		p.grokWorkspace()
 	}
 }
 

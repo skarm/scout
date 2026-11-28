@@ -275,7 +275,7 @@ func (f File) WithDerivedInputs(ctx context.Context, inputs []DerivedInput, limi
 }
 
 func (f *filePreparation) prepareDerivedInput(ctx context.Context, input DerivedInput) {
-	child := prepare(ctx, artifact.NewFile(input.Name, []byte(input.Text), false), f.budget, f.registry)
+	child := prepare(ctx, artifact.NewFile(input.Name, []byte(input.Text), false), f.budget, f.registry, "")
 	for _, unit := range child.units {
 		f.derivedGap = f.derivedGap || unit.Status != report.UnitParsedLimited
 	}

@@ -2,6 +2,7 @@ package scout_test
 
 import (
 	"errors"
+	"path"
 	"slices"
 	"testing"
 
@@ -75,6 +76,23 @@ func TestNativeConfigurationFindings(t *testing.T) {
 			}`,
 			rules: []string{"MC001", "SC001"},
 		},
+		{
+			host: report.HostAuto, file: ".grok/config.toml",
+			config: "[mcp_servers.remote]\nurl = 'http://example.invalid/mcp'\n" +
+				"[mcp_servers.local]\ncommand = 'npx'\nargs = ['example-mcp@latest']\n",
+			rules: []string{"MC001", "SC001"},
+		},
+		{
+			host: report.HostGrokCLI, file: "managed_config.toml",
+			config: "[[hooks.SessionStart]]\nhooks = [{ type = 'command', command = 'printf hello' }]\n",
+			rules:  []string{"AC003"},
+		},
+		{
+			host: report.HostAuto, file: ".grok/hooks/lifecycle.json",
+			config: `{"hooks":{"StopCancelled":[{"hooks":[{"type":"command","command":"printf hello"}]}],
+				"UnknownEvent":[{"hooks":[{"type":"command","command":"printf ignored"}]}]}}`,
+			rules: []string{"AC003"},
+		},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			root := t.TempDir()
@@ -91,6 +109,9 @@ func TestNativeConfigurationFindings(t *testing.T) {
 					if f.Location.Path != tc.file || f.Location.StartLine < 1 {
 						t.Fatalf("finding has incorrect location: %+v", f.Location)
 					}
+					if path.Ext(tc.file) == ".toml" && (f.Location.ByteStart != 0 || f.Location.ByteEnd != len(tc.config)) {
+						t.Fatalf("TOML evidence should cover the original input: %+v", f.Location)
+					}
 					rules = append(rules, f.RuleID)
 				}
 			}
@@ -99,5 +120,36 @@ func TestNativeConfigurationFindings(t *testing.T) {
 				t.Fatalf("want %v in %s, got %v", tc.rules, tc.file, rules)
 			}
 		})
+	}
+}
+
+func TestGrokConfigurationInArchiveUsesRecordedMemberName(t *testing.T) {
+	root := t.TempDir()
+	scenario.WriteFile(t, root, "workspace.zip", string(zipped(t, map[string]string{
+		"project/.grok/config.toml": "[mcp_servers.example]\nurl = 'http://example.invalid/mcp'\n",
+		"project/config.toml":       "[mcp_servers.control]\nurl = 'http://example.invalid/control'\n",
+	})))
+
+	result, err := pluginScan(t, root, report.HostAuto)
+	if err != nil && !errors.Is(err, scantest.ErrIncomplete) {
+		t.Fatal(err)
+	}
+
+	nodes := result.Components.Components
+	index := slices.IndexFunc(nodes, func(c report.Component) bool {
+		return c.Host == report.HostGrokCLI && c.Kind == "mcp_server" && c.PackagePath == "project/.grok/config.toml"
+	})
+	if index < 0 {
+		t.Fatalf("missing parsed Grok TOML in archive: %+v", nodes)
+	}
+
+	var locations []string
+	for _, f := range result.Findings {
+		if f.RuleID == "MC001" {
+			locations = append(locations, f.Location.Path)
+		}
+	}
+	if !slices.Equal(locations, []string{nodes[index].Path}) {
+		t.Fatalf("MCP finding escaped its archive member: %v", locations)
 	}
 }

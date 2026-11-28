@@ -33,7 +33,7 @@ type Options struct {
 	Home, CodexHome, ClaudeHome string
 	CursorHome, CopilotHome     string
 	OpenCodeHome, GeminiHome    string
-	OpenClawHome                string
+	OpenClawHome, GrokHome      string
 	Agent                       string
 	Projects                    []string
 	System                      bool

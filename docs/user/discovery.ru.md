@@ -2,7 +2,7 @@
 
 [English](discovery.md) · Русский
 
-`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI и OpenClaw перед проверкой
+`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw и Grok CLI перед проверкой
 их файлов. Команда читает конфигурации и манифесты без запуска MCP-серверов,
 выполнения команд, подстановки переменных окружения из файлов и сетевых запросов.
 
@@ -117,6 +117,27 @@ Scout разбирает `mcp.servers`, локальные настройки в
 Хранилища сессий и учётных данных находятся вне известных расположений
 discovery.
 
+Для Grok CLI Scout читает `config.toml` в `~/.grok` и проектной `.grok`,
+а также пользовательские и системные `managed_config.toml` и
+`requirements.toml` в известных расположениях, включая `/etc/grok` на Unix.
+`--grok-home` и `GROK_HOME` указывают непосредственно на каталог конфигурации.
+В инвентарь входят MCP-серверы и локальные настройки включения плагинов.
+Проектные хуки берутся из `.grok/hooks/*.json`. Встроенные хуки TOML
+учитываются в пользовательской и системной областях. При сканировании
+отдельного TOML-файла встроенные хуки могут попасть в отчёт со статусом
+неизвестной активации. Ссылка на доказательство охватывает весь TOML-файл.
+[Настройки Grok](https://docs.x.ai/build/settings) · [Хуки Grok](https://docs.x.ai/build/features/hooks)
+
+Scout находит `lsp.json`, агентов, навыки, команды и файлы процессов Rhai
+в известных каталогах Grok, включая пользовательские `~/.agents/skills`
+и `~/.agents/commands`. В `.grok/plugins` Scout распознаёт
+`.grok-plugin/plugin.json`, совместимые манифесты и локальные пакеты со
+стандартной структурой. В пакетах учитываются `.mcp.json`, `.lsp.json` и
+`hooks/hooks.json`. Анализ опирается на захваченные декларации и ссылки
+внутри пакета. Выполнение хуков и Rhai, расчёт доверия и загрузка источников
+marketplace находятся за пределами анализа.
+[Плагины Grok](https://docs.x.ai/build/features/skills-plugins-marketplaces) · [Процессы Grok](https://docs.x.ai/build/modes-and-commands)
+
 Переменные `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса сканирования могут менять
 каталоги конфигурации. Явный `--home` отключает эти неявные переопределения;
 `--codex-home` и `--claude-home` выбирают каталоги явно. Для остальных
@@ -190,7 +211,7 @@ scout discover --agent codex --kind skill \
   --scan -- --format markdown
 ```
 
-`--kind` принимает `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule` и `tool`. Он и фильтры путей
+`--kind` принимает `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule`, `tool`, `lsp-server` и `workflow`. Он и фильтры путей
 повторяемы, до 32 значений каждого. Включение пересекается с известными корнями
 и не добавляет внешние входы. Исключение удаляет целые пересекающиеся корни;
 для выбора отдельных компонентов вместо общего каталога навыков/кеша задайте тип.

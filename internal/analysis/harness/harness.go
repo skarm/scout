@@ -25,12 +25,14 @@ import (
 )
 
 const (
-	componentCommand       = "command"
-	componentAgent         = "agent"
-	componentWorkflow      = "workflow"
-	activationConditional  = "conditional"
-	issuePluginJSONInvalid = "plugin_json_invalid"
-	issueHarnessLimit      = "harness_issue_limit"
+	componentCommand           = "command"
+	componentAgent             = "agent"
+	componentWorkflow          = "workflow"
+	activationConditional      = "conditional"
+	issuePluginJSONInvalid     = "plugin_json_invalid"
+	issuePluginTOMLInvalid     = "plugin_toml_invalid"
+	issuePluginTOMLUnavailable = "plugin_toml_unavailable"
+	issueHarnessLimit          = "harness_issue_limit"
 )
 
 const (
@@ -269,32 +271,16 @@ func (b *builder) candidates(host string) []candidate {
 				break
 			}
 
-			switch path.Base(name) {
-			case agentplugins.ManifestFile:
-				if c, ok := pluginCandidate(ns, name, host); ok {
-					set.add(c)
-				}
-
-				found = true
-			case agentconfig.GeminiManifest:
-				set.add(candidate{ns: ns, root: path.Dir(name), host: report.HostGeminiCLI, manifest: name})
-			case artifact.OpenClawManifest:
-				set.add(candidate{ns: ns, root: path.Dir(name), host: report.HostOpenClaw, manifest: name})
-			case "package.json":
-				if openClawPackageCandidate(ns, name) {
-					set.add(candidate{ns: ns, root: path.Dir(name), host: report.HostOpenClaw, manifest: name})
-				}
-			}
-
-			b.marketplace(ns, name)
-
-			if c, ok := nativeWorkspaceCandidate(ns, name, host); ok {
-				set.add(c)
-			}
+			found = found || path.Base(name) == agentplugins.ManifestFile
+			set.addFile(ns, name, host)
 		}
 		// Manifestless Claude plugins require explicit caller intent. Auto cannot
 		// distinguish a plugin directory from an arbitrary repository with hooks.
 		if !found && !b.containerCollection(ns) && slices.Contains([]string{report.HostClaudeCode, report.HostCodex}, host) {
+			set.add(candidate{ns: ns, root: ".", host: host})
+		}
+
+		if !found && host == report.HostGrokCLI && grokStandalonePackage(ns) {
 			set.add(candidate{ns: ns, root: ".", host: host})
 		}
 
@@ -306,6 +292,33 @@ func (b *builder) candidates(host string) []candidate {
 	sort.Slice(set.values, func(i, j int) bool { return candidateLess(set.values[i], set.values[j]) })
 
 	return set.values
+}
+
+func (s *candidateSet) addFile(ns *namespace, name, host string) {
+	switch path.Base(name) {
+	case agentplugins.ManifestFile:
+		if c, ok := pluginCandidate(ns, name, host); ok {
+			s.add(c)
+		}
+	case agentconfig.GeminiManifest:
+		s.add(candidate{ns: ns, root: path.Dir(name), host: report.HostGeminiCLI, manifest: name})
+	case artifact.OpenClawManifest:
+		s.add(candidate{ns: ns, root: path.Dir(name), host: report.HostOpenClaw, manifest: name})
+	case "package.json":
+		if openClawPackageCandidate(ns, name) {
+			s.add(candidate{ns: ns, root: path.Dir(name), host: report.HostOpenClaw, manifest: name})
+		}
+	}
+
+	s.b.marketplace(ns, name)
+
+	if c, ok := nativeWorkspaceCandidate(ns, name, host); ok {
+		s.add(c)
+	}
+
+	if root, ok := grokLocalPackageRoot(name); ok && grokManifest(ns, root) == "" {
+		s.add(candidate{ns: ns, root: root, host: report.HostGrokCLI})
+	}
 }
 
 func (s *candidateSet) addProjectHookSettings(ns *namespace) {
@@ -337,7 +350,7 @@ func projectSettingsHasHooks(unit document.Unit) bool {
 }
 
 func (b *builder) marketplace(ns *namespace, name string) {
-	if path.Base(name) == "marketplace.json" && (strings.Contains("/"+name, "/.claude-plugin/") || strings.Contains("/"+name, "/.agents/plugins/")) {
+	if grokMarketplace(ns, name) || path.Base(name) == "marketplace.json" && (strings.Contains("/"+name, "/.claude-plugin/") || strings.Contains("/"+name, "/.agents/plugins/")) {
 		e := ns.entries[name]
 		b.node("", componentMarketplace, e, "unknown", activationUnknown, whole(e), "catalog")
 		b.issue(issueMarketplaceInstallClosureUnverified, "", e.Meta.Path, report.OutcomePartial)
@@ -602,6 +615,17 @@ func pluginCandidate(ns *namespace, name, requestedHost string) (candidate, bool
 	root, host := manifestLayout(name)
 
 	c := candidate{ns: ns, root: root, host: host, manifest: name}
+	if host == report.HostGrokCLI && grokMarketplace(ns, name) {
+		return c, false
+	}
+
+	if grokPluginProfile(ns, root, host, requestedHost) {
+		c.host = report.HostGrokCLI
+		c.portable = agentplugins.ManifestVersion(capturedJSON(ns.entries[path.Join(root, agentplugins.ManifestFile)]))
+
+		return c, name == grokManifest(ns, root)
+	}
+
 	if host == report.HostCodex {
 		// The Codex compatibility manifest belongs to the same portable package.
 		return c, agentplugins.ManifestVersion(capturedJSON(ns.entries[path.Join(root, agentplugins.ManifestFile)])) == ""
@@ -713,7 +737,7 @@ func (p *plugin) object(e *entry) *jsonconfig.Node {
 	}
 
 	for _, u := range e.Doc.Units() {
-		if u.Origin == "file" && u.Language == language.JSON {
+		if u.Origin == "file" && (u.Language == language.JSON || p.host == report.HostGrokCLI && u.Language == language.TOML) {
 			return p.jsonObject(e, u)
 		}
 	}
@@ -735,10 +759,15 @@ func (p *plugin) jsonObject(e *entry, u document.Unit) *jsonconfig.Node {
 
 	status := report.OutcomePartial
 	code := issuePluginJSONUnavailable
+	invalid := issuePluginJSONInvalid
+
+	if u.Language == language.TOML {
+		code, invalid = issuePluginTOMLUnavailable, issuePluginTOMLInvalid
+	}
 
 	if u.Status == report.OutcomeFailed || u.Status == report.UnitParseError {
 		status = formatInvalid
-		code = issuePluginJSONInvalid
+		code = invalid
 	}
 
 	p.issue(code, e.Meta.Path, status)

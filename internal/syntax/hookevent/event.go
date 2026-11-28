@@ -20,3 +20,18 @@ func Gemini(name string) bool {
 		return false
 	}
 }
+
+// Grok recognizes the supported Grok lifecycle events and documented Cursor aliases.
+func Grok(name string) bool {
+	switch name {
+	case "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+		"PermissionDenied", "Stop", "StopCancelled", "StopFailure", "Notification", "SubagentStart", "SubagentStop",
+		"SubagentEnd", "PreCompact", "PostCompact",
+		"sessionStart", "sessionEnd", "preToolUse", "postToolUse", "postToolUseFailure", "beforeShellExecution",
+		"beforeMCPExecution", "beforeReadFile", "afterShellExecution", "afterMCPExecution", "afterFileEdit",
+		"afterAgentResponse", "afterAgentThought", "beforeSubmitPrompt", "subagentStart", "subagentStop", "preCompact", "stop":
+		return true
+	default:
+		return false
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hookpolicy"
 	"github.com/skarm/scout/internal/analysis/languages/literals"
+	"github.com/skarm/scout/internal/syntax/hookevent"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/source"
@@ -201,7 +202,7 @@ func (a agentConfigCheck) Rule() report.Rule {
 		version = "4"
 	}
 
-	limitation := "Bounded JSON and JSONC with supported field shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. YAML/TOML require an explicitly selected trusted parser; TOML positions cover the whole unit." + metadata.limitation
+	limitation := "Supported configuration shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. YAML and general TOML use explicitly selected trusted parsers. Native Grok TOML is supported in core; TOML positions cover the whole unit." + metadata.limitation
 	if metadata.harness {
 		limitation += " Includes harness-linked inline/custom-path config objects without assuming activation."
 	}
@@ -266,7 +267,7 @@ func (a agentConfigCheck) inspectConfigUnit(ctx context.Context, f document.File
 	state := a.hookState(f, u, root)
 
 	actualHook := u.Origin == "file" && (hookpolicy.IsSettings(f.Artifact().Metadata().Path) || path.Base(f.Artifact().Metadata().Path) == "hooks.json")
-	if a.id != ruleAC003 || !state.Disabled || !actualHook {
+	if a.id != ruleAC003 || !grokHookScope(f, u) && (!state.Disabled || !actualHook) {
 		err := a.inspect(ctx, root, emit)
 		*mappingErr = errors.Join(*mappingErr, err)
 	}
@@ -315,7 +316,7 @@ func (a agentConfigCheck) hookState(f document.File, u document.Unit, root *json
 			continue
 		}
 
-		if scope.Host == report.HostGeminiCLI {
+		if scope.Host == report.HostGeminiCLI || scope.Host == report.HostGrokCLI {
 			return hookpolicy.State{}
 		}
 
@@ -363,7 +364,7 @@ func (a agentConfigCheck) inspect(ctx context.Context, root *jsonconfig.Node, em
 	case ruleAC002:
 		inspectBroadTools(root, emit)
 	case ruleAC003:
-		inspectCommandHooks(ctx, root.Get("hooks"), emit)
+		inspectCommandHooks(ctx, root.Get("hooks"), "", emit)
 	case ruleMC003:
 		inspectSensitiveToolParameters(ctx, root, emit)
 	case ruleMC004:
@@ -431,7 +432,7 @@ func broadToolElementDeclarations(n *jsonconfig.Node) []*jsonconfig.Node {
 	return nodes
 }
 
-func inspectCommandHooks(ctx context.Context, hooks *jsonconfig.Node, emit func(source.Span)) {
+func inspectCommandHooks(ctx context.Context, hooks *jsonconfig.Node, host string, emit func(source.Span)) {
 	if hooks == nil {
 		return
 	}
@@ -439,6 +440,10 @@ func inspectCommandHooks(ctx context.Context, hooks *jsonconfig.Node, emit func(
 	for _, event := range hooks.Members {
 		if ctx.Err() != nil {
 			return
+		}
+
+		if host == report.HostGrokCLI && !hookevent.Grok(event.Key) {
+			continue
 		}
 
 		for _, matcher := range event.Value.Elements {
@@ -636,16 +641,21 @@ func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, 
 			return inspectNativeHookScope(ctx, n, scope.Host, emit)
 		}
 
-		if n.Get("hooks") != nil {
-			return a.inspect(ctx, n, emit)
+		hooks := n.Get("hooks")
+		if hooks == nil {
+			hooks = n
 		}
 
-		wrapper := &jsonconfig.Node{Kind: jsonconfig.KindObject, Members: []jsonconfig.Member{{Key: "hooks", Value: n}}}
-
-		return a.inspect(ctx, wrapper, emit)
+		inspectCommandHooks(ctx, hooks, scope.Host, emit)
 	}
 
 	return nil
+}
+
+func grokHookScope(f document.File, u document.Unit) bool {
+	return u.Origin == "file" && slices.ContainsFunc(f.ConfigScopes(), func(scope document.ConfigScope) bool {
+		return scope.Role == report.ComponentHookConfig && scope.Host == report.HostGrokCLI && scope.Span == u.Span
+	})
 }
 
 func inspectNativeHookScope(ctx context.Context, n *jsonconfig.Node, host string, emit func(source.Span)) error {

@@ -2,7 +2,7 @@
 
 English · [Русский](discovery.ru.md)
 
-`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI and OpenClaw declarations before
+`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw and Grok CLI declarations before
 scanning their files. It reads configuration and manifests without starting MCP
 servers, running commands, expanding environment variables from files or making
 network requests.
@@ -117,6 +117,26 @@ packages, and compatible bundle loading across hosts are outside this
 OpenClaw discovery coverage. Session and credential stores are outside the
 known discovery locations.
 
+Grok CLI discovery reads `config.toml` in `~/.grok` and project `.grok`. It
+also reads user and system `managed_config.toml` and `requirements.toml` at
+known locations, including `/etc/grok` on Unix. `--grok-home` or `GROK_HOME`
+selects the configuration directory directly. The inventory includes MCP
+servers and local plugin enablement declarations. Project hooks come from
+`.grok/hooks/*.json`. Inline TOML hooks are inventoried at user and system
+scope. A scan of a standalone TOML file may retain inline hooks as
+declarations with unknown activation. TOML evidence covers the whole file.
+[Grok settings](https://docs.x.ai/build/settings) · [Grok hooks](https://docs.x.ai/build/features/hooks)
+
+Scout inventories `lsp.json`, agents, skills, commands and Rhai workflow
+files in known Grok locations, including the user aliases `~/.agents/skills`
+and `~/.agents/commands`. Under `.grok/plugins`, Scout recognizes
+`.grok-plugin/plugin.json`, compatible manifests and local packages with a
+conventional layout. Package contents may include `.mcp.json`, `.lsp.json`
+and `hooks/hooks.json`. Scout inspects captured declarations and records
+package-local references without running hooks or workflows, resolving
+runtime trust or loading marketplace sources.
+[Grok plugins](https://docs.x.ai/build/features/skills-plugins-marketplaces) · [Grok workflows](https://docs.x.ai/build/modes-and-commands)
+
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` from the scanning process can relocate their
 configuration directories. Explicit `--home` disables these implicit overrides;
 `--codex-home` and `--claude-home` select replacements explicitly. The other
@@ -188,7 +208,7 @@ scout discover --agent codex --kind skill \
   --scan -- --format markdown
 ```
 
-`--kind` accepts `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule` and `tool`; it and the path
+`--kind` accepts `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule`, `tool`, `lsp-server` and `workflow`; it and the path
 filters are repeatable, with at most 32 values each. Includes intersect known roots
 and cannot add outside inputs. Excludes omit whole overlapping roots; use a kind
 filter to select individual components instead of a broad skills/cache directory.

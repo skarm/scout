@@ -29,7 +29,28 @@ const (
 	OpenClawConfig             = "openclaw.json"
 	OpenClawManifest           = "openclaw.plugin.json"
 	OpenClawHookManifest       = "HOOK.md"
+	GrokDirectory              = ".grok"
+	GrokConfig                 = "config.toml"
+	GrokManagedConfig          = "managed_config.toml"
+	GrokRequirements           = "requirements.toml"
+	GrokPluginManifest         = ".grok-plugin/plugin.json"
+	GrokMarketplaceManifest    = ".grok-plugin/marketplace.json"
+	GrokLSP                    = "lsp.json"
 )
+
+// GrokTOMLRoot recognizes named Grok config files and explicitly interpreted standalone files.
+func GrokTOMLRoot(name, host string) (string, bool) {
+	dir, base := path.Dir(name), path.Base(name)
+	if base != GrokConfig && base != GrokManagedConfig && base != GrokRequirements {
+		return "", false
+	}
+
+	if path.Base(dir) == GrokDirectory {
+		return path.Dir(dir), true
+	}
+
+	return dir, dir == "." && host == report.HostGrokCLI || path.Base(dir) == "grok" && path.Base(path.Dir(dir)) == "etc"
+}
 
 // JSON5ConfigName identifies explicitly named JSON5 configuration files.
 func JSON5ConfigName(name string) bool {
@@ -88,6 +109,7 @@ func NativePluginManifest(name string) (root, host string) {
 		{CursorPluginManifest, report.HostCursor},
 		{CopilotPluginManifest, report.HostCopilotCLI},
 		{CopilotGitHubManifest, report.HostCopilotCLI},
+		{GrokPluginManifest, report.HostGrokCLI},
 	} {
 		if name == candidate.file {
 			return ".", candidate.host

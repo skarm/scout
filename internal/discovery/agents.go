@@ -27,6 +27,7 @@ type agentLayout struct {
 	systemDefault     string
 	systemDarwin      string
 	systemWindows     string
+	systemUnixOnly    bool
 }
 
 //nolint:gochecknoglobals // Read-only discovery layouts and their publication boundaries.
@@ -117,6 +118,16 @@ var agentLayouts = []agentLayout{
 			{".openclaw/extensions", (*tree).openClawPackages},
 		},
 	},
+	{
+		id: report.HostGrokCLI, label: "Grok CLI", homeFlag: "grok-home", homeEnv: "GROK_HOME",
+		homeOverride:  func(o *Options) *string { return &o.GrokHome },
+		user:          []location{{".agents/skills", (*tree).skills}, {".agents/commands", (*tree).commands}},
+		defaultHome:   []location{{artifact.GrokDirectory, (*tree).grokUser}},
+		relocated:     []location{{".", (*tree).grokUser}},
+		project:       []location{{artifact.GrokDirectory, (*tree).grokProject}},
+		system:        []location{{artifact.GrokManagedConfig, (*tree).grokTOML}, {artifact.GrokRequirements, (*tree).grokTOML}},
+		systemDefault: "/etc/grok", systemUnixOnly: true,
+	},
 }
 
 // AgentSelectors returns the discovery selectors in CLI help order.
@@ -165,6 +176,10 @@ func selectedAgents(selector string) []agentLayout {
 func (a agentLayout) systemRoot() string {
 	switch runtime.GOOS {
 	case "windows":
+		if a.systemUnixOnly {
+			return ""
+		}
+
 		if a.systemWindows != "" {
 			return a.systemWindows
 		}

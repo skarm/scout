@@ -299,6 +299,8 @@ func (t *tree) pluginConfigs(dir, file string, n *jsonconfig.Node) {
 		t.cursorPluginConfigs(dir, file, n)
 	case report.HostCopilotCLI:
 		t.copilotPluginConfigs(dir, file, n)
+	case report.HostGrokCLI:
+		t.grokPluginConfigs(dir, file, n)
 	default:
 		t.mcpFile(path.Join(dir, artifact.MCPConfig))
 		t.pluginPaths(n.Get(mcpServersField), dir, file, mcpServersPointer, false)

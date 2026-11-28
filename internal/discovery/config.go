@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"context"
-	"encoding/json"
 	"path"
 	"strconv"
 	"strings"
@@ -13,8 +12,6 @@ import (
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/report"
-
-	"github.com/pelletier/go-toml/v2"
 )
 
 const (
@@ -40,7 +37,9 @@ const codeInvalidEnablement = "invalid_enablement"
 
 func (t *tree) config(name string, required bool) *jsonconfig.Node {
 	decode := jsonconfig.Parse
-	if artifact.JSON5ConfigName(path.Base(name)) {
+	if strings.EqualFold(path.Ext(name), ".toml") {
+		decode = jsonconfig.ParseTOML
+	} else if artifact.JSON5ConfigName(path.Base(name)) {
 		decode = jsonconfig.ParseJSON5
 	} else if strings.EqualFold(path.Ext(name), ".jsonc") {
 		decode = jsonconfig.ParseJSONC
@@ -55,22 +54,6 @@ func (t *tree) configWithParser(name string, required bool, decode func(context.
 		return nil
 	}
 
-	if strings.HasSuffix(name, ".toml") {
-		var value map[string]any
-		if toml.Unmarshal(data, &value) != nil {
-			t.b.issue(codeInvalidConfig, t.absolute(name))
-			return nil
-		}
-
-		var err error
-
-		data, err = json.Marshal(value)
-		if err != nil {
-			t.b.issue(codeInvalidConfig, t.absolute(name))
-			return nil
-		}
-	}
-
 	n, err := decode(t.b.ctx, string(data))
 	if err != nil || n.Kind != jsonconfig.KindObject {
 		t.b.issue(codeInvalidConfig, t.absolute(name))
@@ -81,12 +64,16 @@ func (t *tree) configWithParser(name string, required bool, decode func(context.
 }
 
 func (t *tree) servers(n *jsonconfig.Node, source, key string) {
+	t.serverDeclarations(n, source, key, kindMCPServer, codeInvalidMCPConfig)
+}
+
+func (t *tree) serverDeclarations(n *jsonconfig.Node, source, key, kind, invalid string) {
 	if n == nil {
 		return
 	}
 
 	if n.Kind != jsonconfig.KindObject {
-		t.b.issue(codeInvalidMCPConfig, t.absolute(source))
+		t.b.issue(invalid, t.absolute(source))
 		return
 	}
 
@@ -100,7 +87,7 @@ func (t *tree) servers(n *jsonconfig.Node, source, key string) {
 		}
 
 		if entry.Value.Kind != jsonconfig.KindObject {
-			t.b.issue(codeInvalidMCPConfig, t.absolute(source))
+			t.b.issue(invalid, t.absolute(source))
 			continue
 		}
 
@@ -114,7 +101,7 @@ func (t *tree) servers(n *jsonconfig.Node, source, key string) {
 			}
 		}
 
-		t.component(kindMCPServer, entry.Key, source, source, key+"/"+pointer(entry.Key), state)
+		t.component(kind, entry.Key, source, source, key+"/"+pointer(entry.Key), state)
 	}
 }
 
@@ -198,6 +185,10 @@ func (t *tree) pluginAt(dir string) bool {
 			continue
 		}
 
+		if t.agent == report.HostGrokCLI && relative == artifact.GrokPluginManifest && agentconfig.GrokMarketplaceIndex(n) {
+			continue
+		}
+
 		name, ok := n.Get(fieldName).Text()
 		if !ok || name == "" {
 			t.b.issue(codeInvalidPluginManifest, t.absolute(file))
@@ -226,6 +217,8 @@ func pluginManifests(host string) []string {
 		return []string{agentplugins.ManifestFile, artifact.CursorPluginManifest}
 	case report.HostCopilotCLI:
 		return append([]string{agentplugins.ManifestFile}, agentconfig.CopilotLegacyManifests()...)
+	case report.HostGrokCLI:
+		return append([]string{agentplugins.ManifestFile}, agentconfig.GrokLegacyManifests()...)
 	case report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw:
 		return nil
 	default:
@@ -299,7 +292,7 @@ func (t *tree) pluginPaths(n *jsonconfig.Node, dir, source, key string, skills b
 	case jsonconfig.KindObject:
 		if skills {
 			t.b.issue(codeUnsupportedPluginReference, t.absolute(source))
-		} else if t.agent == report.HostCursor || t.agent == report.HostCopilotCLI {
+		} else if t.agent == report.HostCursor || t.agent == report.HostCopilotCLI || t.agent == report.HostGrokCLI {
 			t.wrappedOrBareServers(n, source, key)
 		} else {
 			t.servers(n, source, key)
@@ -312,7 +305,7 @@ func (t *tree) pluginPaths(n *jsonconfig.Node, dir, source, key string, skills b
 }
 
 func (t *tree) pluginPath(value, dir, source string, skills bool) {
-	if (t.agent == report.HostCursor || t.agent == report.HostCopilotCLI) && !strings.HasPrefix(value, "./") {
+	if (t.agent == report.HostCursor || t.agent == report.HostCopilotCLI || t.agent == report.HostGrokCLI) && !strings.HasPrefix(value, "./") {
 		rel, reason := artifactpath.Reference(value, false)
 		if reason != "" {
 			t.b.issue(codeExternalPluginReference, t.absolute(source))

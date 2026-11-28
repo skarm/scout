@@ -49,6 +49,10 @@ func InstructionFile(host, kind, name string) bool {
 		return ext == ".toml"
 	}
 
+	if host == report.HostGrokCLI && kind == "workflow" {
+		return ext == ".rhai"
+	}
+
 	return ext == ".md"
 }
 

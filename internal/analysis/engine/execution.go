@@ -55,7 +55,7 @@ func (run *execution) prepare() error {
 	}
 
 	files = append(files, expanded.Files...)
-	documents := document.PrepareAllForHarness(run.ctx, files, run.engine.registry, run.options.Harness.Host)
+	documents := document.PrepareAllForHarness(run.ctx, files, run.engine.registry, run.options.Harness.Host, expanded.Report)
 	graph, documents, hookSources := harness.DiscoverWithHookSources(run.ctx, run.snapshot.Metadata().Files, documents, expanded.Report, run.options.Harness)
 
 	candidates := run.options.Limits.MaxFindings
