@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -88,7 +89,7 @@ func resolveSnapshotSelection(ctx context.Context, mode, path string, r *request
 		}
 
 		r.targets = nil
-		for _, id := range sortedRootIDs(out.inputs, nil) {
+		for _, id := range slices.Sorted(maps.Keys(out.inputs)) {
 			r.targets = append(r.targets, out.inputs[id])
 		}
 	}

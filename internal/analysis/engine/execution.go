@@ -8,6 +8,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/analyzer"
 	"github.com/skarm/scout/internal/analysis/bundle"
 	"github.com/skarm/scout/internal/analysis/check"
+	"github.com/skarm/scout/internal/analysis/hooktrace"
 	"github.com/skarm/scout/internal/capture/artifact"
 
 	"github.com/skarm/scout/internal/analysis/document"
@@ -28,7 +29,7 @@ type execution struct {
 	files                         []artifact.File
 	documents                     []document.File
 	graph                         report.ComponentGraph
-	hookSources                   harness.HookSources
+	hookSources                   hooktrace.Sources
 	expanded                      extract.Result
 	inputs                        []report.File
 	checks                        []check.Analyzer

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/textmatch"
@@ -38,7 +39,7 @@ func (p *plugin) discover() {
 	}
 
 	if p.host == "unknown" {
-		p.issue("plugin_layout_unverified", p.manifest.meta.Path, report.OutcomePartial)
+		p.issue("plugin_layout_unverified", p.manifest.Meta.Path, report.OutcomePartial)
 		return
 	}
 
@@ -115,7 +116,7 @@ func (p *plugin) discoverHostConfig(name string) {
 		}
 	}
 
-	p.issue("plugin_host_configuration_unverified", e.meta.Path, report.OutcomePartial)
+	p.issue("plugin_host_configuration_unverified", e.Meta.Path, report.OutcomePartial)
 }
 
 func (p *plugin) discoverExtensions(root *jsonconfig.Node) {
@@ -135,7 +136,7 @@ func (p *plugin) discoverExtensions(root *jsonconfig.Node) {
 		for _, key := range []string{"experimental", "monitors", "themes", "channels", "extensions", "userConfig"} {
 			if n := root.Get(key); n != nil {
 				p.component("unsupported_extension", p.manifest, "unknown", "manifest", ref(p.manifest, n.Span), key)
-				p.issue("plugin_extension_unverified", p.manifest.meta.Path, report.OutcomePartial)
+				p.issue("plugin_extension_unverified", p.manifest.Meta.Path, report.OutcomePartial)
 			}
 		}
 	}
@@ -143,7 +144,7 @@ func (p *plugin) discoverExtensions(root *jsonconfig.Node) {
 
 func (p *plugin) manifestPath() string {
 	if p.manifest != nil {
-		return p.manifest.meta.Path
+		return p.manifest.Meta.Path
 	}
 
 	return ""
@@ -152,7 +153,7 @@ func (p *plugin) manifestPath() string {
 func (p *plugin) validateManifest(n *jsonconfig.Node) {
 	name, ok := n.Get("name").Text()
 	if !ok || !validName(name) {
-		p.issue("plugin_name_invalid", p.manifest.meta.Path, "invalid")
+		p.issue("plugin_name_invalid", p.manifest.Meta.Path, "invalid")
 	}
 	// Metadata values are never used as authority, IDs or output messages.
 	known := map[string]bool{}
@@ -171,21 +172,21 @@ func (p *plugin) validateManifest(n *jsonconfig.Node) {
 
 func (p *plugin) validateManifestMember(m jsonconfig.Member, known bool) {
 	if !known {
-		p.issue("plugin_unknown_field", p.manifest.meta.Path, report.OutcomePartial)
+		p.issue("plugin_unknown_field", p.manifest.Meta.Path, report.OutcomePartial)
 	}
 
 	if expected, typed := manifestFieldKinds[m.Key]; typed && m.Value.Kind != expected {
-		p.issue("plugin_metadata_type_invalid", p.manifest.meta.Path, "invalid")
+		p.issue("plugin_metadata_type_invalid", p.manifest.Meta.Path, "invalid")
 	}
 
 	switch m.Key {
 	case "keywords":
 		if _, valid := stringValues(m.Value); !valid {
-			p.issue("plugin_metadata_type_invalid", p.manifest.meta.Path, "invalid")
+			p.issue("plugin_metadata_type_invalid", p.manifest.Meta.Path, "invalid")
 		}
 	case "dependencies":
 		if m.Value.Kind != jsonconfig.KindArray {
-			p.issue("plugin_dependency_shape_unverified", p.manifest.meta.Path, report.OutcomePartial)
+			p.issue("plugin_dependency_shape_unverified", p.manifest.Meta.Path, report.OutcomePartial)
 		}
 	}
 }
@@ -268,7 +269,7 @@ func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.Sour
 		activation = p.activation
 	}
 
-	rel, reason := localPath(raw, required)
+	rel, reason := artifactpath.Reference(raw, required)
 	if reason != "" {
 		p.reference(p.rootNode, "component_path", "unresolved", reason, "", s)
 		return
@@ -318,7 +319,7 @@ func (p *plugin) selectedFile(key, name, kind, activation, basis string, s *repo
 			effective = "unknown"
 		}
 
-		p.issue("nested_component_discovery_unverified", e.meta.Path, report.OutcomePartial)
+		p.issue("nested_component_discovery_unverified", e.Meta.Path, report.OutcomePartial)
 	}
 
 	id := p.component(kind, e, effective, basis, whole(e), "file")
@@ -326,12 +327,12 @@ func (p *plugin) selectedFile(key, name, kind, activation, basis string, s *repo
 		p.b.edge(p.rootNode, id, "declares", basis, effective, s)
 	}
 
-	if e.doc == nil {
-		p.issue("plugin_input_unavailable", e.meta.Path, report.OutcomePartial)
+	if e.Doc == nil {
+		p.issue("plugin_input_unavailable", e.Meta.Path, report.OutcomePartial)
 	}
 
 	if kind == report.ComponentSkill || kind == "agent" {
-		p.issue("component_frontmatter_unverified", e.meta.Path, report.OutcomePartial)
+		p.issue("component_frontmatter_unverified", e.Meta.Path, report.OutcomePartial)
 	}
 }
 
@@ -381,7 +382,7 @@ func (p *plugin) configs(field, defaultName, kind string, root *jsonconfig.Node)
 }
 
 func (p *plugin) declaredConfigFile(raw, kind string, s *report.SourceRef) {
-	rel, reason := localPath(raw, true)
+	rel, reason := artifactpath.Reference(raw, true)
 	if reason != "" {
 		p.reference(p.rootNode, "component_path", "unresolved", reason, "", s)
 		return
@@ -393,12 +394,12 @@ func (p *plugin) declaredConfigFile(raw, kind string, s *report.SourceRef) {
 		return
 	}
 
-	if p.b.prepareHooks && kind == report.ComponentHookConfig && e.doc != nil {
-		*e.doc = e.doc.WithDeclaredHookShell(p.b.ctx)
+	if p.b.hookTracer != nil && kind == report.ComponentHookConfig && e.Doc != nil {
+		*e.Doc = e.Doc.WithDeclaredHookShell(p.b.ctx)
 	}
 
 	id := p.configFile(e, kind, p.activation, "manifest", s)
-	if e.doc == nil {
+	if e.Doc == nil {
 		p.reference(p.rootNode, "component_path", "unresolved", "component_not_captured", "", s)
 	} else {
 		p.reference(p.rootNode, "component_path", "resolved", "captured_file", id, s)
@@ -410,7 +411,7 @@ func (p *plugin) defaultConfigActivation(def *entry, n *jsonconfig.Node, kind st
 	if p.host == report.HostCodex && n == nil && kind != report.ComponentHookConfig {
 		activation = "unknown"
 
-		p.issue("plugin_default_config_activation_unverified", def.meta.Path, report.OutcomePartial)
+		p.issue("plugin_default_config_activation_unverified", def.Meta.Path, report.OutcomePartial)
 	}
 
 	if n != nil {
@@ -419,7 +420,7 @@ func (p *plugin) defaultConfigActivation(def *entry, n *jsonconfig.Node, kind st
 		} else {
 			activation = "unknown"
 
-			p.issue("plugin_config_merge_unverified", def.meta.Path, report.OutcomePartial)
+			p.issue("plugin_config_merge_unverified", def.Meta.Path, report.OutcomePartial)
 		}
 	}
 
@@ -436,7 +437,7 @@ func (p *plugin) configFile(e *entry, kind, activation, basis string, s *report.
 		p.b.edge(p.rootNode, id, "declares", basis, activation, s)
 	}
 
-	key := kind + "\x00" + e.meta.Path + "\x00" + activation
+	key := kind + "\x00" + e.Meta.Path + "\x00" + activation
 	if p.processedConfigs[key] {
 		return id
 	}
@@ -458,7 +459,7 @@ func (p *plugin) inspectConfig(e *entry, n *jsonconfig.Node, kind, parent, activ
 	case report.ComponentMCPConfig, componentLSPConfig:
 		p.servers(e, n, kind, parent, activation)
 	default:
-		p.issue("plugin_app_mapping_unverified", e.meta.Path, report.OutcomePartial)
+		p.issue("plugin_app_mapping_unverified", e.Meta.Path, report.OutcomePartial)
 	}
 }
 
@@ -518,31 +519,4 @@ func pathValues(n *jsonconfig.Node) []*jsonconfig.Node {
 	}
 
 	return []*jsonconfig.Node{n}
-}
-
-// localPath accepts only portable paths. It never performs decoding, expansion,
-// filesystem lookup or resolution against the scanner's working directory.
-func localPath(raw string, requireDot bool) (string, string) {
-	if raw == "" {
-		return "", "empty_reference"
-	}
-
-	if strings.ContainsAny(raw, "\\:\x00\r\n\t") || strings.HasPrefix(raw, "/") {
-		return "", "nonlocal_reference"
-	}
-
-	if strings.ContainsAny(raw, "$~*?[]{}") {
-		return "", "symbolic_reference"
-	}
-
-	if requireDot && raw != "." && !strings.HasPrefix(raw, "./") {
-		return "", "relative_prefix_required"
-	}
-
-	clean := path.Clean(raw)
-	if strings.HasPrefix(clean+"/", "../") {
-		return "", "outside_package"
-	}
-
-	return clean, ""
 }

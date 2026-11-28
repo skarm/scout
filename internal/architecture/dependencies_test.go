@@ -102,6 +102,8 @@ func TestPackageDependencyBoundaries(t *testing.T) {
 			forbidden: []string{"internal/dev/maintenance", "internal/syntax/frontend", "internal/signatures", "internal/analysis/engine", "internal/analysis/analyzer"},
 		},
 		{root: "internal/commands/devcli", forbidden: []string{"internal/commands/cli"}},
+		{root: "internal/analysis/hooktrace", forbidden: []string{"internal/analysis/harness", "internal/commands", "internal/dev"}},
+		{root: "internal/envcompare", forbidden: []string{"internal/commands", "internal/dev"}},
 		{
 			root:      "cmd/scout",
 			forbidden: []string{"internal/dev", "internal/commands/devcli", "internal/scantest", "tests"},

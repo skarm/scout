@@ -8,6 +8,7 @@ import (
 
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/harness"
+	"github.com/skarm/scout/internal/analysis/hooktrace"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/report"
 )
@@ -586,13 +587,13 @@ done
 	}
 }
 
-func inspectShellHook(t *testing.T, command, mode, handler string, executable bool, additional ...artifact.File) (report.ComponentGraph, []document.File, harness.HookSources) {
+func inspectShellHook(t *testing.T, command, mode, handler string, executable bool, additional ...artifact.File) (report.ComponentGraph, []document.File, hooktrace.Sources) {
 	t.Helper()
 
 	return inspectShellHookWithOptions(t, report.HarnessOptions{}, command, mode, handler, executable, additional...)
 }
 
-func inspectShellHookWithOptions(t *testing.T, options report.HarnessOptions, command, mode, handler string, executable bool, additional ...artifact.File) (report.ComponentGraph, []document.File, harness.HookSources) {
+func inspectShellHookWithOptions(t *testing.T, options report.HarnessOptions, command, mode, handler string, executable bool, additional ...artifact.File) (report.ComponentGraph, []document.File, hooktrace.Sources) {
 	t.Helper()
 	data, err := json.Marshal(map[string]any{"SessionStart": []any{map[string]any{
 		"hooks": []any{map[string]string{"type": "command", "command": command, "shell": mode}},
@@ -667,7 +668,7 @@ source "${CLAUDE_PLUGIN_ROOT}/helper"
 				if len(hooks.Diagnostics) != 0 {
 					t.Fatalf("unexpected source gaps: %+v", hooks.Diagnostics)
 				}
-			} else if len(hooks.Diagnostics) == 0 || slices.ContainsFunc(hooks.Paths, func(p harness.HookSourcePath) bool {
+			} else if len(hooks.Diagnostics) == 0 || slices.ContainsFunc(hooks.Paths, func(p hooktrace.Path) bool {
 				return p.Target == "p/helper"
 			}) {
 				t.Fatalf("unverified arithmetic was accepted: %+v", hooks)
@@ -930,7 +931,7 @@ source "$(dirname "$0")/helper"`, "hook_source_dynamic"},
 				return
 			}
 
-			if slices.ContainsFunc(hooks.Paths, func(p harness.HookSourcePath) bool { return p.Target == "p/helper" }) ||
+			if slices.ContainsFunc(hooks.Paths, func(p hooktrace.Path) bool { return p.Target == "p/helper" }) ||
 				len(hooks.Diagnostics) != 1 || hooks.Diagnostics[0].Code != tc.gap {
 				t.Fatalf("expected unresolved source, got %+v", hooks)
 			}
@@ -1230,7 +1231,7 @@ exec "$runtime" "$PLUGIN_ROOT/relay.ts"`, linked: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			hooks := analyzeHookSourceFlow(t, tc.script, "", artifact.NewFile("p/relay.ts", []byte("console.log(1)\n"), false))
-			linked := slices.ContainsFunc(hooks.Paths, func(p harness.HookSourcePath) bool {
+			linked := slices.ContainsFunc(hooks.Paths, func(p hooktrace.Path) bool {
 				return p.Target == "p/relay.ts" && p.Language == "typescript"
 			})
 			gap := slices.ContainsFunc(hooks.Diagnostics, func(d report.Diagnostic) bool {
@@ -1243,7 +1244,7 @@ exec "$runtime" "$PLUGIN_ROOT/relay.ts"`, linked: true},
 	}
 }
 
-func analyzeHookSourceFlow(t *testing.T, install, pathsScript string, extra ...artifact.File) harness.HookSources {
+func analyzeHookSourceFlow(t *testing.T, install, pathsScript string, extra ...artifact.File) hooktrace.Sources {
 	t.Helper()
 	files := []artifact.File{
 		artifact.NewFile("p/.codex-plugin/plugin.json", []byte(`{"name":"example"}`), false),

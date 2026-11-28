@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/skarm/scout/internal/analysis/harness"
+	"github.com/skarm/scout/internal/analysis/hooktrace"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/report"
 )
@@ -42,7 +42,7 @@ func TestCommonJSHookDoesNotCallUpdatedBindings(t *testing.T) {
 				`node "${CLAUDE_PLUGIN_ROOT}/dispatch.cjs"`, false,
 				artifact.NewFile("p/dispatch.cjs", []byte("const handler = require('./handler.cjs');\n"+tc.call+"\n"), false),
 				artifact.NewFile("p/handler.cjs", []byte(handler), false))
-			linked := slices.ContainsFunc(hooks.Paths, func(p harness.HookSourcePath) bool {
+			linked := slices.ContainsFunc(hooks.Paths, func(p hooktrace.Path) bool {
 				return p.Target == "p/handler.cjs"
 			})
 			if linked != tc.linked {
@@ -77,7 +77,7 @@ func TestCommonJSPatternsBindOnlyTargets(t *testing.T) {
 				`node "${CLAUDE_PLUGIN_ROOT}/dispatch.cjs"`, false,
 				artifact.NewFile("p/dispatch.cjs", []byte("const handler = require('./handler.cjs');\n{"+tc.declaration+" handler.run();}\n"), false),
 				artifact.NewFile("p/handler.cjs", []byte("function run() {}\nmodule.exports = {run};\n"), false))
-			linked := slices.ContainsFunc(hooks.Paths, func(p harness.HookSourcePath) bool {
+			linked := slices.ContainsFunc(hooks.Paths, func(p hooktrace.Path) bool {
 				return p.Target == "p/handler.cjs"
 			})
 			if linked != tc.linked {

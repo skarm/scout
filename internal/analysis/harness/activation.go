@@ -2,10 +2,11 @@ package harness
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/skarm/scout/internal/analysis/document"
+	"github.com/skarm/scout/internal/analysis/hooktrace"
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
@@ -48,17 +49,6 @@ var commandLaunchers = map[string]struct {
 		subcommand: "run",
 		reason:     "launcher_arguments_unverified",
 	},
-}
-
-//nolint:gochecknoglobals // Read-only manifest and launcher grammar shared by harness captures.
-var pluginRootParameters = map[string]string{report.HostClaudeCode: "CLAUDE_PLUGIN_ROOT", report.HostCodex: "PLUGIN_ROOT"}
-
-// Codex exports this compatibility name for commands of installed plugin hooks.
-const codexHookRootAlias = "CLAUDE_PLUGIN_ROOT"
-
-func rootParameter(host, name string, hook bool) bool {
-	return name != "" && (name == pluginRootParameters[host] ||
-		hook && host == report.HostCodex && name == codexHookRootAlias)
 }
 
 type contextIndex struct {
@@ -211,9 +201,9 @@ func findingContextAdder(f *report.Finding, truncated *bool) func(report.Compone
 }
 
 func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) {
-	state := p.b.hooks[e.meta.Path]
+	state := p.b.hooks[e.Meta.Path]
 	if state.Uncertain {
-		p.issue("plugin_hook_disable_unverified", e.meta.Path, report.OutcomePartial)
+		p.issue("plugin_hook_disable_unverified", e.Meta.Path, report.OutcomePartial)
 	}
 
 	if state.Disabled && p.host == report.HostClaudeCode {
@@ -226,7 +216,7 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 	}
 
 	if hooks.Kind != jsonconfig.KindObject {
-		p.issue("plugin_hooks_invalid", e.meta.Path, "invalid")
+		p.issue("plugin_hooks_invalid", e.Meta.Path, "invalid")
 		return
 	}
 
@@ -243,7 +233,7 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 
 func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation string, eventIndex int) bool {
 	if event.Value.Kind != jsonconfig.KindArray {
-		p.issue("plugin_hooks_invalid", e.meta.Path, "invalid")
+		p.issue("plugin_hooks_invalid", e.Meta.Path, "invalid")
 		return true
 	}
 
@@ -254,7 +244,7 @@ func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation
 
 		items := group.Get("hooks")
 		if items == nil || items.Kind != jsonconfig.KindArray {
-			p.issue("plugin_hooks_invalid", e.meta.Path, "invalid")
+			p.issue("plugin_hooks_invalid", e.Meta.Path, "invalid")
 			continue
 		}
 
@@ -288,7 +278,7 @@ func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, e
 	case "mcp_tool":
 		p.reference(id, "hook_behavior", "unresolved", "semantic_or_tool_resolution_unavailable", "", s)
 	default:
-		p.issue("plugin_hook_type_unverified", e.meta.Path, report.OutcomePartial)
+		p.issue("plugin_hook_type_unverified", e.Meta.Path, report.OutcomePartial)
 	}
 }
 
@@ -297,7 +287,7 @@ func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event
 
 	text, ok := cmd.Text()
 	if !ok || strings.TrimSpace(text) == "" {
-		p.issue("plugin_hook_command_invalid", e.meta.Path, "invalid")
+		p.issue("plugin_hook_command_invalid", e.Meta.Path, "invalid")
 		return
 	}
 
@@ -305,12 +295,12 @@ func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event
 	argv := h.Get("args") != nil
 
 	if !valid {
-		p.issue("plugin_hook_args_invalid", e.meta.Path, "invalid")
+		p.issue("plugin_hook_args_invalid", e.Meta.Path, "invalid")
 		return
 	}
 
 	s := ref(e, h.Span)
-	if p.b.prepareHooks && p.linkTracedHook(e, h, event, matcher, id, activation, s) {
+	if p.b.hookTracer != nil && p.linkTracedHook(e, h, event, matcher, id, activation, s) {
 		return
 	}
 
@@ -318,10 +308,9 @@ func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event
 }
 
 func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, matcher, id, activation string, s *report.SourceRef) bool {
-	start := len(p.b.hookSourcePaths)
-	p.inspectHookSources(e, h, event, matcher)
+	paths := p.traceHook(e, h, event, matcher)
 
-	if p.host == report.HostGeminiCLI && p.linkGeminiHandler(start, id, activation, s) {
+	if p.host == report.HostGeminiCLI && p.linkGeminiHandler(paths, id, activation, s) {
 		return true
 	}
 
@@ -329,7 +318,7 @@ func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, matcher, id
 		return false
 	}
 
-	for _, unit := range e.doc.Units() {
+	for _, unit := range e.Doc.Units() {
 		if unit.Origin != document.OriginHookShell || unit.Span.Start < h.Span.Start || unit.Span.End > h.Span.End {
 			continue
 		}
@@ -339,16 +328,14 @@ func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, matcher, id
 			continue
 		}
 
-		if tree.ExecutionError == nil && literalInlineHook(tree.Tree) {
+		inline, file := hooktrace.ShellLink(tree, p.host, p.projectSettings, len(paths) != 0)
+		if inline {
 			p.linkInlineHook(e, unit, id, activation, s)
 			return true
 		}
 
-		shell := hookSourceTree(tree)
-		_, simple := simpleShellCommand(shell)
-
-		if start != len(p.b.hookSourcePaths) && (guardedShellLaunch(shell, p.host) || p.projectSettings && simple && !shell.OmittedExecution) {
-			for _, traced := range p.b.hookSourcePaths[start:] {
+		if file {
+			for _, traced := range paths {
 				if target := p.ns.entries[traced.Target]; len(traced.Steps) == 1 && target != nil {
 					p.capturedHandler(id, target, activation, s)
 					p.reference(id, "runtime", "unresolved", "runtime_not_materialized", "", s)
@@ -362,62 +349,10 @@ func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, matcher, id
 	return false
 }
 
-// A literal data-emitting Bash builtin is the handler itself. No handler
-// file needs to be found, and its quoted argument is data even if it mentions
-// a shell command.
-func literalInlineHook(tree *shellsyntax.File) bool {
-	cmd, simple := simpleShellCommand(tree)
-	if !simple || tree.Statements[0].Negated || tree.Statements[0].Background {
-		return false
-	}
-
-	name, _ := cmd.Words[0].Literal()
-	switch name {
-	case ":", "true", "false", "echo":
-	case "printf":
-		if hookPrintfMayWrite(cmd.Words[1:]) {
-			return false
-		}
-	default:
-		return false
-	}
-
-	for _, arg := range cmd.Words[1:] {
-		if _, literal := arg.Literal(); !literal {
-			return false
-		}
-	}
-
-	return true
-}
-
 func (p *plugin) linkInlineHook(e *entry, unit document.Unit, id, activation string, s *report.SourceRef) {
 	child := p.component("handler", e, activation, "inline_shell", ref(e, unit.Span), "inline")
 	p.b.edge(id, child, "invokes", "inline_shell", activation, s)
 	p.reference(id, "handler", "resolved", "captured_inline_shell", child, s)
-}
-
-func guardedShellLaunch(tree *shellsyntax.File, host string) bool {
-	if tree == nil || len(tree.Statements) != 2 {
-		return false
-	}
-
-	guard, launch := tree.Statements[0], tree.Statements[1]
-	if guard.Next != shellsyntax.AndThen || guard.Background || launch.Background || launch.Negated ||
-		!simpleHookCommand(guard, "cd") || len(launch.Commands) != 1 {
-		return false
-	}
-
-	cd, script := guard.Commands[0], launch.Commands[0]
-	if len(cd.Words) != 2 || len(script.Words) < 2 || len(script.Assignments) != 0 || len(script.Redirects) != 0 {
-		return false
-	}
-
-	root, known := symbolicWord(cd.Words[1], host, true)
-	name, literal := script.Words[0].Literal()
-
-	return known && cd.Words[1].Quoted && root == pluginRootValue && literal && hookSourceInterpreter(name) &&
-		len(hookSourceOperands(script.Words, name)) > 0
 }
 
 func (p *plugin) hookPrompt(e *entry, h *jsonconfig.Node, id, activation string, eventIndex, gi, hi int, s *report.SourceRef) {
@@ -426,16 +361,16 @@ func (p *plugin) hookPrompt(e *entry, h *jsonconfig.Node, id, activation string,
 		child := p.component("instruction", e, activation, "hook_payload", ref(e, prompt.Span), fmt.Sprintf("prompt:%d:%d:%d", eventIndex, gi, hi))
 		p.b.edge(id, child, "invokes", "hook_payload", activation, ref(e, prompt.Span))
 	} else {
-		p.issue("plugin_hook_prompt_invalid", e.meta.Path, "invalid")
+		p.issue("plugin_hook_prompt_invalid", e.Meta.Path, "invalid")
 	}
 
 	p.reference(id, "hook_behavior", "unresolved", "semantic_or_tool_resolution_unavailable", "", s)
 }
 
 func (p *plugin) settings(e *entry, n *jsonconfig.Node, parent string) {
-	state := p.b.hooks[e.meta.Path]
+	state := p.b.hooks[e.Meta.Path]
 	if state.Uncertain {
-		p.issue("plugin_hook_disable_unverified", e.meta.Path, report.OutcomePartial)
+		p.issue("plugin_hook_disable_unverified", e.Meta.Path, report.OutcomePartial)
 	}
 
 	off := state.Disabled
@@ -450,7 +385,7 @@ func (p *plugin) settings(e *entry, n *jsonconfig.Node, parent string) {
 		}
 
 		if value == nil {
-			p.issue("plugin_settings_command_invalid", e.meta.Path, "invalid")
+			p.issue("plugin_settings_command_invalid", e.Meta.Path, "invalid")
 			continue
 		}
 
@@ -490,10 +425,10 @@ func (p *plugin) settingsCommand(e *entry, value *jsonconfig.Node, id string) {
 		if valid {
 			p.command(id, words[0], words[1:], true, ref(e, value.Span), "unknown", false)
 		} else {
-			p.issue("plugin_settings_command_invalid", e.meta.Path, "invalid")
+			p.issue("plugin_settings_command_invalid", e.Meta.Path, "invalid")
 		}
 	} else {
-		p.issue("plugin_settings_command_invalid", e.meta.Path, "invalid")
+		p.issue("plugin_settings_command_invalid", e.Meta.Path, "invalid")
 	}
 }
 
@@ -504,7 +439,7 @@ func (p *plugin) servers(e *entry, n *jsonconfig.Node, kind, parent, activation 
 	}
 
 	if servers.Kind != jsonconfig.KindObject {
-		p.issue("plugin_server_map_invalid", e.meta.Path, "invalid")
+		p.issue("plugin_server_map_invalid", e.Meta.Path, "invalid")
 		return
 	}
 
@@ -536,7 +471,7 @@ func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
 
 	camel, snake := n.Get("mcpServers"), n.Get("mcp_servers")
 	if camel != nil && snake != nil {
-		p.issue("plugin_mcp_wrappers_ambiguous", e.meta.Path, "invalid")
+		p.issue("plugin_mcp_wrappers_ambiguous", e.Meta.Path, "invalid")
 		return nil
 	}
 
@@ -549,7 +484,7 @@ func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
 	}
 
 	if p.host == report.HostClaudeCode && snake != nil {
-		p.issue("plugin_mcp_wrapper_unverified", e.meta.Path, report.OutcomePartial)
+		p.issue("plugin_mcp_wrapper_unverified", e.Meta.Path, report.OutcomePartial)
 	}
 
 	return servers
@@ -567,7 +502,7 @@ func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activat
 	p.b.edge(parent, id, "declares", "configuration", activation, s)
 
 	if n.Kind != jsonconfig.KindObject {
-		p.issue("plugin_server_invalid", e.meta.Path, "invalid")
+		p.issue("plugin_server_invalid", e.Meta.Path, "invalid")
 		return
 	}
 
@@ -575,12 +510,12 @@ func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activat
 
 	url := n.Get("url")
 	if command != nil && url != nil {
-		p.issue("plugin_server_transport_ambiguous", e.meta.Path, report.OutcomePartial)
+		p.issue("plugin_server_transport_ambiguous", e.Meta.Path, report.OutcomePartial)
 	}
 
 	if url != nil {
 		if _, ok := url.Text(); !ok {
-			p.issue("plugin_server_url_invalid", e.meta.Path, "invalid")
+			p.issue("plugin_server_url_invalid", e.Meta.Path, "invalid")
 		}
 
 		p.reference(id, "remote_endpoint", "unresolved", "remote_implementation_not_scanned", "", ref(e, url.Span))
@@ -589,7 +524,7 @@ func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activat
 	if command != nil {
 		p.serverCommand(e, n, id, s, activation)
 	} else if url == nil {
-		p.issue("plugin_server_transport_unverified", e.meta.Path, report.OutcomePartial)
+		p.issue("plugin_server_transport_unverified", e.Meta.Path, report.OutcomePartial)
 	}
 }
 
@@ -598,7 +533,7 @@ func (p *plugin) serverCommand(e *entry, n *jsonconfig.Node, id string, s *repor
 	args, valid := stringValues(n.Get("args"))
 
 	if !ok || text == "" || !valid {
-		p.issue("plugin_server_command_invalid", e.meta.Path, "invalid")
+		p.issue("plugin_server_command_invalid", e.Meta.Path, "invalid")
 		return
 	}
 
@@ -620,7 +555,7 @@ func (p *plugin) command(component, text string, args []string, argv bool, s *re
 	} else {
 		tree, err := shellsyntax.Parse(p.b.ctx, text)
 
-		command, valid := simpleShellCommand(tree)
+		command, valid := hooktrace.SimpleShellCommand(tree)
 		if err != nil || !valid {
 			p.reference(component, "command", "unresolved", "complex_shell_command", "", s)
 			return
@@ -629,7 +564,7 @@ func (p *plugin) command(component, text string, args []string, argv bool, s *re
 		words = nil
 
 		for _, word := range command.Words {
-			v, ok := symbolicWord(word, p.host, hook)
+			v, ok := hooktrace.SymbolicWord(word, p.host, hook)
 			if !ok {
 				p.reference(component, "command", "unresolved", "dynamic_command", "", s)
 				return
@@ -640,21 +575,6 @@ func (p *plugin) command(component, text string, args []string, argv bool, s *re
 	}
 
 	p.resolveCommand(component, words, argv, s, activation, hook)
-}
-
-func simpleShellCommand(tree *shellsyntax.File) (*shellsyntax.Command, bool) {
-	if tree == nil || len(tree.Statements) != 1 || len(tree.Statements[0].Commands) != 1 {
-		return nil, false
-	}
-
-	statement := tree.Statements[0]
-
-	command := statement.Commands[0]
-	if len(command.Assignments) != 0 || len(command.Redirects) != 0 || command.Subshell != nil || len(command.Words) == 0 || slices.Contains([]string{"&", "&&", "||"}, statement.Next) {
-		return nil, false
-	}
-
-	return command, true
 }
 
 func (p *plugin) resolveCommand(component string, words []string, argv bool, s *report.SourceRef, activation string, hook bool) {
@@ -675,7 +595,7 @@ func (p *plugin) resolveCommand(component string, words []string, argv bool, s *
 	}
 
 	e := p.entry(rel)
-	if e == nil || e.doc == nil {
+	if e == nil || e.Doc == nil {
 		p.reference(component, "handler", "unresolved", "handler_not_captured", "", s)
 		return
 	}
@@ -683,7 +603,7 @@ func (p *plugin) resolveCommand(component string, words []string, argv bool, s *
 	p.capturedHandler(component, e, activation, s)
 	// A single source operand cannot attest the rest of go run's build inputs.
 	if externalRuntime {
-		p.issue("handler_dependency_closure_unverified", e.meta.Path, report.OutcomePartial)
+		p.issue("handler_dependency_closure_unverified", e.Meta.Path, report.OutcomePartial)
 	}
 }
 
@@ -694,10 +614,7 @@ func (p *plugin) capturedHandler(component string, e *entry, activation string, 
 }
 
 func handlerPath(candidate, host string, argv, hook bool) (string, string, string) {
-	suffix, rooted := strings.CutPrefix(candidate, pluginRootMarker)
-	if argv {
-		suffix, rooted = literalRootSuffix(candidate, host, hook)
-	}
+	suffix, rooted := hooktrace.RootedSuffix(candidate, host, argv, hook)
 
 	if !rooted {
 		reason := "external_command_not_materialized"
@@ -708,24 +625,13 @@ func handlerPath(candidate, host string, argv, hook bool) (string, string, strin
 		return "", "command", reason
 	}
 
-	rel, reason := localPath(suffix, false)
+	rel, reason := artifactpath.Reference(suffix, false)
 
 	return rel, "handler", reason
 }
 
-func literalRootSuffix(value, host string, hook bool) (string, bool) {
-	parameter, found := strings.CutPrefix(value, "${")
-	if !found {
-		return "", false
-	}
-
-	name, suffix, found := strings.Cut(parameter, "}/")
-
-	return suffix, found && rootParameter(host, name, hook)
-}
-
 func commandOperand(words []string) (string, bool, string) {
-	if hookSourceInterpreter(words[0]) {
+	if hooktrace.IsShellInterpreter(words[0]) {
 		args := words[1:]
 
 		index := shellsyntax.FileArgumentIndex(len(args), func(i int) (string, bool) { return args[i], true })
@@ -754,29 +660,4 @@ func commandOperand(words []string) (string, bool, string) {
 	}
 
 	return words[launcher.operand], true, ""
-}
-
-func symbolicWord(w *shellsyntax.Word, host string, hook bool) (string, bool) {
-	if w == nil || w.Expands {
-		return "", false
-	}
-
-	var b strings.Builder
-
-	for _, part := range w.Parts {
-		switch part.Kind {
-		case shellsyntax.PartLiteral:
-			b.WriteString(part.Text)
-		case shellsyntax.PartParameter, shellsyntax.PartParameterDefaultDot:
-			if rootParameter(host, part.Text, hook) {
-				b.WriteString("\x00scout-plugin-root")
-			} else {
-				return "", false
-			}
-		default:
-			return "", false
-		}
-	}
-
-	return b.String(), true
 }

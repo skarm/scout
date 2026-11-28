@@ -10,8 +10,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hookpolicy"
+	"github.com/skarm/scout/internal/analysis/hooktrace"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/language"
@@ -23,8 +25,7 @@ import (
 const version = "2"
 
 type entry struct {
-	meta report.File
-	doc  *document.File
+	hooktrace.File
 	name string
 }
 type namespace struct {
@@ -33,23 +34,17 @@ type namespace struct {
 	names   []string
 }
 type builder struct {
-	ctx                   context.Context
-	r                     report.ComponentGraph
-	spaces                []*namespace
-	nodes                 map[string]int
-	edges                 map[string]bool
-	issues                map[string]bool
-	references            map[string]bool
-	containerRoots        map[string]bool
-	operations            int
-	stopped               bool
-	prepareHooks          bool
-	hookSourcePaths       []HookSourcePath
-	hookSourceCommands    []HookSourceCommand
-	hookSourceDiagnostics []report.Diagnostic
-	hookSourceSeen        map[report.Diagnostic]bool
-	shellHookRoot         report.ShellHookRoot
-	hooks                 hookpolicy.Policy
+	ctx            context.Context
+	r              report.ComponentGraph
+	spaces         []*namespace
+	nodes          map[string]int
+	edges          map[string]bool
+	issues         map[string]bool
+	references     map[string]bool
+	containerRoots map[string]bool
+	work           analysisbudget.Sequence
+	hookTracer     *hooktrace.Tracer
+	hooks          hookpolicy.Policy
 }
 type candidate struct {
 	ns                   *namespace
@@ -100,17 +95,17 @@ func DiscoverWithHookShell(ctx context.Context, inventory []report.File, docs []
 }
 
 // DiscoverWithHookSources also retains the local source paths of command hooks.
-func DiscoverWithHookSources(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions) (report.ComponentGraph, []document.File, HookSources) {
+func DiscoverWithHookSources(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions) (report.ComponentGraph, []document.File, hooktrace.Sources) {
 	out := slices.Clone(docs)
 
-	var sources HookSources
+	var sources hooktrace.Sources
 
 	graph := discover(ctx, inventory, out, extraction, opts, &sources)
 
 	return graph, out, sources
 }
 
-func discover(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions, sources *HookSources) report.ComponentGraph {
+func discover(ctx context.Context, inventory []report.File, docs []document.File, extraction report.ExtractionReport, opts report.HarnessOptions, sources *hooktrace.Sources) report.ComponentGraph {
 	host := opts.Host
 	if host == "" {
 		host = report.HostAuto
@@ -118,7 +113,6 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 
 	b := builder{
 		ctx:            ctx,
-		prepareHooks:   sources != nil,
 		nodes:          map[string]int{},
 		edges:          map[string]bool{},
 		references:     map[string]bool{},
@@ -140,11 +134,16 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 		return b.r
 	}
 
-	if !b.spend(0) {
+	b.work = analysisbudget.Sequence{Context: ctx, Limit: b.r.Limits.Operations, OnStop: b.workStopped}
+	if !b.work.Spend(0) {
 		return b.r
 	}
 
-	b.shellHookRoot = opts.ShellHookRoot
+	if sources != nil {
+		b.hookTracer = hooktrace.New(&b.work, opts.ShellHookRoot, b.r.Limits.References, func() {
+			b.issue("hook_source_diagnostic_limit", "", "", report.OutcomePartial)
+		})
+	}
 
 	b.spaces = namespaces(inventory, docs, extraction)
 
@@ -169,7 +168,7 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 	b.finish()
 
 	if sources != nil {
-		*sources = HookSources{Paths: b.hookSourcePaths, Diagnostics: b.hookSourceDiagnostics, Commands: b.hookSourceCommands}
+		*sources = b.hookTracer.Sources()
 	}
 
 	return b.r
@@ -228,7 +227,7 @@ func (s *candidateSet) addProjectHookSettings(ns *namespace) {
 		}
 
 		e := ns.entries[name]
-		if e.doc == nil || !slices.ContainsFunc(e.doc.Units(), projectSettingsHasHooks) {
+		if e.Doc == nil || !slices.ContainsFunc(e.Doc.Units(), projectSettingsHasHooks) {
 			continue
 		}
 
@@ -251,7 +250,7 @@ func (b *builder) marketplace(ns *namespace, name string) {
 	if path.Base(name) == "marketplace.json" && (strings.Contains("/"+name, "/.claude-plugin/") || strings.Contains("/"+name, "/.agents/plugins/")) {
 		e := ns.entries[name]
 		b.node("", "marketplace", e, "unknown", "unknown", whole(e), "catalog")
-		b.issue("marketplace_install_closure_unverified", "", e.meta.Path, report.OutcomePartial)
+		b.issue("marketplace_install_closure_unverified", "", e.Meta.Path, report.OutcomePartial)
 	}
 }
 
@@ -272,32 +271,15 @@ func (b *builder) standaloneSkills() {
 	}
 }
 
-func (b *builder) step() bool { return b.spend(1) }
+func (b *builder) step() bool { return b.work.Spend(1) }
 
-// Reserve a whole operation before copying or merging state. A refused
-// reservation leaves the graph already built by earlier operations intact.
-func (b *builder) spend(n int) bool {
-	if b.stopped {
-		return false
+func (b *builder) workStopped(reason analysisbudget.StopReason) {
+	code := "harness_operation_limit"
+	if reason == analysisbudget.Cancelled {
+		code = "harness_cancelled"
 	}
 
-	if b.ctx == nil || b.ctx.Err() != nil {
-		b.stopped = true
-		b.issue("harness_cancelled", "", "", report.OutcomePartial)
-
-		return false
-	}
-
-	if n > b.r.Limits.Operations-b.operations {
-		b.stopped = true
-		b.issue("harness_operation_limit", "", "", report.OutcomePartial)
-
-		return false
-	}
-
-	b.operations += n
-
-	return true
+	b.issue(code, "", "", report.OutcomePartial)
 }
 
 func (b *builder) issue(code, pid, file, status string) {
@@ -328,7 +310,7 @@ func (b *builder) node(pid, kind string, e *entry, host, activation string, s *r
 	name := ""
 
 	if e != nil {
-		file = e.meta.Path
+		file = e.Meta.Path
 		name = e.name
 	}
 
@@ -410,7 +392,7 @@ func (b *builder) plugin(c candidate) *plugin {
 	var e *entry
 	if c.manifest != "" {
 		e = c.ns.entries[c.manifest]
-		manifests = append(manifests, e.meta.Path)
+		manifests = append(manifests, e.Meta.Path)
 	}
 
 	p := &plugin{
@@ -487,7 +469,7 @@ func (b *builder) containerCollection(ns *namespace) bool {
 			return true
 		}
 
-		if b.containerRoots[e.meta.Path] {
+		if b.containerRoots[e.Meta.Path] {
 			return true
 		}
 	}
@@ -547,18 +529,18 @@ func (p *plugin) object(e *entry) *jsonconfig.Node {
 		return nil
 	}
 
-	if e.doc == nil {
-		p.issue("plugin_input_unavailable", e.meta.Path, report.OutcomePartial)
+	if e.Doc == nil {
+		p.issue("plugin_input_unavailable", e.Meta.Path, report.OutcomePartial)
 		return nil
 	}
 
-	for _, u := range e.doc.Units() {
+	for _, u := range e.Doc.Units() {
 		if u.Origin == "file" && u.Language == language.JSON {
 			return p.jsonObject(e, u)
 		}
 	}
 
-	p.issue("plugin_json_unavailable", e.meta.Path, report.OutcomePartial)
+	p.issue("plugin_json_unavailable", e.Meta.Path, report.OutcomePartial)
 
 	return nil
 }
@@ -566,7 +548,7 @@ func (p *plugin) object(e *entry) *jsonconfig.Node {
 func (p *plugin) jsonObject(e *entry, u document.Unit) *jsonconfig.Node {
 	if t, ok := u.Tree.(parse.JSONTree); ok && t.Root != nil {
 		if t.Root.Kind != jsonconfig.KindObject {
-			p.issue("plugin_object_expected", e.meta.Path, "invalid")
+			p.issue("plugin_object_expected", e.Meta.Path, "invalid")
 			return nil
 		}
 
@@ -581,7 +563,7 @@ func (p *plugin) jsonObject(e *entry, u document.Unit) *jsonconfig.Node {
 		code = "plugin_json_invalid"
 	}
 
-	p.issue(code, e.meta.Path, status)
+	p.issue(code, e.Meta.Path, status)
 
 	return nil
 }
@@ -644,42 +626,29 @@ func putNamespace(spaces map[string]*namespace, byPath map[string]*document.File
 		return
 	}
 
-	n.entries[name] = &entry{meta: m, doc: byPath[m.Path], name: name}
+	n.entries[name] = &entry{File: hooktrace.File{Meta: m, Doc: byPath[m.Path]}, name: name}
 	n.names = append(n.names, name)
 }
 func identity(v ...string) string { raw, _ := json.Marshal(v); return artifact.Hash(raw) }
 func whole(e *entry) *report.SourceRef {
-	if e == nil || e.doc == nil {
+	if e == nil || e.Doc == nil {
 		return nil
 	}
 
 	return &report.SourceRef{
-		Path:       e.meta.Path,
-		SHA256:     e.meta.SHA256,
-		ByteEnd:    len(e.doc.Artifact().Content()),
-		SpanSHA256: e.meta.SHA256,
+		Path:       e.Meta.Path,
+		SHA256:     e.Meta.SHA256,
+		ByteEnd:    len(e.Doc.Artifact().Content()),
+		SpanSHA256: e.Meta.SHA256,
 	}
 }
 
 func ref(e *entry, s source.Span) *report.SourceRef {
-	if e == nil || e.doc == nil {
+	if e == nil {
 		return nil
 	}
 
-	f := e.doc.Artifact()
-
-	text := f.Content()
-	if s.Start < 0 || s.End < s.Start || s.End > len(text) {
-		return nil
-	}
-
-	return &report.SourceRef{
-		Path:       e.meta.Path,
-		SHA256:     e.meta.SHA256,
-		ByteStart:  s.Start,
-		ByteEnd:    s.End,
-		SpanSHA256: artifact.Hash([]byte(text[s.Start:s.End])),
-	}
+	return e.SourceRef(s)
 }
 
 // descendants slices the sorted namespace with two prefix searches. Only the

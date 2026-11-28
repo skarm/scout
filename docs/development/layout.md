@@ -25,7 +25,12 @@ Consumers use check contracts directly from `check`. Filename-based display
 surfaces live in `syntax/filetype`; they never grant trust or suppress checks.
 
 `internal/dev/hookscenario` interprets pinned fixture scripts under finite command
-models. `internal/analysis/harness` traces installed hook declarations during a scan.
+models. `internal/analysis/harness` discovers plugins and publishes the component
+graph. `internal/analysis/hooktrace` follows command hooks through captured files
+under the shared analysis budget.
+
+`internal/envcompare` compares and renders saved environment snapshots. The CLI
+selects inputs, manages checkpoints and publishes reports.
 
 `environment/surface.go` owns the passive fact inputs for joint environment
 analysis. `bundle/surface.go` implements their collection from prepared documents.

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/skarm/scout/internal/analysis/harness"
+	"github.com/skarm/scout/internal/analysis/hooktrace"
 )
 
 func TestHookSourceRestoresPositionalsAfterExplicitArguments(t *testing.T) {
@@ -272,7 +272,7 @@ func TestHookSourceDoesNotUseStaleArithmeticAssignment(t *testing.T) {
 	}
 }
 
-func assertHookTerminalPath(t *testing.T, hooks harness.HookSources, want string) {
+func assertHookTerminalPath(t *testing.T, hooks hooktrace.Sources, want string) {
 	t.Helper()
 
 	if len(hooks.Diagnostics) != 0 || len(hooks.Paths) == 0 || hooks.Paths[len(hooks.Paths)-1].Target != want {
