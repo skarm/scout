@@ -146,6 +146,19 @@ var agentLayouts = []agentLayout{
 			{"package.json", (*tree).deepSeekManifest},
 		},
 	},
+	{
+		id: report.HostZCode, label: "ZCode", homeFlag: "zcode-home",
+		homeOverride: func(o *Options) *string { return &o.ZCodeHome },
+		user:         []location{{".agents", (*tree).zcodeShared}},
+		defaultHome:  []location{{artifact.ZCodeDirectory, (*tree).zcodeUser}},
+		relocated:    []location{{".", (*tree).zcodeUser}},
+		project: []location{
+			{artifact.ZCodeRootConfig, (*tree).zcodeProject},
+			{artifact.ZCodeDirectory, (*tree).zcodeAssets},
+			{".agents", (*tree).zcodeShared},
+			{"AGENTS.md", (*tree).geminiContext},
+		},
+	},
 }
 
 // AgentSelectors returns the discovery selectors in CLI help order.

@@ -190,7 +190,9 @@ func fullHelp(stdout io.Writer) int {
 	var homeFlags strings.Builder
 	for _, override := range homeOverrides {
 		_, _ = fmt.Fprintf(&homeFlags, "  %-26s Explicit %s configuration directory.\n", "--"+override.Flag+" DIR", override.Label)
-		homeEnvs = append(homeEnvs, override.Env)
+		if override.Env != "" {
+			homeEnvs = append(homeEnvs, override.Env)
+		}
 	}
 
 	_, _ = fmt.Fprintf(&text, operatorHelp,

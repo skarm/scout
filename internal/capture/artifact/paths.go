@@ -41,6 +41,15 @@ const (
 	DeepSeekPatch              = "cordis.patch.yml"
 	DeepSeekSettings           = "settings.yaml"
 	DeepSeekProfiles           = "profiles"
+	ZCodeDirectory             = ".zcode"
+	ZCodeConfig                = "config.json"
+	ZCodeRootConfig            = "zcode.json"
+	ZCodeUserConfig            = "cli/" + ZCodeConfig
+	ZCodeSharedMCP             = ".agents/mcp.json"
+	ZCodePluginManifest        = ".zcode-plugin/plugin.json"
+	ZCodeMarketplaceManifest   = ".zcode-plugin/marketplace.json"
+	ZCodePluginCache           = "cli/plugins/cache"
+	ZCodeInstalledPlugins      = "cli/plugins/installed_plugins.json"
 )
 
 func DeepSeekCordisName(name string) bool {
@@ -152,6 +161,7 @@ func NativePluginManifest(name string) (root, host string) {
 		{CopilotPluginManifest, report.HostCopilotCLI},
 		{CopilotGitHubManifest, report.HostCopilotCLI},
 		{GrokPluginManifest, report.HostGrokCLI},
+		{ZCodePluginManifest, report.HostZCode},
 	} {
 		if name == candidate.file {
 			return ".", candidate.host

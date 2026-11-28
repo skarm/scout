@@ -36,6 +36,7 @@ var environmentReference = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A
 var (
 	openCodeEnvironmentReference = regexp.MustCompile(`\{env:[A-Za-z_][A-Za-z0-9_]*\}`)
 	deepSeekCredentialReference  = regexp.MustCompile(`\$\{credential:[^}\r\n]+\}`)
+	zcodeUserConfigReference     = regexp.MustCompile(`\$\{user_config\.[A-Za-z0-9_.-]+\}`)
 )
 
 var npmPackageName = regexp.MustCompile(`^(?:@[a-z0-9._-]+/)?[a-z0-9._-]+$`)
@@ -270,7 +271,10 @@ func (a agentConfigCheck) inspectConfigUnit(ctx context.Context, f document.File
 	state := a.hookState(f, u, root)
 
 	actualHook := u.Origin == "file" && (hookpolicy.IsSettings(f.Artifact().Metadata().Path) || path.Base(f.Artifact().Metadata().Path) == "hooks.json")
-	if a.id != ruleAC003 || !grokHookScope(f, u) && (!state.Disabled || !actualHook) {
+	skipHook := a.id == ruleAC003 && (nativeGroupedHookScope(f, u) || state.Disabled && actualHook)
+
+	skipCredentials := a.id == ruleMC002 && zcodeMCPScoped(f, u)
+	if !skipHook && !skipCredentials {
 		err := a.inspect(ctx, root, emit)
 		*mappingErr = errors.Join(*mappingErr, err)
 	}
@@ -319,7 +323,7 @@ func (a agentConfigCheck) hookState(f document.File, u document.Unit, root *json
 			continue
 		}
 
-		if scope.Host == report.HostGeminiCLI || scope.Host == report.HostGrokCLI {
+		if scope.Host == report.HostGeminiCLI || scope.Host == report.HostGrokCLI || scope.Host == report.HostZCode {
 			return hookpolicy.State{}
 		}
 
@@ -586,6 +590,8 @@ func inspectServerCredentials(server *jsonconfig.Node, host string, emit func(so
 				text = openCodeEnvironmentReference.ReplaceAllString(text, "")
 			case report.HostDeepSeekHarness:
 				text = deepSeekCredentialReference.ReplaceAllString(text, "")
+			case report.HostZCode:
+				text = zcodeUserConfigReference.ReplaceAllString(text, "")
 			}
 
 			if ok && credentialLiteral(text) {
@@ -648,8 +654,11 @@ func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, 
 	}
 
 	if scope.Role == report.ComponentHookConfig && a.id == ruleAC003 {
-		if scope.Host == report.HostCursor || scope.Host == report.HostCopilotCLI {
+		switch scope.Host {
+		case report.HostCursor, report.HostCopilotCLI:
 			return inspectNativeHookScope(ctx, n, scope.Host, emit)
+		case report.HostZCode:
+			return inspectZCodeHooks(ctx, n, emit)
 		}
 
 		hooks := n.Get("hooks")
@@ -677,10 +686,31 @@ func (a agentConfigCheck) inspectDeepSeekServers(ctx context.Context, n *jsoncon
 	return nil
 }
 
-func grokHookScope(f document.File, u document.Unit) bool {
+func nativeGroupedHookScope(f document.File, u document.Unit) bool {
 	return u.Origin == "file" && slices.ContainsFunc(f.ConfigScopes(), func(scope document.ConfigScope) bool {
-		return scope.Role == report.ComponentHookConfig && scope.Host == report.HostGrokCLI && scope.Span == u.Span
+		return scope.Role == report.ComponentHookConfig && (scope.Host == report.HostZCode ||
+			scope.Host == report.HostGrokCLI && scope.Span == u.Span)
 	})
+}
+
+func zcodeMCPScoped(f document.File, u document.Unit) bool {
+	return u.Origin == "file" && slices.ContainsFunc(f.ConfigScopes(), func(scope document.ConfigScope) bool {
+		return scope.Role == report.ComponentMCPConfig && scope.Host == report.HostZCode
+	})
+}
+
+func inspectZCodeHooks(ctx context.Context, n *jsonconfig.Node, emit func(source.Span)) error {
+	for hook := range agentconfig.ZCodeHooks(n) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		if hook.Launch != nil {
+			emit(hook.Launch.Span)
+		}
+	}
+
+	return nil
 }
 
 func inspectNativeHookScope(ctx context.Context, n *jsonconfig.Node, host string, emit func(source.Span)) error {
@@ -705,17 +735,9 @@ func inspectNativeHookScope(ctx context.Context, n *jsonconfig.Node, host string
 }
 
 func (a agentConfigCheck) inspectServerScope(ctx context.Context, n *jsonconfig.Node, host string, emit func(source.Span)) {
-	maps := make([]*jsonconfig.Node, 0)
-	if v := n.Get("mcpServers"); v != nil {
-		maps = append(maps, v)
-	}
-
-	if v := n.Get("mcp_servers"); v != nil {
-		maps = append(maps, v)
-	}
-
-	if len(maps) == 0 {
-		maps = append(maps, n)
+	maps := serverWrappers(n)
+	if v := agentconfig.ZCodeMCP(n); host == report.HostZCode && v != nil {
+		maps = []*jsonconfig.Node{v}
 	}
 
 	for _, servers := range maps {
@@ -727,6 +749,23 @@ func (a agentConfigCheck) inspectServerScope(ctx context.Context, n *jsonconfig.
 			a.serverWithHost(m.Value, host, emit)
 		}
 	}
+}
+
+func serverWrappers(n *jsonconfig.Node) []*jsonconfig.Node {
+	var maps []*jsonconfig.Node
+	if v := n.Get("mcpServers"); v != nil {
+		maps = append(maps, v)
+	}
+
+	if v := n.Get("mcp_servers"); v != nil {
+		maps = append(maps, v)
+	}
+
+	if len(maps) == 0 {
+		return []*jsonconfig.Node{n}
+	}
+
+	return maps
 }
 
 func broadTool(s string) bool {

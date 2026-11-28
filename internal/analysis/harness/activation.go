@@ -520,6 +520,12 @@ func (p *plugin) serverMap(e *entry, n *jsonconfig.Node, kind string) *jsonconfi
 }
 
 func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
+	if p.host == report.HostZCode && p.nativeWorkspace {
+		if servers := agentconfig.ZCodeMCP(n); servers != nil {
+			return servers
+		}
+	}
+
 	servers := n
 
 	camel, snake := n.Get(fieldMCPServers), n.Get(fieldMCPServersSnake)
@@ -544,7 +550,7 @@ func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
 }
 
 func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activation string, i int) {
-	if p.host == report.HostGrokCLI && kind == report.ComponentMCPConfig {
+	if (p.host == report.HostGrokCLI || p.host == report.HostZCode) && kind == report.ComponentMCPConfig {
 		if enabled := n.Get("enabled"); enabled != nil && enabled.Kind == jsonconfig.KindBool && !enabled.Bool {
 			activation = activationInactiveForProfile
 		}
@@ -712,6 +718,10 @@ func (p *plugin) capturedHandler(component string, e *entry, activation string, 
 
 func (p *plugin) handlerPath(candidate string, argv, hook bool) (string, string, string) {
 	suffix, rooted := hooktrace.RootedSuffix(candidate, p.host, argv, hook)
+	if p.host == report.HostZCode && p.nativeWorkspace {
+		rooted = false
+	}
+
 	if argv && !hook && !rooted {
 		suffix, rooted = p.geminiMCPOperand(candidate)
 	}

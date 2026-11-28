@@ -219,6 +219,8 @@ func pluginManifests(host string) []string {
 		return append([]string{agentplugins.ManifestFile}, agentconfig.CopilotLegacyManifests()...)
 	case report.HostGrokCLI:
 		return append([]string{agentplugins.ManifestFile}, agentconfig.GrokLegacyManifests()...)
+	case report.HostZCode:
+		return agentconfig.ZCodeManifests()
 	case report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw, report.HostDeepSeekHarness:
 		return nil
 	default:
@@ -228,6 +230,11 @@ func pluginManifests(host string) []string {
 
 func (t *tree) pluginSkills(dir string, declared *jsonconfig.Node) {
 	root := path.Join(dir, "skills")
+	if t.agent == report.HostZCode {
+		t.geminiSkills(root)
+		return
+	}
+
 	if (t.agent == report.HostClaudeCode || t.agent == report.HostCopilotCLI) && declared == nil && !t.directory(root, false) {
 		t.skill(dir, t.plugin)
 		return
@@ -292,7 +299,7 @@ func (t *tree) pluginPaths(n *jsonconfig.Node, dir, source, key string, skills b
 	case jsonconfig.KindObject:
 		if skills {
 			t.b.issue(codeUnsupportedPluginReference, t.absolute(source))
-		} else if t.agent == report.HostCursor || t.agent == report.HostCopilotCLI || t.agent == report.HostGrokCLI {
+		} else if t.agent == report.HostCursor || t.agent == report.HostCopilotCLI || t.agent == report.HostGrokCLI || t.agent == report.HostZCode {
 			t.wrappedOrBareServers(n, source, key)
 		} else {
 			t.servers(n, source, key)
@@ -305,7 +312,7 @@ func (t *tree) pluginPaths(n *jsonconfig.Node, dir, source, key string, skills b
 }
 
 func (t *tree) pluginPath(value, dir, source string, skills bool) {
-	if (t.agent == report.HostCursor || t.agent == report.HostCopilotCLI || t.agent == report.HostGrokCLI) && !strings.HasPrefix(value, "./") {
+	if (t.agent == report.HostCursor || t.agent == report.HostCopilotCLI || t.agent == report.HostGrokCLI || t.agent == report.HostZCode) && !strings.HasPrefix(value, "./") {
 		rel, reason := artifactpath.Reference(value, false)
 		if reason != "" {
 			t.b.issue(codeExternalPluginReference, t.absolute(source))
@@ -324,7 +331,11 @@ func (t *tree) pluginPath(value, dir, source string, skills bool) {
 	name := path.Join(dir, value)
 	if skills {
 		if t.requireDirectory(name) {
-			t.skills(name)
+			if t.agent == report.HostZCode {
+				t.geminiSkills(name)
+			} else {
+				t.skills(name)
+			}
 		}
 	} else if path.Ext(name) == ".json" {
 		if n := t.config(name, true); n != nil {

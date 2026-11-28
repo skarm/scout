@@ -78,6 +78,18 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 			updated: "- insert:\n    - name: '@deepseek-ai/dsh-mcp-manager/server'\n      disabled: true\n      config:\n        serverName: example\n        transport: streamable-http\n        url: https://example.invalid/new\n",
 			kind:    "mcp-server", name: "example", key: "/0/insert/0/config", state: "disabled",
 		},
+		{
+			host: report.HostZCode, config: ".zcode/config.json",
+			initial: `{"mcp":{"servers":{"example":{"type":"http","url":"https://example.invalid/old","enabled":false}}}}`,
+			updated: `{"mcp":{"servers":{"example":{"type":"http","url":"https://example.invalid/new","enabled":false}}}}`,
+			kind:    "mcp-server", name: "example", key: "/mcp/servers/example", state: "disabled",
+		},
+		{
+			host: report.HostZCode, config: "zcode.json",
+			initial: `{"hooks":{"enabled":true,"events":{"Stop":[{"hooks":[{"type":"process","command":"printf","args":["before"]}]}]}}}`,
+			updated: `{"hooks":{"enabled":true,"events":{"Stop":[{"hooks":[{"type":"process","command":"printf","args":["after"]}]}]}}}`,
+			kind:    "hook", name: "Stop", key: "/hooks/events/Stop/0/hooks/0", state: "unknown",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.host, func(t *testing.T) {
@@ -222,6 +234,7 @@ func TestNativeInstalledPluginsAndSharedSkills(t *testing.T) {
 		"openclaw/skill/shared":              "unknown",
 		"grok-cli/skill/shared":              "unknown",
 		"deepseek-harness/skill/shared":      "unknown",
+		"zcode/skill/shared":                 "unknown",
 	}
 	sharedTargets := 0
 	for _, target := range inventory.Targets {

@@ -301,6 +301,8 @@ func (t *tree) pluginConfigs(dir, file string, n *jsonconfig.Node) {
 		t.copilotPluginConfigs(dir, file, n)
 	case report.HostGrokCLI:
 		t.grokPluginConfigs(dir, file, n)
+	case report.HostZCode:
+		t.zcodePluginConfigs(dir, file, n)
 	default:
 		t.mcpFile(path.Join(dir, artifact.MCPConfig))
 		t.pluginPaths(n.Get(mcpServersField), dir, file, mcpServersPointer, false)

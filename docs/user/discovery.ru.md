@@ -2,7 +2,7 @@
 
 [English](discovery.md) · Русский
 
-`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI и DeepSeek Harness перед проверкой
+`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness и ZCode перед проверкой
 их файлов. Команда читает конфигурации и манифесты без запуска MCP-серверов,
 выполнения команд, подстановки переменных окружения из файлов и сетевых запросов.
 
@@ -161,6 +161,26 @@ npm-пакетов находятся за пределами статическ
 `AGENTS.md` и `CLAUDE.md`. Хранилища учётных данных и состояние запущенных
 сессий остаются вне области discovery.
 [Навыки DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md) · [Файлы инструкций](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/context/agent-instructions/README.md)
+
+Для ZCode Scout читает `~/.zcode/cli/config.json`, а в выбранных проектах
+находит `zcode.json` и `.zcode/config.json`. Флаг `--zcode-home` указывает
+непосредственно на каталог `.zcode`. В инвентарь входят `mcp.servers`,
+групповые хуки `hooks.events` и локальные настройки плагинов. В одной
+области нативная карта MCP с распознанным сервером имеет приоритет над совместимой
+`.agents/mcp.json`. Пользовательские и проектные декларации учитываются
+отдельно. [Настройки MCP в ZCode](https://zcode.z.ai/en/docs/mcp-services) · [Хуки ZCode](https://zcode.z.ai/en/docs/hooks)
+
+В известных пользовательских и проектных каталогах Scout находит навыки,
+команды Markdown, субагентов и `AGENTS.md`. Для плагинов учитываются
+`.zcode-plugin/plugin.json` и совместимый `.claude-plugin/plugin.json`,
+реестр установок и версии из `cli/plugins/cache`. Локальные каталоги
+плагинов должны оставаться внутри выбранного корня. Чекауты marketplace и
+каталоги данных плагинов находятся вне области discovery. При статической
+проверке учитываются `hooks/hooks.json`, объявленные файлы хуков и MCP.
+Ссылки через `${ZCODE_PLUGIN_ROOT}` сопоставляются с захваченными файлами
+пакета. Фактическая активация, доверие и значения шаблонов остаются
+неизвестными.
+[Форматы плагинов ZCode](https://zcode.z.ai/en/docs/plugin) · [Хранилище ZCode CLI](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/docs/usage/10-plugins.md)
 
 Переменные `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса сканирования могут менять
 каталоги конфигурации. Явный `--home` отключает эти неявные переопределения;

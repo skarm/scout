@@ -189,7 +189,7 @@ func (a *discoveryArguments) resolve() error {
 
 	if !a.explicitHome {
 		for _, override := range a.options.HomeOverrides() {
-			if *override.Path == "" {
+			if override.Env != "" && *override.Path == "" {
 				*override.Path = os.Getenv(override.Env)
 			}
 		}
@@ -244,7 +244,7 @@ func (r *request) useDiscoveryHarness(agent string) {
 	}
 
 	switch agent {
-	case report.HostCursor, report.HostCopilotCLI, report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw, report.HostGrokCLI, report.HostDeepSeekHarness:
+	case report.HostCursor, report.HostCopilotCLI, report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw, report.HostGrokCLI, report.HostDeepSeekHarness, report.HostZCode:
 		r.settings.Scanner.Harness.Host = agent
 	}
 }

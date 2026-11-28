@@ -119,6 +119,11 @@ func (p *plugin) discover() {
 		return
 	}
 
+	if p.host == report.HostZCode {
+		p.discoverZCodePackage()
+		return
+	}
+
 	if p.host == report.HostCursor || p.host == report.HostCopilotCLI {
 		p.discoverNativePackage()
 		return
@@ -363,6 +368,10 @@ func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.Sour
 			return
 		}
 
+		if p.host == report.HostZCode && kind == report.ComponentSkill && nestedComponent(kind, key, name) {
+			continue
+		}
+
 		match := p.componentFileMatches(kind, key)
 
 		if !match {
@@ -492,6 +501,10 @@ func (p *plugin) declaredConfigFile(raw, kind string, s *report.SourceRef) {
 
 func (p *plugin) defaultConfigActivation(def *entry, n *jsonconfig.Node, kind string) string {
 	activation := p.activation
+	if p.host == report.HostZCode && kind == report.ComponentHookConfig {
+		return activation
+	}
+
 	if p.host == report.HostCodex && n == nil && kind != report.ComponentHookConfig {
 		activation = activationUnknown
 
@@ -539,9 +552,12 @@ func (p *plugin) configFile(e *entry, kind, activation, basis string, s *report.
 func (p *plugin) inspectConfig(e *entry, n *jsonconfig.Node, kind, parent, activation string) {
 	switch kind {
 	case report.ComponentHookConfig:
-		if p.host == report.HostCursor || p.host == report.HostCopilotCLI {
+		switch p.host {
+		case report.HostCursor, report.HostCopilotCLI:
 			p.nativeHooks(e, n, parent, activation)
-		} else {
+		case report.HostZCode:
+			p.zcodeHooks(e, n, parent, activation)
+		default:
 			p.hooks(e, n, parent, activation)
 		}
 	case report.ComponentMCPConfig, componentLSPConfig:

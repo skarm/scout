@@ -129,7 +129,7 @@ func workspaceDirectory(name, directory string, entries ...string) (string, bool
 }
 
 func (p *plugin) nativePaths() bool {
-	return p.host == report.HostCursor || p.host == report.HostCopilotCLI || p.host == report.HostGrokCLI
+	return p.host == report.HostCursor || p.host == report.HostCopilotCLI || p.host == report.HostGrokCLI || p.host == report.HostZCode
 }
 
 func (p *plugin) discoverNativePackage() {
@@ -198,6 +198,8 @@ func (p *plugin) discoverNativeWorkspace() {
 		p.grokWorkspace()
 	case report.HostDeepSeekHarness:
 		p.deepSeekWorkspace()
+	case report.HostZCode:
+		p.zcodeWorkspace()
 	}
 }
 

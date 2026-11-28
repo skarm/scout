@@ -2,7 +2,7 @@
 
 English · [Русский](discovery.ru.md)
 
-`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI and DeepSeek Harness declarations before
+`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness and ZCode declarations before
 scanning their files. It reads configuration and manifests without starting MCP
 servers, running commands, expanding environment variables from files or making
 network requests.
@@ -158,6 +158,26 @@ Known skill roots under `.dsh/skills` and `.agents/skills` support both
 `AGENTS.md` files and the project instruction candidates based on `AGENTS.md`
 and `CLAUDE.md`. Discovery skips credential stores and runtime state.
 [DeepSeek Harness skills](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md) · [Instruction files](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/context/agent-instructions/README.md)
+
+ZCode discovery reads `~/.zcode/cli/config.json`, `zcode.json` and
+`.zcode/config.json` in selected projects. `--zcode-home` selects the
+`.zcode` directory directly. Scout inventories `mcp.servers`, grouped
+`hooks.events`, and local plugin settings. Within a scope, a native MCP
+map with a recognized server takes precedence over the compatible `.agents/mcp.json`
+inventory. Scout keeps user and project declarations as separate
+observations. [ZCode MCP configuration](https://zcode.z.ai/en/docs/mcp-services) · [ZCode hooks](https://zcode.z.ai/en/docs/hooks)
+
+Known user and project locations supply skills, Markdown commands,
+subagents and `AGENTS.md`. Scout reads native `.zcode-plugin/plugin.json`
+and the compatible `.claude-plugin/plugin.json` fallback, plus the
+installation index and package versions under `cli/plugins/cache`.
+Local plugin directories must stay within the selected root. Marketplace
+checkouts and plugin data directories are outside discovery. Plugin
+`hooks/hooks.json`, declared hook files, and MCP declarations support
+static inspection. Captured package references may use
+`${ZCODE_PLUGIN_ROOT}`. Trust records, runtime enablement, credentials
+and template values stay unresolved.
+[ZCode plugin formats](https://zcode.z.ai/en/docs/plugin) · [ZCode CLI plugin storage](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/docs/usage/10-plugins.md)
 
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` from the scanning process can relocate their
 configuration directories. Explicit `--home` disables these implicit overrides;

@@ -26,4 +26,6 @@ const (
 	HostGrokCLI = "grok-cli"
 	// HostDeepSeekHarness identifies DeepSeek Harness profiles and Cordis declarations.
 	HostDeepSeekHarness = "deepseek-harness"
+	// HostZCode identifies Z.ai ZCode runtime and plugin declarations.
+	HostZCode = "zcode"
 )

@@ -44,6 +44,10 @@ var pluginRootParameters = map[string]string{
 const codexHookRootAlias = "CLAUDE_PLUGIN_ROOT"
 
 func rootParameter(host, name string, hook bool) bool {
+	if host == report.HostZCode {
+		return name == "ZCODE_PLUGIN_ROOT"
+	}
+
 	if host == report.HostGrokCLI {
 		return hook && (name == "GROK_PLUGIN_ROOT" || name == codexHookRootAlias)
 	}

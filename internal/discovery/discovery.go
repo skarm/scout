@@ -35,6 +35,7 @@ type Options struct {
 	OpenCodeHome, GeminiHome    string
 	OpenClawHome, GrokHome      string
 	DeepSeekHome                string
+	ZCodeHome                   string
 	Agent                       string
 	Projects                    []string
 	System                      bool

@@ -185,10 +185,10 @@ func (t *tree) grokPluginConfigs(dir, file string, n *jsonconfig.Node) {
 	t.wrappedOrBareMCPFile(path.Join(dir, artifact.MCPConfig))
 	t.pluginPaths(n.Get(mcpServersField), dir, file, mcpServersPointer, false)
 	t.grokLSPFile(path.Join(dir, ".lsp.json"), false)
-	t.grokPluginConfig(n.Get(grokLSPField), dir, file, "/"+grokLSPField, t.grokLSPFile, t.grokLSP)
+	t.pluginConfigPaths(n.Get(grokLSPField), dir, file, "/"+grokLSPField, t.grokLSPFile, t.grokLSP)
 
 	t.grokHookFile(path.Join(dir, "hooks/hooks.json"), false)
-	t.grokPluginConfig(n.Get("hooks"), dir, file, "/hooks", t.grokHookFile, t.grokHooks)
+	t.pluginConfigPaths(n.Get("hooks"), dir, file, "/hooks", t.grokHookFile, t.grokHooks)
 	t.pluginInstructions(dir, file, "agents", kindAgent, n.Get("agents"))
 	t.pluginInstructions(dir, file, "commands", "command", n.Get("commands"))
 }
@@ -213,7 +213,7 @@ func (t *tree) grokLSP(n *jsonconfig.Node, file, key string) {
 	t.serverDeclarations(n, file, key, kindLSPServer, "invalid_lsp_config")
 }
 
-func (t *tree) grokPluginConfig(n *jsonconfig.Node, dir, file, key string, load func(string, bool), inspect func(*jsonconfig.Node, string, string)) {
+func (t *tree) pluginConfigPaths(n *jsonconfig.Node, dir, file, key string, load func(string, bool), inspect func(*jsonconfig.Node, string, string)) {
 	if n == nil {
 		return
 	}
@@ -234,7 +234,7 @@ func (t *tree) grokPluginConfig(n *jsonconfig.Node, dir, file, key string, load 
 				continue
 			}
 
-			t.grokPluginConfig(item, dir, file, key+"/"+strconv.Itoa(i), load, inspect)
+			t.pluginConfigPaths(item, dir, file, key+"/"+strconv.Itoa(i), load, inspect)
 		}
 
 		return

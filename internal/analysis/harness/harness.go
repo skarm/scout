@@ -320,6 +320,10 @@ func (s *candidateSet) addFile(ns *namespace, name, host string) {
 		s.add(c)
 	}
 
+	if c, ok := zcodeWorkspaceCandidate(ns, name, host); ok {
+		s.add(c)
+	}
+
 	if root, ok := grokLocalPackageRoot(name); ok && grokManifest(ns, root) == "" {
 		s.add(candidate{ns: ns, root: root, host: report.HostGrokCLI})
 	}
@@ -354,11 +358,17 @@ func projectSettingsHasHooks(unit document.Unit) bool {
 }
 
 func (b *builder) marketplace(ns *namespace, name string) {
-	if grokMarketplace(ns, name) || path.Base(name) == "marketplace.json" && (strings.Contains("/"+name, "/.claude-plugin/") || strings.Contains("/"+name, "/.agents/plugins/")) {
-		e := ns.entries[name]
-		b.node("", componentMarketplace, e, "unknown", activationUnknown, whole(e), "catalog")
-		b.issue(issueMarketplaceInstallClosureUnverified, "", e.Meta.Path, report.OutcomePartial)
+	host := "unknown"
+	if zcodeMarketplace(ns, name, b.r.RequestedHost) {
+		host = report.HostZCode
+	} else if !grokMarketplace(ns, name) && !(path.Base(name) == "marketplace.json" &&
+		(strings.Contains("/"+name, "/.claude-plugin/") || strings.Contains("/"+name, "/.agents/plugins/"))) {
+		return
 	}
+
+	e := ns.entries[name]
+	b.node("", componentMarketplace, e, host, activationUnknown, whole(e), "catalog")
+	b.issue(issueMarketplaceInstallClosureUnverified, "", e.Meta.Path, report.OutcomePartial)
 }
 
 func (b *builder) standaloneSkills() {
@@ -619,6 +629,11 @@ func pluginCandidate(ns *namespace, name, requestedHost string) (candidate, bool
 	root, host := manifestLayout(name)
 
 	c := candidate{ns: ns, root: root, host: host, manifest: name}
+	if zcodePluginProfile(ns, root, host, requestedHost) {
+		c.host = report.HostZCode
+		return c, name == zcodeManifest(ns, root)
+	}
+
 	if host == report.HostGrokCLI && grokMarketplace(ns, name) {
 		return c, false
 	}

@@ -120,6 +120,24 @@ func TestNativeConfigurationFindings(t *testing.T) {
 `,
 			rules: []string{"MC001", "SC001"},
 		},
+		{
+			host: report.HostAuto, file: ".zcode/cli/config.json",
+			config: `{"mcp":{"servers":{
+				"mcpServers":{"type":"http","url":"http://example.invalid/mcp","enabled":false},
+				"local":{"type":"stdio","command":"npx","args":["example-mcp@latest"]}
+			}},"hooks":{"enabled":false,"events":{
+				"PermissionRequest":[{"hooks":[{"type":"process","command":"printf","args":["hello"]}]}],
+				"UnknownEvent":[{"hooks":[{"type":"command","command":"printf ignored"}]}]
+			}}}`,
+			rules: []string{"AC003", "MC001", "SC001"},
+		},
+		{
+			host: report.HostAuto, file: ".zcode-plugin/plugin.json",
+			config: `{"name":"example","mcpServers":{"remote":{"type":"http","url":"http://example.invalid/mcp",
+				"headers":{"Authorization":"Bearer ${user_config.api_key}"}
+			}},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"printf done"}]}]}}`,
+			rules: []string{"AC003", "MC001"},
+		},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			root := t.TempDir()
