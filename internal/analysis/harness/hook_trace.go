@@ -11,18 +11,13 @@ import (
 )
 
 func (p *plugin) traceHook(e *entry, hook *jsonconfig.Node, event, matcher string) []hooktrace.Path {
-	if p.host == report.HostGeminiCLI {
-		if !hookevent.Gemini(event) {
-			p.issue(issuePluginHookEventUnverified, e.Meta.Path, report.OutcomePartial)
-			return nil
-		}
-	} else if !hookevent.Known(event) {
+	if p.host != report.HostGeminiCLI && !hookevent.Known(event) {
 		return nil
 	}
 
 	paths, limited := p.b.hookTracer.Trace(&e.File, hook, event, matcher, hooktrace.Scope{
 		Host: p.host, Inactive: p.activation == activationInactiveForProfile,
-		ProjectSettings: p.projectSettings, Files: p,
+		ProjectSettings: p.projectSettings, GeminiExtension: p.host == report.HostGeminiCLI && !p.nativeWorkspace, Files: p,
 	})
 	if limited {
 		p.issue(issueHookSourceCommandLimit, e.Meta.Path, report.OutcomePartial)

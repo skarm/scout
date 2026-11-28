@@ -2,7 +2,7 @@
 
 English · [Русский](discovery.ru.md)
 
-`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI and OpenCode declarations before
+`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode and Gemini CLI declarations before
 scanning their files. It reads configuration and manifests without starting MCP
 servers, running commands, expanding environment variables from files or making
 network requests.
@@ -76,6 +76,24 @@ The inventory also includes agents, commands and skills. Scout does not fetch
 plugin dependencies or read managed macOS preferences.
 [OpenCode configuration](https://opencode.ai/docs/config/) · [OpenCode MCP](https://opencode.ai/docs/mcp-servers/)
 
+Gemini CLI discovery reads user and workspace `.gemini/settings.json` and
+`settings.json` and `system-defaults.json` in the platform system directory.
+Settings support comments and use strict JSON comma rules. Scout inventories
+MCP servers, grouped lifecycle hooks, local skills, agents, TOML commands and
+policies, and default `GEMINI.md` context files in known locations. The
+`.agents/skills` alias is included. The inventory records selected settings
+such as `mcp.allowed`, `mcp.excluded` and `skills.disabled` without resolving
+their precedence. `--gemini-home` selects the parent that contains `.gemini` and
+`.agents`, following the same convention as `GEMINI_CLI_HOME`.
+[Gemini CLI configuration](https://geminicli.com/docs/reference/configuration/)
+
+Scout reads installed packages under `.gemini/extensions/` using
+`gemini-extension.json`, `hooks/hooks.json` and the package's local component
+directories. Extension context paths must stay inside the package. Static MCP
+analysis recognizes stdio, SSE `url` and Streamable HTTP `httpUrl`. The loader's
+custom system file overrides, external links and effective extension enablement
+are outside this coverage. [Gemini CLI extension reference](https://geminicli.com/docs/extensions/reference/)
+
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` from the scanning process can relocate their
 configuration directories. Explicit `--home` disables these implicit overrides;
 `--codex-home` and `--claude-home` select replacements explicitly. The other
@@ -104,7 +122,9 @@ and a captured default component supplies its source reference.
 Direct directory scans recognize known native paths. When scanning a
 standalone `hooks.json`, `mcp.json` or `.mcp.json`, use `--harness cursor` or
 `--harness copilot-cli` to select the intended format. Discovery-driven scans and snapshots
-carry the single selected native agent into scanning by default.
+carry the single selected native agent into scanning by default. To scan a
+standalone Gemini CLI `settings.json` or `system-defaults.json` directly, pass
+`--harness gemini-cli`.
 
 JSON uses `scout.environment/v1`. Components record agent, kind, scope, path,
 source configuration, JSON-pointer-style key where applicable, and local declared

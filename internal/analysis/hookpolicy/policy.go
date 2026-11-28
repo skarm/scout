@@ -106,7 +106,12 @@ type (
 func KnownEvent(name string) bool { return hookevent.Known(name) }
 
 func IsSettings(name string) bool {
+	if _, gemini := artifact.GeminiSettingsRoot(name, ""); gemini {
+		return false
+	}
+
 	b := path.Base(name)
+
 	return b == artifact.ClaudeSettings || b == artifact.ClaudeLocalSettings
 }
 

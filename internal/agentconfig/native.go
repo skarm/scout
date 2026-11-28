@@ -45,6 +45,10 @@ func InstructionFile(host, kind, name string) bool {
 		return slices.Contains([]string{".md", ".mdc", ".markdown"}, ext) || kind == "command" && ext == ".txt"
 	}
 
+	if host == report.HostGeminiCLI && (kind == "command" || kind == "rule") {
+		return ext == ".toml"
+	}
+
 	return ext == ".md"
 }
 

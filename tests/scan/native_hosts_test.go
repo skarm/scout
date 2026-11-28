@@ -36,6 +36,25 @@ func TestNativeConfigurationFindings(t *testing.T) {
 			rules:  []string{"MC001"},
 		},
 		{
+			host: report.HostAuto, file: ".gemini/settings.json",
+			config: `{// Source positions refer to the original settings file.
+				"mcpServers":{"remote":{"httpUrl":"http://example.invalid/mcp"}},
+				"disableAllHooks":true,
+				"hooks":{"BeforeTool":[{"hooks":[{"type":"command","command":"printf hello"}]}]}
+			}`,
+			rules: []string{"AC003", "MC001"},
+		},
+		{
+			host: report.HostAuto, file: "gemini-extension.json",
+			config: `{"name":"demo","version":"1.0.0","mcpServers":{"remote":{"httpUrl":"http://example.invalid/api"}}}`,
+			rules:  []string{"MC001"},
+		},
+		{
+			host: report.HostGeminiCLI, file: "settings.json",
+			config: `{"disableAllHooks":true,"hooks":{"enabled":true,"BeforeTool":[{"hooks":[{"type":"command","command":"printf hello"}]}]}}`,
+			rules:  []string{"AC003"},
+		},
+		{
 			host: report.HostOpenCode, file: "opencode.jsonc",
 			config: `{// retain byte evidence
 				"mcp": {"servers": {

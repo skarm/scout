@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"context"
 	"encoding/json"
 	"path"
 	"strconv"
@@ -38,6 +39,15 @@ const (
 const codeInvalidEnablement = "invalid_enablement"
 
 func (t *tree) config(name string, required bool) *jsonconfig.Node {
+	decode := jsonconfig.Parse
+	if strings.EqualFold(path.Ext(name), ".jsonc") {
+		decode = jsonconfig.ParseJSONC
+	}
+
+	return t.configWithParser(name, required, decode)
+}
+
+func (t *tree) configWithParser(name string, required bool, decode func(context.Context, string) (*jsonconfig.Node, error)) *jsonconfig.Node {
 	data := t.read(name, required)
 	if data == nil {
 		return nil
@@ -57,11 +67,6 @@ func (t *tree) config(name string, required bool) *jsonconfig.Node {
 			t.b.issue(codeInvalidConfig, t.absolute(name))
 			return nil
 		}
-	}
-
-	decode := jsonconfig.Parse
-	if strings.EqualFold(path.Ext(name), ".jsonc") {
-		decode = jsonconfig.ParseJSONC
 	}
 
 	n, err := decode(t.b.ctx, string(data))
@@ -219,7 +224,7 @@ func pluginManifests(host string) []string {
 		return []string{agentplugins.ManifestFile, artifact.CursorPluginManifest}
 	case report.HostCopilotCLI:
 		return append([]string{agentplugins.ManifestFile}, agentconfig.CopilotLegacyManifests()...)
-	case report.HostOpenCode:
+	case report.HostOpenCode, report.HostGeminiCLI:
 		return nil
 	default:
 		return []string{agentplugins.ManifestFile, artifact.CodexPluginManifest, artifact.ClaudePluginManifest}

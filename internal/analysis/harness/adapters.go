@@ -384,7 +384,7 @@ func (p *plugin) selectedFile(key, name, kind, activation, basis string, s *repo
 	e := p.ns.entries[key]
 	effective := activation
 
-	if nestedComponent(kind, key, name) {
+	if nestedComponent(kind, key, name) && !(p.host == report.HostGeminiCLI && kind == componentCommand) {
 		if effective != activationInactiveForProfile {
 			effective = "unknown"
 		}

@@ -22,7 +22,7 @@ type agentLayout struct {
 	homeFlag, homeEnv string
 	homeOverride      func(*Options) *string
 	user, relocated   []location
-	defaultHome       location
+	defaultHome       []location
 	project, system   []location
 	systemDefault     string
 	systemDarwin      string
@@ -35,7 +35,7 @@ var agentLayouts = []agentLayout{
 		id: report.HostCodex, label: "Codex", homeFlag: "codex-home", homeEnv: "CODEX_HOME",
 		homeOverride:  func(o *Options) *string { return &o.CodexHome },
 		user:          []location{{".agents/skills", (*tree).skills}},
-		defaultHome:   location{codexHomeDirectory, (*tree).codex},
+		defaultHome:   []location{{codexHomeDirectory, (*tree).codex}},
 		relocated:     []location{{".", (*tree).codex}},
 		project:       []location{{codexHomeDirectory, (*tree).codexProject}, {".agents/skills", (*tree).skills}},
 		system:        []location{{"config.toml", (*tree).codexConfig}, {"skills", (*tree).skills}},
@@ -45,7 +45,7 @@ var agentLayouts = []agentLayout{
 		id: report.HostClaudeCode, label: "Claude Code", homeFlag: "claude-home", homeEnv: "CLAUDE_CONFIG_DIR",
 		homeOverride:  func(o *Options) *string { return &o.ClaudeHome },
 		user:          []location{{claudeGlobalConfig, (*tree).claudeGlobal}},
-		defaultHome:   location{claudeHomeDirectory, (*tree).claude},
+		defaultHome:   []location{{claudeHomeDirectory, (*tree).claude}},
 		relocated:     []location{{claudeGlobalConfig, (*tree).claudeGlobal}, {".", (*tree).claude}},
 		project:       []location{{artifact.MCPConfig, (*tree).mcpFile}, {claudeHomeDirectory, (*tree).claudeProject}},
 		system:        []location{{"managed-mcp.json", (*tree).mcpFile}, {"managed-settings.json", (*tree).settings}},
@@ -55,7 +55,7 @@ var agentLayouts = []agentLayout{
 		id: report.HostCursor, label: "Cursor", homeFlag: "cursor-home", homeEnv: "CURSOR_CONFIG_DIR",
 		homeOverride:  func(o *Options) *string { return &o.CursorHome },
 		user:          []location{{".agents/skills", (*tree).skills}},
-		defaultHome:   location{agentconfig.CursorDirectory, (*tree).cursorUser},
+		defaultHome:   []location{{agentconfig.CursorDirectory, (*tree).cursorUser}},
 		relocated:     []location{{".", (*tree).cursorUser}},
 		project:       []location{{agentconfig.CursorDirectory, (*tree).cursorConfig}, {".agents/skills", (*tree).skills}},
 		system:        []location{{"hooks.json", (*tree).nativeHooks}},
@@ -64,7 +64,7 @@ var agentLayouts = []agentLayout{
 	{
 		id: report.HostCopilotCLI, label: "Copilot CLI", homeFlag: "copilot-home", homeEnv: "COPILOT_HOME",
 		homeOverride: func(o *Options) *string { return &o.CopilotHome },
-		defaultHome:  location{agentconfig.CopilotDirectory, (*tree).copilotUser},
+		defaultHome:  []location{{agentconfig.CopilotDirectory, (*tree).copilotUser}},
 		relocated:    []location{{".", (*tree).copilotUser}},
 		project: []location{
 			{artifact.MCPConfig, (*tree).copilotMCP},
@@ -82,11 +82,28 @@ var agentLayouts = []agentLayout{
 		id: report.HostOpenCode, label: "OpenCode", homeFlag: "opencode-home", homeEnv: "OPENCODE_CONFIG_DIR",
 		homeOverride:  func(o *Options) *string { return &o.OpenCodeHome },
 		user:          []location{{".agents/skills", (*tree).skills}, {".claude/skills", (*tree).skills}},
-		defaultHome:   location{".config/opencode", (*tree).openCodeDirectory},
+		defaultHome:   []location{{".config/opencode", (*tree).openCodeDirectory}},
 		relocated:     []location{{".", (*tree).openCodeDirectory}},
 		project:       []location{{agentconfig.OpenCodeConfig, (*tree).openCodeConfig}, {agentconfig.OpenCodeConfigJSONC, (*tree).openCodeConfig}, {agentconfig.OpenCodeDirectory, (*tree).openCodeDirectory}, {".agents/skills", (*tree).skills}, {".claude/skills", (*tree).skills}},
 		system:        []location{{".", (*tree).openCodeDirectory}},
 		systemDefault: "/etc/opencode", systemDarwin: "/Library/Application Support/opencode", systemWindows: `C:\ProgramData\opencode`,
+	},
+	{
+		id: report.HostGeminiCLI, label: "Gemini CLI", homeFlag: "gemini-home", homeEnv: "GEMINI_CLI_HOME",
+		homeOverride: func(o *Options) *string { return &o.GeminiHome },
+		defaultHome:  []location{{artifact.GeminiDirectory, (*tree).geminiUser}, {".agents/skills", (*tree).geminiSkills}},
+		relocated:    []location{{artifact.GeminiDirectory, (*tree).geminiUser}, {".agents/skills", (*tree).geminiSkills}},
+		project: []location{
+			{artifact.GeminiDirectory, (*tree).geminiDirectory},
+			{agentconfig.GeminiContext, (*tree).geminiContext},
+			{".agents/skills", (*tree).geminiSkills},
+		},
+		system: []location{
+			{artifact.GeminiSettings, (*tree).geminiSettings},
+			{artifact.GeminiSystemDefaults, (*tree).geminiSettings},
+			{"policies", (*tree).geminiPolicies},
+		},
+		systemDefault: "/etc/gemini-cli", systemDarwin: "/Library/Application Support/GeminiCli", systemWindows: `C:\ProgramData\gemini-cli`,
 	},
 }
 

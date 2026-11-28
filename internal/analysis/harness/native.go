@@ -34,6 +34,10 @@ func nativeWorkspaceCandidate(ns *namespace, name, requested string) (candidate,
 		if (copilotMarker(ns, root) || requested == host) && copilotManifest(ns, root) != "" {
 			return candidate{}, false
 		}
+	case report.HostGeminiCLI:
+		if ns.entries[path.Join(root, agentconfig.GeminiManifest)] != nil {
+			return candidate{}, false
+		}
 	}
 
 	return candidate{ns: ns, root: root, host: host, manifest: name, nativeWorkspace: true}, true
@@ -63,6 +67,10 @@ func portableManifestAt(ns *namespace, root string) bool {
 
 func nativeWorkspace(name, requested string) (root, host string) {
 	dir, file := path.Dir(name), path.Base(name)
+	if root, ok := geminiWorkspaceRoot(name, requested); ok {
+		return root, report.HostGeminiCLI
+	}
+
 	if agentconfig.OpenCodeConfigFile(file) {
 		if path.Base(dir) == agentconfig.OpenCodeDirectory {
 			dir = path.Dir(dir)
@@ -167,6 +175,8 @@ func (p *plugin) discoverNativeWorkspace() {
 		p.copilotWorkspace()
 	case report.HostOpenCode:
 		p.openCodeWorkspace()
+	case report.HostGeminiCLI:
+		p.geminiWorkspace()
 	}
 }
 

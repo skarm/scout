@@ -22,7 +22,21 @@ const (
 	ClaudeLocalSettings        = "settings.local.json"
 	ClaudeProjectSettings      = ".claude/" + ClaudeSettings
 	ClaudeProjectLocalSettings = ".claude/" + ClaudeLocalSettings
+	GeminiDirectory            = ".gemini"
+	GeminiSettings             = "settings.json"
+	GeminiSystemDefaults       = "system-defaults.json"
 )
+
+// GeminiSettingsRoot recognizes an unambiguous workspace path or a standalone
+// settings file interpreted with an explicit Gemini CLI profile.
+func GeminiSettingsRoot(name, host string) (string, bool) {
+	dir, file := path.Dir(name), path.Base(name)
+	if file == GeminiSettings && path.Base(dir) == GeminiDirectory {
+		return path.Dir(dir), true
+	}
+
+	return dir, dir == "." && host == report.HostGeminiCLI && (file == GeminiSettings || file == GeminiSystemDefaults)
+}
 
 // RootNamespace identifies top-level captures independently of archive parents.
 const RootNamespace = "snapshot"

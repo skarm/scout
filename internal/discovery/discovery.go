@@ -32,7 +32,7 @@ const discoverySchema = "scout.environment/v1"
 type Options struct {
 	Home, CodexHome, ClaudeHome string
 	CursorHome, CopilotHome     string
-	OpenCodeHome                string
+	OpenCodeHome, GeminiHome    string
 	Agent                       string
 	Projects                    []string
 	System                      bool

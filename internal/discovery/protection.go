@@ -10,9 +10,9 @@ func (b *builder) protectLocations() {
 		b.protectRelative(b.options.Home, agent.user)
 
 		if override := *agent.homeOverride(&b.options); override != "" {
-			b.protect(override)
+			b.protectRelative(override, agent.relocated)
 		} else {
-			b.protect(filepath.Join(b.options.Home, filepath.FromSlash(agent.defaultHome.path)))
+			b.protectRelative(b.options.Home, agent.defaultHome)
 		}
 
 		if root := agent.systemRoot(); b.options.System && root != "" {

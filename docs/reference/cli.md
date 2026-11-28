@@ -82,13 +82,14 @@ Stdin accepts one named input and cannot be mixed with positional targets.
 
 ## Environment discovery
 
-`scout discover` inventories Codex, Claude Code, Cursor, GitHub Copilot CLI and OpenCode; `--scan` passes discovered
+`scout discover` inventories Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode and Gemini CLI; `--scan` passes discovered
 roots to the existing Scanner. See [locations, format and limits](../user/discovery.md).
 
-- `--agent all|codex|claude-code|cursor|copilot-cli|opencode` (`-a`): agent; default `all`.
+- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli` (`-a`): agent; default `all`.
 - `--home DIR`: selected user home; default current user's home.
 - `--codex-home DIR`, `--claude-home DIR`, `--cursor-home DIR`, `--copilot-home DIR`, `--opencode-home DIR`: explicit agent configuration directories.
   Without `--home`, process `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are honored.
+- `--gemini-home DIR`: directory containing `.gemini` and `.agents`. Without `--home`, Scout honors `GEMINI_CLI_HOME`.
 - `--project DIR`: repeatable selected project; default current directory.
 - `--no-project`: omit projects; default `false`.
 - `--system[=BOOL]`: known system locations; default `true`.

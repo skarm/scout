@@ -9,6 +9,15 @@ import (
 // ParseJSONC accepts comments and trailing commas while retaining byte offsets
 // and the same duplicate-key, depth and node limits as strict JSON.
 func ParseJSONC(ctx context.Context, text string) (*Node, error) {
+	return parseCommentedJSON(ctx, text, true)
+}
+
+// ParseWithComments accepts comments and otherwise applies the strict JSON grammar.
+func ParseWithComments(ctx context.Context, text string) (*Node, error) {
+	return parseCommentedJSON(ctx, text, false)
+}
+
+func parseCommentedJSON(ctx context.Context, text string, trailingCommas bool) (*Node, error) {
 	if ctx == nil {
 		return nil, &Error{Code: codeNilContext}
 	}
@@ -30,7 +39,9 @@ func ParseJSONC(ctx context.Context, text string) (*Node, error) {
 		return nil, &Error{Code: valueSyntaxError}
 	}
 
-	maskTrailingCommas(clean)
+	if trailingCommas {
+		maskTrailingCommas(clean)
+	}
 
 	return Parse(ctx, string(clean))
 }

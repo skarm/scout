@@ -115,6 +115,7 @@ type parseBudget struct {
 	consumed      map[string]int
 	securityBytes int
 	markdownBytes int
+	host          string
 }
 
 type line struct{ start, end, next int }
@@ -133,7 +134,12 @@ func PrepareAll(ctx context.Context, files []artifact.File) []File {
 // PrepareAllWithRegistry allows future languages without language switches in
 // the preparation engine. A registered parser does not imply semantic coverage.
 func PrepareAllWithRegistry(ctx context.Context, files []artifact.File, registry parse.Registry) []File {
-	budget := parseBudget{consumed: make(map[string]int)}
+	return PrepareAllForHarness(ctx, files, registry, "")
+}
+
+// PrepareAllForHarness also selects physical file dialects that require a host hint.
+func PrepareAllForHarness(ctx context.Context, files []artifact.File, registry parse.Registry, host string) []File {
+	budget := parseBudget{consumed: make(map[string]int), host: host}
 
 	documents := make([]File, len(files))
 	for i, file := range files {
@@ -346,8 +352,12 @@ func (f *filePreparation) parseUnit(ctx context.Context, lang, origin string, sp
 	unit = Unit{Language: lang, Origin: origin, Span: span, View: view, Status: report.OutcomeUnsupported}
 
 	backend, supported := f.registry.Lookup(lang)
-	if lang == language.JSON && origin == "file" && strings.EqualFold(path.Ext(f.file.BaseName()), ".jsonc") {
-		backend = parse.WithJSONComments(backend)
+	if lang == language.JSON && origin == "file" {
+		if strings.EqualFold(path.Ext(f.file.BaseName()), ".jsonc") {
+			backend = parse.WithJSONComments(backend, true)
+		} else if _, gemini := artifact.GeminiSettingsRoot(f.file.Metadata().Path, f.budget.host); gemini {
+			backend = parse.WithJSONComments(backend, false)
+		}
 	}
 
 	if !supported || !f.admitUnit(ctx, backend.Descriptor(), &unit) {

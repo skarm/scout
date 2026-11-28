@@ -310,11 +310,17 @@ func (a agentConfigCheck) hookState(f document.File, u document.Unit, root *json
 		state = hookpolicy.Local(root)
 	}
 
-	if !hookpolicy.IsSettings(f.Artifact().Metadata().Path) {
-		for _, scope := range f.ConfigScopes() {
-			if scope.Role == report.ComponentHookConfig && scope.Host != "" && scope.Host != report.HostClaudeCode {
-				state.Disabled = false
-			}
+	for _, scope := range f.ConfigScopes() {
+		if scope.Role != report.ComponentHookConfig {
+			continue
+		}
+
+		if scope.Host == report.HostGeminiCLI {
+			return hookpolicy.State{}
+		}
+
+		if scope.Host != "" && scope.Host != report.HostClaudeCode && !hookpolicy.IsSettings(f.Artifact().Metadata().Path) {
+			state.Disabled = false
 		}
 	}
 
@@ -516,6 +522,10 @@ func (a agentConfigCheck) serverWithHost(server *jsonconfig.Node, host string, e
 		inspectLauncherServer(server, emit)
 	case ruleMC001:
 		inspectPlaintextServer(server.Get("url"), emit)
+
+		if host == report.HostGeminiCLI {
+			inspectPlaintextServer(server.Get(agentconfig.GeminiHTTPURL), emit)
+		}
 	case ruleMC002:
 		inspectServerCredentials(server, host, emit)
 	}
@@ -573,6 +583,10 @@ func inspectServerCredentials(server *jsonconfig.Node, host string, emit func(so
 	}
 
 	inspectURLCredential(server.Get("url"), emit)
+
+	if host == report.HostGeminiCLI {
+		inspectURLCredential(server.Get(agentconfig.GeminiHTTPURL), emit)
+	}
 }
 
 func credentialFieldName(key string) bool {
@@ -608,7 +622,7 @@ func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, 
 				a.serverWithHost(agentconfig.OpenCodeForMCPChecks(item.Value), report.HostOpenCode, emit)
 			}
 		} else {
-			a.inspectServerScope(ctx, n, emit)
+			a.inspectServerScope(ctx, n, scope.Host, emit)
 		}
 	}
 
@@ -650,7 +664,7 @@ func inspectNativeHookScope(ctx context.Context, n *jsonconfig.Node, host string
 	return nil
 }
 
-func (a agentConfigCheck) inspectServerScope(ctx context.Context, n *jsonconfig.Node, emit func(source.Span)) {
+func (a agentConfigCheck) inspectServerScope(ctx context.Context, n *jsonconfig.Node, host string, emit func(source.Span)) {
 	maps := make([]*jsonconfig.Node, 0)
 	if v := n.Get("mcpServers"); v != nil {
 		maps = append(maps, v)
@@ -670,7 +684,7 @@ func (a agentConfigCheck) inspectServerScope(ctx context.Context, n *jsonconfig.
 				return
 			}
 
-			a.server(m.Value, emit)
+			a.serverWithHost(m.Value, host, emit)
 		}
 	}
 }

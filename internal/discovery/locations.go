@@ -45,7 +45,7 @@ func (b *builder) user() {
 			t.readLocations(agent.user)
 
 			if override == "" {
-				agent.defaultHome.read(t, agent.defaultHome.path)
+				t.readLocations(agent.defaultHome)
 			}
 		})
 
@@ -101,7 +101,7 @@ func (t *tree) claudeGlobal(name string) {
 		local.servers(project.Value.Get(mcpServersField), name, key+mcpServersPointer)
 
 		for _, field := range []string{"disabledMcpServers", "enabledMcpServers"} {
-			local.mcpEnablement(project.Value.Get(field), name, key+"/"+field, field == "enabledMcpServers")
+			local.enablementList(project.Value.Get(field), name, key+"/"+field, kindMCPServer, field == "enabledMcpServers")
 		}
 	}
 }
@@ -248,12 +248,12 @@ func (t *tree) settings(source string) {
 		t.enablement(n.Get(fieldEnabledPlugins), source, "/"+fieldEnabledPlugins, "plugin")
 
 		for _, key := range []string{"enabledMcpjsonServers", "disabledMcpjsonServers"} {
-			t.mcpEnablement(n.Get(key), source, "/"+key, key == "enabledMcpjsonServers")
+			t.enablementList(n.Get(key), source, "/"+key, kindMCPServer, key == "enabledMcpjsonServers")
 		}
 	}
 }
 
-func (t *tree) mcpEnablement(n *jsonconfig.Node, source, key string, enabled bool) {
+func (t *tree) enablementList(n *jsonconfig.Node, source, key, kind string, enabled bool) {
 	if n == nil {
 		return
 	}
@@ -269,7 +269,7 @@ func (t *tree) mcpEnablement(n *jsonconfig.Node, source, key string, enabled boo
 		}
 
 		if value, ok := entry.Text(); ok {
-			t.setting(kindMCPServer, value, declaredState(enabled), source, key+"/"+strconv.Itoa(i))
+			t.setting(kind, value, declaredState(enabled), source, key+"/"+strconv.Itoa(i))
 		} else {
 			t.b.issue(codeInvalidEnablement, t.absolute(source))
 		}

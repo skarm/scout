@@ -276,7 +276,7 @@ func (b *builder) candidates(host string) []candidate {
 				}
 
 				found = true
-			case "gemini-extension.json":
+			case agentconfig.GeminiManifest:
 				set.add(candidate{ns: ns, root: path.Dir(name), host: report.HostGeminiCLI, manifest: name})
 			}
 

@@ -135,7 +135,12 @@ func (t *tree) instructions(root, kind string) {
 		for _, entry := range t.entries(dir) {
 			file := path.Join(dir, entry.Name())
 			if entry.Type().IsRegular() && agentconfig.InstructionFile(t.agent, kind, file) && t.read(file, true) != nil {
-				t.component(kind, strings.TrimSuffix(entry.Name(), path.Ext(entry.Name())), file, file, "", "unknown")
+				name := strings.TrimSuffix(entry.Name(), path.Ext(entry.Name()))
+				if t.agent == report.HostGeminiCLI && kind == "command" {
+					name = strings.ReplaceAll(strings.TrimSuffix(strings.TrimPrefix(file, root+"/"), path.Ext(file)), "/", ":")
+				}
+
+				t.component(kind, name, file, file, "", "unknown")
 			}
 		}
 

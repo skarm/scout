@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/skarm/scout/internal/agentconfig"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hooktrace"
 	"github.com/skarm/scout/internal/artifactpath"
+	"github.com/skarm/scout/internal/syntax/hookevent"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/internal/syntax/parse"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
@@ -225,7 +227,7 @@ func findingContextAdder(f *report.Finding, truncated *bool) func(report.Compone
 
 func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) {
 	state := p.b.hooks[e.Meta.Path]
-	if state.Uncertain {
+	if state.Uncertain && p.host != report.HostGeminiCLI {
 		p.issue(issuePluginHookDisableUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 
@@ -234,11 +236,11 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 	}
 
 	hooks := n.Get(fieldHooks)
-	if hooks == nil {
+	if hooks == nil && p.host != report.HostGeminiCLI {
 		hooks = n
 	}
 
-	if hooks.Kind != jsonconfig.KindObject {
+	if hooks == nil || hooks.Kind != jsonconfig.KindObject {
 		p.issue(issuePluginHooksInvalid, e.Meta.Path, formatInvalid)
 		return
 	}
@@ -248,6 +250,10 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 			return
 		}
 
+		if p.host == report.HostGeminiCLI && p.nativeWorkspace && agentconfig.GeminiHookSetting(event.Key) {
+			continue
+		}
+
 		if !p.hookEvent(e, event, parent, activation, eventIndex) {
 			return
 		}
@@ -255,6 +261,11 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 }
 
 func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation string, eventIndex int) bool {
+	if p.host == report.HostGeminiCLI && !hookevent.Gemini(event.Key) {
+		p.issue(issuePluginHookEventUnverified, e.Meta.Path, report.OutcomePartial)
+		return true
+	}
+
 	if event.Value.Kind != jsonconfig.KindArray {
 		p.issue(issuePluginHooksInvalid, e.Meta.Path, formatInvalid)
 		return true
@@ -291,6 +302,11 @@ func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, e
 	// Event/matcher values may be arbitrary or hostile strings. They
 	// remain available by source reference, never copied into diagnostics.
 	kind, _ := h.Get(fieldType).Text()
+	if p.host == report.HostGeminiCLI && kind != hookTypeCommand {
+		p.issue(issuePluginHookTypeUnverified, e.Meta.Path, report.OutcomePartial)
+		return
+	}
+
 	switch kind {
 	case hookTypeCommand:
 		p.hookCommand(e, h, id, activation, event, matcher)
@@ -535,24 +551,41 @@ func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activat
 
 	command := n.Get(fieldCommand)
 
-	url := n.Get(fieldURL)
-	if command != nil && url != nil {
-		p.issue(issuePluginServerTransportAmbiguous, e.Meta.Path, report.OutcomePartial)
+	endpoints := []*jsonconfig.Node{n.Get(fieldURL)}
+	if p.host == report.HostGeminiCLI {
+		endpoints = append(endpoints, n.Get(agentconfig.GeminiHTTPURL))
 	}
 
-	if url != nil {
-		if _, ok := url.Text(); !ok {
-			p.issue(issuePluginServerURLInvalid, e.Meta.Path, formatInvalid)
-		}
-
-		p.reference(id, referenceKindRemoteEndpoint, report.ReferenceUnresolved, reasonRemoteImplementationNotScanned, "", ref(e, url.Span))
+	remote := p.serverEndpoints(e, id, endpoints)
+	if remote > 1 || command != nil && remote != 0 {
+		p.issue(issuePluginServerTransportAmbiguous, e.Meta.Path, report.OutcomePartial)
 	}
 
 	if command != nil {
 		p.serverCommand(e, n, id, s, activation)
-	} else if url == nil {
+	} else if remote == 0 {
 		p.issue(issuePluginServerTransportUnverified, e.Meta.Path, report.OutcomePartial)
 	}
+}
+
+func (p *plugin) serverEndpoints(e *entry, id string, endpoints []*jsonconfig.Node) int {
+	count := 0
+
+	for _, endpoint := range endpoints {
+		if endpoint == nil {
+			continue
+		}
+
+		count++
+
+		if value, ok := endpoint.Text(); !ok || p.host == report.HostGeminiCLI && strings.TrimSpace(value) == "" {
+			p.issue(issuePluginServerURLInvalid, e.Meta.Path, formatInvalid)
+		}
+
+		p.reference(id, referenceKindRemoteEndpoint, report.ReferenceUnresolved, reasonRemoteImplementationNotScanned, "", ref(e, endpoint.Span))
+	}
+
+	return count
 }
 
 func (p *plugin) serverCommand(e *entry, n *jsonconfig.Node, id string, s *report.SourceRef, activation string) {
@@ -620,7 +653,7 @@ func (p *plugin) resolveCommand(component string, words []string, argv bool, s *
 		p.reference(component, referenceKindRuntime, report.ReferenceUnresolved, report.ReferenceReasonRuntimeNotMaterialized, "", s)
 	}
 
-	rel, kind, reason := handlerPath(candidate, p.host, argv, hook)
+	rel, kind, reason := p.handlerPath(candidate, argv, hook)
 	if reason != "" {
 		p.reference(component, kind, report.ReferenceUnresolved, reason, "", s)
 		return
@@ -645,8 +678,11 @@ func (p *plugin) capturedHandler(component string, e *entry, activation string, 
 	p.reference(component, referenceKindHandler, report.ReferenceResolved, reasonCapturedHandlerNotRuntimeProof, id, s)
 }
 
-func handlerPath(candidate, host string, argv, hook bool) (string, string, string) {
-	suffix, rooted := hooktrace.RootedSuffix(candidate, host, argv, hook)
+func (p *plugin) handlerPath(candidate string, argv, hook bool) (string, string, string) {
+	suffix, rooted := hooktrace.RootedSuffix(candidate, p.host, argv, hook)
+	if argv && !hook && !rooted {
+		suffix, rooted = p.geminiMCPOperand(candidate)
+	}
 
 	if !rooted {
 		reason := "external_command_not_materialized"

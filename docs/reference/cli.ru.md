@@ -82,13 +82,14 @@ scout version
 
 ## Обнаружение окружения
 
-`scout discover` выводит инвентарь Codex, Claude Code, Cursor, GitHub Copilot CLI и OpenCode; `--scan` передаёт найденные
+`scout discover` выводит инвентарь Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode и Gemini CLI; `--scan` передаёт найденные
 корни существующему Scanner. См. [расположения, формат и ограничения](../user/discovery.ru.md).
 
-- `--agent all|codex|claude-code|cursor|copilot-cli|opencode` (`-a`): агент; по умолчанию `all`.
+- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli` (`-a`): агент; по умолчанию `all`.
 - `--home DIR`: домашний каталог; по умолчанию каталог текущего пользователя.
 - `--codex-home DIR`, `--claude-home DIR`, `--cursor-home DIR`, `--copilot-home DIR`, `--opencode-home DIR`: явные каталоги конфигурации агентов.
   Без `--home` учитываются `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса.
+- `--gemini-home DIR`: каталог, содержащий `.gemini` и `.agents`. Без `--home` учитывается `GEMINI_CLI_HOME`.
 - `--project DIR`: повторяемый выбранный проект; по умолчанию текущий каталог.
 - `--no-project`: исключить проекты; по умолчанию `false`.
 - `--system[=BOOL]`: известные системные расположения; по умолчанию `true`.

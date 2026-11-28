@@ -30,6 +30,16 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 			kind:    "hook", name: "preToolUse", key: "/hooks/preToolUse/0", state: "unknown",
 		},
 		{
+			host: report.HostGeminiCLI, config: ".gemini/settings.json",
+			initial: `{// Gemini accepts comments in settings.json
+				"mcpServers":{"example":{"httpUrl":"https://example.invalid/old"}}
+			}`,
+			updated: `{// Gemini accepts comments in settings.json
+				"mcpServers":{"example":{"httpUrl":"https://example.invalid/new"}}
+			}`,
+			kind: "mcp-server", name: "example", key: "/mcpServers/example", state: "unknown",
+		},
+		{
 			host: report.HostOpenCode, config: "opencode.jsonc",
 			initial: `{// example
 				"mcp":{"servers":{"example":{"type":"remote","url":"https://example.invalid/old","disabled":true},},},
@@ -175,6 +185,7 @@ func TestNativeInstalledPluginsAndSharedSkills(t *testing.T) {
 		"codex/skill/shared":                 "unknown",
 		"cursor/skill/shared":                "unknown",
 		"opencode/skill/shared":              "unknown",
+		"gemini-cli/skill/shared":            "unknown",
 	}
 	sharedTargets := 0
 	for _, target := range inventory.Targets {

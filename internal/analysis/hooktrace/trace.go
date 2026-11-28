@@ -56,6 +56,7 @@ type Scope struct {
 	Host            string
 	Inactive        bool
 	ProjectSettings bool
+	GeminiExtension bool
 	Files           FileTree
 }
 
@@ -104,7 +105,7 @@ func (t *Tracer) Trace(e *File, hook *jsonconfig.Node, event, matcher string, sc
 
 	args := hook.Get("args")
 
-	if scope.Host == report.HostGeminiCLI && strings.Contains(commandText, geminiExtensionPath) {
+	if scope.GeminiExtension && strings.Contains(commandText, geminiExtensionPath) {
 		t.sources.Commands = append(t.sources.Commands, Command{SourceRef: *initial})
 		walk.geminiLaunch(commandText, args, *initial)
 

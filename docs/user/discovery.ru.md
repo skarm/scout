@@ -2,7 +2,7 @@
 
 [English](discovery.md) · Русский
 
-`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI и OpenCode перед проверкой
+`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode и Gemini CLI перед проверкой
 их файлов. Команда читает конфигурации и манифесты без запуска MCP-серверов,
 выполнения команд, подстановки переменных окружения из файлов и сетевых запросов.
 
@@ -75,6 +75,24 @@ scout discover --home /review/home --system=false --no-project --format json
 macOS и не загружает внешние зависимости.
 [Конфигурация OpenCode](https://opencode.ai/docs/config/) · [MCP в OpenCode](https://opencode.ai/docs/mcp-servers/)
 
+Для Gemini CLI Scout читает пользовательский и проектный
+`.gemini/settings.json`, а также `settings.json` и `system-defaults.json` в
+системном каталоге платформы. Настройки допускают комментарии и используют
+обычные правила JSON для запятых. В инвентарь входят MCP-серверы, групповые
+хуки, локальные навыки, агенты, TOML-команды и политики, а также `GEMINI.md` в
+известных расположениях. Поддерживается каталог `.agents/skills`. Scout
+записывает локальные объявления `mcp.allowed`, `mcp.excluded` и `skills.disabled`
+без расчёта приоритетов. `--gemini-home` и `GEMINI_CLI_HOME` указывают на каталог,
+который содержит `.gemini` и `.agents`.
+[Конфигурация Gemini CLI](https://geminicli.com/docs/reference/configuration/)
+
+Scout находит пакеты в `.gemini/extensions/` по `gemini-extension.json` и
+учитывает `hooks/hooks.json` и локальные каталоги компонентов. Контекстные
+файлы должны находиться внутри пакета. Статический анализ MCP распознаёт stdio,
+SSE через `url` и Streamable HTTP через `httpUrl`. Пользовательские пути к
+системным файлам, внешние ссылки и фактическое включение расширений находятся
+за пределами этой поддержки. [Справочник расширений Gemini CLI](https://geminicli.com/docs/extensions/reference/)
+
 Переменные `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса сканирования могут менять
 каталоги конфигурации. Явный `--home` отключает эти неявные переопределения;
 `--codex-home` и `--claude-home` выбирают каталоги явно. Для остальных
@@ -104,6 +122,8 @@ MCP-конфигурации, встроенные либо указанные �
 Для отдельного `hooks.json`, `mcp.json` или `.mcp.json` укажите
 `--harness cursor` или `--harness copilot-cli` в зависимости от формата. При сканировании и записи
 снимка через `discover` по умолчанию используется единственный выбранный агент.
+При прямом сканировании отдельного `settings.json` или `system-defaults.json`
+Gemini CLI укажите `--harness gemini-cli`.
 
 JSON использует `scout.environment/v1`. Компоненты сохраняют агента, тип, область,
 путь, конфигурацию-источник, ключ в форме JSON Pointer, где он применим, и локально
