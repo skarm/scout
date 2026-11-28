@@ -27,9 +27,9 @@ const (
 )
 
 const (
-	codexHomeDirectory  = ".codex"
+	codexHomeDirectory  = artifact.CodexDirectory
 	claudeHomeDirectory = ".claude"
-	claudeGlobalConfig  = ".claude.json"
+	claudeGlobalConfig  = artifact.ClaudeGlobalConfig
 	mcpServersField     = "mcpServers"
 	mcpServersPointer   = "/" + mcpServersField
 )
@@ -65,7 +65,7 @@ func (t *tree) readLocations(locations []location) {
 }
 
 func (t *tree) codex(base string) {
-	t.codexConfig(path.Join(base, "config.toml"))
+	t.codexConfig(path.Join(base, artifact.CodexConfig))
 	t.skills(path.Join(base, "skills"))
 	t.plugins(path.Join(base, "plugins/cache"))
 }
@@ -206,7 +206,7 @@ func samePath(a, b string) bool {
 }
 
 func (t *tree) codexProject(base string) {
-	t.codexConfig(path.Join(base, "config.toml"))
+	t.codexConfig(path.Join(base, artifact.CodexConfig))
 }
 
 func (t *tree) claudeProject(base string) {
@@ -248,6 +248,7 @@ func (t *tree) commands(root string) {
 
 func (t *tree) settings(source string) {
 	if n := t.config(source, false); n != nil {
+		t.claudeHooks(n.Get("hooks"), source)
 		t.enablement(n.Get(fieldEnabledPlugins), source, "/"+fieldEnabledPlugins, "plugin")
 
 		for _, key := range []string{"enabledMcpjsonServers", "disabledMcpjsonServers"} {

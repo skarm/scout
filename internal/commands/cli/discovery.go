@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/commands/output"
 	"github.com/skarm/scout/internal/discovery"
 	"github.com/skarm/scout/report"
@@ -228,7 +230,7 @@ func scanDiscovered(ctx context.Context, a discoveryArguments, snapshot discover
 
 	r.targets = snapshot.Targets
 	r.publicationInputs = snapshot.ProtectedInputs()
-	r.useDiscoveryHarness(a.options.Agent)
+	r.useDiscoveryHarness(discoveryHarness(a.options.Agent, snapshot.Targets))
 
 	targets, err := r.scanTargets(nil)
 	if err != nil {
@@ -243,10 +245,35 @@ func (r *request) useDiscoveryHarness(agent string) {
 		return
 	}
 
-	switch agent {
-	case report.HostCursor, report.HostCopilotCLI, report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw, report.HostGrokCLI, report.HostDeepSeekHarness, report.HostZCode, report.HostQwenCode, report.HostKimiCode:
+	if agent != discovery.AllAgents && discovery.ValidAgent(agent) {
 		r.settings.Scanner.Harness.Host = agent
 	}
+}
+
+func discoveryHarness(agent string, targets []string) string {
+	// Preserve ordinary skill and manifestless package scans for the two
+	// original discovery layouts. Standalone configs need the selected host
+	// because capture retains only their basenames.
+	switch agent {
+	case report.HostCodex:
+		for _, target := range targets {
+			if filepath.Base(target) == artifact.CodexConfig {
+				return agent
+			}
+		}
+	case report.HostClaudeCode:
+		for _, target := range targets {
+			switch filepath.Base(target) {
+			case artifact.ClaudeSettings, artifact.ClaudeLocalSettings, artifact.ClaudeManagedSettings,
+				artifact.ClaudeGlobalConfig, artifact.ClaudeManagedMCP, artifact.MCPConfig:
+				return agent
+			}
+		}
+	default:
+		return agent
+	}
+
+	return report.HostAuto
 }
 
 func writeInventory(w io.Writer, snapshot discovery.Snapshot, format string) error {

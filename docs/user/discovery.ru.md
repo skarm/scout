@@ -19,6 +19,33 @@ scout discover --home /review/home --system=false --no-project --format json
 `--scan`; параметры отчёта сканирования указывайте после `--`. Позиционные входы
 и stdin в этом режиме не принимаются. Настройки Scout по-прежнему явно выбирает оператор.
 
+## Матрица поддержки
+
+Для каждого профиля регрессии Scout проверяют инвентаризацию, прямое сканирование,
+сканирование после discovery и сравнение неизменённых и изменённых снимков.
+В третьей колонке указан пример проверенного нативного входа. В последней колонке
+приведены ссылки на примеры подключения Scout по MCP stdio.
+
+| Агент | `--agent` / `--harness` | Нативный вход в сквозной проверке | Пример MCP stdio для Scout |
+| --- | --- | --- | --- |
+| Codex | `codex` | `.codex/config.toml` с `[mcp_servers]` | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
+| Claude Code | `claude-code` | MCP в `.claude.json` и групповые хуки в `.claude/settings.local.json` | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
+| Cursor | `cursor` | Плоские хуки в `.cursor/hooks.json` | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
+| GitHub Copilot CLI | `copilot-cli` | `.github/mcp.json` и `.github/hooks/*.json` | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
+| OpenCode | `opencode` | `opencode.jsonc` с картой `mcp.servers` | [Есть](integrations.ru.md#mcp-stdio-в-клиентах) |
+| Gemini CLI | `gemini-cli` | `.gemini/settings.json` с комментариями и MCP `httpUrl` | — |
+| OpenClaw | `openclaw` | `openclaw.json` в JSON5 с `mcp.servers` | — |
+| Grok CLI | `grok-cli` | MCP в `.grok/config.toml` и `.grok/hooks/*.json` | — |
+| DeepSeek Harness | `deepseek-harness` | `.dsh/profiles/web/cordis.patch.yml` со вставкой MCP в Cordis | — |
+| ZCode | `zcode` | MCP в `.zcode/config.json` и групповые хуки в `zcode.json` | — |
+| Qwen Code | `qwen-code` | `.qwen/settings.json` с BOM, комментариями, MCP и групповыми хуками | — |
+| Kimi Code | `kimi-code` | `[[hooks]]` в `.kimi-code/config.toml` и `.kimi-code/mcp.json` | — |
+
+Матрица описывает статический разбор захваченных деклараций. Для общей
+инвентаризации используйте `--agent all`. При совместном сканировании по умолчанию
+используется автоматическое распознавание. Для снимка и разбора отдельного
+файла с неоднозначным именем выбирайте конкретного агента.
+
 ## Расположения
 
 По умолчанию выбраны домашний каталог текущего пользователя, текущий проект
@@ -47,7 +74,7 @@ scout discover --home /review/home --system=false --no-project --format json
   выбранных проектов. Навыки и прежние Markdown-команды в `~/.claude/skills`
   и `~/.claude/commands`.
 - Проектные `.mcp.json`, `.claude/skills`, `.claude/commands`,
-  `.claude/settings.json` и `.claude/settings.local.json`.
+  хуки в `.claude/settings.json` и `.claude/settings.local.json`.
 - Плагины в `~/.claude/plugins/{cache,repos,synced}`.
 - `managed-mcp.json` и `managed-settings.json` в
   `/Library/Application Support/ClaudeCode` на macOS, `/etc/claude-code` на Linux
@@ -255,7 +282,7 @@ scout discover --agent codex --kind skill \
   --scan -- --format markdown
 ```
 
-`--kind` принимает `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule`, `tool`, `lsp-server` и `workflow`. Он и фильтры путей
+`--kind` принимает `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule`, `tool`, `lsp-server`, `workflow` и `channel`. Он и фильтры путей
 повторяемы, до 32 значений каждого. Включение пересекается с известными корнями
 и не добавляет внешние входы. Исключение удаляет целые пересекающиеся корни;
 для выбора отдельных компонентов вместо общего каталога навыков/кеша задайте тип.

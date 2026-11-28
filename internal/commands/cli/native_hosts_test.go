@@ -12,12 +12,32 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
-	tests := []struct {
-		host, config, initial, updated string
-		kind, name, key, state         string
-		userConfig                     bool
-	}{
+type nativeFixture struct {
+	host, config, initial, updated string
+	kind, name, key, state         string
+	userConfig                     bool
+}
+
+func nativeFixtures() []nativeFixture {
+	return []nativeFixture{
+		{
+			host: report.HostCodex, config: ".codex/config.toml", userConfig: true,
+			initial: "[mcp_servers.example]\nurl = \"https://example.invalid/old\"\nenabled = false\n",
+			updated: "[mcp_servers.example]\nurl = \"https://example.invalid/new\"\nenabled = false\n",
+			kind:    "mcp-server", name: "example", key: "/mcp_servers/example", state: "disabled",
+		},
+		{
+			host: report.HostClaudeCode, config: ".claude/settings.local.json",
+			initial: `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"printf before"}]}]}}`,
+			updated: `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"printf after"}]}]}}`,
+			kind:    "hook", name: "SessionStart", key: "/hooks/SessionStart/0/hooks/0", state: "unknown",
+		},
+		{
+			host: report.HostClaudeCode, config: ".claude.json", userConfig: true,
+			initial: `{"mcpServers":{"example":{"type":"http","url":"https://example.invalid/old"}}}`,
+			updated: `{"mcpServers":{"example":{"type":"http","url":"https://example.invalid/new"}}}`,
+			kind:    "mcp-server", name: "example", key: "/mcpServers/example", state: "unknown",
+		},
 		{
 			host: report.HostCursor, config: ".cursor/hooks.json",
 			initial: `{"version":1,"hooks":{"beforeShellExecution":[{"command":"printf hello"}]}}`,
@@ -29,6 +49,12 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 			initial: `{"version":1,"hooks":{"preToolUse":[{"type":"command","exec":"printf","args":["hello"]}]}}`,
 			updated: `{"version":1,"hooks":{"preToolUse":[{"type":"command","exec":"printf","args":["updated"]}]}}`,
 			kind:    "hook", name: "preToolUse", key: "/hooks/preToolUse/0", state: "unknown",
+		},
+		{
+			host: report.HostCopilotCLI, config: ".github/mcp.json",
+			initial: `{"example":{"type":"http","url":"https://example.invalid/old"}}`,
+			updated: `{"example":{"type":"http","url":"https://example.invalid/new"}}`,
+			kind:    "mcp-server", name: "example", key: "/example", state: "unknown",
 		},
 		{
 			host: report.HostGeminiCLI, config: ".gemini/settings.json",
@@ -119,8 +145,13 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 			kind:    "mcp-server", name: "example", key: "/mcpServers/example", state: "disabled",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.host, func(t *testing.T) {
+}
+
+func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
+	covered := make(map[string]bool)
+	for _, tt := range nativeFixtures() {
+		covered[tt.host] = true
+		t.Run(tt.host+"/"+tt.config, func(t *testing.T) {
 			project, home := t.TempDir(), t.TempDir()
 			writeNativeFixture(t, project, ".git/HEAD", "ref: refs/heads/main\n")
 			root, scope := project, "project"
@@ -154,6 +185,14 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 			}
 			assertNativeGraph(t, &scan, tt.host, kind)
 
+			direct := append([]string{"scan", "--harness", tt.host}, flags[1:]...)
+			code, raw = runCheckpoint(t, append(direct, file))
+			var directScan report.Document
+			if err := json.Unmarshal(raw, &directScan); err != nil || directScan.Validate() != nil || code != 2 {
+				t.Fatalf("invalid direct scan, exit %d: %s", code, raw)
+			}
+			assertNativeGraph(t, &directScan, tt.host, kind)
+
 			checkpoint := filepath.Join(t.TempDir(), "before.json")
 			if code, _ := runCheckpoint(t, append(append(slices.Clone(args), "--snapshot", checkpoint), flags...)); code != 2 {
 				t.Fatalf("snapshot creation exited %d", code)
@@ -186,7 +225,25 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 
 			assertNativeGraph(t, archived.Previous, tt.host, kind)
 			assertNativeGraph(t, archived.Current, tt.host, kind)
+
+			if tt.host == report.HostCodex || tt.config == ".claude/settings.local.json" {
+				if err := os.Remove(file); err != nil {
+					t.Fatal(err)
+				}
+				code, raw = runCheckpoint(t, checkpointArgs("compare", checkpoint, "--scope", "selected"))
+				removed := comparisonResult(t, raw)
+				if code != 2 || len(removed.Roots) != 1 || removed.Roots[0].Change != "removed" {
+					t.Fatalf("removed native config was not reported: exit %d: %+v", code, removed.Roots)
+				}
+				assertNativeGraph(t, removed.Previous, tt.host, kind)
+			}
 		})
+	}
+
+	for _, agent := range discovery.AgentSelectors() {
+		if agent != discovery.AllAgents && !covered[agent] {
+			t.Errorf("missing discovery, scan and snapshot regression for %s", agent)
+		}
 	}
 }
 
@@ -290,4 +347,85 @@ func TestNativeInstalledPluginsAndSharedSkills(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("missing installed declarations: %v", want)
 	}
+}
+
+func TestDiscoveryAllAgentsCapturesEveryRegisteredHost(t *testing.T) {
+	home, project := t.TempDir(), t.TempDir()
+	writeNativeFixture(t, project, ".git/HEAD", "ref: refs/heads/main\n")
+
+	want := make(map[string]string)
+	for _, fixture := range nativeFixtures() {
+		if _, written := want[fixture.host]; written {
+			continue
+		}
+
+		root := project
+		if fixture.userConfig {
+			root = home
+		}
+		want[fixture.host] = writeNativeFixture(t, root, fixture.config, fixture.initial)
+	}
+
+	args := []string{"discover", "--home", home, "--project", project, "--agent", discovery.AllAgents, "--system=false"}
+	code, raw := runCheckpoint(t, append(slices.Clone(args), "--format", "json"))
+	var inventory discovery.Snapshot
+	if err := json.Unmarshal(raw, &inventory); err != nil || code != 0 || !inventory.Complete {
+		t.Fatalf("incomplete combined discovery, exit %d: %s", code, raw)
+	}
+	for _, agent := range discovery.AgentSelectors() {
+		if agent != discovery.AllAgents && !slices.ContainsFunc(inventory.Components, func(c discovery.Component) bool {
+			return c.Agent == agent && c.Source == want[agent]
+		}) {
+			t.Errorf("combined discovery omitted %s (%s)", agent, want[agent])
+		}
+	}
+
+	scan := append(slices.Clone(args), "--scan", "--", "--profile", "custom", "--checks", "none", "--format", "json", "--scope", "selected")
+	code, raw = runCheckpoint(t, scan)
+	var doc report.Document
+	if err := json.Unmarshal(raw, &doc); err != nil || doc.Validate() != nil || code != 2 || len(doc.Run.Targets) != len(inventory.Targets) {
+		t.Fatalf("invalid combined scan, exit %d, state %s, problems %+v", code, doc.Run.State, doc.Run.Problems)
+	}
+	for _, source := range want {
+		if !slices.ContainsFunc(doc.Run.Targets, func(c report.TargetResult) bool {
+			return c.Label == source && len(c.Analysis.Artifact.Files) != 0
+		}) {
+			t.Errorf("combined scan omitted captured source %s", source)
+		}
+	}
+}
+
+func TestArchivedCodexComparisonRecoversDiscoveryHost(t *testing.T) {
+	home := t.TempDir()
+	file := writeNativeFixture(t, home, ".codex/config.toml", "[mcp_servers.example]\nurl = 'https://example.invalid/old'\n")
+	before, after := filepath.Join(t.TempDir(), "before.json"), filepath.Join(t.TempDir(), "after.json")
+	args := []string{
+		"discover", "--agent", report.HostCodex, "--home", home, "--no-project", "--system=false", "--kind", "mcp-server",
+		"--snapshot", before, "--", "--harness", report.HostAuto, "--profile", "custom", "--checks", "none", "--scope", "selected",
+	}
+	// Simulate a checkpoint from before discovery selected the Codex parser.
+	if code, raw := runCheckpoint(t, args); code != 2 {
+		t.Fatalf("unexpected legacy snapshot exit %d: %s", code, raw)
+	}
+
+	writeNativeFixture(t, home, ".codex/config.toml", "[mcp_servers.example]\nurl = 'https://example.invalid/new'\n")
+	code, raw := runCheckpoint(t, checkpointArgs("compare", before, "--scope", "selected", "--save-candidate", after))
+	live := comparisonResult(t, raw)
+	if code != 2 || len(live.Roots) != 1 || live.Roots[0].Change != "modified" {
+		t.Fatalf("live comparison failed, exit %d: %+v", code, live.Roots)
+	}
+	assertNativeGraph(t, live.Previous, report.HostCodex, "mcp_server")
+	assertNativeGraph(t, live.Current, report.HostCodex, "mcp_server")
+
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	code, raw = runCheckpoint(t, checkpointArgs("compare", before, "--scope", "selected", "--candidate", after))
+	offline := comparisonResult(t, raw)
+	if code != 2 || offline.Before != live.Before || offline.After != live.After ||
+		len(offline.Roots) != 1 || offline.Roots[0].Change != "modified" {
+		t.Fatalf("archived comparison omitted captured changes, exit %d: %+v", code, offline.Roots)
+	}
+	assertNativeGraph(t, offline.Previous, report.HostCodex, "mcp_server")
+	assertNativeGraph(t, offline.Current, report.HostCodex, "mcp_server")
 }

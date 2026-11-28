@@ -206,7 +206,7 @@ func (a agentConfigCheck) Rule() report.Rule {
 		version = "4"
 	}
 
-	limitation := "Supported configuration shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. General YAML and TOML use explicitly selected trusted parsers. Native Grok and Kimi Code TOML and DeepSeek Cordis YAML are supported in core. TOML evidence covers the whole unit." + metadata.limitation
+	limitation := "Supported configuration shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. General YAML and TOML use explicitly selected trusted parsers. Native Codex, Grok and Kimi Code TOML and DeepSeek Cordis YAML are supported in core. TOML evidence covers the whole unit." + metadata.limitation
 	if metadata.harness {
 		limitation += " Includes harness-linked inline/custom-path config objects without assuming activation."
 	}

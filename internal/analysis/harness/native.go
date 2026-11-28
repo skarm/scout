@@ -78,6 +78,14 @@ func nativeWorkspace(name, requested string) (root, host string) {
 		return dir, report.HostOpenClaw
 	}
 
+	if root, ok := artifact.CodexTOMLRoot(name, requested); ok {
+		return root, report.HostCodex
+	}
+
+	if claudeMCPFile(file) || file == artifact.ClaudeManagedSettings {
+		return dir, report.HostClaudeCode
+	}
+
 	if root, ok := geminiWorkspaceRoot(name, requested); ok {
 		return root, report.HostGeminiCLI
 	}
@@ -110,7 +118,7 @@ func nativeWorkspace(name, requested string) (root, host string) {
 		return dir, report.HostCursor
 	}
 
-	if requested == report.HostCopilotCLI && (file == artifact.MCPConfig || dir == "." && (file == agentconfig.CopilotUserMCP || file == "hooks.json")) {
+	if requested == report.HostCopilotCLI && (file == artifact.MCPConfig || dir == "." && (file == agentconfig.CopilotUserMCP || file == "mcp.json" || file == "hooks.json")) {
 		return dir, report.HostCopilotCLI
 	}
 
@@ -184,6 +192,10 @@ func (p *plugin) discoverNativeWorkspace() {
 	p.issue(issuePluginHostConfigurationUnverified, p.manifestPath(), report.OutcomePartial)
 
 	switch p.host {
+	case report.HostCodex:
+		p.codexWorkspace()
+	case report.HostClaudeCode:
+		p.claudeWorkspace()
 	case report.HostCursor:
 		p.cursorWorkspace()
 	case report.HostCopilotCLI:
@@ -228,6 +240,10 @@ func (p *plugin) cursorWorkspace() {
 func (p *plugin) copilotWorkspace() {
 	for _, file := range []string{artifact.MCPConfig, agentconfig.CopilotProjectMCP, agentconfig.CopilotUserMCP} {
 		p.defaultNativeConfig(file, report.ComponentMCPConfig, false)
+	}
+
+	if p.manifest.name == "mcp.json" && p.b.r.RequestedHost == report.HostCopilotCLI {
+		p.defaultNativeConfig("mcp.json", report.ComponentMCPConfig, false)
 	}
 
 	for _, file := range []string{agentconfig.CopilotProjectSettings, agentconfig.CopilotProjectLocalSettings} {

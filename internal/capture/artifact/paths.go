@@ -15,6 +15,11 @@ const (
 	MCPConfig                  = ".mcp.json"
 	ClaudePluginManifest       = ".claude-plugin/plugin.json"
 	CodexPluginManifest        = ".codex-plugin/plugin.json"
+	CodexDirectory             = ".codex"
+	CodexConfig                = "config.toml"
+	ClaudeGlobalConfig         = ".claude.json"
+	ClaudeManagedMCP           = "managed-mcp.json"
+	ClaudeManagedSettings      = "managed-settings.json"
 	CursorPluginManifest       = ".cursor-plugin/plugin.json"
 	CopilotPluginManifest      = ".plugin/plugin.json"
 	CopilotGitHubManifest      = ".github/plugin/plugin.json"
@@ -99,6 +104,22 @@ func DeepSeekSkillRoot(name, host string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// CodexTOMLRoot recognizes a named Codex config or a standalone file with an
+// explicitly selected Codex interpretation.
+func CodexTOMLRoot(name, host string) (string, bool) {
+	dir := path.Dir(name)
+	if path.Base(name) != CodexConfig {
+		return "", false
+	}
+
+	if path.Base(dir) == CodexDirectory {
+		return path.Dir(dir), true
+	}
+
+	return dir, dir == "." && host == report.HostCodex ||
+		strings.HasSuffix("/"+dir, "/etc/codex") || strings.HasSuffix("/"+dir, "/ProgramData/OpenAI/Codex")
 }
 
 // GrokTOMLRoot recognizes named Grok config files and explicitly interpreted standalone files.

@@ -276,7 +276,8 @@ func (b *builder) candidates(host string) []candidate {
 		}
 		// Manifestless Claude plugins require explicit caller intent. Auto cannot
 		// distinguish a plugin directory from an arbitrary repository with hooks.
-		if !found && !b.containerCollection(ns) && slices.Contains([]string{report.HostClaudeCode, report.HostCodex}, host) {
+		if !found && slices.Contains([]string{report.HostClaudeCode, report.HostCodex}, host) &&
+			!set.seen[candidate{ns: ns, root: ".", host: host, nativeWorkspace: true}.key()] && !b.containerCollection(ns) {
 			set.add(candidate{ns: ns, root: ".", host: host})
 		}
 
@@ -616,12 +617,17 @@ func (b *builder) containerCollection(ns *namespace) bool {
 	return false
 }
 
-func (s *candidateSet) add(c candidate) {
+func (c candidate) key() string {
 	key := c.ns.id + "\x00" + c.root + "\x00" + c.host
 	if c.nativeWorkspace {
 		key += "\x00workspace"
 	}
 
+	return key
+}
+
+func (s *candidateSet) add(c candidate) {
+	key := c.key()
 	if s.seen[key] {
 		return
 	}
@@ -779,7 +785,7 @@ func (p *plugin) object(e *entry) *jsonconfig.Node {
 	}
 
 	for _, u := range e.Doc.Units() {
-		if u.Origin == "file" && (u.Language == language.JSON || (p.host == report.HostGrokCLI || p.host == report.HostKimiCode) && u.Language == language.TOML) {
+		if u.Origin == "file" && (u.Language == language.JSON || (p.host == report.HostGrokCLI || p.host == report.HostKimiCode || p.host == report.HostCodex) && u.Language == language.TOML) {
 			return p.jsonObject(e, u)
 		}
 	}

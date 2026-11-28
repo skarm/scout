@@ -566,7 +566,8 @@ func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
 }
 
 func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activation string, i int) {
-	if (p.host == report.HostGrokCLI || p.host == report.HostZCode || p.host == report.HostKimiCode) && kind == report.ComponentMCPConfig {
+	if kind == report.ComponentMCPConfig && (p.host == report.HostGrokCLI || p.host == report.HostZCode ||
+		p.host == report.HostKimiCode || p.host == report.HostCodex && p.nativeWorkspace) {
 		if enabled := n.Get("enabled"); enabled != nil && enabled.Kind == jsonconfig.KindBool && !enabled.Bool {
 			activation = activationInactiveForProfile
 		}

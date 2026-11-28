@@ -15,6 +15,7 @@ import (
 
 	"github.com/skarm/scout/internal/capture/envsnapshot"
 	"github.com/skarm/scout/internal/discovery"
+	"github.com/skarm/scout/report"
 )
 
 // Discovery arguments contain the resolved operator context, never executable commands.
@@ -63,7 +64,12 @@ func resolveSnapshotSelection(ctx context.Context, mode, path string, r *request
 				return out, err
 			}
 
-			r.useDiscoveryHarness(a.options.Agent)
+			host := discoveryHarness(a.options.Agent, inventory.Targets)
+			if host == report.HostAuto && capturedDiscoveryHarness(out.checkpoint) == a.options.Agent {
+				host = a.options.Agent
+			}
+
+			r.useDiscoveryHarness(host)
 			r.publicationInputs = append(r.publicationInputs, inventory.ProtectedInputs()...)
 			inventory.Targets = replayedDiscoveryTargets(inventory)
 
@@ -109,13 +115,47 @@ func (s *snapshotSelection) selectArchivedCandidate(r *request) error {
 	// checkpoint files are inputs in this mode.
 	s.candidate = &candidate.Snapshot
 
-	if host := capturedDiscoveryHarness(s.checkpoint); host != "" && host == capturedDiscoveryHarness(candidate) {
-		r.useDiscoveryHarness(host)
-	}
+	r.useDiscoveryHarness(archivedDiscoveryHarness(s.checkpoint, candidate))
 
 	r.publicationInputs = append(r.publicationInputs, r.snapshotCandidate)
 
 	return nil
+}
+
+func archivedDiscoveryHarness(before, after environmentCheckpoint) string {
+	previous, current := capturedDiscoveryHarness(before), capturedDiscoveryHarness(after)
+	if previous != "" && previous != report.HostAuto && previous == current {
+		return previous
+	}
+
+	if before.Discovery == nil || after.Discovery == nil || !slices.Equal(before.Discovery.Arguments, after.Discovery.Arguments) {
+		return ""
+	}
+
+	a, err := restoreDiscovery(before.Discovery.Arguments)
+	if err != nil {
+		return ""
+	}
+
+	agent := a.options.Agent
+	for _, host := range []string{previous, current} {
+		if host != report.HostAuto && host != agent {
+			return ""
+		}
+	}
+
+	// Older discovery checkpoints recorded auto for Codex and Claude even
+	// when the selected roots included a standalone host configuration.
+	sources := make([]string, 0, len(before.Snapshot.Roots)+len(after.Snapshot.Roots))
+	for _, checkpoint := range []environmentCheckpoint{before, after} {
+		for _, root := range checkpoint.Snapshot.Roots {
+			if !root.Directory {
+				sources = append(sources, root.Source)
+			}
+		}
+	}
+
+	return discoveryHarness(agent, sources)
 }
 
 func capturedDiscoveryHarness(checkpoint environmentCheckpoint) string {
@@ -236,7 +276,7 @@ func snapshotDiscovered(ctx context.Context, a discoveryArguments, inventory dis
 	}
 
 	r.publicationInputs = inventory.ProtectedInputs()
-	r.useDiscoveryHarness(a.options.Agent)
+	r.useDiscoveryHarness(discoveryHarness(a.options.Agent, inventory.Targets))
 
 	plan, err := savedDiscoveryArguments(a)
 	if err != nil {

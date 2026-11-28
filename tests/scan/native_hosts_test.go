@@ -18,6 +18,22 @@ func TestNativeConfigurationFindings(t *testing.T) {
 		rules              []string
 	}{
 		{
+			host: report.HostAuto, file: ".codex/config.toml",
+			config: "[mcp_servers.remote]\nurl = 'http://example.invalid/mcp'\n" +
+				"[mcp_servers.local]\ncommand = 'npx'\nargs = ['example-mcp@latest']\n",
+			rules: []string{"MC001", "SC001"},
+		},
+		{
+			host: report.HostAuto, file: ".claude.json",
+			config: `{"projects":{"/review/project":{"mcpServers":{"api":{"type":"http","url":"http://example.invalid/mcp"}}}}}`,
+			rules:  []string{"MC001"},
+		},
+		{
+			host: report.HostCopilotCLI, file: "mcp.json",
+			config: `{"api":{"type":"http","url":"http://example.invalid/mcp"}}`,
+			rules:  []string{"MC001"},
+		},
+		{
 			host: report.HostCursor, file: ".cursor/hooks.json",
 			config: `{"version":1,"hooks":{"beforeShellExecution":[{"command":"printf hello"}]}}`,
 			rules:  []string{"AC003"},

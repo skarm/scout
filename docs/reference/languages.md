@@ -66,9 +66,10 @@ raw checks and makes coverage incomplete.
 
 ## Configuration formats
 
-JSON checks duplicate decoded keys. YAML and TOML require full-build backends.
-YAML aliases, merges and custom tags are unsupported. TOML byte spans may cover
-the entire parsed unit.
+JSON checks duplicate decoded keys. The full build provides general YAML and TOML
+parsing. The core build also recognizes Codex, Grok and Kimi Code configuration
+TOML and DeepSeek Cordis YAML in known layouts. YAML aliases, merges and custom
+tags are unsupported. TOML evidence covers the entire parsed unit.
 Parsing does not establish compatibility with every host loader.
 
 ## Scope

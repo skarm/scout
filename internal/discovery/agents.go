@@ -49,7 +49,7 @@ var agentLayouts = []agentLayout{
 		defaultHome:   []location{{claudeHomeDirectory, (*tree).claude}},
 		relocated:     []location{{claudeGlobalConfig, (*tree).claudeGlobal}, {".", (*tree).claude}},
 		project:       []location{{artifact.MCPConfig, (*tree).mcpFile}, {claudeHomeDirectory, (*tree).claudeProject}},
-		system:        []location{{"managed-mcp.json", (*tree).mcpFile}, {"managed-settings.json", (*tree).settings}},
+		system:        []location{{artifact.ClaudeManagedMCP, (*tree).mcpFile}, {artifact.ClaudeManagedSettings, (*tree).settings}},
 		systemDefault: "/etc/claude-code", systemDarwin: "/Library/Application Support/ClaudeCode", systemWindows: `C:\Program Files\ClaudeCode`,
 	},
 	{

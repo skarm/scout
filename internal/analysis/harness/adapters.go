@@ -189,7 +189,7 @@ func (p *plugin) rootSkill(root *jsonconfig.Node) {
 }
 
 func (p *plugin) discoverHostConfigs() {
-	for _, name := range []string{"AGENTS.md", "CLAUDE.md", artifact.ClaudeSettings, artifact.ClaudeProjectSettings, artifact.ClaudeProjectLocalSettings, ".codex/config.toml", "agents/openai.yaml"} {
+	for _, name := range []string{"AGENTS.md", "CLAUDE.md", artifact.ClaudeSettings, artifact.ClaudeLocalSettings, artifact.ClaudeProjectSettings, artifact.ClaudeProjectLocalSettings, ".codex/config.toml", "agents/openai.yaml"} {
 		p.discoverHostConfig(name)
 	}
 }
@@ -201,7 +201,8 @@ func (p *plugin) discoverHostConfig(name string) {
 	}
 
 	id := p.component(componentHostConfig, e, activationUnknown, basisPackageInventory, whole(e), name)
-	if name == artifact.ClaudeSettings || strings.HasSuffix(name, "/settings.json") || strings.HasSuffix(name, "/settings.local.json") {
+	if name == artifact.ClaudeSettings || name == artifact.ClaudeLocalSettings || name == artifact.ClaudeManagedSettings ||
+		strings.HasSuffix(name, "/settings.json") || strings.HasSuffix(name, "/settings.local.json") {
 		if settings := p.object(e); settings != nil {
 			p.settings(e, settings, id)
 		}

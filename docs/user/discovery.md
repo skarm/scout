@@ -20,6 +20,31 @@ The inventory's `--format` and `--output` cannot be combined with `--scan`; put
 scan report destinations after `--` instead. Scan inputs and stdin are not accepted
 in that mode. Configuration for Scout remains explicitly operator-selected.
 
+## Support matrix
+
+The Scout regression suite exercises inventory, direct scan, discovery-driven scan,
+and unchanged and modified snapshot comparisons for every selector. The input column
+shows a representative fixture. The last column links Scout MCP stdio setup examples.
+
+| Agent | `--agent` / `--harness` | Native input verified end to end | Scout MCP stdio example |
+| --- | --- | --- | --- |
+| Codex | `codex` | `.codex/config.toml` with `[mcp_servers]` | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
+| Claude Code | `claude-code` | `.claude.json` MCP and grouped hooks in `.claude/settings.local.json` | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
+| Cursor | `cursor` | `.cursor/hooks.json` with flat lifecycle hooks | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
+| GitHub Copilot CLI | `copilot-cli` | `.github/mcp.json` and `.github/hooks/*.json` | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
+| OpenCode | `opencode` | `opencode.jsonc` with the `mcp.servers` map | [Yes](integrations.md#mcp-stdio-in-agent-clients) |
+| Gemini CLI | `gemini-cli` | `.gemini/settings.json` with comments and MCP `httpUrl` | — |
+| OpenClaw | `openclaw` | `openclaw.json` with JSON5 and `mcp.servers` | — |
+| Grok CLI | `grok-cli` | `.grok/config.toml` MCP and `.grok/hooks/*.json` | — |
+| DeepSeek Harness | `deepseek-harness` | `.dsh/profiles/web/cordis.patch.yml` with a Cordis MCP insertion | — |
+| ZCode | `zcode` | `.zcode/config.json` MCP and grouped hooks in `zcode.json` | — |
+| Qwen Code | `qwen-code` | `.qwen/settings.json` with BOM, comments, MCP and grouped hooks | — |
+| Kimi Code | `kimi-code` | `.kimi-code/config.toml` with `[[hooks]]` and `.kimi-code/mcp.json` | — |
+
+The matrix covers static analysis of captured declarations. Use `--agent all` for a
+combined inventory. A combined scan uses automatic format detection by default.
+Select one agent for snapshots or when a standalone filename needs host context.
+
 ## Locations
 
 By default discovery selects the current user's home, the current project and
@@ -47,7 +72,7 @@ Claude Code locations:
   for selected projects. Skills and legacy Markdown commands under
   `~/.claude/skills` and `~/.claude/commands`.
 - Project `.mcp.json`, `.claude/skills`, `.claude/commands`,
-  `.claude/settings.json` and `.claude/settings.local.json`.
+  hooks in `.claude/settings.json` and `.claude/settings.local.json`.
 - Plugin packages under `~/.claude/plugins/{cache,repos,synced}`.
 - `managed-mcp.json` and `managed-settings.json` under
   `/Library/Application Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux,
@@ -250,7 +275,7 @@ scout discover --agent codex --kind skill \
   --scan -- --format markdown
 ```
 
-`--kind` accepts `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule`, `tool`, `lsp-server` and `workflow`; it and the path
+`--kind` accepts `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule`, `tool`, `lsp-server`, `workflow`, and `channel`; it and the path
 filters are repeatable, with at most 32 values each. Includes intersect known roots
 and cannot add outside inputs. Excludes omit whole overlapping roots; use a kind
 filter to select individual components instead of a broad skills/cache directory.
