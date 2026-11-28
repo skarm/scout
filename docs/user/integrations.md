@@ -41,6 +41,79 @@ base64 content. Decoded upload content is limited to 128 KiB.
 arbitrary paths or change the configured profile, provider or approvals.
 Without named targets, stdio supports uploads only.
 
+### MCP stdio in agent clients
+
+Use a trusted Scout binary and an absolute path to a local input you authorize
+the agent to scan. Replace both example paths and merge only the `scout` entry
+into the appropriate configuration. The client starts Scout as a local process.
+
+**Codex.** Add this entry to `~/.codex/config.toml`. [Codex MCP configuration](https://developers.openai.com/codex/mcp)
+
+```toml
+[mcp_servers.scout]
+command = "/absolute/path/to/scout"
+args = ["mcp", "--profile", "standard", "--transport", "stdio", "--target", "candidate=/absolute/review/candidate"]
+```
+
+**Claude Code and Cursor.** Use `.mcp.json` at the project root for Claude Code.
+Use `.cursor/mcp.json` for Cursor. Approve the `scout` server in the client when
+prompted. [Claude Code MCP](https://code.claude.com/docs/en/mcp) · [Cursor MCP](https://cursor.com/docs/mcp)
+
+```json
+{
+  "mcpServers": {
+    "scout": {
+      "command": "/absolute/path/to/scout",
+      "args": ["mcp", "--profile", "standard", "--transport", "stdio", "--target", "candidate=/absolute/review/candidate"]
+    }
+  }
+}
+```
+
+**GitHub Copilot CLI.** Use `.github/mcp.json` in a trusted Git repository. This
+entry exposes `scan_skill`. A `scout` entry in `.mcp.json` in the same directory
+takes precedence. [Copilot CLI MCP configuration](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers)
+
+```json
+{
+  "mcpServers": {
+    "scout": {
+      "type": "local",
+      "command": "/absolute/path/to/scout",
+      "args": ["mcp", "--profile", "standard", "--transport", "stdio", "--target", "candidate=/absolute/review/candidate"],
+      "tools": ["scan_skill"]
+    }
+  }
+}
+```
+
+**OpenCode.** Use `opencode.json` at the project root. [OpenCode MCP configuration](https://opencode.ai/docs/mcp-servers/)
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "scout": {
+      "type": "local",
+      "command": ["/absolute/path/to/scout", "mcp", "--profile", "standard", "--transport", "stdio", "--target", "candidate=/absolute/review/candidate"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Start a session and ask the agent to call Scout’s `scan_skill` with
+`{"target":"candidate"}` and report the decision and run state. The client may
+prefix the tool name with `scout`. In the result, look for a Scout report with
+`operation` set to `scan`, `evaluation.decision`, and `run.state`. If Copilot
+CLI saves a large tool result to a file, open the file it names to inspect the
+report. In Cursor CLI, approve the `scout` entry with `agent mcp enable scout`
+and confirm discovery with `agent mcp list-tools scout`. An authenticated
+agent session can call the tool.
+[Cursor CLI MCP](https://cursor.com/docs/cli/mcp)
+
+### MCP responses and HTTP transport
+
 Reports include the same JSON in `structuredContent` and in a text block when
 both fit in the 8 MiB JSON-RPC response limit (excluding the trailing newline).
 If only the structured report fits, the text block is a summary, not a partial
