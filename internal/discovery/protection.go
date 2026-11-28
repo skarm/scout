@@ -1,33 +1,38 @@
 package discovery
 
-import "path/filepath"
+import (
+	"path/filepath"
+
+	"github.com/skarm/scout/internal/capture/artifact"
+	"github.com/skarm/scout/report"
+)
 
 // Plan publication boundaries independently of traversal budgets. Only known
 // configuration locations are protected, so ordinary reports in the selected
 // home or project remain writable even when the inventory is incomplete.
 func (b *builder) protectLocations() {
-	if b.selects("codex") {
+	if b.selects(report.HostCodex) {
 		b.protect(filepath.Join(b.options.Home, ".agents", "skills"))
 
 		if b.options.CodexHome == "" {
-			b.protect(filepath.Join(b.options.Home, ".codex"))
+			b.protect(filepath.Join(b.options.Home, codexHomeDirectory))
 		} else {
 			b.protect(b.options.CodexHome)
 		}
 	}
 
-	if b.selects("claude-code") {
-		b.protect(filepath.Join(b.options.Home, ".claude.json"))
+	if b.selects(report.HostClaudeCode) {
+		b.protect(filepath.Join(b.options.Home, claudeGlobalConfig))
 
 		if b.options.ClaudeHome == "" {
-			b.protect(filepath.Join(b.options.Home, ".claude"))
+			b.protect(filepath.Join(b.options.Home, claudeHomeDirectory))
 		} else {
 			b.protect(b.options.ClaudeHome)
 		}
 	}
 
 	if b.options.System {
-		for _, agent := range []string{"codex", "claude-code"} {
+		for _, agent := range []string{report.HostCodex, report.HostClaudeCode} {
 			if b.selects(agent) {
 				b.protect(systemRoot(agent))
 			}
@@ -38,15 +43,15 @@ func (b *builder) protectLocations() {
 func (b *builder) protectProjectAncestors(dir string) {
 	// Do not depend on discovering .git or on successful source reads: an early
 	// stop must still protect possible inputs in the bounded ancestor chain.
-	for range 64 {
-		if b.selects("codex") {
-			b.protect(filepath.Join(dir, ".codex"))
+	for range maxDiscoveryAncestorDepth {
+		if b.selects(report.HostCodex) {
+			b.protect(filepath.Join(dir, codexHomeDirectory))
 			b.protect(filepath.Join(dir, ".agents", "skills"))
 		}
 
-		if b.selects("claude-code") {
-			b.protect(filepath.Join(dir, ".claude"))
-			b.protect(filepath.Join(dir, ".mcp.json"))
+		if b.selects(report.HostClaudeCode) {
+			b.protect(filepath.Join(dir, claudeHomeDirectory))
+			b.protect(filepath.Join(dir, artifact.MCPConfig))
 		}
 
 		parent := filepath.Dir(dir)
@@ -61,7 +66,7 @@ func (b *builder) protectProjectAncestors(dir string) {
 func (b *builder) protect(name string) {
 	absolute, err := filepath.Abs(name)
 	if err != nil {
-		b.issue("invalid_root", name)
+		b.issue(codeInvalidRoot, name)
 		return
 	}
 

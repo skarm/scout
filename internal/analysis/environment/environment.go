@@ -41,7 +41,7 @@ type factIndex struct {
 // Both work and observation limits are independent of hostile identifier counts.
 func Build(ctx context.Context, surfaces []Surface, targets []report.TargetResult, limit int, operations uint64) report.EnvironmentReport {
 	b := builder{ctx: ctx, seen: map[string]struct{}{}, out: report.EnvironmentReport{
-		Schema: "scout.environment-analysis/v1", Completeness: report.Complete,
+		Schema: report.EnvironmentAnalysisSchema, Completeness: report.Complete,
 		MaxObservations: min(limit, report.MaxEnvironmentObservations), MaxOperations: min(operations, report.MaxEnvironmentOperations),
 		Observations: []report.EnvironmentObservation{}, Issues: []string{},
 		Limitations: []string{
@@ -94,7 +94,7 @@ func (b *builder) collect(facts []SurfaceFact, target string, index *factIndex) 
 			if !b.identifiers(item, index) {
 				return false
 			}
-		case "sensitive_read", "network", "untrusted_input", "command_execution", "file_write", "infrastructure_mutation":
+		case report.CapabilitySensitiveRead, report.CapabilityNetwork, report.CapabilityUntrustedInput, report.CapabilityCommandExecution, report.CapabilityFileWrite, report.CapabilityInfrastructureMutation:
 			index.capabilities[f.Kind] = append(index.capabilities[f.Kind], item)
 		case report.EnvironmentSkillReference:
 			index.links = append(index.links, item)
@@ -144,8 +144,8 @@ func (b *builder) relate(index factIndex) {
 		}
 	}
 
-	for _, input := range []string{"sensitive_read", "untrusted_input"} {
-		for _, effect := range []string{"network", "command_execution", "file_write", "infrastructure_mutation"} {
+	for _, input := range []string{report.CapabilitySensitiveRead, report.CapabilityUntrustedInput} {
+		for _, effect := range []string{report.CapabilityNetwork, report.CapabilityCommandExecution, report.CapabilityFileWrite, report.CapabilityInfrastructureMutation} {
 			if report.EnvironmentCapabilityPair(input, effect) && !b.relateCapabilities(index.capabilities[input], index.capabilities[effect]) {
 				return
 			}

@@ -13,7 +13,10 @@ import (
 	"github.com/skarm/scout/osv"
 )
 
-const maxTrustedPreallocation = 8 << 20
+const (
+	smallTrustedReadBytes   = 512
+	maxTrustedPreallocation = 8 << 20
+)
 
 // Operator-controlled baseline/cache files are never discovered in an artifact.
 // Reject files inside either input, symlinks and special files. The parent
@@ -130,7 +133,7 @@ func (r *request) loadTrustedSnapshot(ctx context.Context, inputs []string) erro
 }
 
 func readTrustedSized(reader io.Reader, size int64) ([]byte, error) {
-	if size <= 512 || size > maxTrustedPreallocation {
+	if size <= smallTrustedReadBytes || size > maxTrustedPreallocation {
 		return io.ReadAll(reader)
 	}
 

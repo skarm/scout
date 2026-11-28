@@ -255,7 +255,7 @@ func decodeDataURI(o *operation, header, data string, start, end int) error {
 
 	name := dataURINames[strings.ToLower(mime)]
 	if name == "" {
-		name = "content.bin"
+		name = fallbackObjectName
 	}
 
 	payload, err := url.PathUnescape(data[start:end])

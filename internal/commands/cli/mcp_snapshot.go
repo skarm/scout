@@ -9,12 +9,14 @@ import (
 	"github.com/skarm/scout/internal/syntax/mcpsnapshot"
 )
 
+const flagSourceID = "source-id"
+
 func mcpSnapshotCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("mcp snapshot", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	source := fs.String("source-id", "", "operator-chosen stable server/source identity")
+	source := fs.String(flagSourceID, "", "operator-chosen stable server/source identity")
 
-	output := fs.String("output", "", "snapshot output file; default stdout")
+	output := fs.String(flagOutput, "", "snapshot output file; default stdout")
 	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}

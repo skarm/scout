@@ -18,6 +18,8 @@ const (
 	dispositionInvalid        Disposition = "invalid"
 )
 
+const shadowSchema = "scout.policy-shadow/v1"
+
 // ShadowResult compares policy outcomes over the same sealed run at one instant.
 type ShadowResult struct {
 	Schema                string                 `json:"schema"`
@@ -67,7 +69,7 @@ func Compare(run report.Run, current, trial *Gate, now time.Time) (ShadowResult,
 	}
 
 	result := ShadowResult{
-		Schema: "scout.policy-shadow/v1", RunDigest: run.Digest, RunState: run.State,
+		Schema: shadowSchema, RunDigest: run.Digest, RunState: run.State,
 		EvaluatedAt: now.UTC().Format(time.RFC3339Nano),
 		Current:     current.shadowEvaluation(run, now), Trial: trial.shadowEvaluation(run, now),
 		FindingChanges: []FindingPolicyChange{}, ManifestSignalChanges: []ManifestPolicyChange{},

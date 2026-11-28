@@ -8,6 +8,9 @@ import (
 	"reflect"
 )
 
+// SHA256DigestPrefix marks tagged SHA-256 digests in reports and related artifacts.
+const SHA256DigestPrefix = "sha256:"
+
 // State describes execution, independently of finding severity and policy.
 type State string
 
@@ -635,7 +638,7 @@ func runDigest(run Run) (string, error) {
 
 	flush(data)
 
-	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
+	return SHA256DigestPrefix + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func unorderedCollection(field string) bool {

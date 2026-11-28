@@ -32,7 +32,7 @@ func (sourceRedirection) Rule() report.Rule {
 		Title:       "Dependency source added, redirected or unresolved",
 		Description: "A supported declaration references a nondefault package source, local path or source override.",
 		Severity:    report.Medium,
-		Category:    "supply-chain",
+		Category:    report.CategorySupplyChain,
 		Method:      "structured-package-source",
 		Limitation:  "Selected npm/PyPI JSON/TOML/requirements/npmrc and parsed shell registry/env declarations, including cargo index environment keys; selected Yarn, pip INI, Cargo, Maven and NuGet configurations. Alternate sources may be legitimate. No repository is contacted, no package manager is run and credentials are not copied into reports.",
 	}

@@ -10,6 +10,15 @@ import (
 )
 
 const (
+	changeAdded        = "added"
+	changeChanged      = "changed"
+	changeModified     = "modified"
+	changeNotObserved  = "not_observed"
+	changeRemoved      = "removed"
+	changeRenamedInput = "renamed_input"
+)
+
+const (
 	algorithmVersion = "6"
 	maxOperations    = 2_000_000
 )

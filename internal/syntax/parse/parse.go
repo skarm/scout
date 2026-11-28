@@ -97,6 +97,16 @@ func Defaults() Registry {
 // whether it exists.
 func (r Registry) Lookup(id string) (Backend, bool) { b, ok := r.backends[id]; return b, ok }
 
+const (
+	// CodeLimit indicates that parsing hit its work or size budget.
+	CodeLimit = "parser_limit"
+	// CodeUnsupportedSyntax indicates the parser could not handle the syntax.
+	CodeUnsupportedSyntax = "unsupported_syntax"
+	// CodeBackendUnavailable indicates the selected backend is unavailable.
+	CodeBackendUnavailable     = "backend_unavailable"
+	codeAmbiguousConfiguration = "ambiguous_configuration"
+)
+
 // Failure gives preparation a finite, source-free classification. Arbitrary
 // parser error strings are never forwarded into reports.
 type Failure struct {
@@ -114,7 +124,7 @@ func (f *Failure) Error() string { return "parser failure" }
 func FailureCategory(err error) string {
 	if failure, ok := errors.AsType[*Failure](err); ok {
 		switch failure.Category {
-		case "unsupported_syntax", "parser_limit", "ambiguous_configuration", "backend_unavailable":
+		case CodeUnsupportedSyntax, CodeLimit, codeAmbiguousConfiguration, CodeBackendUnavailable:
 			return failure.Category
 		}
 	}
@@ -157,7 +167,7 @@ func (goBackend) Parse(ctx context.Context, v source.View) (any, error) {
 			return GoTree{Tokens: fs}, ctx.Err()
 		}
 
-		return GoTree{Tokens: fs}, &Failure{Category: "parser_limit"}
+		return GoTree{Tokens: fs}, &Failure{Category: CodeLimit}
 	}
 
 	return GoTree{Tree: tree, Tokens: fs, Bindings: bindings}, err
@@ -207,11 +217,11 @@ func shellFailure(err error) error {
 	if syntaxErr, ok := errors.AsType[*shellsyntax.Error](err); ok {
 		category := "syntax_error"
 		if strings.HasPrefix(syntaxErr.Code, "unsupported_") {
-			category = "unsupported_syntax"
+			category = CodeUnsupportedSyntax
 		}
 
 		if strings.HasSuffix(syntaxErr.Code, "_limit") {
-			category = "parser_limit"
+			category = CodeLimit
 		}
 
 		return &Failure{Category: category}
@@ -252,11 +262,11 @@ func (jsonBackend) Parse(ctx context.Context, v source.View) (any, error) {
 	if err != nil {
 		if e, ok := errors.AsType[*jsonconfig.Error](err); ok {
 			if strings.HasSuffix(e.Code, "_limit") {
-				err = &Failure{Category: "parser_limit"}
+				err = &Failure{Category: CodeLimit}
 			}
 
-			if e.Code == "duplicate_key" {
-				err = &Failure{Category: "ambiguous_configuration"}
+			if e.Code == jsonconfig.CodeDuplicateKey {
+				err = &Failure{Category: codeAmbiguousConfiguration}
 			}
 		}
 
@@ -294,11 +304,11 @@ func (goModBackend) Parse(ctx context.Context, v source.View) (any, error) {
 	if err != nil {
 		if e, ok := errors.AsType[*modconfig.Error](err); ok {
 			if strings.HasSuffix(e.Code, "_limit") {
-				return nil, &Failure{Category: "parser_limit"}
+				return nil, &Failure{Category: CodeLimit}
 			}
 
 			if strings.HasPrefix(e.Code, "duplicate_") {
-				return nil, &Failure{Category: "ambiguous_configuration"}
+				return nil, &Failure{Category: codeAmbiguousConfiguration}
 			}
 		}
 

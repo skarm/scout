@@ -93,7 +93,7 @@ func (b *builder) putDerivedObject(out *inventory, d report.DerivedObject) {
 		Member:           d.MemberName,
 		Ordinal:          d.Ordinal,
 	}
-	if d.Role == "archive_member" {
+	if d.Role == report.DerivedRoleArchiveMember {
 		s.Ordinal = 0
 	}
 
@@ -136,13 +136,13 @@ func (b *builder) files() {
 				continue
 			}
 
-			c.Change = "modified"
+			c.Change = changeModified
 			if len(c.Reasons) == 1 && c.Reasons[0] == "input_name_changed" {
-				c.Change = "renamed_input"
+				c.Change = changeRenamedInput
 			}
 		}
 
-		if c.Change == "unverified" {
+		if c.Change == report.UpdateUnverified {
 			b.issue("object_delta_unverified")
 
 			c.Reasons = append(c.Reasons, "inventory_or_content_unavailable")
@@ -190,23 +190,23 @@ func fileChangeSides(id string, before, after *object) report.FileChange {
 func objectPresenceChange(before, after *object, oldComplete, newComplete bool) string {
 	for _, o := range []*object{before, after} {
 		if o != nil && o.file.Status != report.CaptureCaptured {
-			return "unverified"
+			return report.UpdateUnverified
 		}
 	}
 
 	switch {
 	case before == nil:
 		if !oldComplete {
-			return "unverified"
+			return report.UpdateUnverified
 		}
 
-		return "added"
+		return changeAdded
 	case after == nil:
 		if !newComplete {
-			return "unverified"
+			return report.UpdateUnverified
 		}
 
-		return "removed"
+		return changeRemoved
 	default:
 		return ""
 	}

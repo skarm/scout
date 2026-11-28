@@ -14,11 +14,14 @@ import (
 )
 
 const (
-	maxLabelReviews      = 4096
-	maxLabelReviewerIDs  = 32
-	maxLabelEvidenceRefs = 8
-	MaxLabelReviewBytes  = 2 << 20
+	maxLabelReviews = 4096
+	// MaxTrustedLabelReviewers bounds the list of trusted reviewer IDs.
+	MaxTrustedLabelReviewers = 32
+	maxLabelEvidenceRefs     = 8
+	MaxLabelReviewBytes      = 2 << 20
 )
+
+const labelReviewSchema = "scout.corpus-review/v1"
 
 // LabelReviewDocument is a separately supplied operator-trusted record. Its
 // independence and reviewer identities are declarations, not authentication.
@@ -66,7 +69,7 @@ func LabelReviewTemplate(data []byte) ([]byte, error) {
 		return nil, errors.New("label reviews require corpus schema 2 with source provenance")
 	}
 
-	document := LabelReviewDocument{Schema: "scout.corpus-review/v1", CorpusSHA256: labelReviewHash(data), Reviews: make([]CaseLabelReview, len(corpus.Cases))}
+	document := LabelReviewDocument{Schema: labelReviewSchema, CorpusSHA256: labelReviewHash(data), Reviews: make([]CaseLabelReview, len(corpus.Cases))}
 	for i, tc := range corpus.Cases {
 		document.Reviews[i] = CaseLabelReview{CaseID: tc.ID, Label: "pending", Evidence: []string{}}
 	}
@@ -143,7 +146,7 @@ func parseLabelReview(data []byte) (LabelReviewDocument, error) {
 		return document, errors.New("invalid label review document")
 	}
 
-	if document.Schema != "scout.corpus-review/v1" || !textmatch.LowerHex(document.CorpusSHA256, 64) || len(document.Reviews) == 0 || len(document.Reviews) > maxLabelReviews {
+	if document.Schema != labelReviewSchema || !textmatch.LowerHex(document.CorpusSHA256, 64) || len(document.Reviews) == 0 || len(document.Reviews) > maxLabelReviews {
 		return document, errors.New("invalid label review identity or case count")
 	}
 
@@ -151,7 +154,7 @@ func parseLabelReview(data []byte) (LabelReviewDocument, error) {
 }
 
 func labelReviewers(ids []string) (map[string]bool, error) {
-	if len(ids) == 0 || len(ids) > maxLabelReviewerIDs {
+	if len(ids) == 0 || len(ids) > MaxTrustedLabelReviewers {
 		return nil, errors.New("label review requires 1..32 explicitly trusted reviewer IDs")
 	}
 

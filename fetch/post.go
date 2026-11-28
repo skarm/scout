@@ -9,6 +9,11 @@ import (
 )
 
 const (
+	codeDownloadOptionsNotApplicable = "download_options_not_applicable"
+	codeRequestByteLimit             = "request_byte_limit"
+)
+
+const (
 	maxAPIRequestBytes = 256 << 10
 )
 
@@ -17,7 +22,7 @@ const (
 // or inherits proxies. Callers MUST separately obtain permission to send the body.
 func PostJSON(ctx context.Context, endpoint string, body []byte, o Options) ([]byte, error) {
 	if ctx == nil {
-		return nil, fail("nil_context")
+		return nil, fail(codeNilContext)
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -35,7 +40,7 @@ func PostJSON(ctx context.Context, endpoint string, body []byte, o Options) ([]b
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(body))
 	if err != nil {
-		return nil, fail("invalid_request")
+		return nil, fail(codeInvalidRequest)
 	}
 
 	req.Header.Set(netpolicy.HeaderContentType, netpolicy.JSONMediaType)
@@ -60,15 +65,15 @@ func (o Options) validateAPIRequest(bodyBytes int) error {
 	}
 
 	if !o.Enabled {
-		return fail("network_permission_required")
+		return fail(codeNetworkPermissionRequired)
 	}
 
 	if o.Git || o.GitAuth != nil || o.Revision != "" || o.ExpectedSHA256 != "" {
-		return fail("download_options_not_applicable")
+		return fail(codeDownloadOptionsNotApplicable)
 	}
 
 	if bodyBytes > maxAPIRequestBytes {
-		return fail("request_byte_limit")
+		return fail(codeRequestByteLimit)
 	}
 
 	return nil

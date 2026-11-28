@@ -61,7 +61,7 @@ func (a deserialization) Rule() report.Rule {
 		Title:       a.title,
 		Description: a.title,
 		Severity:    severity,
-		Category:    "insecure-deserialization",
+		Category:    categoryInsecureDeserialization,
 		Method:      "language-gated-pattern",
 		Limitation:  "Adapted SkillSpector DS1-DS4 signatures on candidate language units; not proof of untrusted input, exploitability or runtime execution. Quoted/commented code can match. No general PHP/Ruby/JS data flow.",
 	}

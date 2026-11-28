@@ -15,6 +15,27 @@ import (
 )
 
 const (
+	codeInvalidUTF8 = "invalid_utf8"
+	// CodeDeadline identifies the frontend failure for deadline.
+	CodeDeadline = "deadline"
+	// CodeInputLimit identifies the frontend failure for input limit.
+	CodeInputLimit = "input_limit"
+	// CodeLimit identifies the frontend failure for limit.
+	CodeLimit = "limit"
+	// CodeOutputLimit identifies the frontend failure for output limit.
+	CodeOutputLimit = "output_limit"
+	// CodeUnavailable identifies the frontend failure for unavailable.
+	CodeUnavailable       = "unavailable"
+	codeGrammarAbi        = "grammar_abi"
+	codeInvalidScalar     = "invalid_scalar"
+	codeMultipleDocuments = "multiple_documents"
+	codeNotEnabled        = "not_enabled"
+	codeUnsupportedAlias  = "unsupported_alias"
+	codeUnsupportedScalar = "unsupported_scalar"
+	codeUnsupportedValue  = "unsupported_value"
+)
+
+const (
 	// AdapterVersion identifies Scout's projection of embedded parser output.
 	AdapterVersion = "7"
 
@@ -56,6 +77,8 @@ type Member struct {
 	Value *ConfigNode `json:"value"`
 }
 
+const projectionProtocolVersion = 2
+
 type Result struct {
 	Protocol int         `json:"protocol"`
 	Format   string      `json:"format"`
@@ -64,6 +87,15 @@ type Result struct {
 	AST      *Node       `json:"ast,omitempty"`
 	Config   *ConfigNode `json:"config,omitempty"`
 }
+
+const (
+	// CodeAmbiguousKey indicates a duplicate key in a projected configuration.
+	CodeAmbiguousKey = "ambiguous_key"
+	codeInvalidTree  = "invalid_tree"
+)
+
+// CodeUnsupportedProjection indicates that the result contains only a partial projection.
+const CodeUnsupportedProjection = "unsupported_projection"
 
 type Failure struct{ Category string }
 
@@ -87,13 +119,13 @@ func Parse(ctx context.Context, o Options, format, text string) (Result, error) 
 
 	b := BackendFor(format)
 	if !b.Available {
-		return Result{}, &Failure{Category: "unavailable"}
+		return Result{}, &Failure{Category: CodeUnavailable}
 	}
 
 	call, cancel := context.WithTimeout(ctx, o.Timeout)
 	defer cancel()
 
-	r := Result{Protocol: 2, Format: format, Version: b.Version, Status: "ok"}
+	r := Result{Protocol: projectionProtocolVersion, Format: format, Version: b.Version, Status: "ok"}
 
 	var err error
 
@@ -146,15 +178,15 @@ func validateInput(ctx context.Context, o Options, format, text string) error {
 	}
 
 	if !o.enables(format) {
-		return &Failure{Category: "not_enabled"}
+		return &Failure{Category: codeNotEnabled}
 	}
 
 	if len(text) > MaxBytes {
-		return &Failure{Category: "input_limit"}
+		return &Failure{Category: CodeInputLimit}
 	}
 
 	if !utf8.ValidString(text) {
-		return &Failure{Category: "invalid_utf8"}
+		return &Failure{Category: codeInvalidUTF8}
 	}
 
 	return ctx.Err()
@@ -163,7 +195,7 @@ func validateInput(ctx context.Context, o Options, format, text string) error {
 func completeParse(ctx context.Context, r Result, parseErr error, size int) (Result, error) {
 	var failure *Failure
 
-	partial := errors.As(parseErr, &failure) && failure.Category == "unsupported_projection" && r.AST != nil
+	partial := errors.As(parseErr, &failure) && failure.Category == CodeUnsupportedProjection && r.AST != nil
 	if parseErr != nil && !partial {
 		return Result{}, parseErr
 	}
@@ -173,7 +205,7 @@ func completeParse(ctx context.Context, r Result, parseErr error, size int) (Res
 	}
 
 	if ctx.Err() != nil {
-		return Result{}, &Failure{Category: "deadline"}
+		return Result{}, &Failure{Category: CodeDeadline}
 	}
 
 	if err := validateTree(r, size); err != nil {
@@ -190,14 +222,14 @@ func validateTree(r Result, size int) error {
 
 	if r.Format != language.Python {
 		if r.AST != nil {
-			return &Failure{Category: "invalid_tree"}
+			return &Failure{Category: codeInvalidTree}
 		}
 
 		return v.config(r.Config, 0)
 	}
 
 	if r.AST == nil || r.AST.Kind() != Module || r.Config != nil {
-		return &Failure{Category: "invalid_tree"}
+		return &Failure{Category: codeInvalidTree}
 	}
 
 	return v.python(r.AST, 0)
@@ -210,11 +242,11 @@ func (v *treeValidator) validRange(start, end int) bool {
 func (v *treeValidator) config(n *ConfigNode, depth int) error {
 	v.count++
 	if n == nil || v.count > maxNodes || depth > MaxDepth {
-		return &Failure{Category: "invalid_tree"}
+		return &Failure{Category: codeInvalidTree}
 	}
 
 	if !v.validRange(n.Start, n.End) {
-		return &Failure{Category: "invalid_tree"}
+		return &Failure{Category: codeInvalidTree}
 	}
 
 	switch n.Kind {
@@ -225,7 +257,7 @@ func (v *treeValidator) config(n *ConfigNode, depth int) error {
 
 	case jsonconfig.KindString, jsonconfig.KindBool, jsonconfig.KindNumber, jsonconfig.KindNull:
 	default:
-		return &Failure{Category: "invalid_tree"}
+		return &Failure{Category: codeInvalidTree}
 	}
 
 	return nil
@@ -235,7 +267,7 @@ func (v *treeValidator) members(members []Member, depth int) error {
 	seen := make(map[string]bool, len(members))
 	for _, m := range members {
 		if seen[m.Key] || !v.validRange(m.Start, m.End) {
-			return &Failure{Category: "ambiguous_key"}
+			return &Failure{Category: CodeAmbiguousKey}
 		}
 
 		seen[m.Key] = true
@@ -250,12 +282,12 @@ func (v *treeValidator) members(members []Member, depth int) error {
 func (v *treeValidator) python(n *Node, depth int) error {
 	v.count++
 	if n == nil || n.Kind().String() == "" || depth > MaxDepth || v.count > maxNodes || !v.validRange(n.Start, n.End) {
-		return &Failure{Category: "invalid_tree"}
+		return &Failure{Category: codeInvalidTree}
 	}
 
 	for _, field := range n.fields {
 		if _, err := n.fieldIndex(field.kind, field.value); err != nil {
-			return &Failure{Category: "invalid_tree"}
+			return &Failure{Category: codeInvalidTree}
 		}
 
 		if err := v.pythonField(field.value, depth+1); err != nil {

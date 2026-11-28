@@ -22,7 +22,85 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	componentCommand       = "command"
+	componentAgent         = "agent"
+	componentWorkflow      = "workflow"
+	activationConditional  = "conditional"
+	issuePluginJSONInvalid = "plugin_json_invalid"
+	issueHarnessLimit      = "harness_issue_limit"
+)
+
+const (
+	issueComponentFrontmatterUnverified          = "component_frontmatter_unverified"
+	issueComponentLimit                          = "component_limit"
+	issueEdgeLimit                               = "edge_limit"
+	issueHandlerDependencyClosureUnverified      = "handler_dependency_closure_unverified"
+	issueHookSourceCommandLimit                  = "hook_source_command_limit"
+	issueHookSourceDiagnosticLimit               = "hook_source_diagnostic_limit"
+	issueInvalidHarnessRequest                   = "invalid_harness_request"
+	issueMarketplaceInstallClosureUnverified     = "marketplace_install_closure_unverified"
+	issueNestedComponentDiscoveryUnverified      = "nested_component_discovery_unverified"
+	issuePluginAppMappingUnverified              = "plugin_app_mapping_unverified"
+	issuePluginComponentPathTypeInvalid          = "plugin_component_path_type_invalid"
+	issuePluginConfigMergeUnverified             = "plugin_config_merge_unverified"
+	issuePluginConfigShapeInvalid                = "plugin_config_shape_invalid"
+	issuePluginDefaultConfigActivationUnverified = "plugin_default_config_activation_unverified"
+	issuePluginDependencyShapeUnverified         = "plugin_dependency_shape_unverified"
+	issuePluginExtensionUnverified               = "plugin_extension_unverified"
+	issuePluginHookArgsInvalid                   = "plugin_hook_args_invalid"
+	issuePluginHookCommandInvalid                = "plugin_hook_command_invalid"
+	issuePluginHookDisableUnverified             = "plugin_hook_disable_unverified"
+	issuePluginHookEventUnverified               = "plugin_hook_event_unverified"
+	issuePluginHookManifestUnverified            = "plugin_hook_manifest_unverified"
+	issuePluginHookPromptInvalid                 = "plugin_hook_prompt_invalid"
+	issuePluginHookTypeUnverified                = "plugin_hook_type_unverified"
+	issuePluginHooksInvalid                      = "plugin_hooks_invalid"
+	issuePluginHostConfigurationUnverified       = "plugin_host_configuration_unverified"
+	issuePluginInputUnavailable                  = "plugin_input_unavailable"
+	issuePluginJSONUnavailable                   = "plugin_json_unavailable"
+	issuePluginLayoutUnverified                  = "plugin_layout_unverified"
+	issuePluginLimit                             = "plugin_limit"
+	issuePluginLoaderSemanticsLimited            = "plugin_loader_semantics_limited"
+	issuePluginMCPWrapperUnverified              = "plugin_mcp_wrapper_unverified" //nolint:gosec // G101: diagnostic identifier.
+	issuePluginMCPWrappersAmbiguous              = "plugin_mcp_wrappers_ambiguous" //nolint:gosec // G101: diagnostic identifier.
+	issuePluginManifestMissing                   = "plugin_manifest_missing"
+	issuePluginMetadataTypeInvalid               = "plugin_metadata_type_invalid"
+	issuePluginNameInvalid                       = "plugin_name_invalid"
+	issuePluginObjectExpected                    = "plugin_object_expected"
+	issuePluginReferenceLimit                    = "plugin_reference_limit"
+	issuePluginReferenceUnresolved               = "plugin_reference_unresolved"
+	issuePluginServerCommandInvalid              = "plugin_server_command_invalid"
+	issuePluginServerInvalid                     = "plugin_server_invalid"
+	issuePluginServerMapInvalid                  = "plugin_server_map_invalid"
+	issuePluginServerTransportAmbiguous          = "plugin_server_transport_ambiguous"
+	issuePluginServerTransportUnverified         = "plugin_server_transport_unverified"
+	issuePluginServerURLInvalid                  = "plugin_server_url_invalid"
+	issuePluginSettingsCommandInvalid            = "plugin_settings_command_invalid"
+	issuePluginUnknownField                      = "plugin_unknown_field"
+)
+
+const formatInvalid = "invalid"
+
+const (
+	componentAppConfig            = "app_config"
+	componentDependency           = "dependency"
+	componentHandler              = "handler"
+	componentHostConfig           = "host_config"
+	componentInstruction          = "instruction"
+	componentMarketplace          = "marketplace"
+	componentSettingsCommand      = "settings_command"
+	componentUnsupportedExtension = "unsupported_extension"
+)
+
+const activationUnknown = "unknown"
+
 const version = "2"
+
+const (
+	activationInactiveForProfile = "inactive_for_profile"
+	selectionHostDefault         = "host_default"
+)
 
 type entry struct {
 	hooktrace.File
@@ -130,7 +208,7 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 		},
 	}
 	if opts.Validate() != nil {
-		b.issue("invalid_harness_request", "", "", "invalid")
+		b.issue(issueInvalidHarnessRequest, "", "", formatInvalid)
 		return b.r
 	}
 
@@ -141,7 +219,7 @@ func discover(ctx context.Context, inventory []report.File, docs []document.File
 
 	if sources != nil {
 		b.hookTracer = hooktrace.New(&b.work, opts.ShellHookRoot, b.r.Limits.References, func() {
-			b.issue("hook_source_diagnostic_limit", "", "", report.OutcomePartial)
+			b.issue(issueHookSourceDiagnosticLimit, "", "", report.OutcomePartial)
 		})
 	}
 
@@ -243,14 +321,14 @@ func (s *candidateSet) addProjectHookSettings(ns *namespace) {
 func projectSettingsHasHooks(unit document.Unit) bool {
 	tree, ok := unit.Tree.(parse.JSONTree)
 
-	return ok && unit.Origin == "file" && tree.Root.Get("hooks") != nil
+	return ok && unit.Origin == "file" && tree.Root.Get(fieldHooks) != nil
 }
 
 func (b *builder) marketplace(ns *namespace, name string) {
 	if path.Base(name) == "marketplace.json" && (strings.Contains("/"+name, "/.claude-plugin/") || strings.Contains("/"+name, "/.agents/plugins/")) {
 		e := ns.entries[name]
-		b.node("", "marketplace", e, "unknown", "unknown", whole(e), "catalog")
-		b.issue("marketplace_install_closure_unverified", "", e.Meta.Path, report.OutcomePartial)
+		b.node("", componentMarketplace, e, "unknown", activationUnknown, whole(e), "catalog")
+		b.issue(issueMarketplaceInstallClosureUnverified, "", e.Meta.Path, report.OutcomePartial)
 	}
 }
 
@@ -265,7 +343,7 @@ func (b *builder) standaloneSkills() {
 
 			if path.Base(name) == artifact.SkillManifest {
 				e := ns.entries[name]
-				b.node("", report.ComponentSkill, e, report.HostAgentSkills, "unknown", whole(e), "standalone")
+				b.node("", report.ComponentSkill, e, report.HostAgentSkills, activationUnknown, whole(e), "standalone")
 			}
 		}
 	}
@@ -296,7 +374,7 @@ func (b *builder) issue(code, pid, file, status string) {
 	if len(b.r.Issues) >= b.r.Limits.References {
 		if !b.issues["issue_limit"] {
 			b.issues["issue_limit"] = true
-			b.r.Issues = append(b.r.Issues, report.HarnessIssue{Code: "harness_issue_limit", Status: report.OutcomePartial})
+			b.r.Issues = append(b.r.Issues, report.HarnessIssue{Code: issueHarnessLimit, Status: report.OutcomePartial})
 		}
 
 		return
@@ -327,7 +405,7 @@ func (b *builder) node(pid, kind string, e *entry, host, activation string, s *r
 	}
 
 	if len(b.r.Components) >= b.r.Limits.Components {
-		b.issue("component_limit", pid, file, report.OutcomePartial)
+		b.issue(issueComponentLimit, pid, file, report.OutcomePartial)
 		return ""
 	}
 
@@ -359,7 +437,7 @@ func (b *builder) edge(from, to, relation, basis, activation string, s *report.S
 	}
 
 	if len(b.r.Edges) >= b.r.Limits.Edges {
-		b.issue("edge_limit", "", "", report.OutcomePartial)
+		b.issue(issueEdgeLimit, "", "", report.OutcomePartial)
 		return
 	}
 
@@ -377,13 +455,13 @@ func (b *builder) edge(from, to, relation, basis, activation string, s *report.S
 
 func (b *builder) plugin(c candidate) *plugin {
 	id := identity("plugin-v1", c.ns.id, c.root, c.host)
-	activation := "unknown"
+	activation := activationUnknown
 
 	if b.r.RequestedHost != report.HostAuto && c.host != "unknown" {
 		if b.r.RequestedHost == c.host {
-			activation = "conditional"
+			activation = activationConditional
 		} else {
-			activation = "inactive_for_profile"
+			activation = activationInactiveForProfile
 		}
 	}
 
@@ -452,7 +530,7 @@ func (b *builder) finish() {
 // A scan of a bundle is not an instruction to install an invented outer plugin.
 // Manifestless default-layout candidates remain supported inside each namespace.
 func (b *builder) containerCollection(ns *namespace) bool {
-	for _, name := range []string{artifact.SkillManifest, "hooks/hooks.json", ".mcp.json", ".lsp.json"} {
+	for _, name := range []string{artifact.SkillManifest, defaultHooksPath, artifact.MCPConfig, ".lsp.json"} {
 		if ns.entries[name] != nil {
 			return false
 		}
@@ -485,7 +563,7 @@ func (s *candidateSet) add(ns *namespace, root, host, manifest string) {
 
 	s.seen[key] = true
 	if len(s.values) >= s.b.r.Limits.Plugins {
-		s.b.issue("plugin_limit", "", "", report.OutcomePartial)
+		s.b.issue(issuePluginLimit, "", "", report.OutcomePartial)
 		return
 	}
 
@@ -520,7 +598,7 @@ func (p *plugin) issue(code, file, status string) {
 	p.b.issue(code, p.id, file, status)
 
 	if status == "invalid" {
-		p.b.r.Plugins[p.index].FormatStatus = "invalid"
+		p.b.r.Plugins[p.index].FormatStatus = formatInvalid
 	}
 }
 func (p *plugin) entry(name string) *entry { return p.ns.entries[path.Join(p.root, name)] }
@@ -530,7 +608,7 @@ func (p *plugin) object(e *entry) *jsonconfig.Node {
 	}
 
 	if e.Doc == nil {
-		p.issue("plugin_input_unavailable", e.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginInputUnavailable, e.Meta.Path, report.OutcomePartial)
 		return nil
 	}
 
@@ -540,7 +618,7 @@ func (p *plugin) object(e *entry) *jsonconfig.Node {
 		}
 	}
 
-	p.issue("plugin_json_unavailable", e.Meta.Path, report.OutcomePartial)
+	p.issue(issuePluginJSONUnavailable, e.Meta.Path, report.OutcomePartial)
 
 	return nil
 }
@@ -548,7 +626,7 @@ func (p *plugin) object(e *entry) *jsonconfig.Node {
 func (p *plugin) jsonObject(e *entry, u document.Unit) *jsonconfig.Node {
 	if t, ok := u.Tree.(parse.JSONTree); ok && t.Root != nil {
 		if t.Root.Kind != jsonconfig.KindObject {
-			p.issue("plugin_object_expected", e.Meta.Path, "invalid")
+			p.issue(issuePluginObjectExpected, e.Meta.Path, formatInvalid)
 			return nil
 		}
 
@@ -556,11 +634,11 @@ func (p *plugin) jsonObject(e *entry, u document.Unit) *jsonconfig.Node {
 	}
 
 	status := report.OutcomePartial
-	code := "plugin_json_unavailable"
+	code := issuePluginJSONUnavailable
 
 	if u.Status == report.OutcomeFailed || u.Status == report.UnitParseError {
-		status = "invalid"
-		code = "plugin_json_invalid"
+		status = formatInvalid
+		code = issuePluginJSONInvalid
 	}
 
 	p.issue(code, e.Meta.Path, status)
@@ -591,7 +669,7 @@ func namespaces(inventory []report.File, docs []document.File, extraction report
 			putNamespace(spaces, byPath, artifact.ArchiveNamespace(o.ParentPath), o.MemberName, report.File{
 				Path:   o.ParentPath + "#unread-member/" + o.MemberName,
 				Size:   o.DeclaredSize,
-				Status: "skipped",
+				Status: report.CaptureSkipped,
 				Reason: o.Reason,
 			})
 		}
@@ -685,5 +763,5 @@ func (n *namespace) selectNames(name string) []string {
 }
 
 func archiveNamespaceMember(role, extractor string) bool {
-	return role == "archive_member" && slices.Contains([]string{"zip32", "tar"}, extractor)
+	return role == report.DerivedRoleArchiveMember && slices.Contains([]string{report.ExtractorZIP32, report.ExtractorTar}, extractor)
 }

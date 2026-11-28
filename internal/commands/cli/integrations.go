@@ -12,6 +12,8 @@ import (
 	"github.com/skarm/scout/internal/distribution/integrations"
 )
 
+const flagBundle = "bundle"
+
 func integrationCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || len(args) == 1 && args[0] == "list" {
 		return integrationList(stdout, stderr)
@@ -27,9 +29,9 @@ func integrationCommand(ctx context.Context, args []string, stdout, stderr io.Wr
 func integrationExport(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	f := flag.NewFlagSet("integrations export", flag.ContinueOnError)
 	f.SetOutput(stderr)
-	name := f.String("bundle", "", "agent-skill, claude-code, codex, pi, opencode, review-materials")
+	name := f.String(flagBundle, "", "agent-skill, claude-code, codex, pi, opencode, review-materials")
 
-	dest := f.String("output", "", "NEW ZIP path; never overwrites or installs")
+	dest := f.String(flagOutput, "", "NEW ZIP path; never overwrites or installs")
 	if e := parseFlags(f, args); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
 			return 0

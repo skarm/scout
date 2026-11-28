@@ -133,7 +133,7 @@ func validate(ctx context.Context, scanner *scout.Scanner, input io.Reader, outp
 }
 
 func (o Options) validate() error {
-	if o.Workers < 1 || o.Workers > maxReplayWorkers || o.Timeout < time.Second || o.Timeout > time.Minute {
+	if o.Workers < 1 || o.Workers > maxReplayWorkers || o.Timeout < time.Second || o.Timeout > replaywire.MaxBudgetSeconds*time.Second {
 		return errors.New("replay workers must be 1..8 and timeout 1s..1m")
 	}
 
@@ -154,7 +154,9 @@ func validateReplayPlan(plan report.InspectionPlan) error {
 
 func newStream(input io.Reader) *stream {
 	reader := bufio.NewScanner(io.LimitReader(input, maxInputBytes+1))
-	reader.Buffer(make([]byte, 64<<10), maxLineBytes+2)
+
+	const initialLineBufferBytes = 64 << 10
+	reader.Buffer(make([]byte, initialLineBufferBytes), maxLineBytes+2)
 
 	var consumed int64
 

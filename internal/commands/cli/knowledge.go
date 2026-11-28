@@ -10,11 +10,13 @@ import (
 	"github.com/skarm/scout/knowledge"
 )
 
+const flagMode = "mode"
+
 func knowledgeCommand(args []string, stdout, stderr io.Writer) int {
 	f := flag.NewFlagSet("knowledge", flag.ContinueOnError)
 	f.SetOutput(stderr)
 
-	mode := f.String("mode", "", "print the exact trusted runtime prompt for a mode; default prints pack/catalog JSON")
+	mode := f.String(flagMode, "", "print the exact trusted runtime prompt for a mode; default prints pack/catalog JSON")
 	if err := parseFlags(f, args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0

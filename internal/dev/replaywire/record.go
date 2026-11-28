@@ -3,6 +3,7 @@
 package replaywire
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"slices"
@@ -12,7 +13,8 @@ import (
 )
 
 const (
-	maxReplayBudgetSeconds = 60
+	// MaxBudgetSeconds caps the replay budget recorded for each input.
+	MaxBudgetSeconds = 60
 )
 
 //nolint:gochecknoglobals // Read-only accepted replay states shared by wire validators.
@@ -45,7 +47,7 @@ type Summary struct {
 // ValidDigest is the lower-case SHA-256 identity grammar used by captured
 // records and their saved run bindings.
 func ValidDigest(value string) bool {
-	if len(value) != 64 || value != strings.ToLower(value) {
+	if len(value) != 2*sha256.Size || value != strings.ToLower(value) {
 		return false
 	}
 
@@ -72,7 +74,7 @@ func (r Record) Validate(version string) error {
 		return err
 	}
 
-	if r.Error == "" && (!strings.HasPrefix(r.RunDigest, "sha256:") || !ValidDigest(strings.TrimPrefix(r.RunDigest, "sha256:"))) {
+	if r.Error == "" && (!strings.HasPrefix(r.RunDigest, report.SHA256DigestPrefix) || !ValidDigest(strings.TrimPrefix(r.RunDigest, report.SHA256DigestPrefix))) {
 		return errors.New("successful replay row lacks run binding")
 	}
 
@@ -90,7 +92,7 @@ func (r Record) validateIdentity(version string) error {
 		return errors.New("replay engine version differs")
 	}
 
-	if r.BudgetSeconds < 1 || r.BudgetSeconds > maxReplayBudgetSeconds {
+	if r.BudgetSeconds < 1 || r.BudgetSeconds > MaxBudgetSeconds {
 		return errors.New("invalid replay case budget")
 	}
 

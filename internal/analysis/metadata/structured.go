@@ -33,7 +33,7 @@ func collectStructured(d document.File, r *report.MetadataReport) (bool, bool) {
 		f := report.MetadataFile{
 			Path:          d.Artifact().Metadata().Path,
 			Format:        "structured-agent",
-			Status:        "parsed_subset",
+			Status:        report.MetadataParsedSubset,
 			Parser:        u.ParserID,
 			ParserVersion: u.ParserVersion,
 			Fields:        []report.MetadataField{},
@@ -149,7 +149,7 @@ func collectStructuredFields(d document.File, u document.Unit, body *jsonconfig.
 func addStructuredField(d document.File, u document.Unit, name string, n *jsonconfig.Node, f *report.MetadataFile) {
 	at, err := u.View.Original(n.Span)
 	if err != nil {
-		f.Issues = append(f.Issues, "source_mapping_failed")
+		f.Issues = append(f.Issues, issueSourceMappingFailed)
 		return
 	}
 

@@ -21,9 +21,9 @@ func (b *builder) mcpSnapshots() {
 		}
 
 		if a == nil || z == nil {
-			change := "added"
+			change := changeAdded
 			if z == nil {
-				change = "removed"
+				change = changeRemoved
 			}
 
 			b.recordMCP(id, "", "snapshot", change, mcpSource(a), mcpSource(z))
@@ -33,7 +33,7 @@ func (b *builder) mcpSnapshots() {
 
 		if a.MCP.Identity.ValueSHA256 != z.MCP.Identity.ValueSHA256 {
 			b.issue("mcp_source_identity_mismatch")
-			b.recordMCP(id, "", "source", "unverified", &a.MCP.Identity.Source, &z.MCP.Identity.Source)
+			b.recordMCP(id, "", "source", report.UpdateUnverified, &a.MCP.Identity.Source, &z.MCP.Identity.Source)
 
 			continue
 		}
@@ -89,7 +89,7 @@ func (b *builder) mcpSidesAvailable(id string, a, z *report.MetadataFile) bool {
 		}
 
 		if side.f == nil || o == nil || o.file.Status != report.CaptureCaptured ||
-			side.f.Status != "parsed_subset" || len(side.f.Issues) > 0 || side.f.MCP == nil {
+			side.f.Status != report.MetadataParsedSubset || len(side.f.Issues) > 0 || side.f.MCP == nil {
 			valid = false
 		}
 	}
@@ -98,7 +98,7 @@ func (b *builder) mcpSidesAvailable(id string, a, z *report.MetadataFile) bool {
 		b.issue("mcp_snapshot_unverified")
 
 		if mcpSource(a) != nil || mcpSource(z) != nil {
-			b.recordMCP(id, "", "snapshot", "unverified", mcpSource(a), mcpSource(z))
+			b.recordMCP(id, "", "snapshot", report.UpdateUnverified, mcpSource(a), mcpSource(z))
 		}
 	}
 
@@ -133,9 +133,9 @@ func (b *builder) mcpTools(id string, before, after []report.MCPToolMetadata) {
 		z, zok := next[name]
 		switch {
 		case !aok:
-			b.recordMCP(id, name, "tool", "added", nil, &z.Source)
+			b.recordMCP(id, name, "tool", changeAdded, nil, &z.Source)
 		case !zok:
-			b.recordMCP(id, name, "tool", "removed", &a.Source, nil)
+			b.recordMCP(id, name, "tool", changeRemoved, &a.Source, nil)
 		default:
 			b.mcpFields(id, name, a.Fields, z.Fields)
 		}
@@ -162,11 +162,11 @@ func (b *builder) mcpFields(id, tool string, before, after []report.MetadataFiel
 		z, zok := next[name]
 		switch {
 		case !aok:
-			b.recordMCP(id, tool, name, "added", nil, &z.Source)
+			b.recordMCP(id, tool, name, changeAdded, nil, &z.Source)
 		case !zok:
-			b.recordMCP(id, tool, name, "removed", &a.Source, nil)
+			b.recordMCP(id, tool, name, changeRemoved, &a.Source, nil)
 		case a.ValueSHA256 != z.ValueSHA256:
-			b.recordMCP(id, tool, name, "modified", &a.Source, &z.Source)
+			b.recordMCP(id, tool, name, changeModified, &a.Source, &z.Source)
 		}
 	}
 }

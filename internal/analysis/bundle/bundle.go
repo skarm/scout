@@ -19,6 +19,12 @@ import (
 )
 
 const (
+	categoryNetworkScope          = "network-scope"
+	categoryCrossFileFlow         = "cross-file-flow"
+	categoryCapabilityCombination = "capability-combination"
+)
+
+const (
 	maxBundleOperations = 100000
 	maxBundleBindings   = 1024
 )
@@ -76,17 +82,17 @@ func (a bundleCheck) Rule() report.Rule {
 
 	switch a.id {
 	case ruleNET001:
-		title, category = "Network destination is absent from visible skill declarations", "network-scope"
+		title, category = "Network destination is absent from visible skill declarations", categoryNetworkScope
 	case ruleSC004:
-		title, category = "Installation declares an automatic code entry point", "supply-chain"
+		title, category = "Installation declares an automatic code entry point", report.CategorySupplyChain
 	case ruleCrossFile:
-		title, category = "Sensitive or downloaded data reaches a sink across local files", "cross-file-flow"
+		title, category = "Sensitive or downloaded data reaches a sink across local files", categoryCrossFileFlow
 	case ruleTC001:
-		title, category = "Captured tools share a colliding identifier", "tool-poisoning"
+		title, category = "Captured tools share a colliding identifier", report.CategoryToolPoisoning
 	case ruleTC002:
-		title, category = "Skill combines sensitive-data access and outbound network capabilities", "capability-combination"
+		title, category = "Skill combines sensitive-data access and outbound network capabilities", categoryCapabilityCombination
 	case ruleDNS001:
-		title, category = "Sensitive data reaches a DNS query name", "credential-egress"
+		title, category = "Sensitive data reaches a DNS query name", report.CategoryCredentialEgress
 	}
 
 	severity := report.Medium
@@ -448,7 +454,7 @@ func (b *bundleAnalysis) endpoint(file, value string, ref report.SourceRef) {
 }
 
 func (b *bundleAnalysis) secret(file string, ref report.SourceRef) {
-	b.surfaceFact("sensitive_read", "", file, ref)
+	b.surfaceFact(report.CapabilitySensitiveRead, "", file, ref)
 
 	if s := b.scope(file); s != nil {
 		b.secrets[s.file] = append(b.secrets[s.file], ref)

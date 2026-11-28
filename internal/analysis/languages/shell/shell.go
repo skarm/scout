@@ -171,16 +171,16 @@ func (a shellCheck) Rule() report.Rule {
 	}
 	switch a.kind {
 	case ruleSH001:
-		r.Title, r.Category, r.Severity = "Downloaded bytes reach an execution input or file", "remote-execution", report.High
+		r.Title, r.Category, r.Severity = "Downloaded bytes reach an execution input or file", report.CategoryRemoteExecution, report.High
 		r.Version = "6"
 		r.Limitation += " Selected constant file paths retain conservative may-flow provenance through downloads, redirections and script execution; filesystem state, executable resolution and runtime success are unverified."
 	case ruleSH002:
-		r.Title, r.Category, r.Severity = "Sensitive data reaches a supported curl request argument", "credential-egress", report.High
+		r.Title, r.Category, r.Severity = "Sensitive data reaches a supported curl request argument", report.CategoryCredentialEgress, report.High
 	case ruleSH003:
-		r.Title, r.Category = "Shell evaluates text or sources a file", "dynamic-execution"
+		r.Title, r.Category = "Shell evaluates text or sources a file", report.CategoryDynamicExecution
 		r.Version = "7"
 	case ruleSH004:
-		r.Title, r.Category = "Shell command reads a sensitive credential path", "credential-access"
+		r.Title, r.Category = "Shell command reads a sensitive credential path", report.CategoryCredentialAccess
 	}
 
 	r.Description = r.Title

@@ -14,15 +14,65 @@ import (
 )
 
 const (
+	fieldAgents          = "agents"
+	fieldApps            = "apps"
+	fieldArgs            = "args"
+	fieldCommand         = "command"
+	fieldCommands        = "commands"
+	fieldDependencies    = "dependencies"
+	fieldHooks           = "hooks"
+	fieldLSPServers      = "lspServers"
+	fieldMCPServers      = "mcpServers"
+	fieldMCPServersSnake = "mcp_servers"
+	fieldMatcher         = "matcher"
+	fieldName            = "name"
+	fieldOutputStyles    = "outputStyles"
+	fieldPrompt          = "prompt"
+	fieldSkills          = "skills"
+	fieldType            = "type"
+	fieldURL             = "url"
+	fieldVersion         = "version"
+	fieldWorkflows       = "workflows"
+)
+
+const (
+	basisConfiguration    = "configuration"
+	basisHookPayload      = "hook_payload"
+	basisInlineShell      = "inline_shell"
+	basisManifest         = "manifest"
+	basisPackageInventory = "package_inventory"
+	basisSettings         = "settings"
+	basisStaticReference  = "static_reference"
+)
+
+const (
+	relationDeclares  = "declares"
+	relationIncludes  = "includes"
+	relationInvokes   = "invokes"
+	relationRegisters = "registers"
+)
+
+const (
+	referenceKindCommand        = "command"
+	referenceKindComponentPath  = "component_path"
+	referenceKindDependency     = "dependency"
+	referenceKindHandler        = "handler"
+	referenceKindHookBehavior   = "hook_behavior"
+	referenceKindRemoteEndpoint = "remote_endpoint"
+	referenceKindRuntime        = "runtime"
+)
+
+const (
 	maxManifestNameBytes = 128
+	defaultHooksPath     = "hooks/hooks.json"
 	componentLSPConfig   = "lsp_config"
 )
 
 //nolint:gochecknoglobals // Read-only manifest and launcher grammar shared by harness captures.
 var manifestFieldKinds = map[string]string{
-	"name":           "string",
+	fieldName:        "string",
 	"displayName":    "string",
-	"version":        "string",
+	fieldVersion:     "string",
 	"description":    "string",
 	"homepage":       "string",
 	"repository":     "string",
@@ -39,7 +89,7 @@ func (p *plugin) discover() {
 	}
 
 	if p.host == "unknown" {
-		p.issue("plugin_layout_unverified", p.manifest.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginLayoutUnverified, p.manifest.Meta.Path, report.OutcomePartial)
 		return
 	}
 
@@ -55,31 +105,31 @@ func (p *plugin) discover() {
 			p.validateManifest(root)
 		}
 	} else if p.host == report.HostCodex {
-		p.issue("plugin_manifest_missing", "", "invalid")
+		p.issue(issuePluginManifestMissing, "", formatInvalid)
 	}
 	// Defaults remain candidates even after malformed manifests. No inference
 	// that an invalid declaration makes the rest of a package harmless.
-	p.issue("plugin_loader_semantics_limited", p.manifestPath(), report.OutcomePartial)
-	p.directory("skills", "skills", root, report.ComponentSkill, false)
+	p.issue(issuePluginLoaderSemanticsLimited, p.manifestPath(), report.OutcomePartial)
+	p.directory(fieldSkills, "skills", root, report.ComponentSkill, false)
 
 	if p.host == report.HostClaudeCode {
-		p.directory("commands", "commands", root, "command", true)
-		p.directory("agents", "agents", root, "agent", true)
-		p.directory("outputStyles", "output-styles", root, "instruction", true)
-		p.directory("workflows", "workflows", root, "workflow", true)
+		p.directory(fieldCommands, "commands", root, componentCommand, true)
+		p.directory(fieldAgents, "agents", root, componentAgent, true)
+		p.directory(fieldOutputStyles, "output-styles", root, componentInstruction, true)
+		p.directory(fieldWorkflows, "workflows", root, componentWorkflow, true)
 	}
 
 	p.rootSkill(root)
 
-	p.configs("hooks", "hooks/hooks.json", report.ComponentHookConfig, root)
-	p.configs("mcpServers", ".mcp.json", report.ComponentMCPConfig, root)
+	p.configs(fieldHooks, defaultHooksPath, report.ComponentHookConfig, root)
+	p.configs(fieldMCPServers, artifact.MCPConfig, report.ComponentMCPConfig, root)
 
 	if p.host == report.HostClaudeCode {
-		p.configs("lspServers", ".lsp.json", componentLSPConfig, root)
+		p.configs(fieldLSPServers, ".lsp.json", componentLSPConfig, root)
 	}
 
 	if p.host == report.HostCodex {
-		p.configs("apps", ".app.json", "app_config", root)
+		p.configs(fieldApps, ".app.json", componentAppConfig, root)
 	}
 
 	p.discoverHostConfigs()
@@ -89,11 +139,11 @@ func (p *plugin) discover() {
 func (p *plugin) rootSkill(root *jsonconfig.Node) {
 	if e := p.entry(artifact.SkillManifest); e != nil {
 		act := p.activation
-		if root.Get("skills") != nil || p.HasDirectory("skills") {
-			act = "inactive_for_profile"
+		if root.Get(fieldSkills) != nil || p.HasDirectory("skills") {
+			act = activationInactiveForProfile
 		}
 
-		p.component(report.ComponentSkill, e, act, "host_default", whole(e), "root-skill")
+		p.component(report.ComponentSkill, e, act, selectionHostDefault, whole(e), "root-skill")
 	}
 }
 
@@ -109,34 +159,34 @@ func (p *plugin) discoverHostConfig(name string) {
 		return
 	}
 
-	id := p.component("host_config", e, "unknown", "package_inventory", whole(e), name)
+	id := p.component(componentHostConfig, e, activationUnknown, basisPackageInventory, whole(e), name)
 	if name == artifact.ClaudeSettings || strings.HasSuffix(name, "/settings.json") || strings.HasSuffix(name, "/settings.local.json") {
 		if settings := p.object(e); settings != nil {
 			p.settings(e, settings, id)
 		}
 	}
 
-	p.issue("plugin_host_configuration_unverified", e.Meta.Path, report.OutcomePartial)
+	p.issue(issuePluginHostConfigurationUnverified, e.Meta.Path, report.OutcomePartial)
 }
 
 func (p *plugin) discoverExtensions(root *jsonconfig.Node) {
 	if root != nil {
-		if deps := root.Get("dependencies"); deps != nil {
+		if deps := root.Get(fieldDependencies); deps != nil {
 			for i, item := range deps.Elements {
 				if !p.b.step() {
 					break
 				}
 
 				src := ref(p.manifest, item.Span)
-				id := p.component("dependency", p.manifest, p.activation, "manifest", src, fmt.Sprintf("dependency:%d", i))
-				p.reference(id, "dependency", "unresolved", "external_dependency_not_materialized", "", src)
+				id := p.component(componentDependency, p.manifest, p.activation, basisManifest, src, fmt.Sprintf("dependency:%d", i))
+				p.reference(id, referenceKindDependency, report.ReferenceUnresolved, reasonExternalDependencyNotMaterialized, "", src)
 			}
 		}
 
 		for _, key := range []string{"experimental", "monitors", "themes", "channels", "extensions", "userConfig"} {
 			if n := root.Get(key); n != nil {
-				p.component("unsupported_extension", p.manifest, "unknown", "manifest", ref(p.manifest, n.Span), key)
-				p.issue("plugin_extension_unverified", p.manifest.Meta.Path, report.OutcomePartial)
+				p.component(componentUnsupportedExtension, p.manifest, activationUnknown, basisManifest, ref(p.manifest, n.Span), key)
+				p.issue(issuePluginExtensionUnverified, p.manifest.Meta.Path, report.OutcomePartial)
 			}
 		}
 	}
@@ -151,13 +201,13 @@ func (p *plugin) manifestPath() string {
 }
 
 func (p *plugin) validateManifest(n *jsonconfig.Node) {
-	name, ok := n.Get("name").Text()
+	name, ok := n.Get(fieldName).Text()
 	if !ok || !validName(name) {
-		p.issue("plugin_name_invalid", p.manifest.Meta.Path, "invalid")
+		p.issue(issuePluginNameInvalid, p.manifest.Meta.Path, formatInvalid)
 	}
 	// Metadata values are never used as authority, IDs or output messages.
 	known := map[string]bool{}
-	for _, k := range []string{"name", "displayName", "version", "description", "author", "homepage", "repository", "license", "keywords", "metadata", "skills", "commands", "agents", "hooks", "mcpServers", "lspServers", "apps", "outputStyles", "workflows", "dependencies", "defaultEnabled", "experimental", "monitors", "themes", "channels", "extensions", "userConfig", "interface"} {
+	for _, k := range []string{fieldName, "displayName", fieldVersion, "description", "author", "homepage", "repository", "license", "keywords", "metadata", fieldSkills, fieldCommands, fieldAgents, fieldHooks, fieldMCPServers, fieldLSPServers, fieldApps, fieldOutputStyles, fieldWorkflows, fieldDependencies, "defaultEnabled", "experimental", "monitors", "themes", "channels", "extensions", "userConfig", "interface"} {
 		known[k] = true
 	}
 
@@ -172,21 +222,21 @@ func (p *plugin) validateManifest(n *jsonconfig.Node) {
 
 func (p *plugin) validateManifestMember(m jsonconfig.Member, known bool) {
 	if !known {
-		p.issue("plugin_unknown_field", p.manifest.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginUnknownField, p.manifest.Meta.Path, report.OutcomePartial)
 	}
 
 	if expected, typed := manifestFieldKinds[m.Key]; typed && m.Value.Kind != expected {
-		p.issue("plugin_metadata_type_invalid", p.manifest.Meta.Path, "invalid")
+		p.issue(issuePluginMetadataTypeInvalid, p.manifest.Meta.Path, formatInvalid)
 	}
 
 	switch m.Key {
 	case "keywords":
 		if _, valid := stringValues(m.Value); !valid {
-			p.issue("plugin_metadata_type_invalid", p.manifest.Meta.Path, "invalid")
+			p.issue(issuePluginMetadataTypeInvalid, p.manifest.Meta.Path, formatInvalid)
 		}
-	case "dependencies":
+	case fieldDependencies:
 		if m.Value.Kind != jsonconfig.KindArray {
-			p.issue("plugin_dependency_shape_unverified", p.manifest.Meta.Path, report.OutcomePartial)
+			p.issue(issuePluginDependencyShapeUnverified, p.manifest.Meta.Path, report.OutcomePartial)
 		}
 	}
 }
@@ -215,12 +265,12 @@ func stringValues(n *jsonconfig.Node) ([]string, bool) {
 }
 
 func (p *plugin) component(kind string, e *entry, activation, basis string, s *report.SourceRef, salt string) string {
-	if p.activation == "inactive_for_profile" {
+	if p.activation == activationInactiveForProfile {
 		activation = p.activation
 	}
 
 	id := p.b.node(p.id, kind, e, p.host, activation, s, salt)
-	p.b.edge(p.rootNode, id, "includes", basis, activation, s)
+	p.b.edge(p.rootNode, id, relationIncludes, basis, activation, s)
 
 	return id
 }
@@ -234,14 +284,14 @@ func (p *plugin) directory(field, defaultName string, root *jsonconfig.Node, kin
 
 	activation := p.activation
 	if p.host == report.HostCodex {
-		activation = "unknown"
+		activation = activationUnknown
 	}
 
 	if replace && custom != nil {
-		activation = "inactive_for_profile"
+		activation = activationInactiveForProfile
 	}
 
-	p.selectFiles(defaultName, kind, activation, "host_default", nil, false)
+	p.selectFiles(defaultName, kind, activation, selectionHostDefault, nil, false)
 
 	if custom == nil {
 		return
@@ -253,25 +303,25 @@ func (p *plugin) directory(field, defaultName string, root *jsonconfig.Node, kin
 		}
 
 		if text, ok := n.Text(); ok {
-			p.selectFiles(text, kind, p.activation, "manifest", ref(p.manifest, n.Span), true)
+			p.selectFiles(text, kind, p.activation, basisManifest, ref(p.manifest, n.Span), true)
 		} else {
-			p.issue("plugin_component_path_type_invalid", p.manifestPath(), "invalid")
+			p.issue(issuePluginComponentPathTypeInvalid, p.manifestPath(), formatInvalid)
 		}
 	}
 
 	if !slices.Contains([]string{"string", "array"}, custom.Kind) {
-		p.issue("plugin_component_path_type_invalid", p.manifestPath(), "invalid")
+		p.issue(issuePluginComponentPathTypeInvalid, p.manifestPath(), formatInvalid)
 	}
 }
 
 func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.SourceRef, required bool) {
-	if p.activation == "inactive_for_profile" {
+	if p.activation == activationInactiveForProfile {
 		activation = p.activation
 	}
 
 	rel, reason := artifactpath.Reference(raw, required)
 	if reason != "" {
-		p.reference(p.rootNode, "component_path", "unresolved", reason, "", s)
+		p.reference(p.rootNode, referenceKindComponentPath, report.ReferenceUnresolved, reason, "", s)
 		return
 	}
 
@@ -295,7 +345,7 @@ func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.Sour
 	}
 
 	if required && !found {
-		p.reference(p.rootNode, "component_path", "unresolved", "missing_or_unsupported_component", "", s)
+		p.reference(p.rootNode, referenceKindComponentPath, report.ReferenceUnresolved, reasonMissingOrUnsupportedComponent, "", s)
 	}
 }
 
@@ -315,24 +365,24 @@ func (p *plugin) selectedFile(key, name, kind, activation, basis string, s *repo
 	effective := activation
 
 	if nestedComponent(kind, key, name) {
-		if effective != "inactive_for_profile" {
+		if effective != activationInactiveForProfile {
 			effective = "unknown"
 		}
 
-		p.issue("nested_component_discovery_unverified", e.Meta.Path, report.OutcomePartial)
+		p.issue(issueNestedComponentDiscoveryUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 
 	id := p.component(kind, e, effective, basis, whole(e), "file")
 	if s != nil {
-		p.b.edge(p.rootNode, id, "declares", basis, effective, s)
+		p.b.edge(p.rootNode, id, relationDeclares, basis, effective, s)
 	}
 
 	if e.Doc == nil {
-		p.issue("plugin_input_unavailable", e.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginInputUnavailable, e.Meta.Path, report.OutcomePartial)
 	}
 
 	if kind == report.ComponentSkill || kind == "agent" {
-		p.issue("component_frontmatter_unverified", e.Meta.Path, report.OutcomePartial)
+		p.issue(issueComponentFrontmatterUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 }
 
@@ -357,7 +407,7 @@ func (p *plugin) configs(field, defaultName, kind string, root *jsonconfig.Node)
 	if def != nil {
 		activation := p.defaultConfigActivation(def, n, kind)
 
-		p.configFile(def, kind, activation, "host_default", whole(def))
+		p.configFile(def, kind, activation, selectionHostDefault, whole(def))
 	}
 
 	if n == nil {
@@ -373,10 +423,10 @@ func (p *plugin) configs(field, defaultName, kind string, root *jsonconfig.Node)
 		if raw, ok := item.Text(); ok {
 			p.declaredConfigFile(raw, kind, s)
 		} else if item.Kind == jsonconfig.KindObject {
-			id := p.component(kind, p.manifest, p.activation, "manifest", s, fmt.Sprintf("%s:inline:%d", field, i))
+			id := p.component(kind, p.manifest, p.activation, basisManifest, s, fmt.Sprintf("%s:inline:%d", field, i))
 			p.inspectConfig(p.manifest, item, kind, id, p.activation)
 		} else {
-			p.issue("plugin_config_shape_invalid", p.manifestPath(), "invalid")
+			p.issue(issuePluginConfigShapeInvalid, p.manifestPath(), formatInvalid)
 		}
 	}
 }
@@ -384,13 +434,13 @@ func (p *plugin) configs(field, defaultName, kind string, root *jsonconfig.Node)
 func (p *plugin) declaredConfigFile(raw, kind string, s *report.SourceRef) {
 	rel, reason := artifactpath.Reference(raw, true)
 	if reason != "" {
-		p.reference(p.rootNode, "component_path", "unresolved", reason, "", s)
+		p.reference(p.rootNode, referenceKindComponentPath, report.ReferenceUnresolved, reason, "", s)
 		return
 	}
 
 	e := p.entry(rel)
 	if e == nil {
-		p.reference(p.rootNode, "component_path", "unresolved", "missing_component", "", s)
+		p.reference(p.rootNode, referenceKindComponentPath, report.ReferenceUnresolved, reasonMissingComponent, "", s)
 		return
 	}
 
@@ -398,29 +448,29 @@ func (p *plugin) declaredConfigFile(raw, kind string, s *report.SourceRef) {
 		*e.Doc = e.Doc.WithDeclaredHookShell(p.b.ctx)
 	}
 
-	id := p.configFile(e, kind, p.activation, "manifest", s)
+	id := p.configFile(e, kind, p.activation, basisManifest, s)
 	if e.Doc == nil {
-		p.reference(p.rootNode, "component_path", "unresolved", "component_not_captured", "", s)
+		p.reference(p.rootNode, referenceKindComponentPath, report.ReferenceUnresolved, report.ReferenceReasonComponentNotCaptured, "", s)
 	} else {
-		p.reference(p.rootNode, "component_path", "resolved", "captured_file", id, s)
+		p.reference(p.rootNode, referenceKindComponentPath, report.ReferenceResolved, reasonCapturedFile, id, s)
 	}
 }
 
 func (p *plugin) defaultConfigActivation(def *entry, n *jsonconfig.Node, kind string) string {
 	activation := p.activation
 	if p.host == report.HostCodex && n == nil && kind != report.ComponentHookConfig {
-		activation = "unknown"
+		activation = activationUnknown
 
-		p.issue("plugin_default_config_activation_unverified", def.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginDefaultConfigActivationUnverified, def.Meta.Path, report.OutcomePartial)
 	}
 
 	if n != nil {
 		if p.host == report.HostCodex {
-			activation = "inactive_for_profile"
+			activation = activationInactiveForProfile
 		} else {
-			activation = "unknown"
+			activation = activationUnknown
 
-			p.issue("plugin_config_merge_unverified", def.Meta.Path, report.OutcomePartial)
+			p.issue(issuePluginConfigMergeUnverified, def.Meta.Path, report.OutcomePartial)
 		}
 	}
 
@@ -428,13 +478,13 @@ func (p *plugin) defaultConfigActivation(def *entry, n *jsonconfig.Node, kind st
 }
 
 func (p *plugin) configFile(e *entry, kind, activation, basis string, s *report.SourceRef) string {
-	if p.activation == "inactive_for_profile" {
+	if p.activation == activationInactiveForProfile {
 		activation = p.activation
 	}
 
 	id := p.component(kind, e, activation, basis, whole(e), kind)
 	if s != nil {
-		p.b.edge(p.rootNode, id, "declares", basis, activation, s)
+		p.b.edge(p.rootNode, id, relationDeclares, basis, activation, s)
 	}
 
 	key := kind + "\x00" + e.Meta.Path + "\x00" + activation
@@ -459,7 +509,7 @@ func (p *plugin) inspectConfig(e *entry, n *jsonconfig.Node, kind, parent, activ
 	case report.ComponentMCPConfig, componentLSPConfig:
 		p.servers(e, n, kind, parent, activation)
 	default:
-		p.issue("plugin_app_mapping_unverified", e.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginAppMappingUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 }
 
@@ -468,13 +518,13 @@ func (p *plugin) reference(component, kind, status, reason, target string, s *re
 		return
 	}
 
-	if status == "resolved" && target == "" {
-		status = "unresolved"
+	if status == report.ReferenceResolved && target == "" {
+		status = report.ReferenceUnresolved
 		reason = "component_graph_budget_exceeded"
 	}
 
 	if len(p.b.r.References) >= p.b.r.Limits.References {
-		p.issue("plugin_reference_limit", "", report.OutcomePartial)
+		p.issue(issuePluginReferenceLimit, "", report.OutcomePartial)
 		return
 	}
 
@@ -502,8 +552,8 @@ func (p *plugin) reference(component, kind, status, reason, target string, s *re
 		TargetID:    target,
 		Source:      s,
 	})
-	if status != "resolved" {
-		p.issue("plugin_reference_unresolved", file, report.OutcomePartial)
+	if status != report.ReferenceResolved {
+		p.issue(issuePluginReferenceUnresolved, file, report.OutcomePartial)
 	}
 }
 

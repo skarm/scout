@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/skarm/scout/internal/textmatch"
 )
@@ -86,7 +87,7 @@ func requiredLiterals(tree *syntax.Regexp) []string {
 		longest, start := "", 0
 
 		for i := 0; i <= len(tree.Rune); i++ {
-			if i < len(tree.Rune) && tree.Rune[i] < 128 {
+			if i < len(tree.Rune) && tree.Rune[i] < utf8.RuneSelf {
 				continue
 			}
 
@@ -118,6 +119,8 @@ func requiredLiterals(tree *syntax.Regexp) []string {
 
 		return best
 	case syntax.OpAlternate:
+		const maxLiteralChoices = 64
+
 		var choices []string
 
 		for _, child := range tree.Sub {
@@ -126,7 +129,7 @@ func requiredLiterals(tree *syntax.Regexp) []string {
 			}
 
 			literals := requiredLiterals(child)
-			if len(literals) == 0 || len(choices)+len(literals) > 64 {
+			if len(literals) == 0 || len(choices)+len(literals) > maxLiteralChoices {
 				return nil
 			}
 
@@ -151,7 +154,7 @@ func canMatchASCII(tree *syntax.Regexp) bool {
 		return false
 	case syntax.OpLiteral:
 		for _, r := range tree.Rune {
-			if r < 128 {
+			if r < utf8.RuneSelf {
 				continue
 			}
 
@@ -161,7 +164,7 @@ func canMatchASCII(tree *syntax.Regexp) bool {
 		}
 	case syntax.OpCharClass:
 		for i := 0; i < len(tree.Rune); i += 2 {
-			if tree.Rune[i] < 128 {
+			if tree.Rune[i] < utf8.RuneSelf {
 				return true
 			}
 		}
@@ -189,7 +192,7 @@ func canMatchASCII(tree *syntax.Regexp) bool {
 
 func hasASCIIFold(r rune) bool {
 	for folded := unicode.SimpleFold(r); folded != r; folded = unicode.SimpleFold(folded) {
-		if folded < 128 {
+		if folded < utf8.RuneSelf {
 			return true
 		}
 	}

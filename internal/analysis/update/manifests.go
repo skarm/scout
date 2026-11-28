@@ -28,7 +28,7 @@ func (b *builder) manifests() {
 		}
 
 		previous, ok := old[key(o.key, next.Format)]
-		if !ok || previous.Status != "parsed_subset" || next.Status != "parsed_subset" {
+		if !ok || previous.Status != report.MetadataParsedSubset || next.Status != report.MetadataParsedSubset {
 			continue
 		}
 

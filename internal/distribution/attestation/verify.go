@@ -49,6 +49,8 @@ const (
 	minRSAExponent            = 65537
 )
 
+const attestationSchema = "scout.attestation/v1"
+
 type (
 	Artifact struct{ Name, SHA256 string }
 	result   struct {
@@ -69,12 +71,12 @@ type signedEnvelope struct {
 
 func Verify(ctx context.Context, trustedKey, envelope []byte, artifact Artifact) (result, error) {
 	out := result{
-		Schema:            "scout.attestation/v1",
+		Schema:            attestationSchema,
 		Code:              "invalid_input",
 		ArtifactSHA256:    artifact.SHA256,
 		SubjectNameSHA256: digest([]byte(artifact.Name)),
 	}
-	if ctx == nil || len(trustedKey) > MaxTrustedKeyBytes || artifact.Name == "" || len(artifact.Name) > maxArtifactNameBytes || len(artifact.SHA256) != 64 {
+	if ctx == nil || len(trustedKey) > MaxTrustedKeyBytes || artifact.Name == "" || len(artifact.Name) > maxArtifactNameBytes || len(artifact.SHA256) != 2*sha256.Size {
 		return out, errors.New("invalid attestation input")
 	}
 

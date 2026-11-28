@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	maxLifecycleRounds = 100000
+	defaultLifecycleRounds = 500
+	maxLifecycleRounds     = 100000
 )
 
 type options struct {
@@ -98,7 +99,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	flags.StringVar(&opts.output, "output", "", "output executable path")
 	flags.StringVar(&opts.adapter, "adapter", "", "alternate native.c for detector positive controls")
 	flags.StringVar(&opts.compiler, "cc", compiler, "C compiler executable (defaults to CC or clang)")
-	flags.IntVar(&opts.rounds, "rounds", 500, "lifecycle rounds per grammar (1..100000)")
+	flags.IntVar(&opts.rounds, "rounds", defaultLifecycleRounds, fmt.Sprintf("lifecycle rounds per grammar (1..%d)", maxLifecycleRounds))
 
 	if err := flags.Parse(args); err != nil {
 		return opts, err
@@ -113,7 +114,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	}
 
 	if opts.output == "" || opts.compiler == "" || opts.rounds < 1 || opts.rounds > maxLifecycleRounds {
-		return opts, errors.New("--output and --cc are required; --rounds must be 1..100000")
+		return opts, fmt.Errorf("--output and --cc are required; --rounds must be 1..%d", maxLifecycleRounds)
 	}
 
 	output, err := filepath.Abs(opts.output)

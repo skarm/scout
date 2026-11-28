@@ -1,5 +1,8 @@
 package report
 
+// MetadataParsedSubset means the supported fields were parsed.
+const MetadataParsedSubset = "parsed_subset"
+
 // MetadataField records a selected declaration through hashes and source
 // coordinates, without its raw value.
 type MetadataField struct {

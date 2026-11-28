@@ -8,9 +8,32 @@ import (
 
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+	"github.com/skarm/scout/report"
 
 	"github.com/pelletier/go-toml/v2"
 )
+
+const (
+	fieldConfig          = "config"
+	fieldEnabled         = "enabled"
+	fieldMCPServersSnake = "mcp_servers"
+	fieldName            = "name"
+	fieldPath            = "path"
+	fieldPlugins         = "plugins"
+	fieldSchema          = "$schema"
+	fieldSkills          = "skills"
+)
+
+const (
+	codeExternalPluginReference    = "external_plugin_reference"
+	codeInvalidConfig              = "invalid_config"
+	codeInvalidMCPConfig           = "invalid_mcp_config"
+	codeInvalidPluginManifest      = "invalid_plugin_manifest"
+	codeUnsupportedPluginManifest  = "unsupported_plugin_manifest"
+	codeUnsupportedPluginReference = "unsupported_plugin_reference"
+)
+
+const codeInvalidEnablement = "invalid_enablement"
 
 func (t *tree) config(name string, required bool) *jsonconfig.Node {
 	data := t.read(name, required)
@@ -21,7 +44,7 @@ func (t *tree) config(name string, required bool) *jsonconfig.Node {
 	if strings.HasSuffix(name, ".toml") {
 		var value map[string]any
 		if toml.Unmarshal(data, &value) != nil {
-			t.b.issue("invalid_config", t.absolute(name))
+			t.b.issue(codeInvalidConfig, t.absolute(name))
 			return nil
 		}
 
@@ -29,14 +52,14 @@ func (t *tree) config(name string, required bool) *jsonconfig.Node {
 
 		data, err = json.Marshal(value)
 		if err != nil {
-			t.b.issue("invalid_config", t.absolute(name))
+			t.b.issue(codeInvalidConfig, t.absolute(name))
 			return nil
 		}
 	}
 
 	n, err := jsonconfig.Parse(t.b.ctx, string(data))
 	if err != nil || n.Kind != jsonconfig.KindObject {
-		t.b.issue("invalid_config", t.absolute(name))
+		t.b.issue(codeInvalidConfig, t.absolute(name))
 		return nil
 	}
 
@@ -49,7 +72,7 @@ func (t *tree) servers(n *jsonconfig.Node, source, key string) {
 	}
 
 	if n.Kind != jsonconfig.KindObject {
-		t.b.issue("invalid_mcp_config", t.absolute(source))
+		t.b.issue(codeInvalidMCPConfig, t.absolute(source))
 		return
 	}
 
@@ -59,27 +82,27 @@ func (t *tree) servers(n *jsonconfig.Node, source, key string) {
 		}
 
 		if entry.Value.Kind != jsonconfig.KindObject {
-			t.b.issue("invalid_mcp_config", t.absolute(source))
+			t.b.issue(codeInvalidMCPConfig, t.absolute(source))
 			continue
 		}
 
 		state := "unknown"
 
-		if enabled := entry.Value.Get("enabled"); enabled != nil {
+		if enabled := entry.Value.Get(fieldEnabled); enabled != nil {
 			if enabled.Kind == jsonconfig.KindBool {
 				state = declaredState(enabled.Bool)
 			} else {
-				t.b.issue("invalid_enablement", t.absolute(source))
+				t.b.issue(codeInvalidEnablement, t.absolute(source))
 			}
 		}
 
-		t.component("mcp-server", entry.Key, source, source, key+"/"+pointer(entry.Key), state)
+		t.component(kindMCPServer, entry.Key, source, source, key+"/"+pointer(entry.Key), state)
 	}
 }
 
 func (t *tree) mcpFile(name string) {
 	if n := t.config(name, false); n != nil {
-		t.servers(n.Get("mcpServers"), name, "/mcpServers")
+		t.servers(n.Get(mcpServersField), name, mcpServersPointer)
 	}
 }
 
@@ -89,36 +112,36 @@ func (t *tree) codexConfig(name string) {
 		return
 	}
 
-	t.servers(n.Get("mcp_servers"), name, "/mcp_servers")
+	t.servers(n.Get(fieldMCPServersSnake), name, "/"+fieldMCPServersSnake)
 
-	if plugins := n.Get("plugins"); plugins != nil && plugins.Kind != jsonconfig.KindObject {
-		t.b.issue("invalid_enablement", t.absolute(name))
+	if plugins := n.Get(fieldPlugins); plugins != nil && plugins.Kind != jsonconfig.KindObject {
+		t.b.issue(codeInvalidEnablement, t.absolute(name))
 	}
 
-	for _, entry := range n.GetOrEmpty("plugins").Members {
-		enabled := entry.Value.Get("enabled")
+	for _, entry := range n.GetOrEmpty(fieldPlugins).Members {
+		enabled := entry.Value.Get(fieldEnabled)
 		if entry.Value.Kind != jsonconfig.KindObject || enabled != nil && enabled.Kind != jsonconfig.KindBool {
-			t.b.issue("invalid_enablement", t.absolute(name))
+			t.b.issue(codeInvalidEnablement, t.absolute(name))
 		} else if enabled != nil {
 			t.setting("plugin", entry.Key, declaredState(enabled.Bool), name, "/plugins/"+pointer(entry.Key)+"/enabled")
 		}
 	}
 
-	skills := n.Get("skills")
+	skills := n.Get(fieldSkills)
 
-	config := skills.Get("config")
+	config := skills.Get(fieldConfig)
 	if skills != nil && skills.Kind != jsonconfig.KindObject || config != nil && config.Kind != jsonconfig.KindArray {
-		t.b.issue("invalid_enablement", t.absolute(name))
+		t.b.issue(codeInvalidEnablement, t.absolute(name))
 	}
 
-	for i, entry := range skills.GetOrEmpty("config").Elements {
-		enabled := entry.Get("enabled")
+	for i, entry := range skills.GetOrEmpty(fieldConfig).Elements {
+		enabled := entry.Get(fieldEnabled)
 
-		value, ok := entry.Get("path").Text()
+		value, ok := entry.Get(fieldPath).Text()
 		if ok && enabled != nil && enabled.Kind == jsonconfig.KindBool {
 			t.setting("skill", value, declaredState(enabled.Bool), name, "/skills/config/"+strconv.Itoa(i)+"/enabled")
 		} else {
-			t.b.issue("invalid_enablement", t.absolute(name))
+			t.b.issue(codeInvalidEnablement, t.absolute(name))
 		}
 	}
 }
@@ -133,7 +156,7 @@ func (t *tree) plugins(root string) {
 
 func (t *tree) pluginAt(dir string) bool {
 	for _, relative := range []string{"plugin.json", artifact.CodexPluginManifest, artifact.ClaudePluginManifest} {
-		if t.agent == "claude-code" && relative != artifact.ClaudePluginManifest {
+		if t.agent == report.HostClaudeCode && relative != artifact.ClaudePluginManifest {
 			continue
 		}
 
@@ -145,32 +168,32 @@ func (t *tree) pluginAt(dir string) bool {
 		}
 
 		portable := relative == "plugin.json"
-		if portable && !strings.HasPrefix(n.GetOrEmpty("$schema").String, "https://agent-plugins.org/schemas/") {
+		if portable && !strings.HasPrefix(n.GetOrEmpty(fieldSchema).String, "https://agent-plugins.org/schemas/") {
 			continue
 		}
 
-		if portable && n.GetOrEmpty("$schema").String != "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json" {
-			t.b.issue("unsupported_plugin_manifest", t.absolute(file))
+		if portable && n.GetOrEmpty(fieldSchema).String != "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json" {
+			t.b.issue(codeUnsupportedPluginManifest, t.absolute(file))
 			return true
 		}
 
-		name, ok := n.Get("name").Text()
+		name, ok := n.Get(fieldName).Text()
 		if !ok || name == "" {
-			t.b.issue("invalid_plugin_manifest", t.absolute(file))
+			t.b.issue(codeInvalidPluginManifest, t.absolute(file))
 			return true
 		}
 
 		plugin := *t
 		plugin.scope, plugin.plugin = "plugin", name
 		plugin.component("plugin", name, dir, file, "", "unknown")
-		plugin.pluginSkills(dir, n.Get("skills"))
+		plugin.pluginSkills(dir, n.Get(fieldSkills))
 
 		if portable {
 			plugin.mcpFile(path.Join(dir, "mcp.json"))
 		} else {
-			plugin.mcpFile(path.Join(dir, ".mcp.json"))
-			plugin.pluginPaths(n.Get("skills"), dir, file, "/skills", true)
-			plugin.pluginPaths(n.Get("mcpServers"), dir, file, "/mcpServers", false)
+			plugin.mcpFile(path.Join(dir, artifact.MCPConfig))
+			plugin.pluginPaths(n.Get(fieldSkills), dir, file, "/"+fieldSkills, true)
+			plugin.pluginPaths(n.Get(mcpServersField), dir, file, mcpServersPointer, false)
 		}
 
 		return true
@@ -181,7 +204,7 @@ func (t *tree) pluginAt(dir string) bool {
 
 func (t *tree) pluginSkills(dir string, declared *jsonconfig.Node) {
 	root := path.Join(dir, "skills")
-	if t.agent == "claude-code" && declared == nil && !t.directory(root, false) {
+	if t.agent == report.HostClaudeCode && declared == nil && !t.directory(root, false) {
 		t.skill(dir, t.plugin)
 		return
 	}
@@ -190,7 +213,7 @@ func (t *tree) pluginSkills(dir string, declared *jsonconfig.Node) {
 }
 
 func (t *tree) manifestlessPluginAt(dir, root string) bool {
-	if t.agent != "claude-code" || dir == root {
+	if t.agent != report.HostClaudeCode || dir == root {
 		return false
 	}
 
@@ -215,7 +238,7 @@ func (t *tree) manifestlessPluginAt(dir, root string) bool {
 	before := len(t.b.out.Components)
 
 	plugin.pluginSkills(dir, nil)
-	plugin.mcpFile(path.Join(dir, ".mcp.json"))
+	plugin.mcpFile(path.Join(dir, artifact.MCPConfig))
 
 	if len(t.b.out.Components) == before {
 		return false
@@ -244,21 +267,21 @@ func (t *tree) pluginPaths(n *jsonconfig.Node, dir, source, key string, skills b
 		}
 	case jsonconfig.KindObject:
 		if skills {
-			t.b.issue("unsupported_plugin_reference", t.absolute(source))
+			t.b.issue(codeUnsupportedPluginReference, t.absolute(source))
 		} else {
 			t.servers(n, source, key)
 		}
 	case jsonconfig.KindString:
 		t.pluginPath(n.String, dir, source, skills)
 	default:
-		t.b.issue("unsupported_plugin_reference", t.absolute(source))
+		t.b.issue(codeUnsupportedPluginReference, t.absolute(source))
 	}
 }
 
 func (t *tree) pluginPath(value, dir, source string, skills bool) {
 	if value != "." && !strings.HasPrefix(value, "./") || strings.Contains(value, "\\") || strings.ContainsRune(value, 0) ||
 		slicesContainParent(value) {
-		t.b.issue("external_plugin_reference", t.absolute(source))
+		t.b.issue(codeExternalPluginReference, t.absolute(source))
 		return
 	}
 
@@ -269,14 +292,14 @@ func (t *tree) pluginPath(value, dir, source string, skills bool) {
 		}
 	} else if path.Ext(name) == ".json" {
 		if n := t.config(name, true); n != nil {
-			if wrapped := n.Get("mcpServers"); wrapped != nil {
-				t.servers(wrapped, name, "/mcpServers")
+			if wrapped := n.Get(mcpServersField); wrapped != nil {
+				t.servers(wrapped, name, mcpServersPointer)
 			} else {
 				t.servers(n, name, "")
 			}
 		}
 	} else {
-		t.b.issue("unsupported_plugin_reference", t.absolute(source))
+		t.b.issue(codeUnsupportedPluginReference, t.absolute(source))
 	}
 }
 

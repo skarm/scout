@@ -12,6 +12,10 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const snapshotFailureSchema = "scout.environment-snapshot-error/v1"
+
+const exitCaptureFailure = 2
+
 func (r *request) publishCaptureFailure(ctx context.Context, mode string, outputs []destination, err error, stdout, stderr io.Writer) int {
 	_, _ = fmt.Fprintln(stderr, "environment capture failed:", err)
 
@@ -25,7 +29,7 @@ func (r *request) publishCaptureFailure(ctx context.Context, mode string, output
 		Operation string                    `json:"operation"`
 		Problem   *envsnapshot.CaptureError `json:"problem"`
 		Code      int                       `json:"exit_code"`
-	}{"scout.environment-snapshot-error/v1", mode, problem, 2}
+	}{snapshotFailureSchema, mode, problem, exitCaptureFailure}
 
 	machineOutputs := slices.DeleteFunc(slices.Clone(outputs), func(out destination) bool {
 		return out.format != report.JSON && out.format != report.SARIF
@@ -49,5 +53,5 @@ func (r *request) publishCaptureFailure(ctx context.Context, mode string, output
 		_, _ = fmt.Fprintln(stderr, "capture error publication failed:", err)
 	}
 
-	return 2
+	return exitCaptureFailure
 }

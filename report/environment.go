@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// EnvironmentAnalysisSchema identifies the environment analysis report format.
+const EnvironmentAnalysisSchema = "scout.environment-analysis/v1"
+
 const (
 	// MaxEnvironmentObservations limits the number of observations in an environment report.
 	MaxEnvironmentObservations = 4096
@@ -23,6 +26,12 @@ const (
 	EnvironmentSkillDescription        = "skill_description"
 	EnvironmentToolIdentifier          = "tool_identifier"
 	EnvironmentMCPIdentifier           = "mcp_identifier"
+)
+
+const (
+	// DescriptionSimilarityScale is the basis-point value for identical word sets.
+	DescriptionSimilarityScale  = 10_000
+	descriptionOverlapThreshold = DescriptionSimilarityScale / 2
 )
 
 // EnvironmentReport relates only roots explicitly selected as one environment.
@@ -63,7 +72,7 @@ func validateEnvironment(run Run) error {
 		return nil
 	}
 
-	if run.Operation != ScanOperation || e.Schema != "scout.environment-analysis/v1" ||
+	if run.Operation != ScanOperation || e.Schema != EnvironmentAnalysisSchema ||
 		!slices.Contains([]Completeness{Complete, Partial}, e.Completeness) ||
 		e.MaxObservations < 1 || e.MaxObservations > MaxEnvironmentObservations || len(e.Observations) > e.MaxObservations || e.MaxOperations > MaxEnvironmentOperations {
 		return errors.New("invalid environment analysis")
@@ -99,7 +108,7 @@ func validateEnvironment(run Run) error {
 
 func validateEnvironmentObservation(o EnvironmentObservation, files map[environmentFileKey]File) error {
 	if o.Kind == EnvironmentSkillDescriptionOverlap {
-		if o.SimilarityBasisPoints <= 5000 || o.SimilarityBasisPoints > 10000 {
+		if o.SimilarityBasisPoints <= descriptionOverlapThreshold || o.SimilarityBasisPoints > DescriptionSimilarityScale {
 			return errors.New("invalid skill description similarity")
 		}
 	} else if o.SimilarityBasisPoints != 0 {
@@ -155,10 +164,10 @@ func environmentRoles(kind string) (string, string) {
 // require review. It does not establish activation or a data flow between them.
 func EnvironmentCapabilityPair(input, effect string) bool {
 	switch input {
-	case "sensitive_read":
-		return effect == "network"
-	case "untrusted_input":
-		return effect == "command_execution" || effect == "file_write" || effect == "infrastructure_mutation"
+	case CapabilitySensitiveRead:
+		return effect == CapabilityNetwork
+	case CapabilityUntrustedInput:
+		return effect == CapabilityCommandExecution || effect == CapabilityFileWrite || effect == CapabilityInfrastructureMutation
 	default:
 		return false
 	}

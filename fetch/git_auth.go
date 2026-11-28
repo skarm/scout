@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+const (
+	codeInvalidGITAuthOrigin = "invalid_git_auth_origin"
+	codeInvalidGitAuth       = "invalid_git_credentials"
+)
+
 // GitCredentials is an immutable Basic credential for one HTTPS Git origin.
 // The token is sent only by Scout's checked HTTP transport.
 type GitCredentials struct {
@@ -17,11 +22,12 @@ type GitCredentials struct {
 func NewGitCredentials(origin, user, token string) (*GitCredentials, error) {
 	address, err := parseURL(origin, true)
 	if err != nil || address.Scheme != "https" || address.Path != "" && address.Path != "/" {
-		return nil, fail("invalid_git_auth_origin")
+		return nil, fail(codeInvalidGITAuthOrigin)
 	}
 
-	if !gitCredentialText(user, 256) || strings.Contains(user, ":") || !gitCredentialText(token, 4096) {
-		return nil, fail("invalid_git_credentials")
+	const maxUserBytes, maxTokenBytes = 256, 4096
+	if !gitCredentialText(user, maxUserBytes) || strings.Contains(user, ":") || !gitCredentialText(token, maxTokenBytes) {
+		return nil, fail(codeInvalidGitAuth)
 	}
 
 	return &GitCredentials{host: address.Hostname(), port: gitHTTPSPort(address), user: user, token: token}, nil
@@ -53,10 +59,10 @@ func IsGitCloneURL(raw string) bool {
 		return false
 	}
 
-	if strings.EqualFold(address.Hostname(), "github.com") {
+	if strings.EqualFold(address.Hostname(), githubHost) {
 		_, _, err := githubRepository(address)
 		return err == nil
 	}
 
-	return strings.HasSuffix(strings.TrimRight(address.Path, "/"), ".git")
+	return strings.HasSuffix(strings.TrimRight(address.Path, "/"), gitCloneSuffix)
 }

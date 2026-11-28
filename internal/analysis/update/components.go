@@ -200,7 +200,7 @@ func (b *builder) componentChanges() {
 		}
 
 		c.Change = observationChange(len(a), len(z), componentAbsenceKnown(c.ObjectID, b.old, oldChecks, oldReliable), componentAbsenceKnown(c.ObjectID, b.next, newChecks, newReliable))
-		if c.Change == "unverified" {
+		if c.Change == report.UpdateUnverified {
 			b.issue("component_absence_unverified")
 		}
 

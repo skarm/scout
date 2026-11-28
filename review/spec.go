@@ -134,7 +134,7 @@ func (s ProviderSpec) validateBedrock() error {
 
 	u, _ := url.Parse(s.Endpoint) // validated by Validate before this method
 	if u.Path != "/model/"+s.Model+"/invoke" {
-		return transportError("bedrock_model_path_mismatch")
+		return transportError(codeBedrockModelPathMismatch)
 	}
 
 	return nil

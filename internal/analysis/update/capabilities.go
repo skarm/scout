@@ -14,12 +14,12 @@ func (b *builder) capabilities(previous, candidate environment.Surface) {
 	delta := &report.CapabilityDelta{Changes: []report.CapabilityChange{}}
 	b.delta.Capabilities = delta
 
-	status := "introduced"
+	status := report.UpdateIntroduced
 
 	if !previous.Complete || !b.old.complete {
 		b.issue("previous_capabilities_incomplete")
 
-		status = "unverified"
+		status = report.UpdateUnverified
 	}
 
 	if !candidate.Complete || !b.next.complete {

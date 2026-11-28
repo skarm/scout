@@ -41,6 +41,9 @@ type environmentDirectoryChange struct {
 	Change string `json:"change"`
 }
 
+// ComparisonSchema identifies the environment comparison report format.
+const ComparisonSchema = "scout.environment-comparison/v1"
+
 // Comparison is the versioned environment comparison report.
 type Comparison struct {
 	Schema              string                       `json:"schema"`
@@ -90,20 +93,20 @@ func Compare(ctx context.Context, scanner *scout.Scanner, gate *policy.Gate, pre
 	old, current := previousInput.Paths, candidateInput.Paths
 	ctx = ingest.WithStableInputs(ctx, old, current)
 
-	result := Comparison{Schema: "scout.environment-comparison/v1", Before: before.Digest, After: after.Digest, Decision: report.Allow, Roots: []environmentRootChange{}}
+	result := Comparison{Schema: ComparisonSchema, Before: before.Digest, After: after.Digest, Decision: report.Allow, Roots: []environmentRootChange{}}
 
 	for _, id := range sortedUnion(old, current) {
 		previous, candidate := old[id], current[id]
-		change := "unchanged"
+		change := report.SnapshotChangeUnchanged
 
 		var run report.Run
 
 		switch {
 		case previous == "":
-			change = "added"
+			change = report.SnapshotChangeAdded
 			run, _ = scanner.Scan(ctx, scout.Path(candidate))
 		case candidate == "":
-			change = "removed"
+			change = report.SnapshotChangeRemoved
 			run, _ = scanner.Scan(ctx, scout.Path(previous))
 		default:
 			run, _ = scanner.Compare(ctx, scout.Path(previous), scout.Path(candidate), options.Scan)
@@ -115,11 +118,11 @@ func Compare(ctx context.Context, scanner *scout.Scanner, gate *policy.Gate, pre
 		}
 
 		priorRoot, nextRoot := before.Root(id), after.Root(id)
-		if change == "unchanged" && !priorRoot.SameContent(nextRoot) {
-			change = "modified"
+		if change == report.SnapshotChangeUnchanged && !priorRoot.SameContent(nextRoot) {
+			change = report.SnapshotChangeModified
 		}
 
-		if change == "removed" {
+		if change == report.SnapshotChangeRemoved {
 			// Findings in removed content are historical evidence, not candidate blockers.
 			if prepared.State() != report.RunComplete {
 				result.Code = 2
@@ -129,7 +132,7 @@ func Compare(ctx context.Context, scanner *scout.Scanner, gate *policy.Gate, pre
 		}
 
 		root := environmentRootChange{ID: id, Change: change, Report: prepared.Snapshot()}
-		if change != "unchanged" {
+		if change != report.SnapshotChangeUnchanged {
 			root.Directories = directoryChanges(priorRoot, nextRoot)
 
 			if result.Decision == report.Allow {
@@ -207,9 +210,9 @@ func directoryChanges(before, after envsnapshot.Root) []environmentDirectoryChan
 			continue
 		}
 
-		change := "added"
+		change := report.SnapshotChangeAdded
 		if !exists {
-			change = "removed"
+			change = report.SnapshotChangeRemoved
 		}
 
 		changes = append(changes, environmentDirectoryChange{Path: path, Change: change})

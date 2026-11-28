@@ -42,7 +42,7 @@ func newProviderToken(id string, provider literals.TokenProvider) providerTokenC
 		rule: report.Rule{
 			ID: id, Version: "3", Title: string(provider) + " token-shaped credential literal",
 			Description: "A bounded " + string(provider) + " token shape is present in captured content.",
-			Severity:    report.High, Category: "credential-material", Method: "bounded-provider-token-shape",
+			Severity:    report.High, Category: report.CategoryCredentialMaterial, Method: "bounded-provider-token-shape",
 			Limitation: definition.Limitation + " Token boundaries, whole-secret-payload placeholders and a minimum secret-payload Shannon entropy of 3 bits/byte are checked; Slack numeric segments are excluded. Low-entropy credentials can be missed. No liveness, ownership or authorization is established. Raw bytes, supported security views and decoded structured scalars are inspected; other encodings and constructed tokens remain outside scope. Values and source excerpts are never included in findings.",
 		},
 		expression: definition.Pattern,

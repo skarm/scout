@@ -15,6 +15,30 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	categoryAgentSnooping               = "agent-snooping"
+	categoryAntiRefusal                 = "anti-refusal"
+	categoryArtifactIntegrity           = "artifact-integrity"
+	categoryDataExfiltration            = "data-exfiltration"
+	categoryExcessiveAgency             = "excessive-agency"
+	categoryHarmfulContent              = "harmful-content"
+	categoryInsecureDeserialization     = "insecure-deserialization"
+	categoryInstructionDataExfiltration = "instruction-data-exfiltration"
+	categoryMemoryPoisoning             = "memory-poisoning"
+	categoryOutputHandling              = "output-handling"
+	categoryPreprocessingExecution      = "preprocessing-execution"
+	categoryPrivilegeEscalation         = "privilege-escalation"
+	categoryPromptInjection             = "prompt-injection"
+	categoryResponseSteering            = "response-steering"
+	categoryRogueAgent                  = "rogue-agent"
+	categoryRoleSpoofing                = "role-spoofing"
+	categorySSRF                        = "ssrf"
+	categorySystemPromptLeakage         = "system-prompt-leakage"
+	categoryToolMisuse                  = "tool-misuse"
+	categoryTriggerAbuse                = "trigger-abuse"
+	categoryUnverifiedExecutable        = "unverified-executable"
+)
+
 //nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
 var literalGuards = map[string]func(string, int, int) bool{rulePL001: promptPatternExempt}
 
@@ -44,10 +68,10 @@ func literalRules() []Analyzer {
 
 func buildLiteralRules() []Analyzer {
 	return []Analyzer{
-		newLiteral(rulePI001, "Instruction-hierarchy override phrase", `(?i)\b(?:ignore|disregard|override)[\t ]+(?:all[\t ]+)?(?:previous|prior|system)[\t ]+(?:instructions?|prompts?|rules?)\b|(?i:игнорируй(?:те)?|проигнорируй(?:те)?)[\t ]+(?:все[\t ]+)?(?:предыдущие|системные)[\t ]+инструкции`, report.Medium, "prompt-injection", "Literal English/Russian phrases only; negation, quotation and intent require review. No automatic suppression in examples."),
-		newLiteral(ruleEX001, "Download piped to a shell", `(?im)\b(?:curl|wget)\b[^\r\n|]+\|[\t ]*(?:(?:sudo|env)[\t ]+)?(?:ba|da|z|k)?sh\b`, report.High, "remote-execution", "Single-line literal pipeline only; aliases, constructed commands and shell grammar are not analyzed. A match may be an example."),
-		newLiteral(ruleSE001, "Private-key PEM marker", `-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----`, report.High, "credential-material", "Marker only; not proof of a valid or live key. Values and source excerpts are never included in reports."),
-		newLiteral(ruleFS001, "Sensitive credential-path reference", `(?:~|\$HOME|\$\{HOME\})/\.ssh/(?:id_rsa|id_ed25519)\b|/etc/shadow\b|(?:~|\$HOME|\$\{HOME\})/\.aws/credentials\b`, report.Medium, "credential-access", "Literal path reference only, not a confirmed read or data-flow. Constructed paths require future AST analysis."),
+		newLiteral(rulePI001, "Instruction-hierarchy override phrase", `(?i)\b(?:ignore|disregard|override)[\t ]+(?:all[\t ]+)?(?:previous|prior|system)[\t ]+(?:instructions?|prompts?|rules?)\b|(?i:игнорируй(?:те)?|проигнорируй(?:те)?)[\t ]+(?:все[\t ]+)?(?:предыдущие|системные)[\t ]+инструкции`, report.Medium, categoryPromptInjection, "Literal English/Russian phrases only; negation, quotation and intent require review. No automatic suppression in examples."),
+		newLiteral(ruleEX001, "Download piped to a shell", `(?im)\b(?:curl|wget)\b[^\r\n|]+\|[\t ]*(?:(?:sudo|env)[\t ]+)?(?:ba|da|z|k)?sh\b`, report.High, report.CategoryRemoteExecution, "Single-line literal pipeline only; aliases, constructed commands and shell grammar are not analyzed. A match may be an example."),
+		newLiteral(ruleSE001, "Private-key PEM marker", `-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----`, report.High, report.CategoryCredentialMaterial, "Marker only; not proof of a valid or live key. Values and source excerpts are never included in reports."),
+		newLiteral(ruleFS001, "Sensitive credential-path reference", `(?:~|\$HOME|\$\{HOME\})/\.ssh/(?:id_rsa|id_ed25519)\b|/etc/shadow\b|(?:~|\$HOME|\$\{HOME\})/\.aws/credentials\b`, report.Medium, report.CategoryCredentialAccess, "Literal path reference only, not a confirmed read or data-flow. Constructed paths require future AST analysis."),
 	}
 }
 
@@ -102,7 +126,7 @@ func (opaque) Rule() report.Rule {
 		Title:       "Opaque executable payload requires dedicated analysis",
 		Description: "Compiled, executable or bytecode payload is present; this profile cannot inspect its behavior.",
 		Severity:    report.High,
-		Category:    "unverified-executable",
+		Category:    categoryUnverifiedExecutable,
 		Method:      "file-classification",
 		Limitation:  "A suffix/signature is a candidate, not proof of type or maliciousness; the default policy refuses unverified executable payloads.",
 	}

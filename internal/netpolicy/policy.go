@@ -16,13 +16,19 @@ import (
 )
 
 const (
+	codeHTTPSRequired  = "https_required"
+	codeInvalidAddress = "invalid_address"
+)
+
+const (
 	HeaderContentType     = "Content-Type"
+	HeaderUserAgent       = "User-Agent"
 	HeaderAccept          = "Accept"
 	HeaderAcceptEncoding  = "Accept-Encoding"
 	HeaderAuthorization   = "Authorization"
 	IdentityEncoding      = "identity"
 	BearerScheme          = "Bearer"
-	headerContentEncoding = "Content-Encoding"
+	HeaderContentEncoding = "Content-Encoding"
 )
 
 const (
@@ -42,6 +48,19 @@ var deniedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("64:ff9b::/96"), netip.MustParsePrefix("64:ff9b:1::/48"), netip.MustParsePrefix("100::/64"),
 	netip.MustParsePrefix("fec0::/10"), netip.MustParsePrefix("2001::/23"), netip.MustParsePrefix("2001:db8::/32"), netip.MustParsePrefix("2002::/16"), netip.MustParsePrefix("3fff::/20"),
 }
+
+const (
+	// CodeInvalidURL indicates a malformed or unsupported outbound URL.
+	CodeInvalidURL = "invalid_url"
+	// CodeInvalidPort indicates an invalid outbound port.
+	CodeInvalidPort = "invalid_port"
+	// CodeDNSFailed indicates that the requested hostname could not be resolved.
+	CodeDNSFailed = "dns_failed"
+	// CodeConnectionFailed indicates that dialing the checked addresses failed.
+	CodeConnectionFailed = "connection_failed"
+	// CodeAddressNotPermitted indicates that an address falls outside the network policy.
+	CodeAddressNotPermitted = "address_not_permitted"
+)
 
 type Error struct{ Code string }
 
@@ -80,12 +99,12 @@ func PermittedIP(address netip.Addr, allowLoopback bool) bool {
 
 func ParseURL(raw string, policy URLPolicy) (*url.URL, error) {
 	if len(raw) > policy.MaxBytes {
-		return nil, fail("invalid_url")
+		return nil, fail(CodeInvalidURL)
 	}
 
 	u, err := url.Parse(raw)
 	if err != nil || !validURLShape(u, policy.RequirePath) {
-		return nil, fail("invalid_url")
+		return nil, fail(CodeInvalidURL)
 	}
 
 	if err := validateAddress(u, policy.AllowLoopback); err != nil {
@@ -121,7 +140,7 @@ func Transport(timeout time.Duration, allowLoopback bool, roots *x509.CertPool) 
 
 // IdentityContentEncoding reports whether the response needs no decoding.
 func IdentityContentEncoding(header http.Header) bool {
-	for _, line := range header.Values(headerContentEncoding) {
+	for _, line := range header.Values(HeaderContentEncoding) {
 		for value := range strings.SplitSeq(line, ",") {
 			value = strings.Trim(value, " \t")
 			if value != "" && !strings.EqualFold(value, IdentityEncoding) {
@@ -139,16 +158,16 @@ func fail(code string) error   { return &Error{Code: code} }
 func validateAddress(u *url.URL, allowLoopback bool) error {
 	host := u.Hostname()
 	if host == "" || strings.ContainsAny(host, "%\\\x00\r\n") {
-		return fail("invalid_url")
+		return fail(CodeInvalidURL)
 	}
 
 	ip, iperr := netip.ParseAddr(host)
 	if u.Scheme != "https" && !(u.Scheme == "http" && allowLoopback && iperr == nil && ip.Unmap().IsLoopback()) {
-		return fail("https_required")
+		return fail(codeHTTPSRequired)
 	}
 
 	if iperr == nil && !PermittedIP(ip, allowLoopback) {
-		return fail("address_not_permitted")
+		return fail(CodeAddressNotPermitted)
 	}
 
 	return validatePort(u.Port())
@@ -157,7 +176,7 @@ func validateAddress(u *url.URL, allowLoopback bool) error {
 func validatePort(port string) error {
 	if port != "" {
 		if number, err := strconv.ParseUint(port, 10, 16); err != nil || number == 0 {
-			return fail("invalid_port")
+			return fail(CodeInvalidPort)
 		}
 	}
 
@@ -175,7 +194,7 @@ func withoutURLMetadata(u *url.URL) bool {
 func (d dialer) dial(ctx context.Context, _ string, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		return nil, fail("invalid_address")
+		return nil, fail(codeInvalidAddress)
 	}
 
 	ips, err := resolvedAddresses(ctx, host)
@@ -185,7 +204,7 @@ func (d dialer) dial(ctx context.Context, _ string, address string) (net.Conn, e
 
 	for _, ip := range ips {
 		if !PermittedIP(ip, d.allowLoopback) {
-			return nil, fail("address_not_permitted")
+			return nil, fail(CodeAddressNotPermitted)
 		}
 	}
 
@@ -200,7 +219,7 @@ func (d dialer) dial(ctx context.Context, _ string, address string) (net.Conn, e
 		}
 	}
 
-	return nil, fail("connection_failed")
+	return nil, fail(CodeConnectionFailed)
 }
 
 func resolvedAddresses(ctx context.Context, host string) ([]netip.Addr, error) {
@@ -210,7 +229,7 @@ func resolvedAddresses(ctx context.Context, host string) ([]netip.Addr, error) {
 
 	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 	if err != nil || len(ips) == 0 || len(ips) > maxResolvedIPs {
-		return nil, fail("dns_failed")
+		return nil, fail(CodeDNSFailed)
 	}
 
 	return ips, nil

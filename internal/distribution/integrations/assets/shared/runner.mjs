@@ -230,8 +230,9 @@ function modelResults(semantic) {
   };
 }
 
-const DIGEST = /^sha256:[0-9a-f]{64}$/;
-const HASH = /^[0-9a-f]{64}$/;
+const SHA256_HEX_PATTERN = `[0-9a-f]{${SHA256_HEX_LENGTH}}`;
+const DIGEST = new RegExp(`^sha256:${SHA256_HEX_PATTERN}$`);
+const HASH = new RegExp(`^${SHA256_HEX_PATTERN}$`);
 const digestValue = value => typeof value === 'string' && DIGEST.test(value);
 const hashValue = value => typeof value === 'string' && HASH.test(value);
 const STATES = new Set([STATE_COMPLETE, STATE_INCOMPLETE, STATE_FAILED, STATE_CANCELLED]);

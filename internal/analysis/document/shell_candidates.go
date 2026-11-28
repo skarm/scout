@@ -128,7 +128,7 @@ func (f *filePreparation) publishShellProjection(execution, declaration *shellPr
 	// A heuristic candidate can simply be prose outside either shell grammar.
 	// Only an unfinished preparation task, not a rejected grammar, is a gap.
 	switch last.Status {
-	case "budget_exceeded", "not_run", "unavailable", "failed", "unsupported":
+	case statusBudgetExceeded, "not_run", "unavailable", "failed", "unsupported":
 		f.shellGap = true
 	}
 
@@ -138,7 +138,7 @@ func (f *filePreparation) publishShellProjection(execution, declaration *shellPr
 func (r *shellCandidateRetry) observe(unit Unit, text string) {
 	r.last = unit
 	tree, ok := unit.Tree.(parse.ShellTree)
-	r.limited = r.limited || parse.FailureCategory(tree.DeclarationError) == "parser_limit"
+	r.limited = r.limited || parse.FailureCategory(tree.DeclarationError) == parse.CodeLimit
 
 	continued := r.span.End < len(text) && strings.HasSuffix(strings.TrimRight(r.view.Text(), "\r\n"), `\`)
 	if !ok || continued {
@@ -158,7 +158,7 @@ func (r *shellCandidateRetry) observe(unit Unit, text string) {
 
 func (r *shellCandidateRetry) complete() bool {
 	switch r.last.Status {
-	case "budget_exceeded", "not_run", "unavailable", "failed", "unsupported":
+	case statusBudgetExceeded, "not_run", "unavailable", "failed", "unsupported":
 		return true
 	}
 

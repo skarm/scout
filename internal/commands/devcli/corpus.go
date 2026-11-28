@@ -13,6 +13,8 @@ import (
 	"github.com/skarm/scout/internal/dev/evaluation"
 )
 
+const flagAllowDownload = "allow-download"
+
 const (
 	defaultCorpusTimeout  = 2 * time.Minute
 	maxCorpusTimeout      = 10 * time.Minute
@@ -30,11 +32,11 @@ func corpusCommand(ctx context.Context, args []string, out, diag io.Writer) int 
 
 	fs := flag.NewFlagSet("corpus collect", flag.ContinueOnError)
 	fs.SetOutput(diag)
-	manifestPath := fs.String("manifest", "", "explicit scout.corpus-sources/v1 JSON with source provenance and file SHA-256 pins")
-	destination := fs.String("output", "", "corpus destination outside source files; omitted writes JSON to stdout")
-	allowDownload := fs.Bool("allow-download", false, "authorize the manifest's pinned HTTPS file downloads")
+	manifestPath := fs.String(flagManifest, "", "explicit scout.corpus-sources/v1 JSON with source provenance and file SHA-256 pins")
+	destination := fs.String(flagOutput, "", "corpus destination outside source files; omitted writes JSON to stdout")
+	allowDownload := fs.Bool(flagAllowDownload, false, "authorize the manifest's pinned HTTPS file downloads")
 
-	timeout := fs.Duration("timeout", defaultCorpusTimeout, "whole collection deadline; maximum 10m")
+	timeout := fs.Duration(flagTimeout, defaultCorpusTimeout, "whole collection deadline; maximum 10m")
 	if err := fs.Parse(args[1:]); err != nil {
 		return failure(diag, err)
 	}
@@ -76,9 +78,9 @@ func corpusCommand(ctx context.Context, args []string, out, diag io.Writer) int 
 func corpusReviewTemplate(ctx context.Context, args []string, out, diag io.Writer) int {
 	fs := flag.NewFlagSet("corpus review-template", flag.ContinueOnError)
 	fs.SetOutput(diag)
-	source := fs.String("corpus", "", "exact schema-2 corpus whose cases will be reviewed")
+	source := fs.String(flagCorpus, "", "exact schema-2 corpus whose cases will be reviewed")
 
-	destination := fs.String("output", "", "pending review destination outside the corpus; omitted writes JSON to stdout")
+	destination := fs.String(flagOutput, "", "pending review destination outside the corpus; omitted writes JSON to stdout")
 	if err := fs.Parse(args); err != nil {
 		return failure(diag, err)
 	}

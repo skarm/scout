@@ -80,6 +80,8 @@ func (c *findingCollector) add(f report.Finding) {
 	c.omitted[f.Location.Path]++
 }
 
+const codeFindingLimit = "finding_limit"
+
 func (c *findingCollector) finish(r *report.Analysis, fileIndex map[string]int) {
 	r.Findings = c.items.values
 	sort.Slice(r.Findings, func(i, j int) bool { return findingorder.Before(r.Findings[i], r.Findings[j]) })
@@ -89,14 +91,14 @@ func (c *findingCollector) finish(r *report.Analysis, fileIndex map[string]int) 
 	}
 
 	r.Diagnostics = append(r.Diagnostics, report.Diagnostic{
-		Code:         "finding_limit",
+		Code:         codeFindingLimit,
 		Message:      "Report finding budget exhausted; highest-severity observations retained.",
 		AffectsScope: true,
 	})
 
 	for path := range c.omitted {
 		if i, ok := fileIndex[path]; ok {
-			r.Coverage.Files[i].Gaps = append(r.Coverage.Files[i].Gaps, "report_finding_limit")
+			r.Coverage.Files[i].Gaps = append(r.Coverage.Files[i].Gaps, report.GapReportFindingLimit)
 		}
 	}
 }

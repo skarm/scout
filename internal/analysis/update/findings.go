@@ -77,20 +77,20 @@ func (b *builder) classifyFinding(left, right []report.Finding, i int, c *report
 		b.delta.Counts.PersistentFindings++
 		c.Change = b.persistentFindingChange(left[i], right[i])
 	case i < len(right):
-		c.Change = "introduced"
+		c.Change = report.UpdateIntroduced
 		if !absenceCheckComplete(right[i], c.ObjectID, b.old, oldChecks) {
-			c.Change = "unverified"
+			c.Change = report.UpdateUnverified
 
 			b.issue("previous_finding_state_unverified")
 		} else {
 			b.delta.Counts.IntroducedFindings++
 		}
 	case i < len(left):
-		c.Change = "not_observed"
+		c.Change = changeNotObserved
 
 		b.delta.Counts.UnobservedFindings++
 		if !absenceCheckComplete(left[i], c.ObjectID, b.next, newChecks) {
-			c.Change = "unverified"
+			c.Change = report.UpdateUnverified
 
 			b.issue("finding_absence_unverified")
 		}
@@ -99,11 +99,11 @@ func (b *builder) classifyFinding(left, right []report.Finding, i int, c *report
 
 func (b *builder) persistentFindingChange(before, after report.Finding) string {
 	if b.contextKey(before, b.oldComponents) != b.contextKey(after, b.newComponents) {
-		return "context_changed"
+		return report.UpdateContextChanged
 	}
 
 	if before.Location.ByteStart != after.Location.ByteStart || before.Location.ByteEnd != after.Location.ByteEnd {
-		return "relocated"
+		return report.UpdateRelocated
 	}
 
 	return ""
@@ -192,7 +192,7 @@ func absenceCheckComplete(f report.Finding, objectID string, x inventory, checks
 		return false
 	}
 
-	if slices.Contains(coverage.Gaps, "report_finding_limit") {
+	if slices.Contains(coverage.Gaps, report.GapReportFindingLimit) {
 		return false
 	}
 

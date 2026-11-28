@@ -17,6 +17,8 @@ type checkpointRootSummary struct {
 	Bytes int    `json:"bytes"`
 }
 
+const checkpointSummarySchema = "scout.environment-checkpoint-summary/v1"
+
 type checkpointSummary struct {
 	Schema    string                  `json:"schema"`
 	Digest    string                  `json:"content_sha256"`
@@ -29,9 +31,9 @@ type checkpointSummary struct {
 func inspectEnvironmentSnapshot(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("snapshot inspect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	path := fs.String("snapshot", "", "required operator-selected checkpoint")
+	path := fs.String(flagSnapshot, "", "required operator-selected checkpoint")
 
-	format := fs.String("format", "text", "output format: text or json; no source bytes")
+	format := fs.String(flagFormat, "text", "output format: text or json; no source bytes")
 	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}
@@ -45,7 +47,7 @@ func inspectEnvironmentSnapshot(ctx context.Context, args []string, stdout, stde
 		return usageError(stderr, err.Error())
 	}
 
-	summary := checkpointSummary{Schema: "scout.environment-checkpoint-summary/v1", Digest: saved.Snapshot.Digest, State: string(saved.Inspection.Run.State), Decision: string(saved.Inspection.Evaluation.Decision), Roots: []checkpointRootSummary{}}
+	summary := checkpointSummary{Schema: checkpointSummarySchema, Digest: saved.Snapshot.Digest, State: string(saved.Inspection.Run.State), Decision: string(saved.Inspection.Evaluation.Decision), Roots: []checkpointRootSummary{}}
 	for _, root := range saved.Snapshot.Roots {
 		item := checkpointRootSummary{ID: root.ID, Path: root.Source}
 		for _, entry := range root.Entries {

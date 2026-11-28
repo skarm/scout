@@ -13,7 +13,7 @@ import (
 func (p *plugin) traceHook(e *entry, hook *jsonconfig.Node, event, matcher string) []hooktrace.Path {
 	if p.host == report.HostGeminiCLI {
 		if !hookevent.Gemini(event) {
-			p.issue("plugin_hook_event_unverified", e.Meta.Path, report.OutcomePartial)
+			p.issue(issuePluginHookEventUnverified, e.Meta.Path, report.OutcomePartial)
 			return nil
 		}
 	} else if !hookevent.Known(event) {
@@ -21,11 +21,11 @@ func (p *plugin) traceHook(e *entry, hook *jsonconfig.Node, event, matcher strin
 	}
 
 	paths, limited := p.b.hookTracer.Trace(&e.File, hook, event, matcher, hooktrace.Scope{
-		Host: p.host, Inactive: p.activation == "inactive_for_profile",
+		Host: p.host, Inactive: p.activation == activationInactiveForProfile,
 		ProjectSettings: p.projectSettings, Files: p,
 	})
 	if limited {
-		p.issue("hook_source_command_limit", e.Meta.Path, report.OutcomePartial)
+		p.issue(issueHookSourceCommandLimit, e.Meta.Path, report.OutcomePartial)
 	}
 
 	return paths

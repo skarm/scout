@@ -28,8 +28,18 @@ const (
 	maxContent = 16 << 20
 	maxFile    = 4 << 20
 	maxEntries = 4096
-	maxPath    = 512
-	maxDepth   = 32
+	// MaxRoots bounds the number of roots in a snapshot.
+	MaxRoots           = 32
+	maxRootIDBytes     = 64
+	maxRootSourceBytes = 4096
+	maxPath            = 512
+	maxDepth           = 32
+)
+
+const (
+	executableModeMask          = 0o111
+	privateRestoreDirectoryMode = 0o700
+	privateRestoreFileMode      = 0o600
 )
 
 // Root is a caller-named component boundary. Source is display metadata only.
@@ -70,7 +80,7 @@ type Snapshot struct {
 
 // ValidID accepts portable, unambiguous root identifiers.
 func ValidID(s string) bool {
-	if len(s) == 0 || len(s) > 64 {
+	if len(s) == 0 || len(s) > maxRootIDBytes {
 		return false
 	}
 
@@ -80,7 +90,7 @@ func ValidID(s string) bool {
 		}
 	}
 
-	return artifactpath.Validate(s, 64, 1) == nil
+	return artifactpath.Validate(s, maxRootIDBytes, 1) == nil
 }
 
 // CaptureError identifies the location and reason for a failed capture.
@@ -110,6 +120,14 @@ func (e *CaptureError) Error() string {
 
 func (e *CaptureError) Unwrap() error { return e.cause }
 
+const (
+	codeCaptureCancelled = "capture_cancelled"
+	codeResolveRoot      = "resolve_root"
+	codeInspectEntry     = "inspect_entry"
+	codeEntryLimit       = "entry_limit"
+	messageEntryLimit    = "snapshot entry limit exceeded"
+)
+
 func atPath(code, id, path string, err error) *CaptureError {
 	return &CaptureError{Code: code, Root: id, Path: path, Detail: err.Error(), cause: err}
 }
@@ -122,8 +140,8 @@ func captureLimit(code, detail, id, path, unit string, actual, limit int64) *Cap
 // the capture rather than silently creating an apparently complete snapshot.
 func Capture(ctx context.Context, inputs map[string]string) (Snapshot, error) {
 	s := Snapshot{Schema: Schema, Roots: []Root{}}
-	if len(inputs) > 32 {
-		return s, captureLimit("root_limit", "too many snapshot roots", "", "", "roots", int64(len(inputs)), 32)
+	if len(inputs) > MaxRoots {
+		return s, captureLimit("root_limit", "too many snapshot roots", "", "", "roots", int64(len(inputs)), MaxRoots)
 	}
 
 	ids := make([]string, 0, len(inputs))
@@ -143,17 +161,17 @@ func Capture(ctx context.Context, inputs map[string]string) (Snapshot, error) {
 
 	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
-			return s, atPath("capture_cancelled", id, inputs[id], err)
+			return s, atPath(codeCaptureCancelled, id, inputs[id], err)
 		}
 
 		source, err := filepath.Abs(inputs[id])
 		if err != nil {
-			return s, atPath("resolve_root", id, inputs[id], err)
+			return s, atPath(codeResolveRoot, id, inputs[id], err)
 		}
 
 		source, err = filepath.EvalSymlinks(source)
 		if err != nil {
-			return s, atPath("resolve_root", id, inputs[id], err)
+			return s, atPath(codeResolveRoot, id, inputs[id], err)
 		}
 
 		info, err := os.Stat(source)
@@ -209,7 +227,7 @@ func Capture(ctx context.Context, inputs map[string]string) (Snapshot, error) {
 	}
 
 	if err := ctx.Err(); err != nil {
-		return s, atPath("capture_cancelled", "", "", err)
+		return s, atPath(codeCaptureCancelled, "", "", err)
 	}
 
 	return s, nil
@@ -218,12 +236,12 @@ func Capture(ctx context.Context, inputs map[string]string) (Snapshot, error) {
 func captureEntry(ctx context.Context, fs *rootfs.Root, name string, r *Root, count, total *int) error {
 	path := r.entryPath(name)
 	if err := ctx.Err(); err != nil {
-		return atPath("capture_cancelled", r.ID, path, err)
+		return atPath(codeCaptureCancelled, r.ID, path, err)
 	}
 
 	*count++
 	if *count > maxEntries {
-		return captureLimit("entry_limit", "snapshot entry limit exceeded", r.ID, path, "entries", int64(*count), maxEntries)
+		return captureLimit(codeEntryLimit, messageEntryLimit, r.ID, path, "entries", int64(*count), maxEntries)
 	}
 
 	if name != "." {
@@ -241,7 +259,7 @@ func captureEntry(ctx context.Context, fs *rootfs.Root, name string, r *Root, co
 
 	info, err := f.Stat()
 	if err != nil {
-		return atPath("inspect_entry", r.ID, path, err)
+		return atPath(codeInspectEntry, r.ID, path, err)
 	}
 
 	if info.IsDir() {
@@ -308,7 +326,7 @@ func captureFile(f *os.File, info os.FileInfo, name string, r *Root, total *int)
 
 	after, err := f.Stat()
 	if err != nil {
-		return atPath("inspect_entry", r.ID, path, err)
+		return atPath(codeInspectEntry, r.ID, path, err)
 	}
 
 	if int64(len(data)) != info.Size() || after.Size() != info.Size() || !info.ModTime().Equal(after.ModTime()) || info.Mode() != after.Mode() {
@@ -316,7 +334,7 @@ func captureFile(f *os.File, info os.FileInfo, name string, r *Root, total *int)
 	}
 
 	*total += len(data)
-	r.Entries = append(r.Entries, Entry{Path: name, Data: data, Executable: uint32(info.Mode().Perm() & 0o111), SHA256: hash(data)})
+	r.Entries = append(r.Entries, Entry{Path: name, Data: data, Executable: uint32(info.Mode().Perm() & executableModeMask), SHA256: hash(data)})
 
 	return nil
 }
@@ -336,7 +354,7 @@ func identity(roots []Root) string {
 // Validate rejects corrupt content, unsafe paths and namespace collisions before
 // any files are materialized. Source paths are never followed when restoring.
 func (s Snapshot) Validate() error {
-	if s.Schema != Schema || len(s.Roots) > 32 || s.Digest != identity(s.Roots) {
+	if s.Schema != Schema || len(s.Roots) > MaxRoots || s.Digest != identity(s.Roots) {
 		return errors.New("invalid snapshot identity or schema")
 	}
 
@@ -344,7 +362,7 @@ func (s Snapshot) Validate() error {
 
 	previous := ""
 	for _, r := range s.Roots {
-		if !ValidID(r.ID) || r.ID <= previous || len(r.Source) > 4096 {
+		if !ValidID(r.ID) || r.ID <= previous || len(r.Source) > maxRootSourceBytes {
 			return errors.New("invalid or duplicate snapshot root")
 		}
 
@@ -388,7 +406,7 @@ func (s Snapshot) Materialize(ctx context.Context, directory string) (map[string
 		}
 
 		base := filepath.Join(directory, r.ID)
-		if err := os.Mkdir(base, 0o700); err != nil {
+		if err := os.Mkdir(base, privateRestoreDirectoryMode); err != nil {
 			return nil, err
 		}
 
@@ -469,7 +487,7 @@ func captureDirectory(ctx context.Context, fs *rootfs.Root, f *os.File, info os.
 	}
 
 	if len(children) > maxEntries-*count {
-		return captureLimit("entry_limit", "snapshot entry limit exceeded", r.ID, r.entryPath(name), "entries", int64(*count+len(children)), maxEntries)
+		return captureLimit(codeEntryLimit, messageEntryLimit, r.ID, r.entryPath(name), "entries", int64(*count+len(children)), maxEntries)
 	}
 
 	sort.Slice(children, func(i, j int) bool { return children[i].Name() < children[j].Name() })
@@ -491,7 +509,7 @@ func captureDirectory(ctx context.Context, fs *rootfs.Root, f *os.File, info os.
 
 	after, err := f.Stat()
 	if err != nil {
-		return atPath("inspect_entry", r.ID, r.entryPath(name), err)
+		return atPath(codeInspectEntry, r.ID, r.entryPath(name), err)
 	}
 
 	if !info.ModTime().Equal(after.ModTime()) {
@@ -529,7 +547,7 @@ func validateEntries(r Root, count, total *int) error {
 		}
 
 		names[key] = e.Directory
-		if e.Executable & ^uint32(0o111) != 0 {
+		if e.Executable & ^uint32(executableModeMask) != 0 {
 			return errors.New("invalid executable bits")
 		}
 
@@ -555,7 +573,7 @@ func restoreRoot(ctx context.Context, r Root, base string) (string, error) {
 
 		name := filepath.Join(base, filepath.FromSlash(e.Path))
 		if e.Directory {
-			if err := os.Mkdir(name, 0o700); err != nil {
+			if err := os.Mkdir(name, privateRestoreDirectoryMode); err != nil {
 				return "", err
 			}
 
@@ -576,7 +594,7 @@ func restoreRoot(ctx context.Context, r Root, base string) (string, error) {
 
 func restoreFile(name string, entry Entry) error {
 	//nolint:gosec // The path was validated and is inside a new private directory.
-	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, privateRestoreFileMode)
 	if err != nil {
 		return err
 	}
@@ -584,7 +602,7 @@ func restoreFile(name string, entry Entry) error {
 	_, writeErr := f.Write(entry.Data)
 	if writeErr == nil && entry.Executable != 0 {
 		// Chmod applies the recorded executable bits independently of umask.
-		writeErr = f.Chmod(0o600 | os.FileMode(entry.Executable))
+		writeErr = f.Chmod(privateRestoreFileMode | os.FileMode(entry.Executable))
 	}
 
 	if err := errors.Join(writeErr, f.Close()); err != nil {
@@ -596,7 +614,7 @@ func restoreFile(name string, entry Entry) error {
 		return err
 	}
 
-	if uint32(info.Mode().Perm()&0o111) != entry.Executable {
+	if uint32(info.Mode().Perm()&executableModeMask) != entry.Executable {
 		return fmt.Errorf("cannot preserve snapshot executable bits: %q", entry.Path)
 	}
 

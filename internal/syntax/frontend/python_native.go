@@ -30,12 +30,12 @@ func parsePython(ctx context.Context, text string) (*Node, error) {
 
 	tree := treeparse.Parse(ctx, parser, []byte(text), deadline)
 	if tree == nil {
-		return nil, &Failure{Category: "deadline"}
+		return nil, &Failure{Category: CodeDeadline}
 	}
 	defer tree.Close()
 
 	if ctx.Err() != nil {
-		return nil, &Failure{Category: "deadline"}
+		return nil, &Failure{Category: CodeDeadline}
 	}
 
 	root := tree.RootNode()
@@ -56,15 +56,15 @@ func parsePython(ctx context.Context, text string) (*Node, error) {
 func (p *pythonCapture) node(n *treeparse.Node, depth int, field string) (*pythonSyntax, error) {
 	p.count++
 	if p.count > maxNodes || depth > MaxDepth {
-		return nil, &Failure{Category: "limit"}
+		return nil, &Failure{Category: CodeLimit}
 	}
 
 	if p.ctx.Err() != nil {
-		return nil, &Failure{Category: "deadline"}
+		return nil, &Failure{Category: CodeDeadline}
 	}
 
 	if !validPythonCST(n, p.size) {
-		return nil, &Failure{Category: "invalid_tree"}
+		return nil, &Failure{Category: codeInvalidTree}
 	}
 
 	out := &pythonSyntax{
@@ -92,16 +92,16 @@ func validPythonCST(n *treeparse.Node, size int) bool {
 
 func configurePythonParser(ctx context.Context, parser *treeparse.Parser) (time.Time, error) {
 	if err := parser.SetLanguage(sitter.NewLanguage(python.Language())); err != nil {
-		return time.Time{}, &Failure{Category: "grammar_abi"}
+		return time.Time{}, &Failure{Category: codeGrammarAbi}
 	}
 
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		return time.Time{}, &Failure{Category: "deadline"}
+		return time.Time{}, &Failure{Category: CodeDeadline}
 	}
 
 	if time.Until(deadline) < time.Microsecond {
-		return time.Time{}, &Failure{Category: "deadline"}
+		return time.Time{}, &Failure{Category: CodeDeadline}
 	}
 
 	return deadline, nil

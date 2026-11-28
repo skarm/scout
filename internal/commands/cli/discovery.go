@@ -16,6 +16,19 @@ import (
 )
 
 const (
+	flagClaudeHome  = "claude-home"
+	flagCodexHome   = "codex-home"
+	flagExcludePath = "exclude-path"
+	flagHome        = "home"
+	flagIncludePath = "include-path"
+	flagMaxDepth    = "max-depth"
+	flagNoProject   = "no-project"
+	flagProject     = "project"
+	flagScan        = "scan"
+	flagSystem      = "system"
+)
+
+const (
 	defaultDiscoveryTimeout = 10 * time.Second
 	maxDiscoveryTimeout     = 2 * time.Minute
 )
@@ -109,24 +122,24 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 	a := discoveryArguments{options: discovery.DefaultOptions(""), timeout: defaultDiscoveryTimeout, format: "text"}
 	fs := flag.NewFlagSet("discover", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&a.options.Agent, "agent", a.options.Agent, "agent to inventory: all, codex or claude-code")
-	fs.StringVar(&a.options.Home, "home", "", "selected user home; default current user's home")
-	fs.StringVar(&a.options.CodexHome, "codex-home", "", "explicit Codex configuration directory")
-	fs.StringVar(&a.options.ClaudeHome, "claude-home", "", "explicit Claude Code configuration directory")
-	fs.Var(&a.projects, "project", "selected project directory; repeatable; default current directory")
-	fs.BoolVar(&a.noProject, "no-project", false, "omit project discovery")
-	fs.BoolVar(&a.options.System, "system", true, "include known system configuration locations")
-	fs.IntVar(&a.options.MaxEntries, "max-entries", a.options.MaxEntries, "aggregate discovery entry/probe budget")
-	fs.IntVar(&a.options.MaxDepth, "max-depth", a.options.MaxDepth, "maximum skill/plugin traversal depth")
-	fs.Int64Var(&a.options.MaxBytes, "max-bytes", a.options.MaxBytes, "aggregate configuration and manifest byte budget")
-	fs.DurationVar(&a.timeout, "timeout", a.timeout, "discovery deadline; maximum 2m")
-	fs.StringVar(&a.format, "format", a.format, "inventory format: text or json")
-	fs.StringVar(&a.output, "output", "", "inventory destination outside selected configuration locations; default stdout")
-	fs.StringVar(&a.snapshot, "snapshot", "", "save discovered environment and inspection; scanner flags follow --")
-	fs.BoolVar(&a.scan, "scan", false, "scan discovered roots; pass ordinary scan flags after --")
-	fs.Var(&a.kinds, "kind", "select skill, plugin, mcp-server or command scan roots; repeatable")
-	fs.Var(&a.includePaths, "include-path", "narrow discovered scan roots to this path; repeatable; cannot expand discovery")
-	fs.Var(&a.excludePaths, "exclude-path", "omit scan roots overlapping this path; repeatable; use --kind for component-level roots")
+	fs.StringVar(&a.options.Agent, flagAgent, a.options.Agent, "agent to inventory: all, codex or claude-code")
+	fs.StringVar(&a.options.Home, flagHome, "", "selected user home; default current user's home")
+	fs.StringVar(&a.options.CodexHome, flagCodexHome, "", "explicit Codex configuration directory")
+	fs.StringVar(&a.options.ClaudeHome, flagClaudeHome, "", "explicit Claude Code configuration directory")
+	fs.Var(&a.projects, flagProject, "selected project directory; repeatable; default current directory")
+	fs.BoolVar(&a.noProject, flagNoProject, false, "omit project discovery")
+	fs.BoolVar(&a.options.System, flagSystem, true, "include known system configuration locations")
+	fs.IntVar(&a.options.MaxEntries, flagMaxEntries, a.options.MaxEntries, "aggregate discovery entry/probe budget")
+	fs.IntVar(&a.options.MaxDepth, flagMaxDepth, a.options.MaxDepth, "maximum skill/plugin traversal depth")
+	fs.Int64Var(&a.options.MaxBytes, flagMaxBytes, a.options.MaxBytes, "aggregate configuration and manifest byte budget")
+	fs.DurationVar(&a.timeout, flagTimeout, a.timeout, "discovery deadline; maximum 2m")
+	fs.StringVar(&a.format, flagFormat, a.format, "inventory format: text or json")
+	fs.StringVar(&a.output, flagOutput, "", "inventory destination outside selected configuration locations; default stdout")
+	fs.StringVar(&a.snapshot, flagSnapshot, "", "save discovered environment and inspection; scanner flags follow --")
+	fs.BoolVar(&a.scan, flagScan, false, "scan discovered roots; pass ordinary scan flags after --")
+	fs.Var(&a.kinds, flagKind, "select skill, plugin, mcp-server or command scan roots; repeatable")
+	fs.Var(&a.includePaths, flagIncludePath, "narrow discovered scan roots to this path; repeatable; cannot expand discovery")
+	fs.Var(&a.excludePaths, flagExcludePath, "omit scan roots overlapping this path; repeatable; use --kind for component-level roots")
 
 	if err := parseFlags(fs, args); err != nil {
 		return a, err
@@ -134,9 +147,9 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 
 	fs.Visit(func(f *flag.Flag) {
 		switch canonicalFlagName(f.Name) {
-		case "home":
+		case flagHome:
 			a.explicitHome = true
-		case "format", "output":
+		case flagFormat, flagOutput:
 			a.explicitOutput = true
 		}
 	})

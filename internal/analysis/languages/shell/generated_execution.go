@@ -20,7 +20,7 @@ func (generatedShellExecutionCheck) OmitNotApplicableFileCoverage() bool { retur
 
 func (generatedShellExecutionCheck) Rule() report.Rule {
 	return report.Rule{
-		ID: ruleSH005, Version: "2", Severity: report.Info, Category: "dynamic-execution", Method: "shell-generated-file-flow",
+		ID: ruleSH005, Version: "2", Severity: report.Info, Category: report.CategoryDynamicExecution, Method: "shell-generated-file-flow",
 		Title:       "A write reaches a generated shell script execution sink",
 		Description: "A recovered heredoc write reaches a later source or execution command, or a traced hook writes to a host-sourced shell file.",
 		Limitation:  "Bounded command sequences and hook traces under documented host behavior. Runtime success, permissions, symlinks and external shell state are unverified.",

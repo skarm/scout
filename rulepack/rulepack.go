@@ -90,7 +90,9 @@ func Parse(data []byte, expectedSHA256 string) (Selection, error) {
 		return Selection{}, errors.New("rulepack artifact SHA-256 mismatch")
 	}
 
-	root, err := jsonconfig.ParseWithNodeLimit(context.Background(), string(data), 32)
+	const manifestNodeLimit = 32
+
+	root, err := jsonconfig.ParseWithNodeLimit(context.Background(), string(data), manifestNodeLimit)
 	if err != nil || !validShape(root) {
 		return Selection{}, errors.New("invalid rulepack JSON shape")
 	}

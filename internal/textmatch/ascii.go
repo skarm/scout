@@ -1,13 +1,16 @@
 // Package textmatch implements small, fixed text grammars without regular expressions.
 package textmatch
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // FoldASCII returns an immutable lowercase view only when every input byte is
 // ASCII. Unicode and invalid UTF-8 must bypass ASCII-only necessary conditions.
 func FoldASCII(s string) (string, bool) {
 	for i := range len(s) {
-		if s[i] >= 128 {
+		if s[i] >= utf8.RuneSelf {
 			return "", false
 		}
 	}
@@ -28,7 +31,7 @@ func Token(s string, maximum int, punctuation string) bool {
 
 	for i := range len(s) {
 		b := s[i]
-		if b >= 128 || !Alnum(b) && strings.IndexByte(punctuation, b) < 0 {
+		if b >= utf8.RuneSelf || !Alnum(b) && strings.IndexByte(punctuation, b) < 0 {
 			return false
 		}
 	}

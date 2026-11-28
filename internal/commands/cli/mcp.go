@@ -18,6 +18,16 @@ import (
 )
 
 const (
+	flagConcurrency = "concurrency"
+	flagListen      = "listen"
+	flagOrigin      = "origin"
+	flagTarget      = "target"
+	flagTokenEnv    = "token-env"
+	flagToolTimeout = "tool-timeout"
+	flagTransport   = "transport"
+)
+
+const (
 	maxTargetMappings     = 64
 	httpReadHeaderTimeout = 3 * time.Second
 	httpReadTimeout       = 10 * time.Second
@@ -25,6 +35,11 @@ const (
 	httpIdleTimeout       = 30 * time.Second
 	maxHTTPHeaderBytes    = 8192
 	httpShutdownTimeout   = 5 * time.Second
+)
+
+const (
+	mcpTransportStdio       = "stdio"
+	defaultMCPListenAddress = "127.0.0.1:8837"
 )
 
 type repeated []string
@@ -48,13 +63,13 @@ func (r *repeated) Set(v string) error {
 }
 
 func (c *mcpInvocation) bind(fs *flag.FlagSet) {
-	fs.StringVar(&c.transport, "transport", c.transport, "stdio or authenticated loopback HTTP")
-	fs.StringVar(&c.listen, "listen", c.listen, "numeric loopback bind for HTTP /mcp")
-	fs.StringVar(&c.tokenEnv, "token-env", c.tokenEnv, "explicit environment variable with HTTP bearer token (>=32 bytes)")
-	fs.DurationVar(&c.options.Timeout, "tool-timeout", c.options.Timeout, "maximum duration of each tool call")
-	fs.IntVar(&c.options.MaxConcurrent, "concurrency", c.options.MaxConcurrent, "concurrent scans across all sessions (1..8)")
-	fs.Var(&c.targets, "target", "operator-authorized name=local-path; repeatable; no target means upload-only")
-	fs.Var(&c.origins, "origin", "explicit allowed HTTP Origin; repeatable")
+	fs.StringVar(&c.transport, flagTransport, c.transport, "stdio or authenticated loopback HTTP")
+	fs.StringVar(&c.listen, flagListen, c.listen, "numeric loopback bind for HTTP /mcp")
+	fs.StringVar(&c.tokenEnv, flagTokenEnv, c.tokenEnv, "explicit environment variable with HTTP bearer token (>=32 bytes)")
+	fs.DurationVar(&c.options.Timeout, flagToolTimeout, c.options.Timeout, "maximum duration of each tool call")
+	fs.IntVar(&c.options.MaxConcurrent, flagConcurrency, c.options.MaxConcurrent, "concurrent scans across all sessions (1..8)")
+	fs.Var(&c.targets, flagTarget, "operator-authorized name=local-path; repeatable; no target means upload-only")
+	fs.Var(&c.origins, flagOrigin, "explicit allowed HTTP Origin; repeatable")
 }
 
 func (c *mcpInvocation) prepareTransport() error {
@@ -62,7 +77,7 @@ func (c *mcpInvocation) prepareTransport() error {
 		return c.prepareHTTP()
 	}
 
-	if c.transport != "stdio" || c.tokenEnv != "" || len(c.origins) > 0 {
+	if c.transport != mcpTransportStdio || c.tokenEnv != "" || len(c.origins) > 0 {
 		return errors.New("invalid MCP transport/options")
 	}
 
@@ -90,7 +105,7 @@ func (c *mcpInvocation) prepareHTTP() error {
 }
 
 func parseMCPInvocation(ctx context.Context, args []string, stderr io.Writer) (mcpInvocation, error) {
-	c := mcpInvocation{options: mcp.DefaultOptions(), transport: "stdio", listen: "127.0.0.1:8837"}
+	c := mcpInvocation{options: mcp.DefaultOptions(), transport: mcpTransportStdio, listen: defaultMCPListenAddress}
 
 	r, err := resolveRequest("mcp", args, stderr, c.bind)
 	if err != nil {
@@ -150,7 +165,7 @@ func serveMCP(ctx context.Context, args []string, input io.ReadCloser, stdout, s
 		return usageError(stderr, e.Error())
 	}
 
-	if transport == "stdio" {
+	if transport == mcpTransportStdio {
 		if e = server.Serve(ctx, input, stdout); e != nil && !errors.Is(e, context.Canceled) {
 			_, _ = fmt.Fprintln(stderr, "MCP stdio transport failed")
 			return 2

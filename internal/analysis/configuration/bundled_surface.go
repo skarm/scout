@@ -25,6 +25,8 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const categoryBundledExecutionSurface = "bundled-execution-surface"
+
 //nolint:gochecknoglobals // The sensitive-event vocabulary is initialized once and only read by concurrent scans.
 var sensitiveEvents = textmatch.WordSet("UserPromptSubmit UserPromptExpansion MessageDisplay PreToolUse PermissionRequest PermissionDenied PostToolUse PostToolUseFailure PostToolBatch SubagentStop TaskCreated TaskCompleted Stop StopFailure PreCompact PostCompact Elicitation ElicitationResult")
 
@@ -90,7 +92,7 @@ func (a bundledSurface) Rule() report.Rule {
 		Title:       title,
 		Description: title,
 		Severity:    severity,
-		Category:    "bundled-execution-surface",
+		Category:    categoryBundledExecutionSurface,
 		Method:      "bounded-hook-settings-analysis",
 		Limitation:  "Conditional declarations, not proven host activation. Closed captured settings.local-before-settings disable semantics within a namespace/project; external settings and host trust remain unknown. BH2 requires a remote HTTP event body or direct literal or symbolic-HOME upload command. BH3 descriptor severity is a maximum; acceptEdits is medium and project-ignored auto is low.",
 	}
@@ -135,7 +137,7 @@ func (a bundledSurface) inspectSurfaceUnit(ctx context.Context, d document.File,
 	}
 
 	for _, scope := range d.ConfigScopes() {
-		if u.Origin != "file" || scope.Role != "hook_config" {
+		if u.Origin != "file" || scope.Role != report.ComponentHookConfig {
 			continue
 		}
 
@@ -192,7 +194,7 @@ func (a bundledSurface) surfaceHookState(d document.File, u document.Unit, root 
 
 	if !settings {
 		for _, scope := range d.ConfigScopes() {
-			if scope.Role == "hook_config" && !slices.Contains([]string{"", report.HostClaudeCode}, scope.Host) {
+			if scope.Role == report.ComponentHookConfig && !slices.Contains([]string{"", report.HostClaudeCode}, scope.Host) {
 				state.Disabled = false
 			}
 		}

@@ -24,6 +24,8 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const categoryLeastPrivilege = "least-privilege"
+
 const (
 	maxPermissionWordsPerDeclaration = 128
 	maxPermissionScopes              = 1024
@@ -134,7 +136,7 @@ func (a permissionCheck) Rule() report.Rule {
 		Title:       title,
 		Description: title,
 		Severity:    severity,
-		Category:    "least-privilege",
+		Category:    categoryLeastPrivilege,
 		Method:      "scoped-declaration-capability-heuristic",
 		Limitation:  "Captured same-namespace nearest-skill/plugin scope only. Capabilities are lexical hints, not verified execution; absence of a hint does not prove unused permission. External code, host enforcement and unknown tool names remain unverified. Related evidence contains bounded observations.",
 	}

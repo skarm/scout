@@ -16,6 +16,8 @@ import (
 	typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 )
 
+const nativeParseTimeout = time.Second
+
 type capture struct {
 	ctx         context.Context
 	size, count int
@@ -49,7 +51,7 @@ func parse(ctx context.Context, lang, text string) (Tree, error) {
 		return Tree{}, errors.New("script grammar ABI")
 	}
 
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(nativeParseTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 		deadline = d
 	}

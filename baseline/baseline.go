@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"path"
 	"slices"
@@ -293,7 +294,7 @@ func Marshal(d Document) ([]byte, error) {
 }
 
 func validateHeader(d Document) error {
-	rulepack, ok := strings.CutPrefix(d.RulepackDigest, "sha256:")
+	rulepack, ok := strings.CutPrefix(d.RulepackDigest, report.SHA256DigestPrefix)
 	if d.RulepackDigest != "" && (!ok || !digest(rulepack)) {
 		return errors.New("baseline requires a SHA-256 rulepack digest")
 	}
@@ -307,7 +308,7 @@ func validateHeader(d Document) error {
 
 func validateEntry(e Entry) error {
 	if strings.TrimSpace(e.Reason) == "" || len(e.Reason) > maxReasonBytes {
-		return errors.New("baseline reason required (1..1024 bytes)")
+		return fmt.Errorf("baseline reason required (1..%d bytes)", maxReasonBytes)
 	}
 
 	if _, err := time.Parse(time.RFC3339, e.Expires); err != nil {
@@ -419,7 +420,7 @@ func matchesGlob(e Entry, f report.Finding) bool {
 }
 
 func digest(s string) bool {
-	if len(s) != 64 {
+	if len(s) != 2*sha256.Size {
 		return false
 	}
 

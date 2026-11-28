@@ -36,12 +36,12 @@ func (r Comparison) Write(w io.Writer, format report.Format) error {
 	b.WriteString("Root identifiers are operator-selected boundaries; activation is not inferred. Both versions were rescanned with the current configuration.\n\n")
 
 	for _, root := range r.Roots {
-		if root.Change == "unchanged" && root.Report.Run.State == report.RunComplete && root.Report.Evaluation.Decision == report.Allow {
+		if root.Change == report.SnapshotChangeUnchanged && root.Report.Run.State == report.RunComplete && root.Report.Evaluation.Decision == report.Allow {
 			continue
 		}
 
 		label := "evidence and policy"
-		if root.Change == "removed" {
+		if root.Change == report.SnapshotChangeRemoved {
 			label = "historical evidence only; removed from candidate"
 		}
 
@@ -84,7 +84,7 @@ func evidenceRoot(doc *report.Document, id string, roots []environmentRootChange
 	ids := []string{}
 
 	for _, root := range roots {
-		if previous && root.Change != "added" || !previous && root.Change != "removed" {
+		if previous && root.Change != report.SnapshotChangeAdded || !previous && root.Change != report.SnapshotChangeRemoved {
 			ids = append(ids, root.ID)
 		}
 	}

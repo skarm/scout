@@ -1,9 +1,7 @@
 // Package report defines passive scan results and their output representations.
 package report
 
-import (
-	"errors"
-)
+import "fmt"
 
 // Severity classifies finding impact independently of execution completeness
 // and policy decisions.
@@ -46,6 +44,33 @@ const (
 	Review Decision = "review"
 	// Block rejects admission under the evaluated policy.
 	Block Decision = "block"
+)
+
+const (
+	// CategoryApprovalBypass is the stable label for approval bypass.
+	CategoryApprovalBypass = "approval-bypass"
+	// CategoryCredentialEgress is the stable label for credential egress.
+	CategoryCredentialEgress = "credential-egress" //nolint:gosec // G101: finding category label.
+	// CategoryCredentialMaterial is the stable label for credential material.
+	CategoryCredentialMaterial = "credential-material" //nolint:gosec // G101: finding category label.
+	// CategoryDynamicExecution is the stable label for dynamic execution.
+	CategoryDynamicExecution = "dynamic-execution"
+	// CategoryInsecureTransport is the stable label for insecure transport.
+	CategoryInsecureTransport = "insecure-transport"
+	// CategoryHiddenInstructions is the stable label for hidden instructions.
+	CategoryHiddenInstructions = "hidden-instructions"
+	// CategoryCredentialAccess is the stable label for credential access.
+	CategoryCredentialAccess = "credential-access" //nolint:gosec // G101: finding category label.
+	// CategoryProcessExecution is the stable label for process execution.
+	CategoryProcessExecution = "process-execution"
+	// CategoryRemoteExecution is the stable label for remote execution.
+	CategoryRemoteExecution = "remote-execution"
+	// CategorySQLInjection is the stable label for SQL injection.
+	CategorySQLInjection = "sql-injection"
+	// CategoryToolPoisoning is the stable label for tool poisoning.
+	CategoryToolPoisoning = "tool-poisoning"
+	// CategorySupplyChain is the stable label for supply chain.
+	CategorySupplyChain = "supply-chain"
 )
 
 // Rule describes a check, its detection method and its stated limitations.
@@ -210,6 +235,8 @@ type Diagnostic struct {
 const (
 	// CaptureCaptured means the object's bytes were retained in the inventory.
 	CaptureCaptured = "captured"
+	// CaptureSkipped indicates that an inventoried file was omitted from capture.
+	CaptureSkipped = "skipped"
 	// CaptureAlreadyCaptured means an external reference resolved to retained bytes.
 	CaptureAlreadyCaptured = "already_captured"
 )
@@ -314,6 +341,15 @@ type ShellHookCoverage struct {
 	Gaps         []string     `json:"gaps,omitempty"`
 }
 
+const (
+	// GapReportFindingLimit marks omitted findings at the report retention limit.
+	GapReportFindingLimit = "report_finding_limit"
+	// GapAnalysisUnitLimit marks unverified units after the preparation budget is exhausted.
+	GapAnalysisUnitLimit = "analysis_unit_limit"
+	// GapSourceMapError marks a unit whose original source locations could not be recovered.
+	GapSourceMapError = "source_map_error"
+)
+
 // FileCoverage covers every inventoried entry, including unread or unsupported
 // files. complete refers only to the selected profile, not arbitrary behavior.
 type FileCoverage struct {
@@ -386,6 +422,7 @@ type CaptureLimits struct {
 type budgetRange struct {
 	value, min, max int64
 	message         string
+	messageArgs     []any
 }
 
 // Analysis contains passive observations for one target. It does not contain
@@ -530,7 +567,7 @@ const (
 	maxCaptureTotalBytes       = 256 << 20
 	maxCaptureArchiveBytes     = 128 << 20
 	maxFindings                = 100000
-	pathBudgetMessage          = "path budget must be in 1..4096 bytes and depth in 1..128"
+	pathBudgetMessage          = "path budget must be in 1..%d bytes and depth in 1..%d"
 )
 
 // DefaultCaptureLimits returns the standard bounded input and finding budgets.
@@ -545,42 +582,47 @@ func DefaultCaptureLimits() CaptureLimits {
 
 // Validate applies hard ceilings that also bound allocations before per-entry validation.
 func (l CaptureLimits) Validate() error {
+	pathBudgetArgs := []any{MaxArtifactPathBytes, MaxArtifactPathDepth}
+
 	return validateBudgets([]budgetRange{
-		{value: int64(l.MaxEntries), min: 1, max: MaxArtifactEntries, message: "max entries must be in 1..100000"},
+		{value: int64(l.MaxEntries), min: 1, max: MaxArtifactEntries, message: "max entries must be in 1..%d", messageArgs: []any{MaxArtifactEntries}},
 		{
 			value:   int64(l.MaxFiles),
 			min:     1,
 			max:     int64(l.MaxEntries),
 			message: "max files must be positive and <= max entries",
 		},
-		{value: l.MaxFileBytes, min: 1, max: maxCaptureFileBytes, message: "max file bytes must be in 1..33554432"},
+		{value: l.MaxFileBytes, min: 1, max: maxCaptureFileBytes, message: "max file bytes must be in 1..%d", messageArgs: []any{maxCaptureFileBytes}},
 		{
-			value:   l.MaxTotalBytes,
-			min:     l.MaxFileBytes,
-			max:     maxCaptureTotalBytes,
-			message: "max total bytes must be >= max file bytes and <= 268435456",
+			value:       l.MaxTotalBytes,
+			min:         l.MaxFileBytes,
+			max:         maxCaptureTotalBytes,
+			message:     "max total bytes must be >= max file bytes and <= %d",
+			messageArgs: []any{maxCaptureTotalBytes},
 		},
-		{value: l.MaxArchiveBytes, min: 1, max: maxCaptureArchiveBytes, message: "max archive bytes must be in 1..134217728"},
+		{value: l.MaxArchiveBytes, min: 1, max: maxCaptureArchiveBytes, message: "max archive bytes must be in 1..%d", messageArgs: []any{maxCaptureArchiveBytes}},
 		{
-			value:   int64(l.MaxPathBytes),
-			min:     1,
-			max:     MaxArtifactPathBytes,
-			message: pathBudgetMessage,
+			value:       int64(l.MaxPathBytes),
+			min:         1,
+			max:         MaxArtifactPathBytes,
+			message:     pathBudgetMessage,
+			messageArgs: pathBudgetArgs,
 		},
 		{
-			value:   int64(l.MaxDepth),
-			min:     1,
-			max:     MaxArtifactPathDepth,
-			message: pathBudgetMessage,
+			value:       int64(l.MaxDepth),
+			min:         1,
+			max:         MaxArtifactPathDepth,
+			message:     pathBudgetMessage,
+			messageArgs: pathBudgetArgs,
 		},
-		{value: int64(l.MaxFindings), min: 1, max: maxFindings, message: "max findings must be in 1..100000"},
+		{value: int64(l.MaxFindings), min: 1, max: maxFindings, message: "max findings must be in 1..%d", messageArgs: []any{maxFindings}},
 	})
 }
 
 func validateBudgets(budgets []budgetRange) error {
 	for _, budget := range budgets {
 		if budget.value < budget.min || budget.value > budget.max {
-			return errors.New(budget.message)
+			return fmt.Errorf(budget.message, budget.messageArgs...)
 		}
 	}
 

@@ -6,6 +6,7 @@ package review
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"github.com/skarm/scout/knowledge"
 	"github.com/skarm/scout/report"
 )
+
+const fieldSchemaVersion = "schema_version"
 
 const (
 	minReviewRequestBytes  = 2048
@@ -327,6 +330,7 @@ type Response struct {
 type optionRange struct {
 	value, min, max int64
 	message         string
+	messageArgs     []any
 }
 
 const (
@@ -382,7 +386,7 @@ func (o Options) Validate() error {
 	}
 
 	return validateRanges([]optionRange{
-		{value: int64(o.MaxRequests), min: 1, max: maxReviewRequests, message: "semantic requests must be in 1..256"},
+		{value: int64(o.MaxRequests), min: 1, max: maxReviewRequests, message: "semantic requests must be in 1..%d", messageArgs: []any{maxReviewRequests}},
 		{
 			value:   int64(o.MaxRequestBytes),
 			min:     minReviewRequestBytes,
@@ -403,10 +407,11 @@ func (o Options) Validate() error {
 		},
 		{value: int64(o.MaxProposals), min: 1, max: maxReviewProposals, message: "invalid semantic response or proposal budget"},
 		{
-			value:   int64(o.ChunkBytes),
-			min:     minReviewChunkBytes,
-			max:     int64(min(maxReviewChunkBytes, o.MaxRequestBytes/2)),
-			message: "semantic chunk size must be 256..16384 and at most half the request budget",
+			value:       int64(o.ChunkBytes),
+			min:         minReviewChunkBytes,
+			max:         int64(min(maxReviewChunkBytes, o.MaxRequestBytes/2)),
+			message:     "semantic chunk size must be %d..%d and at most half the request budget",
+			messageArgs: []any{minReviewChunkBytes, maxReviewChunkBytes},
 		},
 		{
 			value:   int64(o.Timeout),
@@ -422,7 +427,7 @@ func (o Options) Validate() error {
 func (i Identity) Validate() error {
 	for _, s := range []string{i.Provider, i.Model} {
 		if len(s) == 0 || len(s) > maxIdentityBytes {
-			return errors.New("provider and requested model must contain 1..128 identifier bytes")
+			return fmt.Errorf("provider and requested model must contain 1..%d identifier bytes", maxIdentityBytes)
 		}
 
 		if !textmatch.Token(s, maxIdentityBytes, "_.:/@-") {
@@ -431,7 +436,7 @@ func (i Identity) Validate() error {
 	}
 
 	for _, s := range []string{i.EndpointSHA256, i.SettingsSHA256} {
-		if s != "" && !textmatch.LowerHex(s, 64) {
+		if s != "" && !textmatch.LowerHex(s, 2*sha256.Size) {
 			return errors.New("invalid provider configuration digest")
 		}
 	}
@@ -442,7 +447,7 @@ func (i Identity) Validate() error {
 func validateRanges(ranges []optionRange) error {
 	for _, r := range ranges {
 		if r.value < r.min || r.value > r.max {
-			return errors.New(r.message)
+			return fmt.Errorf(r.message, r.messageArgs...)
 		}
 	}
 
@@ -456,7 +461,7 @@ func compiledResponseSchema() string {
 	}
 
 	properties := schemaObject(schema, "properties")
-	schemaObject(properties, "schema_version")["enum"] = []string{ProtocolVersion}
+	schemaObject(properties, fieldSchemaVersion)["enum"] = []string{ProtocolVersion}
 	proposalArray := schemaObject(properties, "proposals")
 	assessmentArray := schemaObject(properties, "assessments")
 	proposalArray["maxItems"], assessmentArray["maxItems"] = MaxItems, MaxItems

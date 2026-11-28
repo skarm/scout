@@ -12,6 +12,18 @@ import (
 )
 
 const (
+	codeByteLimit            = "byte_limit"
+	codeDuplicateReplacement = "duplicate_replacement"
+	codeDuplicateRequirement = "duplicate_requirement"
+	codeInvalidCoordinate    = "invalid_coordinate"
+	codeInvalidEncoding      = "invalid_encoding"
+	codeMissingModule        = "missing_module"
+	codeNilContext           = "nil_context"
+	codeNodeLimit            = "node_limit"
+	codeSyntaxError          = "syntax_error"
+)
+
+const (
 	MaxBytes      = 256 << 10
 	maxDirectives = 4096
 )
@@ -22,7 +34,7 @@ type Error struct{ Code string }
 // deliberately do not include input text, which could contain secret material.
 func Parse(ctx context.Context, data string) (*modfile.File, error) {
 	if ctx == nil {
-		return nil, &Error{Code: "nil_context"}
+		return nil, &Error{Code: codeNilContext}
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -30,16 +42,16 @@ func Parse(ctx context.Context, data string) (*modfile.File, error) {
 	}
 
 	if len(data) > MaxBytes {
-		return nil, &Error{Code: "byte_limit"}
+		return nil, &Error{Code: codeByteLimit}
 	}
 
 	if !utf8.ValidString(data) || strings.ContainsRune(data, 0) {
-		return nil, &Error{Code: "invalid_encoding"}
+		return nil, &Error{Code: codeInvalidEncoding}
 	}
 
 	f, err := modfile.Parse("", []byte(data), nil)
 	if err != nil {
-		return nil, &Error{Code: "syntax_error"}
+		return nil, &Error{Code: codeSyntaxError}
 	}
 
 	if err := validateModule(ctx, f); err != nil {
@@ -53,11 +65,11 @@ func (e *Error) Error() string { return "go.mod: " + e.Code }
 
 func validateModule(ctx context.Context, f *modfile.File) error {
 	if f.Module == nil {
-		return &Error{Code: "missing_module"}
+		return &Error{Code: codeMissingModule}
 	}
 
 	if len(f.Require)+len(f.Replace)+len(f.Exclude)+len(f.Retract) > maxDirectives {
-		return &Error{Code: "node_limit"}
+		return &Error{Code: codeNodeLimit}
 	}
 
 	requires := map[string]bool{}
@@ -68,12 +80,12 @@ func validateModule(ctx context.Context, f *modfile.File) error {
 		}
 
 		if requires[r.Mod.Path] {
-			return &Error{Code: "duplicate_requirement"}
+			return &Error{Code: codeDuplicateRequirement}
 		}
 
 		requires[r.Mod.Path] = true
 		if module.Check(r.Mod.Path, r.Mod.Version) != nil {
-			return &Error{Code: "invalid_coordinate"}
+			return &Error{Code: codeInvalidCoordinate}
 		}
 	}
 
@@ -94,13 +106,13 @@ func validateReplacements(values []*modfile.Replace) error {
 	for _, r := range values {
 		k := r.Old.Path + "@" + r.Old.Version
 		if replacements[k] {
-			return &Error{Code: "duplicate_replacement"}
+			return &Error{Code: codeDuplicateReplacement}
 		}
 
 		replacements[k] = true
 
 		if r.New.Version != "" && module.Check(r.New.Path, r.New.Version) != nil {
-			return &Error{Code: "invalid_coordinate"}
+			return &Error{Code: codeInvalidCoordinate}
 		}
 	}
 

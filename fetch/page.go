@@ -8,6 +8,10 @@ import (
 	"github.com/skarm/scout/internal/netpolicy"
 )
 
+const (
+	codeCursorLimit = "cursor_limit"
+)
+
 // MaxPageCursorBytes bounds the pagination cursor in a registry request.
 const MaxPageCursorBytes = 2048
 
@@ -16,7 +20,7 @@ const MaxPageCursorBytes = 2048
 // It uses the same no-redirect, no-proxy and checked-DNS transport as Get.
 func GetPage(ctx context.Context, endpoint, cursor string, o Options) ([]byte, error) {
 	if ctx == nil {
-		return nil, fail("nil_context")
+		return nil, fail(codeNilContext)
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -28,7 +32,7 @@ func GetPage(ctx context.Context, endpoint, cursor string, o Options) ([]byte, e
 	}
 
 	if len(cursor) > MaxPageCursorBytes {
-		return nil, fail("cursor_limit")
+		return nil, fail(codeCursorLimit)
 	}
 
 	u, err := parseURL(endpoint, o.AllowLoopback)
@@ -42,7 +46,7 @@ func GetPage(ctx context.Context, endpoint, cursor string, o Options) ([]byte, e
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, fail("invalid_request")
+		return nil, fail(codeInvalidRequest)
 	}
 
 	req.Header.Set(netpolicy.HeaderAccept, netpolicy.JSONMediaType)

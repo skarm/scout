@@ -16,6 +16,12 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	flagAt      = "at"
+	flagCurrent = "current"
+	flagTrial   = "trial"
+)
+
 const maxShadowReportBytes = 64 << 20
 
 func policyCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -25,11 +31,11 @@ func policyCommand(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 	fs := flag.NewFlagSet("policy shadow", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	source := fs.String("report", "", "required saved scout.report/v1 JSON")
-	currentPath := fs.String("current", "", "required current scout.config/v1 JSON")
-	trialPath := fs.String("trial", "", "required trial scout.config/v1 JSON")
-	format := fs.String("format", "text", "output format: text or json")
-	at := fs.String("at", "", "approval evaluation time as RFC3339 (default: now)")
+	source := fs.String(flagReport, "", "required saved scout.report/v1 JSON")
+	currentPath := fs.String(flagCurrent, "", "required current scout.config/v1 JSON")
+	trialPath := fs.String(flagTrial, "", "required trial scout.config/v1 JSON")
+	format := fs.String(flagFormat, "text", "output format: text or json")
+	at := fs.String(flagAt, "", "approval evaluation time as RFC3339 (default: now)")
 
 	if err := parseFlags(fs, args[1:]); err != nil {
 		return requestError(err, stderr)

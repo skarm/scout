@@ -141,7 +141,9 @@ func isCloudDownload(words []string, changedDir bool) bool {
 	remote, ok := strings.CutPrefix(operands[0], scheme)
 	bucket, _, _ := strings.Cut(remote, "/")
 
-	return ok && bucket != "" && len(bucket) <= 63 && !strings.ContainsFunc(bucket, func(r rune) bool {
+	const maxBucketNameBytes = 63
+
+	return ok && bucket != "" && len(bucket) <= maxBucketNameBytes && !strings.ContainsFunc(bucket, func(r rune) bool {
 		return (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' && r != '.'
 	}) && cloudPathText(remote)
 }

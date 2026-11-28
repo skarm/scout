@@ -26,6 +26,13 @@ const (
 	maxDeclarations           = 8192
 )
 
+const (
+	pyprojectName  = "pyproject.toml"
+	uvLockName     = "uv.lock"
+	poetryLockName = "poetry.lock"
+	pipfileName    = "pipfile"
+)
+
 var (
 	requirement    = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[A-Za-z0-9_,.-]+\])?\s*(===|==|~=|>=|<=|!=|>|<)?\s*([^\s;#]+)?`)
 	exactPyVersion = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)*(?:(?:a|b|rc)[0-9]+)?(?:\.post[0-9]+)?(?:\.dev[0-9]+)?$`)
@@ -40,7 +47,7 @@ var (
 		"pipfile.lock":        true,
 	}
 	//nolint:gochecknoglobals // Read-only manifest filename sets shared by dependency captures.
-	pythonTOMLNames = map[string]bool{"pyproject.toml": true, "uv.lock": true, "poetry.lock": true, "pipfile": true}
+	pythonTOMLNames = map[string]bool{pyprojectName: true, uvLockName: true, poetryLockName: true, pipfileName: true}
 )
 
 type dependencyAdder func(eco, pkg, version, kind string, node *jsonconfig.Node, indirect bool)

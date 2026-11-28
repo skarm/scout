@@ -28,11 +28,20 @@ const (
 	MaxSourceSegments = 8192
 )
 
+const (
+	codePreparationCancelled    = "preparation_cancelled"
+	messageAnalysisUnitLimit    = "Analysis unit budget exhausted; remaining units are unverified."
+	messagePreparationCancelled = "Document preparation was cancelled."
+	messageSourceMapError       = "Source mapping could not be constructed."
+)
+
+const statusBudgetExceeded = "budget_exceeded"
+
 //nolint:gochecknoglobals // Read-only parser failure classifications shared by document preparation.
 var parserFailureStatus = map[string]string{
-	"unsupported_syntax":  "unsupported_syntax",
-	"backend_unavailable": "unavailable",
-	"parser_limit":        "budget_exceeded",
+	parse.CodeUnsupportedSyntax:  "unsupported_syntax",
+	parse.CodeBackendUnavailable: "unavailable",
+	parse.CodeLimit:              statusBudgetExceeded,
 }
 
 type region struct {
@@ -278,7 +287,7 @@ func (f *filePreparation) region(r region) bool {
 
 func (f *filePreparation) addUnit(ctx context.Context, lang, origin string, span source.Span, v source.View) {
 	if len(f.units)+len(f.shellUnits) >= MaxRegions {
-		f.issue("analysis_unit_limit", "Analysis unit budget exhausted; remaining units are unverified.")
+		f.issue(report.GapAnalysisUnitLimit, messageAnalysisUnitLimit)
 		return
 	}
 
@@ -297,7 +306,7 @@ func (f *filePreparation) admitUnit(ctx context.Context, descriptor parse.Descri
 
 	bytes := len(unit.View.Text())
 	if bytes > descriptor.UnitBytes {
-		unit.Status = "budget_exceeded"
+		unit.Status = statusBudgetExceeded
 		unit.preparationDiagnostic = report.Diagnostic{
 			Code:    unit.Language + "_source_limit",
 			Message: "Analysis unit exceeds the parser byte budget.",
@@ -307,7 +316,7 @@ func (f *filePreparation) admitUnit(ctx context.Context, descriptor parse.Descri
 	}
 
 	if bytes > descriptor.ScanBytes-f.budget.consumed[descriptor.ID] {
-		unit.Status = "budget_exceeded"
+		unit.Status = statusBudgetExceeded
 		unit.preparationDiagnostic = report.Diagnostic{
 			Code:    unit.Language + "_scan_budget",
 			Message: "Aggregate parser byte budget exhausted; this unit was not parsed.",
@@ -388,7 +397,7 @@ func (f *filePreparation) publishUnit(ctx context.Context, unit Unit) {
 	}
 
 	if ctx.Err() != nil {
-		f.issue("preparation_cancelled", "Document preparation was cancelled.")
+		f.issue(codePreparationCancelled, messagePreparationCancelled)
 	}
 }
 
@@ -447,7 +456,7 @@ func (f *filePreparation) markdownFrontmatter(ctx context.Context, text string, 
 
 	envelope, proceed := readFrontmatter(ctx, text, at)
 	if !proceed {
-		f.issue("preparation_cancelled", "Document preparation was cancelled.")
+		f.issue(codePreparationCancelled, messagePreparationCancelled)
 		return at, false
 	}
 
@@ -457,7 +466,7 @@ func (f *filePreparation) markdownFrontmatter(ctx context.Context, text string, 
 	if supported && envelope.closed && envelope.body.End > envelope.body.Start {
 		view, err := source.NewView(text, []source.Span{envelope.body})
 		if err != nil {
-			f.issue("source_map_error", "Frontmatter mapping failed.")
+			f.issue(report.GapSourceMapError, "Frontmatter mapping failed.")
 		} else {
 			f.addUnit(ctx, language.YAML, "frontmatter", envelope.body, view)
 		}
@@ -486,7 +495,7 @@ func prepare(ctx context.Context, file artifact.File, budget *parseBudget, regis
 	}
 
 	if ctx == nil || ctx.Err() != nil {
-		projection.issue("preparation_cancelled", "Document preparation was cancelled.")
+		projection.issue(codePreparationCancelled, messagePreparationCancelled)
 		return out
 	}
 
@@ -574,7 +583,7 @@ func (f *filePreparation) prepareFileUnits(ctx context.Context) {
 
 	view, err := source.NewView(f.file.Content(), []source.Span{span})
 	if err != nil {
-		f.issue("source_map_error", "Source mapping could not be constructed.")
+		f.issue(report.GapSourceMapError, messageSourceMapError)
 		return
 	}
 

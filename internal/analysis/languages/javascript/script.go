@@ -100,18 +100,18 @@ func (a scriptCheck) Rule() report.Rule {
 
 	switch a.id {
 	case ruleJS001:
-		title, category = "JavaScript constructs a shell command", "process-execution"
+		title, category = "JavaScript constructs a shell command", report.CategoryProcessExecution
 		version = "2"
 	case ruleJS002:
-		title, category = "JavaScript evaluates code dynamically", "dynamic-execution"
+		title, category = "JavaScript evaluates code dynamically", report.CategoryDynamicExecution
 	case ruleJS003:
-		title, category = "Credential material reaches a JavaScript network API", "credential-egress"
+		title, category = "Credential material reaches a JavaScript network API", report.CategoryCredentialEgress
 	case ruleJS004:
-		title, category = "Dynamically constructed SQL reaches a JavaScript query API", "sql-injection"
+		title, category = "Dynamically constructed SQL reaches a JavaScript query API", report.CategorySQLInjection
 	case ruleJS005:
-		title, category = "JavaScript reads a sensitive credential path", "credential-access"
+		title, category = "JavaScript reads a sensitive credential path", report.CategoryCredentialAccess
 	case ruleJS006:
-		title, category = "JavaScript disables TLS certificate verification", "insecure-transport"
+		title, category = "JavaScript disables TLS certificate verification", report.CategoryInsecureTransport
 	}
 
 	return report.Rule{

@@ -62,11 +62,11 @@ func (p *configProjection) step(depth int) error {
 	p.count++
 
 	if p.count > maxNodes || depth > MaxDepth {
-		return &Failure{Category: "limit"}
+		return &Failure{Category: CodeLimit}
 	}
 
 	if p.ctx.Err() != nil {
-		return &Failure{Category: "deadline"}
+		return &Failure{Category: CodeDeadline}
 	}
 
 	return nil
@@ -148,11 +148,11 @@ func parseYAML(ctx context.Context, text string) (*ConfigNode, error) {
 
 	var extra yaml.Node
 	if err := d.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, &Failure{Category: "multiple_documents"}
+		return nil, &Failure{Category: codeMultipleDocuments}
 	}
 
 	if ctx.Err() != nil {
-		return nil, &Failure{Category: "deadline"}
+		return nil, &Failure{Category: CodeDeadline}
 	}
 
 	p := yamlProjection{configProjection: configProjection{ctx: ctx, text: text}, positions: indexYAMLPositions(text)}
@@ -199,7 +199,7 @@ func indexYAMLPositions(text string) yamlPositions {
 func (p *yamlProjection) offset(line, column int) (int, error) {
 	positions := p.positions
 	if line <= 0 || column <= 0 || line > len(positions.lineStarts) {
-		return 0, &Failure{Category: "invalid_tree"}
+		return 0, &Failure{Category: codeInvalidTree}
 	}
 
 	start, end := positions.lineStarts[line-1], positions.runeCount
@@ -208,7 +208,7 @@ func (p *yamlProjection) offset(line, column int) (int, error) {
 	}
 
 	if column-1 > end-start {
-		return 0, &Failure{Category: "invalid_tree"}
+		return 0, &Failure{Category: codeInvalidTree}
 	}
 
 	position := start + column - 1
@@ -228,12 +228,12 @@ func (p *yamlProjection) node(n *yaml.Node, depth int) (*ConfigNode, error) {
 	}
 
 	if n == nil {
-		return nil, &Failure{Category: "invalid_tree"}
+		return nil, &Failure{Category: codeInvalidTree}
 	}
 
 	if n.Kind == yaml.DocumentNode {
 		if len(n.Content) != 1 {
-			return nil, &Failure{Category: "invalid_tree"}
+			return nil, &Failure{Category: codeInvalidTree}
 		}
 
 		return p.node(n.Content[0], depth)
@@ -252,7 +252,7 @@ func (p *yamlProjection) positionedNode(n *yaml.Node, depth int) (*ConfigNode, e
 
 	switch n.Kind {
 	case yaml.AliasNode:
-		return nil, &Failure{Category: "unsupported_alias"}
+		return nil, &Failure{Category: codeUnsupportedAlias}
 	case yaml.MappingNode:
 		err = p.mapping(out, n, depth)
 	case yaml.SequenceNode:
@@ -260,7 +260,7 @@ func (p *yamlProjection) positionedNode(n *yaml.Node, depth int) (*ConfigNode, e
 	case yaml.ScalarNode:
 		err = p.scalar(out, n)
 	default:
-		err = &Failure{Category: "invalid_tree"}
+		err = &Failure{Category: codeInvalidTree}
 	}
 
 	if err != nil {
@@ -283,11 +283,11 @@ func (p *yamlProjection) mapping(out *ConfigNode, n *yaml.Node, depth int) error
 		p.count++
 
 		if p.count > maxNodes {
-			return &Failure{Category: "limit"}
+			return &Failure{Category: CodeLimit}
 		}
 
 		if seen[k.Value] {
-			return &Failure{Category: "ambiguous_key"}
+			return &Failure{Category: CodeAmbiguousKey}
 		}
 
 		seen[k.Value] = true
@@ -305,7 +305,7 @@ func (p *yamlProjection) mapping(out *ConfigNode, n *yaml.Node, depth int) error
 
 func (p *yamlProjection) member(key, value *yaml.Node, depth int) (Member, error) {
 	if key.Kind != yaml.ScalarNode || key.ShortTag() != yamlTagString || key.Value == "<<" {
-		return Member{}, &Failure{Category: "ambiguous_key"}
+		return Member{}, &Failure{Category: CodeAmbiguousKey}
 	}
 
 	start, err := p.offset(key.Line, key.Column)
@@ -351,14 +351,14 @@ func (p *yamlProjection) scalar(out *ConfigNode, n *yaml.Node) error {
 		out.Kind, out.Text = jsonconfig.KindString, n.Value
 	case yamlTagBool:
 		if !strings.EqualFold(n.Value, "true") && !strings.EqualFold(n.Value, "false") {
-			return &Failure{Category: "unsupported_scalar"}
+			return &Failure{Category: codeUnsupportedScalar}
 		}
 
 		out.Kind, out.Bool = jsonconfig.KindBool, strings.EqualFold(n.Value, "true")
 	case yamlTagInt, yamlTagFloat, yamlTagNull:
 		var scalar any
 		if err := n.Decode(&scalar); err != nil {
-			return &Failure{Category: "invalid_scalar"}
+			return &Failure{Category: codeInvalidScalar}
 		}
 
 		out.Kind = jsonconfig.KindNull
@@ -400,7 +400,7 @@ func tomlScalar(out *ConfigNode, value any) error {
 	case toml.LocalDate, toml.LocalTime, toml.LocalDateTime:
 		out.Kind, out.Text = jsonconfig.KindString, fmt.Sprint(v)
 	default:
-		return &Failure{Category: "unsupported_value"}
+		return &Failure{Category: codeUnsupportedValue}
 	}
 
 	return nil

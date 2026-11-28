@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/skarm/scout/internal/dev/provenance"
+	"github.com/skarm/scout/internal/netpolicy"
 )
 
 const (
@@ -131,7 +132,7 @@ func downloadSource(ctx context.Context, address string) ([]byte, error) {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", "scout-knowledge-verifier")
+	req.Header.Set(netpolicy.HeaderUserAgent, "scout-knowledge-verifier")
 
 	client := &http.Client{
 		Timeout:       sourceDownloadTimeout,

@@ -45,7 +45,7 @@ func (f *filePreparation) publishMarkdown(ctx context.Context, result markdown.R
 
 	for _, block := range result.Blocks {
 		if ctx.Err() != nil {
-			f.issue("preparation_cancelled", "Document preparation was cancelled.")
+			f.issue(codePreparationCancelled, messagePreparationCancelled)
 			return false
 		}
 

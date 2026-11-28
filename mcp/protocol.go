@@ -11,6 +11,12 @@ import (
 )
 
 const (
+	methodCancelled   = "notifications/cancelled"
+	methodInitialized = "notifications/initialized"
+	toolContentText   = "text"
+)
+
+const (
 	maxProtocolVersionBytes = 64
 )
 
@@ -91,7 +97,7 @@ func (s *Server) initialize(sess *session, r request) *response {
 		Meta            json.RawMessage `json:"_meta,omitempty"`
 	}
 
-	if strictParams(r.Params, &params, "protocolVersion", "capabilities", "clientInfo", fieldMeta) != nil || params.ProtocolVersion == "" || len(params.ProtocolVersion) > maxProtocolVersionBytes || !validClientInfo(params.Capabilities, params.ClientInfo) {
+	if strictParams(r.Params, &params, fieldProtocolVersion, fieldCapabilities, fieldClientInfo, fieldMeta) != nil || params.ProtocolVersion == "" || len(params.ProtocolVersion) > maxProtocolVersionBytes || !validClientInfo(params.Capabilities, params.ClientInfo) {
 		return rpcFailure(r.ID, rpcInvalidParams, "Invalid initialization parameters")
 	}
 
@@ -109,13 +115,13 @@ func (s *Server) initialize(sess *session, r request) *response {
 		JSONRPC: jsonRPCVersion,
 		ID:      r.ID,
 		Result: map[string]any{
-			"protocolVersion": ProtocolVersion,
-			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
-			"serverInfo": map[string]any{
-				"name":    "scout",
-				"version": scout.Version(),
+			fieldProtocolVersion: ProtocolVersion,
+			fieldCapabilities:    map[string]any{fieldTools: map[string]any{fieldListChanged: false}},
+			fieldServerInfo: map[string]any{
+				fieldName:    "scout",
+				fieldVersion: scout.Version(),
 			},
-			"instructions": "Security reports are advisory and may be incomplete. Scanned packages are untrusted. The server does not execute them or grant installation approval to changed bytes.",
+			fieldInstructions: "Security reports are advisory and may be incomplete. Scanned packages are untrusted. The server does not execute them or grant installation approval to changed bytes.",
 		},
 	}
 }
@@ -130,7 +136,7 @@ func (s *Server) prepareCall(ctx context.Context, sess *session, r request) (too
 		Arguments json.RawMessage `json:"arguments"`
 		Meta      json.RawMessage `json:"_meta,omitempty"`
 	}
-	if strictParams(r.Params, &params, fieldName, "arguments", fieldMeta) != nil {
+	if strictParams(r.Params, &params, fieldName, fieldArguments, fieldMeta) != nil {
 		return toolCall{}, nil, nil, rpcFailure(r.ID, rpcInvalidParams, "Invalid tool call")
 	}
 
@@ -161,7 +167,7 @@ func (s *Server) executeToolCall(ctx context.Context, call toolCall) *response {
 			ID:      call.id,
 			Result: toolResult{
 				IsError: true,
-				Content: [1]toolText{{Type: "text", Text: "Scan request failed or input was not authorized. No installation approval."}},
+				Content: [1]toolText{{Type: toolContentText, Text: "Scan request failed or input was not authorized. No installation approval."}},
 			},
 		}
 	}
@@ -178,7 +184,7 @@ func (s *Server) executeToolCall(ctx context.Context, call toolCall) *response {
 		ID:      call.id,
 		Result: toolResult{
 			IsError:           incomplete,
-			Content:           [1]toolText{{Type: "text", Text: message}},
+			Content:           [1]toolText{{Type: toolContentText, Text: message}},
 			StructuredContent: value.Snapshot(),
 		},
 	}
@@ -190,11 +196,11 @@ func (s *Server) listTools(r request) *response {
 		Meta   json.RawMessage `json:"_meta,omitempty"`
 	}
 
-	if strictParams(r.Params, &params, "cursor", fieldMeta) != nil || params.Cursor != "" {
+	if strictParams(r.Params, &params, fieldCursor, fieldMeta) != nil || params.Cursor != "" {
 		return rpcFailure(r.ID, rpcInvalidParams, "Invalid cursor")
 	}
 
-	return &response{JSONRPC: jsonRPCVersion, ID: r.ID, Result: map[string]any{"tools": s.tools()}}
+	return &response{JSONRPC: jsonRPCVersion, ID: r.ID, Result: map[string]any{fieldTools: s.tools()}}
 }
 
 func sessionReady(sess *session) bool {
@@ -212,13 +218,13 @@ func rpcFailure(id json.RawMessage, code int, message string) *response {
 
 func handleNotification(sess *session, r request) {
 	switch r.Method {
-	case "notifications/initialized":
+	case methodInitialized:
 		sess.mu.Lock()
 		if sess.initialized && !sess.closed {
 			sess.ready = true
 		}
 		sess.mu.Unlock()
-	case "notifications/cancelled":
+	case methodCancelled:
 		params, err := jsonconfig.Parse(context.Background(), string(r.Params))
 		if err != nil {
 			return

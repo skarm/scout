@@ -593,9 +593,11 @@ func (b *bundleAnalysis) literalNode(n *bundleNode) *bundleNode {
 		return n
 	}
 
+	const literalScanCostBytes = 64
+
 	// Classify once per source node. The immutable result survives fresh
 	// imported-module runtime state in independent Markdown entry points.
-	for offset := 0; offset < len(n.text); offset += 64 {
+	for offset := 0; offset < len(n.text); offset += literalScanCostBytes {
 		if !b.step() {
 			return nil
 		}

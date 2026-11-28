@@ -18,11 +18,27 @@ import (
 )
 
 const (
+	codeGITFetchFailed          = "git_fetch_failed"
+	codeGITNotAvailable         = "git_not_available"
+	codeGITRequestLimit         = "git_request_limit"
+	codeGITSmartHTTPRequired    = "git_smart_http_required"
+	codeGITTransportLimit       = "git_transport_limit"
+	codeGITTransportUnavailable = "git_transport_unavailable"
+	codeInvalidGITURL           = "invalid_git_url"
+)
+
+const (
 	// KindGitTree identifies a pinned Git tree packaged as a deterministic ZIP.
-	KindGitTree     = "git-tree"
-	gitRequestLimit = 8
-	gitRequestBytes = 64 << 10
-	gitCapturedRef  = "refs/scout/captured"
+	KindGitTree          = "git-tree"
+	gitRequestLimit      = 8
+	gitRequestBytes      = 64 << 10
+	gitBridgeHeaderBytes = 16 << 10
+	gitCapturedRef       = "refs/scout/captured"
+)
+
+const (
+	codeGitWorkspaceFailed = "git_workspace_failed"
+	codeGitHeadUnavailable = "git_head_unavailable"
 )
 
 func fetchGitTree(ctx context.Context, target Target, o Options) ([]byte, string, error) {
@@ -31,18 +47,18 @@ func fetchGitTree(ctx context.Context, target Target, o Options) ([]byte, string
 
 	git, err := exec.LookPath("git")
 	if err != nil {
-		return nil, target.Revision, fail("git_not_available")
+		return nil, target.Revision, fail(codeGITNotAvailable)
 	}
 
 	dir, err := os.MkdirTemp("", "scout-git-*")
 	if err != nil {
-		return nil, target.Revision, fail("git_workspace_failed")
+		return nil, target.Revision, fail(codeGitWorkspaceFailed)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	repo := gitWorkspace{git: git, dir: dir}
 	if err := repo.command(ctx, "init", "--bare", "--quiet", "--template=", "--object-format=sha1").Run(); err != nil {
-		return nil, target.Revision, gitFailure(ctx, "git_workspace_failed")
+		return nil, target.Revision, gitFailure(ctx, codeGitWorkspaceFailed)
 	}
 
 	if err := repo.download(ctx, target, o); err != nil {
@@ -70,12 +86,12 @@ func (r gitWorkspace) capturedRevision(ctx context.Context) (string, error) {
 
 	command.Stdout = output
 	if err := command.Run(); err != nil {
-		return "", gitFailure(ctx, "git_head_unavailable")
+		return "", gitFailure(ctx, codeGitHeadUnavailable)
 	}
 
 	revision, ok := strings.CutSuffix(output.buffer.String(), "\n")
 	if !ok || !isHex(revision, gitCommitHexBytes) {
-		return "", fail("git_head_unavailable")
+		return "", fail(codeGitHeadUnavailable)
 	}
 
 	return revision, nil
@@ -98,12 +114,12 @@ func (r gitWorkspace) command(ctx context.Context, args ...string) *exec.Cmd {
 func (r gitWorkspace) download(ctx context.Context, target Target, o Options) error {
 	remote, err := url.Parse(target.URL)
 	if err != nil {
-		return fail("invalid_git_url")
+		return fail(codeInvalidGITURL)
 	}
 
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp4", "127.0.0.1:0")
 	if err != nil {
-		return gitFailure(ctx, "git_transport_unavailable")
+		return gitFailure(ctx, codeGITTransportUnavailable)
 	}
 
 	client, transport := newClient(o)
@@ -116,7 +132,7 @@ func (r gitWorkspace) download(ctx context.Context, target Target, o Options) er
 
 	server := &http.Server{
 		Handler: proxy, ReadHeaderTimeout: o.Timeout, ReadTimeout: o.Timeout, WriteTimeout: o.Timeout,
-		BaseContext: func(net.Listener) context.Context { return ctx }, MaxHeaderBytes: 16 << 10,
+		BaseContext: func(net.Listener) context.Context { return ctx }, MaxHeaderBytes: gitBridgeHeaderBytes,
 	}
 
 	stopped := make(chan struct{})
@@ -155,7 +171,7 @@ func (r gitWorkspace) download(ctx context.Context, target Target, o Options) er
 			return proxy.failure
 		}
 
-		return fail("git_fetch_failed")
+		return fail(codeGITFetchFailed)
 	}
 
 	return nil
@@ -193,19 +209,25 @@ func (p *gitHTTPBridge) ServeHTTP(w http.ResponseWriter, incoming *http.Request)
 		return
 	}
 
-	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set(netpolicy.HeaderContentType, mimeType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(data) //nolint:gosec // A private Git bridge returns only binary Git protocol media types.
 }
 
 func (p *gitHTTPBridge) routeRequest(r *http.Request) (string, string, bool) {
-	const discovery, service = "/info/refs", "/git-upload-pack"
+	const (
+		discoveryPath       = "/info/refs"
+		uploadPackService   = "git-upload-pack"
+		uploadPackPath      = "/" + uploadPackService
+		uploadPackQuery     = "service=" + uploadPackService
+		uploadPackMediaType = "application/x-" + uploadPackService
+	)
 	switch {
-	case r.Method == http.MethodGet && r.URL.Path == p.route+discovery && r.URL.RawQuery == "service=git-upload-pack":
-		return discovery, "application/x-git-upload-pack-advertisement", true
-	case r.Method == http.MethodPost && r.URL.Path == p.route+service && r.URL.RawQuery == "" &&
-		r.Header.Get("Content-Type") == "application/x-git-upload-pack-request":
-		return service, "application/x-git-upload-pack-result", true
+	case r.Method == http.MethodGet && r.URL.Path == p.route+discoveryPath && r.URL.RawQuery == uploadPackQuery:
+		return discoveryPath, uploadPackMediaType + "-advertisement", true
+	case r.Method == http.MethodPost && r.URL.Path == p.route+uploadPackPath && r.URL.RawQuery == "" &&
+		r.Header.Get(netpolicy.HeaderContentType) == uploadPackMediaType+"-request":
+		return uploadPackPath, uploadPackMediaType + "-result", true
 	default:
 		return "", "", false
 	}
@@ -213,11 +235,11 @@ func (p *gitHTTPBridge) routeRequest(r *http.Request) (string, string, bool) {
 
 func (p *gitHTTPBridge) forward(r *http.Request, suffix, mimeType string) ([]byte, error) {
 	if p.remaining <= 0 {
-		return nil, fail("byte_limit")
+		return nil, fail(codeByteLimit)
 	}
 
 	if p.requests >= gitRequestLimit {
-		return nil, fail("git_transport_limit")
+		return nil, fail(codeGITTransportLimit)
 	}
 
 	p.requests++
@@ -232,22 +254,22 @@ func (p *gitHTTPBridge) forward(r *http.Request, suffix, mimeType string) ([]byt
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, gitRequestBytes+1))
 	if err != nil || len(body) > gitRequestBytes {
-		return nil, fail("git_request_limit")
+		return nil, fail(codeGITRequestLimit)
 	}
 
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, remote.String(), bytes.NewReader(body))
 	if err != nil {
-		return nil, fail("invalid_request")
+		return nil, fail(codeInvalidRequest)
 	}
 
-	req.Header.Set("User-Agent", downloadUserAgent)
+	req.Header.Set(netpolicy.HeaderUserAgent, downloadUserAgent)
 	req.Header.Set(netpolicy.HeaderAcceptEncoding, netpolicy.IdentityEncoding)
 
 	if p.auth != nil {
 		req.SetBasicAuth(p.auth.user, p.auth.token)
 	}
 
-	for _, header := range []string{"Content-Type", "Content-Encoding", "Git-Protocol"} {
+	for _, header := range []string{netpolicy.HeaderContentType, netpolicy.HeaderContentEncoding, "Git-Protocol"} {
 		if value := r.Header.Get(header); value != "" {
 			req.Header.Set(header, value)
 		}
@@ -263,18 +285,18 @@ func (p *gitHTTPBridge) forward(r *http.Request, suffix, mimeType string) ([]byt
 		return nil, err
 	}
 
-	actual, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	actual, _, err := mime.ParseMediaType(resp.Header.Get(netpolicy.HeaderContentType))
 	if err != nil || actual != mimeType {
-		return nil, fail("git_smart_http_required")
+		return nil, fail(codeGITSmartHTTPRequired)
 	}
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, p.remaining+1))
 	if err != nil {
-		return nil, gitFailure(r.Context(), "body_read_failed")
+		return nil, gitFailure(r.Context(), codeBodyReadFailed)
 	}
 
 	if int64(len(data)) > p.remaining {
-		return nil, fail("byte_limit")
+		return nil, fail(codeByteLimit)
 	}
 
 	p.remaining -= int64(len(data))

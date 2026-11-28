@@ -99,5 +99,5 @@ func descriptionSimilarity(small, large map[string]struct{}) int {
 
 	union := len(small) + len(large) - shared
 
-	return (10000*shared + union/2) / union
+	return (report.DescriptionSimilarityScale*shared + union/2) / union
 }

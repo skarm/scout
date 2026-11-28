@@ -14,7 +14,7 @@ func TestMetricGatesRejectUndefinedAndUnreviewedMeasurements(t *testing.T) {
 	requirements := evaluation.Requirements{MinRecall: &recall, MaxFalsePositive: &fpr, MaxIncomplete: &zero, RequireIndependent: true}
 	report := evaluation.Report{Completed: true, SelectedCases: 2, SelectedSplit: "holdout", CorpusKind: "independent_labelled_corpus", Results: make([]evaluation.Result, 2), Overall: evaluation.Metrics{SignalRecall: &recall, FalsePositiveRate: &fpr}}
 	report.CorpusSHA256 = strings.Repeat("a", 64)
-	report.LabelReview = &evaluation.LabelReviewSummary{CorpusSHA256: report.CorpusSHA256, Independent: true, ReviewedCases: 2, Reviewers: []string{"fixture-reviewer"}}
+	report.LabelReview = &evaluation.LabelReviewSummary{CorpusSHA256: report.CorpusSHA256, Independent: true, ReviewedCases: 2, Reviewers: []string{fixtureReviewerID}}
 	if result := evaluation.Assess(report, requirements); !result.Passed {
 		t.Fatal(result.Reasons)
 	}

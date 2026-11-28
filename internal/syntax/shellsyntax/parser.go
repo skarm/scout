@@ -9,6 +9,26 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+const (
+	codeEmptyGroup                     = "empty_group"
+	codeExpectedCommand                = "expected_command"
+	codeExpectedSeparator              = "expected_separator"
+	codeInvalidText                    = "invalid_text"
+	codeMissingConditionalCommand      = "missing_conditional_command"
+	codeMissingRedirectTarget          = "missing_redirect_target"
+	codeNodeLimit                      = "node_limit"
+	codeUnclosedCase                   = "unclosed_case"
+	codeUnclosedGroup                  = "unclosed_group"
+	codeUnclosedSubstitutionOrGroup    = "unclosed_substitution_or_group"
+	codeUnexpectedClose                = "unexpected_close"
+	codeUnsupportedArrayAssignment     = "unsupported_array_assignment"
+	codeUnsupportedCompoundCommand     = "unsupported_compound_command"
+	codeUnsupportedFunctionDeclaration = "unsupported_function_declaration"
+	codeUnsupportedHeredocDelimiter    = "unsupported_heredoc_delimiter"
+	codeWordAfterCase                  = "word_after_case"
+	codeWordAfterGroup                 = "word_after_group"
+)
+
 // Error contains only scanner-owned codes and a physical byte offset.
 // Do not put source text, command names or parameter values in parse errors.
 type Error struct {
@@ -84,11 +104,11 @@ func Parse(ctx context.Context, text string) (*File, error) {
 	}
 
 	if len(text) > MaxBytes {
-		return nil, &Error{Code: "byte_limit"}
+		return nil, &Error{Code: codeByteLimit}
 	}
 
 	if !utf8.ValidString(text) || strings.IndexByte(text, 0) >= 0 {
-		return nil, &Error{Code: "invalid_text"}
+		return nil, &Error{Code: codeInvalidText}
 	}
 
 	p := parser{text: text, end: len(text), budget: &budget{ctx: ctx}}
@@ -107,7 +127,7 @@ func (p *parser) tick() error {
 
 	p.budget.nodes++
 	if p.budget.nodes > MaxNodes {
-		return p.fail("node_limit")
+		return p.fail(codeNodeLimit)
 	}
 
 	return nil
@@ -115,7 +135,7 @@ func (p *parser) tick() error {
 
 func (p *parser) child(start, end int) (*parser, error) {
 	if p.depth >= MaxDepth {
-		return nil, p.fail("depth_limit")
+		return nil, p.fail(codeDepthLimit)
 	}
 
 	return &parser{text: p.text, at: start, end: end, depth: p.depth + 1, budget: p.budget}, nil
@@ -173,14 +193,14 @@ func (p *parser) list(kind listKind) (*File, error) {
 func (p *parser) listEnd(end string, kind listKind) error {
 	if end == tokenEOF {
 		if len(p.pending) > 0 {
-			return p.fail("missing_heredoc")
+			return p.fail(codeMissingHeredoc)
 		}
 
 		switch kind {
 		case caseArmList:
-			return p.fail("unclosed_case")
+			return p.fail(codeUnclosedCase)
 		case parenthesizedList:
-			return p.fail("unclosed_substitution_or_group")
+			return p.fail(codeUnclosedSubstitutionOrGroup)
 		}
 
 		return nil
@@ -190,7 +210,7 @@ func (p *parser) listEnd(end string, kind listKind) error {
 		return nil
 	}
 
-	return p.fail("unexpected_close")
+	return p.fail(codeUnexpectedClose)
 }
 
 func (p *parser) skipNewlines() (token, error) {
@@ -228,11 +248,11 @@ func (p *parser) statementSeparator(s *Statement, kind listKind) error {
 	case tokenEndCase:
 		if kind != caseArmList {
 			// Preserve the classification of this operator outside a case.
-			return &Error{Code: "unsupported_operator", Offset: t.span.Start}
+			return &Error{Code: codeUnsupportedOperator, Offset: t.span.Start}
 		}
 	case tokenEOF, tokenCloseParen:
 	default:
-		return p.fail("expected_separator")
+		return p.fail(codeExpectedSeparator)
 	}
 
 	return nil
@@ -245,7 +265,7 @@ func (p *parser) conditionalContinuation(kind listKind) error {
 	}
 
 	if t.kind == tokenEOF || t.kind == tokenCloseParen || p.caseArmEnd(t, kind) {
-		return p.fail("missing_conditional_command")
+		return p.fail(codeMissingConditionalCommand)
 	}
 
 	return nil
@@ -332,12 +352,12 @@ func (p *parser) commandGroup(c *Command) error {
 	}
 
 	if len(c.Subshell.Statements) == 0 {
-		return p.fail("empty_group")
+		return p.fail(codeEmptyGroup)
 	}
 
 	closing, err := q.take()
 	if err != nil || closing.kind != tokenCloseParen {
-		return p.fail("unclosed_group")
+		return p.fail(codeUnclosedGroup)
 	}
 
 	p.at = q.at
@@ -368,15 +388,15 @@ func (p *parser) commandWords(c *Command) (*Command, error) {
 			}
 		default:
 			if t.kind == tokenOpenParen && p.functionHead(c, t) {
-				return nil, &Error{Code: "unsupported_function_declaration", Offset: c.Span.Start}
+				return nil, &Error{Code: codeUnsupportedFunctionDeclaration, Offset: c.Span.Start}
 			}
 
 			if t.kind == tokenOpenParen && p.arrayAssignmentHead(c, t) {
-				return nil, &Error{Code: "unsupported_array_assignment", Offset: t.span.Start}
+				return nil, &Error{Code: codeUnsupportedArrayAssignment, Offset: t.span.Start}
 			}
 
 			if c.empty() {
-				return nil, p.fail("expected_command")
+				return nil, p.fail(codeExpectedCommand)
 			}
 
 			return c, nil
@@ -423,11 +443,11 @@ func (p *parser) commandToken(c *Command, w *Word) error {
 	}
 
 	if c.Subshell != nil {
-		return p.fail("word_after_group")
+		return p.fail(codeWordAfterGroup)
 	}
 
 	if c.Case != nil {
-		return p.fail("word_after_case")
+		return p.fail(codeWordAfterCase)
 	}
 
 	return p.commandWord(c, w)
@@ -475,7 +495,7 @@ func (p *parser) redirect(fd string) (*Redirect, error) {
 	}
 
 	if t.kind != tokenWord {
-		return nil, p.fail("missing_redirect_target")
+		return nil, p.fail(codeMissingRedirectTarget)
 	}
 
 	r := &Redirect{Span: source.Span{Start: op.span.Start, End: t.span.End}, Op: op.kind, FD: fd, Target: t.word}
@@ -500,7 +520,7 @@ func (p *parser) heredocWord() (token, error) {
 
 	delim, quoted, ok := literalDelimiter(p.text[start:p.at])
 	if !ok {
-		return token{}, p.fail("unsupported_heredoc_delimiter")
+		return token{}, p.fail(codeUnsupportedHeredocDelimiter)
 	}
 
 	span := source.Span{Start: start, End: p.at}
@@ -595,7 +615,7 @@ func (p *parser) scanDelimiter() error {
 		if c == '\\' && q.quote != '\'' {
 			p.at += 2
 			if p.at > p.end {
-				return p.fail("unsupported_heredoc_delimiter")
+				return p.fail(codeUnsupportedHeredocDelimiter)
 			}
 
 			continue
@@ -650,7 +670,7 @@ func (p *parser) commandWord(c *Command, w *Word) error {
 		}
 
 		if !w.Quoted && reserved(p.text[w.Span.Start:w.Span.End]) {
-			return p.fail("unsupported_compound_command")
+			return p.fail(codeUnsupportedCompoundCommand)
 		}
 	}
 
@@ -666,7 +686,7 @@ func (p *parser) heredocRedirect(r *Redirect, t token) error {
 
 		delim, quoted, ok := literalDelimiter(raw)
 		if !ok {
-			return p.fail("unsupported_heredoc_delimiter")
+			return p.fail(codeUnsupportedHeredocDelimiter)
 		}
 
 		r.Target = &Word{

@@ -11,13 +11,13 @@ func BackendFor(format string) Backend {
 }
 
 func parsePython(context.Context, string) (*Node, error) {
-	return nil, &Failure{Category: "unavailable"}
+	return nil, &Failure{Category: CodeUnavailable}
 }
 
 func parseYAML(context.Context, string) (*ConfigNode, error) {
-	return nil, &Failure{Category: "unavailable"}
+	return nil, &Failure{Category: CodeUnavailable}
 }
 
 func parseTOML(context.Context, string) (*ConfigNode, error) {
-	return nil, &Failure{Category: "unavailable"}
+	return nil, &Failure{Category: CodeUnavailable}
 }

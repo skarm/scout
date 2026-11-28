@@ -11,6 +11,12 @@ import (
 )
 
 const (
+	fieldMessages = "messages"
+	roleUser      = "user"
+	roleAssistant = "assistant"
+)
+
+const (
 	fieldModel             = "model"
 	fieldSystemFingerprint = "system_fingerprint"
 	fieldError             = "error"
@@ -66,11 +72,11 @@ func (p *HTTPProvider) readResponse(ctx context.Context, req *http.Request) ([]b
 			return nil, context.DeadlineExceeded
 		}
 
-		return nil, transportError("response_read_failed")
+		return nil, transportError(codeResponseReadFailed)
 	}
 
 	if len(raw) > p.maxBytes {
-		return nil, transportError("response_limit")
+		return nil, transportError(codeResponseLimit)
 	}
 
 	return raw, nil
@@ -93,25 +99,25 @@ func responseFailure(ctx context.Context, err error) error {
 		return context.DeadlineExceeded
 	}
 
-	return transportError("http_failed")
+	return transportError(codeHTTPFailed)
 }
 
 func validateResponseHeaders(resp *http.Response, maxBytes int) error {
 	if resp.StatusCode != http.StatusOK {
-		return &TransportError{Code: "http_status", Status: resp.StatusCode}
+		return &TransportError{Code: codeHTTPStatus, Status: resp.StatusCode}
 	}
 
 	media, _, err := mime.ParseMediaType(resp.Header.Get(netpolicy.HeaderContentType))
 	if err != nil || media != netpolicy.JSONMediaType {
-		return transportError("content_type")
+		return transportError(codeContentType)
 	}
 
 	if !netpolicy.IdentityContentEncoding(resp.Header) {
-		return transportError("content_encoding")
+		return transportError(codeContentEncoding)
 	}
 
 	if resp.ContentLength > int64(maxBytes) {
-		return transportError("response_limit")
+		return transportError(codeResponseLimit)
 	}
 
 	return nil

@@ -132,7 +132,7 @@ func (p PreparedDocument) WritePRSummary(w io.Writer, summary PRSummary) error {
 			_, _ = fmt.Fprintf(&out, " to %s", mdCode(change.Destination))
 		}
 
-		if change.Status == "unverified" {
+		if change.Status == UpdateUnverified {
 			out.WriteString(" (previous version unverified)")
 		}
 
@@ -175,15 +175,15 @@ func prCapabilityLabel(kind string) string {
 		return "Network operation"
 	case CapabilityDNS:
 		return "DNS query"
-	case "sensitive_read":
+	case CapabilitySensitiveRead:
 		return "Sensitive data read"
-	case "untrusted_input":
+	case CapabilityUntrustedInput:
 		return "External input"
-	case "command_execution":
+	case CapabilityCommandExecution:
 		return "Command execution"
-	case "file_write":
+	case CapabilityFileWrite:
 		return "File mutation"
-	case "infrastructure_mutation":
+	case CapabilityInfrastructureMutation:
 		return "Infrastructure mutation"
 	case "allowed-tools":
 		return "Allowed tools declaration"

@@ -6,7 +6,13 @@ import (
 	"io"
 	"strings"
 
+	"github.com/skarm/scout"
+	"github.com/skarm/scout/internal/capture/envsnapshot"
+	"github.com/skarm/scout/internal/discovery"
+	"github.com/skarm/scout/internal/distribution/registry"
+	"github.com/skarm/scout/internal/envcompare"
 	"github.com/skarm/scout/mcp"
+	"github.com/skarm/scout/report"
 )
 
 const operatorHelp = `
@@ -24,8 +30,8 @@ snapshot create / snapshot compare / snapshot inspect:
   --source-diff             Include bounded source excerpts in comparison; may disclose secrets.
   inspect displays saved discovery arguments, paths and historical status without source bytes.
   --format, -f text|json     Output format for inspect (default: text).
-  Capture failures include location and limit details; JSON uses scout.environment-snapshot-error/v1.
-  Snapshot comparison formats: text, markdown, json, sarif; JSON uses scout.environment-comparison/v1.
+  Capture failures include location and limit details; JSON uses %s.
+  Snapshot comparison formats: text, markdown, json, sarif; JSON uses %s.
   Snapshots may contain secrets. Store outside inputs; checksum is not approval or a signature.
 
 discover:
@@ -36,9 +42,9 @@ discover:
   --project DIR              Selected project; repeatable (default: current directory).
   --no-project               Omit project discovery (default: false).
   --system[=BOOL]            Include known system locations (default: true).
-  --max-entries N            Aggregate discovery probes/entries (default: 10000).
-  --max-depth N              Skill/plugin directory depth (default: 12).
-  --max-bytes N              Aggregate config/manifest bytes (default: 8388608).
+  --max-entries N            Aggregate discovery probes/entries (default: %d).
+  --max-depth N              Skill/plugin directory depth (default: %d).
+  --max-bytes N              Aggregate config/manifest bytes (default: %d).
   --timeout, -t DURATION     Discovery deadline (default: 10s; maximum: 2m).
   --format, -f text|json     Inventory format (default: text).
   --output, -o FILE          Inventory destination (default: stdout).
@@ -48,7 +54,7 @@ discover:
   --include-path PATH        Narrow discovered roots; repeatable; cannot expand discovery.
   --exclude-path PATH        Omit overlapping roots; repeatable; use --kind for precision.
   Explicit --home ignores process CODEX_HOME/CLAUDE_CONFIG_DIR overrides.
-  --scan requires complete discovery and 1..32 roots; stdout is a scan report.
+  --scan requires complete discovery and 1..%d roots; stdout is a scan report.
 
 doctor (alias: selftest):
   --format, -f text|json     Output format (default: terminal; alias for text).
@@ -112,13 +118,13 @@ integrations export:
 
 registry fetch:
   --endpoint URL             Registry endpoint (default:
-                             https://registry.modelcontextprotocol.io/v0/servers).
+                             %s).
   --name NAME                Exact server name (default: all names).
   --latest                   Select registry-asserted latest records (default: false).
   --allow-download           Authorize registry requests (default: false).
   --allow-loopback           Permit a numeric loopback endpoint (default: false).
-  --max-pages N              Maximum pages (default: 32).
-  --max-bytes N              Aggregate response bytes (default: 8388608).
+  --max-pages N              Maximum pages (default: %d).
+  --max-bytes N              Aggregate response bytes (default: %d).
   --output, -o FILE          Snapshot JSON destination (default: stdout).
 
 registry compare:
@@ -138,7 +144,7 @@ Syntax and defaults:
   Explicit flags override --config; shown defaults apply without configuration.
   Configuration, baseline, extra rules and caches must be outside inspected inputs.
   Repeat --report, --external-origin, --target or --origin for multiple values.
-  scan accepts 1..32 targets or reads one named input with --stdin NAME.
+  scan accepts 1..%d targets or reads one named input with --stdin NAME.
   Profile aliases: basic = builtins-only custom, extended = standard, semantic = review.
   Format alias: terminal = text. --checks replaces the optional check selection.
   A subset or none requires --profile custom; built-in checks always remain enabled.
@@ -166,40 +172,47 @@ func fullHelp(stdout io.Writer) int {
 	text.WriteString("\ncompare:\n  Uses scan configuration, reports, policy, checks, budgets, OSV and LLM review flags.\n")
 
 	_, comparison := requestFlagSet("compare", io.Discard, nil)
-	for _, name := range []string{"max-changes", "pr-head", "pr-provider", "pr-path", "approved-sha256"} {
+	for _, name := range []string{flagMaxChanges, flagPRHead, flagPRProvider, flagPRPath, flagApprovedSHA256} {
 		appendFlagHelp(&text, comparison.Lookup(name))
 	}
 
-	text.WriteString("  Both inputs must be local; --max-changes accepts 1..20000.\n")
+	_, _ = fmt.Fprintf(&text, "  Both inputs must be local; --%s accepts 1..%d.\n", flagMaxChanges, report.MaxUpdateChanges)
 	text.WriteString("\nmcp:\n  Uses scan configuration, policy, checks, service and budget flags.\n  Inputs use --target or tool uploads; reports are returned through MCP.\n  mcp snapshot --source-id ID [--output FILE] capture.json imports local MCP results.\n  Compare explicitly selected reference and candidate snapshots with scout compare.\n")
 
-	invocation := mcpInvocation{options: mcp.DefaultOptions(), transport: "stdio", listen: "127.0.0.1:8837"}
+	invocation := mcpInvocation{options: mcp.DefaultOptions(), transport: mcpTransportStdio, listen: defaultMCPListenAddress}
 	transport := flag.NewFlagSet("mcp", flag.ContinueOnError)
 	invocation.bind(transport)
 	transport.VisitAll(func(f *flag.Flag) { appendFlagHelp(&text, f) })
 
-	text.WriteString(operatorHelp)
+	discoveryDefaults := discovery.DefaultOptions("")
+	registryDefaults := registry.DefaultOptions()
+	_, _ = fmt.Fprintf(&text, operatorHelp,
+		snapshotFailureSchema, envcompare.ComparisonSchema,
+		discoveryDefaults.MaxEntries, discoveryDefaults.MaxDepth, discoveryDefaults.MaxBytes, envsnapshot.MaxRoots,
+		registryDefaults.Endpoint, registryDefaults.MaxPages, registryDefaults.MaxBytes,
+		scout.MaxScanTargets,
+	)
 
 	return writeText(stdout, text.String())
 }
 
 func scanFlagGroup(name string) string {
 	switch name {
-	case "format", "output", "report":
+	case flagFormat, flagOutput, flagReport:
 		return "Reports"
-	case "baseline", "allow-baseline-globs", "fail-on", "scope":
+	case flagBaseline, flagAllowBaselineGlobs, flagFailOn, flagScope:
 		return "Policy"
-	case "checks", "yara", "rulepack", "rulepack-sha256":
+	case flagChecks, flagYARA, flagRulepack, flagRulepackSHA256:
 		return "Checks"
-	case "allow-download", "revision":
+	case flagAllowDownload, flagRevision:
 		return "Downloads"
-	case "follow-external":
+	case flagFollowExternal:
 		return "External references"
-	case "osv", "allow-osv-network":
+	case flagOSV, flagAllowOSVNetwork:
 		return "Vulnerabilities"
-	case "review", "quality-review", "allow-source-upload":
+	case flagReview, flagQualityReview, flagAllowSourceUpload:
 		return "LLM review"
-	case "workers", "target-workers", "timeout", "parser-timeout":
+	case flagWorkers, flagTargetWorkers, flagTimeout, flagParserTimeout:
 		return "Concurrency and budgets"
 	}
 
@@ -231,7 +244,7 @@ func appendFlagHelp(text *strings.Builder, f *flag.Flag) {
 	}
 
 	defaultValue := f.DefValue
-	if f.Name == "scope" && defaultValue == "" {
+	if f.Name == flagScope && defaultValue == "" {
 		defaultValue = "conservative"
 	}
 

@@ -40,11 +40,11 @@ func collectPythonTOML(ctx context.Context, doc document.File, out *report.Depen
 	c := tomlCollector{ctx: ctx, doc: doc, out: out, unit: u}
 
 	switch name {
-	case "pyproject.toml":
+	case pyprojectName:
 		c.pyproject(root)
-	case "pipfile":
+	case pipfileName:
 		c.pipfile(root)
-	case "uv.lock", "poetry.lock":
+	case uvLockName, poetryLockName:
 		c.lock(root, name)
 	}
 
@@ -219,7 +219,7 @@ func (c *tomlCollector) lock(root *jsonconfig.Node, name string) {
 
 func pythonRegistrySource(source *jsonconfig.Node, name string) bool {
 	registry := true
-	if name == "uv.lock" {
+	if name == uvLockName {
 		_, registry = source.Get("registry").Text()
 	} else if source != nil {
 		kind, _ := source.Get("type").Text()

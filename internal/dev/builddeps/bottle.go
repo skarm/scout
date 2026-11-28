@@ -27,9 +27,12 @@ const (
 
 	maxArchive        = 512 << 20
 	licenseFile       = "LICENSE"
-	headerFile        = "include/yara_x.h"
-	staticLibraryFile = "lib/libyara_x_capi.a"
-	pkgConfigFile     = "lib/pkgconfig/yara_x_capi.pc"
+	headerName        = "yara_x.h"
+	headerFile        = "include/" + headerName
+	staticLibraryName = "libyara_x_capi.a"
+	staticLibraryFile = "lib/" + staticLibraryName
+	pkgConfigPackage  = "yara_x_capi"
+	pkgConfigFile     = "lib/pkgconfig/" + pkgConfigPackage + ".pc"
 	markerFile        = "bottle.sha256"
 )
 
@@ -257,7 +260,7 @@ func unpackBottle(archive, destination, expectedSHA string) error {
 		return err
 	}
 
-	pc := filepath.Join(destination, "lib", "pkgconfig", "yara_x_capi.pc")
+	pc := filepath.Join(destination, pkgConfigFile)
 
 	data, err := os.ReadFile(pc)
 	if err != nil {

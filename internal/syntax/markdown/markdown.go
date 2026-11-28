@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/report"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -318,14 +319,14 @@ func projectLines(original string, offset int, buffer []byte, lines *text.Segmen
 
 		span := source.Span{Start: line.Start + offset, End: line.Stop + offset}
 		if span.Start < 0 || span.End < span.Start || span.End > len(original) || line.Padding < 0 || line.Padding > 4 {
-			return source.View{}, "source_map_error"
+			return source.View{}, report.GapSourceMapError
 		}
 
 		if line.Padding != 0 {
 			// CommonMark may consume only part of a tab's indentation. Map
 			// its remaining spaces to that original tab, never invented bytes.
 			if span.Start == 0 || original[span.Start-1] != '\t' {
-				return source.View{}, "source_map_error"
+				return source.View{}, report.GapSourceMapError
 			}
 
 			span.Start--
@@ -352,7 +353,7 @@ func projectLines(original string, offset int, buffer []byte, lines *text.Segmen
 	}
 
 	if err != nil {
-		return source.View{}, "source_map_error"
+		return source.View{}, report.GapSourceMapError
 	}
 
 	return view, ""

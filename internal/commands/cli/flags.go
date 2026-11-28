@@ -6,31 +6,49 @@ import (
 	"strings"
 )
 
+const (
+	flagAgent       = "agent"
+	flagConfig      = "config"
+	flagDryRun      = "dry-run"
+	flagEnvironment = "environment"
+	flagFormat      = "format"
+	flagHelp        = "help"
+	flagKind        = "kind"
+	flagMaxBytes    = "max-bytes"
+	flagOSVCache    = "osv-cache"
+	flagOutput      = "output"
+	flagReport      = "report"
+	flagReview      = "review"
+	flagSnapshot    = "snapshot"
+	flagStdin       = "stdin"
+	flagVersion     = "version"
+)
+
 type flagShortcut struct{ name, alias string }
 
 func flagShortcuts() []flagShortcut {
 	return []flagShortcut{
-		{"agent", "-a"},
-		{"baseline", "-b"},
-		{"checks", "--chk"},
-		{"config", "-c"},
-		{"dry-run", "-d"},
-		{"environment", "--env"},
-		{"fail-on", "--fo"},
-		{"format", "-f"},
-		{"help", "-h"},
-		{"kind", "-k"},
-		{"output", "-o"},
-		{"profile", "-p"},
-		{"report", "-r"},
-		{"review", "--llm"},
-		{"snapshot", "-s"},
-		{"stdin", "-i"},
-		{"target-workers", "--tw"},
-		{"timeout", "-t"},
-		{"version", "-v"},
-		{"workers", "-w"},
-		{"yara", "-y"},
+		{flagAgent, "-a"},
+		{flagBaseline, "-b"},
+		{flagChecks, "--chk"},
+		{flagConfig, "-c"},
+		{flagDryRun, "-d"},
+		{flagEnvironment, "--env"},
+		{flagFailOn, "--fo"},
+		{flagFormat, "-f"},
+		{flagHelp, "-h"},
+		{flagKind, "-k"},
+		{flagOutput, "-o"},
+		{flagProfile, "-p"},
+		{flagReport, "-r"},
+		{flagReview, "--llm"},
+		{flagSnapshot, "-s"},
+		{flagStdin, "-i"},
+		{flagTargetWorkers, "--tw"},
+		{flagTimeout, "-t"},
+		{flagVersion, "-v"},
+		{flagWorkers, "-w"},
+		{flagYARA, "-y"},
 	}
 }
 

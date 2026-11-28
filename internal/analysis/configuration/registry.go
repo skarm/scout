@@ -21,6 +21,8 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const categoryRegistryPosture = "registry-posture"
+
 const (
 	maxRegistryOperations = 8192
 )
@@ -89,7 +91,7 @@ func (a registryCheck) Rule() report.Rule {
 		Title:       title,
 		Description: title,
 		Severity:    severity,
-		Category:    "registry-posture",
+		Category:    categoryRegistryPosture,
 		Method:      "captured-registry-record-analysis",
 		Limitation:  "Bounded registry-shaped JSON servers envelopes only. Fields are untrusted registry assertions, not verified ownership, integrity or service behavior. Missing/wrong-typed optional facts are info/unavailable; malformed record/collection shapes remain incomplete. Selected upstream version grammar; no registry access, package install, signature verification or history comparison. Descriptor severity is a maximum.",
 	}

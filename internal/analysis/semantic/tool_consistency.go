@@ -224,7 +224,7 @@ func (p *planner) toolAddresses() map[string]toolAddress {
 	}
 
 	for _, o := range p.extraction.Objects {
-		if o.Role == "archive_member" && (o.ExtractorID == "zip32" || o.ExtractorID == "tar") {
+		if o.Role == report.DerivedRoleArchiveMember && (o.ExtractorID == report.ExtractorZIP32 || o.ExtractorID == report.ExtractorTar) {
 			addresses[o.File.Path] = toolAddress{namespace: artifact.ArchiveNamespace(o.ParentPath), name: o.MemberName}
 		}
 	}

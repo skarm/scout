@@ -94,7 +94,7 @@ var aliases = map[string]string{
 	"makefile":               makefile,
 	"make":                   makefile,
 	"gomod":                  GoMod,
-	"dependency-manifest":    DependencyManifest,
+	DependencyManifest:       DependencyManifest,
 	"md":                     Markdown,
 	"markdown":               Markdown,
 	"mdown":                  Markdown,

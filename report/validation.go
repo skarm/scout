@@ -162,6 +162,22 @@ type ComponentEdge struct {
 	Source *SourceRef `json:"source,omitempty"`
 }
 
+const (
+	// ReferenceReasonComponentNotCaptured indicates that a declared component is absent from the capture.
+	ReferenceReasonComponentNotCaptured = "component_not_captured"
+	// ReferenceReasonHandlerNotCaptured indicates that a referenced handler is absent from the capture.
+	ReferenceReasonHandlerNotCaptured = "handler_not_captured"
+	// ReferenceReasonRuntimeNotMaterialized indicates that the runtime was outside the captured inputs.
+	ReferenceReasonRuntimeNotMaterialized = "runtime_not_materialized"
+)
+
+const (
+	// ReferenceResolved indicates that a target component was identified.
+	ReferenceResolved = "resolved"
+	// ReferenceUnresolved indicates that the target could not be verified.
+	ReferenceUnresolved = "unresolved"
+)
+
 // ComponentReference never exposes the raw command, URL or environment placeholder.
 // A resolved file does not prove that its command is reachable or will execute.
 type ComponentReference struct {

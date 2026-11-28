@@ -21,6 +21,21 @@ import (
 )
 
 const (
+	statusInvalidResponse        = "invalid_response"
+	statusNotCached              = "not_cached"
+	statusPaginationLoop         = "pagination_loop"
+	statusPending                = "pending"
+	statusProviderFailed         = "provider_failed"
+	statusQueryLimit             = "query_limit"
+	statusRequestLimit           = "request_limit"
+	statusResultLimit            = "result_limit"
+	statusSnapshotIncomplete     = "snapshot_incomplete"
+	statusSnapshotUnavailable    = "snapshot_unavailable"
+	statusSnapshotUnknownVersion = "snapshot_unknown_version"
+	statusUnresolvedVersion      = "unresolved_version"
+)
+
+const (
 	fieldResults         = "results"
 	fieldError           = "error"
 	fieldVulns           = "vulns"
@@ -270,7 +285,7 @@ func CheckWithin(ctx context.Context, deps report.DependencyReport, o Options, n
 			r.QueriedAt = cachedAt.UTC().Format(time.RFC3339Nano)
 
 			if !g.appendResults(x.Vulnerabilities) {
-				set(g, "result_limit")
+				set(g, statusResultLimit)
 				return
 			}
 
@@ -290,7 +305,7 @@ func CheckWithin(ctx context.Context, deps report.DependencyReport, o Options, n
 			}
 
 			if _, ok := cached[key(g.q.Package.Ecosystem, g.q.Package.Name, g.q.Version)]; ok {
-				fallback(g, "not_cached")
+				fallback(g, statusNotCached)
 			}
 		}
 	}
@@ -520,12 +535,12 @@ func groupQueries(deps report.DependencyReport, o Options, r *report.Vulnerabili
 			Ecosystem:    d.Ecosystem,
 			Name:         d.Module,
 			Version:      d.DeclaredVersion,
-			Status:       "pending",
+			Status:       statusPending,
 		}
 
 		exact := d.VersionSemantics == report.VersionExactLockfile || d.VersionSemantics == report.VersionExactDeclaration
 		if !exact {
-			q.Status = "unresolved_version"
+			q.Status = statusUnresolvedVersion
 			r.Completeness = report.Partial
 			r.Queries = append(r.Queries, q)
 
@@ -536,7 +551,7 @@ func groupQueries(deps report.DependencyReport, o Options, r *report.Vulnerabili
 		g := byKey[k]
 
 		if g == nil && len(groups) >= o.MaxQueries {
-			q.Status = "query_limit"
+			q.Status = statusQueryLimit
 			r.Completeness = report.Partial
 			r.Queries = append(r.Queries, q)
 
@@ -587,13 +602,13 @@ func queryBatch(ctx context.Context, batch []*queryGroup, o Options, requests *i
 		}
 
 		if !o.AllowNetwork {
-			setPending(pending, "not_cached", fallback)
+			setPending(pending, statusNotCached, fallback)
 
 			break
 		}
 
 		if *requests >= o.MaxRequests {
-			setPending(pending, "request_limit", fallback)
+			setPending(pending, statusRequestLimit, fallback)
 
 			break
 		}
@@ -609,7 +624,7 @@ func queryBatch(ctx context.Context, batch []*queryGroup, o Options, requests *i
 		}
 
 		if err != nil {
-			setPending(pending, "provider_failed", fallback)
+			setPending(pending, statusProviderFailed, fallback)
 
 			continue
 		}
@@ -622,7 +637,7 @@ func queryBatch(ctx context.Context, batch []*queryGroup, o Options, requests *i
 		}
 
 		if !valid {
-			setPending(pending, "invalid_response", fallback)
+			setPending(pending, statusInvalidResponse, fallback)
 
 			continue
 		}
@@ -693,7 +708,7 @@ func applyQueryResponse(out response, pending []*queryGroup, set, fallback func(
 		}
 
 		if !g.appendResults(ids) {
-			set(g, "result_limit")
+			set(g, statusResultLimit)
 
 			continue
 		}
@@ -701,7 +716,7 @@ func applyQueryResponse(out response, pending []*queryGroup, set, fallback func(
 		if res.Next == "" {
 			set(g, report.OutcomeCompleted)
 		} else if _, seen := g.tokens[res.Next]; seen {
-			fallback(g, "pagination_loop")
+			fallback(g, statusPaginationLoop)
 		} else {
 			g.tokens[res.Next] = struct{}{}
 			g.q.Token = res.Next

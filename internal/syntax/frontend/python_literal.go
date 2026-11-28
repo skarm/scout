@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -127,7 +128,7 @@ func writePythonHex(out *strings.Builder, body string, at int, bytesValue bool) 
 	}
 
 	if bytesValue {
-		if value > 255 {
+		if value > math.MaxUint8 {
 			return at, false
 		}
 
@@ -161,7 +162,7 @@ func writePythonOtherEscape(out *strings.Builder, body string, at int, bytesValu
 	}
 
 	if bytesValue {
-		if value > 255 {
+		if value > math.MaxUint8 {
 			return at, false
 		}
 
@@ -175,7 +176,7 @@ func writePythonOtherEscape(out *strings.Builder, body string, at int, bytesValu
 
 func asciiLiteral(body string) bool {
 	for _, r := range body {
-		if r > 127 {
+		if r >= utf8.RuneSelf {
 			return false
 		}
 	}

@@ -124,7 +124,7 @@ func recordRunRetentionGap(target *report.TargetResult, omitted map[string]struc
 		file := &target.Analysis.Coverage.Files[j]
 		if _, wasOmitted := omitted[file.Path]; wasOmitted {
 			file.Completeness = report.Partial
-			file.Gaps = append(file.Gaps, "report_finding_limit")
+			file.Gaps = append(file.Gaps, report.GapReportFindingLimit)
 		}
 	}
 }

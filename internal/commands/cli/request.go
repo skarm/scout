@@ -17,6 +17,12 @@ import (
 )
 
 const (
+	flagDownloadSHA256 = "download-sha256"
+	flagExclude        = "exclude"
+	flagRevision       = "revision"
+)
+
+const (
 	flagAllowBaselineGlobs = "allow-baseline-globs"
 	flagBaseline           = "baseline"
 	flagChecks             = "checks"
@@ -43,6 +49,14 @@ const (
 	flagTimeout            = "timeout"
 	flagWorkers            = "workers"
 	flagYARA               = "yara"
+)
+
+const (
+	flagApprovedSHA256 = "approved-sha256"
+	flagMaxChanges     = "max-changes"
+	flagPRHead         = "pr-head"
+	flagPRPath         = "pr-path"
+	flagPRProvider     = "pr-provider"
 )
 
 type request struct {
@@ -151,14 +165,14 @@ func requestFlagSet(command string, stderr io.Writer, extra func(*flag.FlagSet))
 
 	if command == "compare" || command == "snapshot compare" {
 		patch.values.compare = scout.DefaultCompareOptions()
-		fs.IntVar(&patch.values.compare.MaxChanges, "max-changes", patch.values.compare.MaxChanges, "maximum retained comparison deltas")
+		fs.IntVar(&patch.values.compare.MaxChanges, flagMaxChanges, patch.values.compare.MaxChanges, "maximum retained comparison deltas")
 	}
 
 	if command == "compare" {
-		fs.StringVar(&patch.values.prHead, "pr-head", "", "candidate revision `OWNER/REPO@SHA` or GitLab project URL followed by @SHA")
-		fs.StringVar(&patch.values.prProvider, "pr-provider", "github", "source link provider: github or gitlab; requires --pr-head")
-		fs.StringVar(&patch.values.prPath, "pr-path", "", "repository-relative directory containing the candidate input; requires --pr-head")
-		fs.StringVar(&patch.values.approvedSHA256, "approved-sha256", "", "trusted SHA-256 of the approved comparison candidate snapshot")
+		fs.StringVar(&patch.values.prHead, flagPRHead, "", "candidate revision `OWNER/REPO@SHA` or GitLab project URL followed by @SHA")
+		fs.StringVar(&patch.values.prProvider, flagPRProvider, "github", "source link provider: github or gitlab; requires --pr-head")
+		fs.StringVar(&patch.values.prPath, flagPRPath, "", "repository-relative directory containing the candidate input; requires --pr-head")
+		fs.StringVar(&patch.values.approvedSHA256, flagApprovedSHA256, "", "trusted SHA-256 of the approved comparison candidate snapshot")
 	}
 
 	return patch, fs
@@ -189,13 +203,13 @@ func (p argvPatch) resolve(settings configfile.Settings, lookupEnv func(string) 
 	r.settings = settings
 	p.applySettings(&r.settings)
 
-	if p.present["pr-head"] || p.present["pr-path"] || p.present["pr-provider"] {
-		if err := r.configurePR(p.present["format"]); err != nil {
+	if p.present[flagPRHead] || p.present[flagPRPath] || p.present[flagPRProvider] {
+		if err := r.configurePR(p.present[flagFormat]); err != nil {
 			return r, err
 		}
 	}
 
-	if p.present["approved-sha256"] {
+	if p.present[flagApprovedSHA256] {
 		if r.approvedSHA256 == "" {
 			return r, errors.New("--approved-sha256 requires a nonempty digest")
 		}
@@ -261,9 +275,9 @@ func (p argvPatch) applySettings(s *configfile.Settings) {
 	applyArgument(p.present, flagTargetWorkers, &s.Scanner.Concurrency.Targets, v.Scanner.Concurrency.Targets)
 	applyArgument(p.present, flagTimeout, &s.Scanner.Limits.Timeout, v.Scanner.Limits.Timeout)
 	applyArgument(p.present, flagYARA, &s.ExtraRulesPath, v.ExtraRulesPath)
-	applyArgument(p.present, "rulepack", &s.RulepackPath, v.RulepackPath)
-	applyArgument(p.present, "rulepack-sha256", &s.Scanner.Signatures.RulepackSHA256, v.Scanner.Signatures.RulepackSHA256)
-	applyArgument(p.present, "osv-cache", &s.OSVCachePath, v.OSVCachePath)
+	applyArgument(p.present, flagRulepack, &s.RulepackPath, v.RulepackPath)
+	applyArgument(p.present, flagRulepackSHA256, &s.Scanner.Signatures.RulepackSHA256, v.Scanner.Signatures.RulepackSHA256)
+	applyArgument(p.present, flagOSVCache, &s.OSVCachePath, v.OSVCachePath)
 	p.applyBudgets(&s.Scanner.Limits)
 }
 
@@ -324,7 +338,7 @@ func applyArgument[T any](present map[string]bool, name string, destination *T, 
 func bindCommon(fs *flag.FlagSet, r *request) {
 	configSpecified := false
 
-	fs.Func("config", "explicit operator config `FILE`", func(value string) error {
+	fs.Func(flagConfig, "explicit operator config `FILE`", func(value string) error {
 		if configSpecified || value == "" {
 			return errors.New("config requires one explicit path")
 		}
@@ -345,13 +359,13 @@ func bindCommon(fs *flag.FlagSet, r *request) {
 }
 
 func bindReports(fs *flag.FlagSet, r *request) {
-	fs.StringVar(&r.format, "format", "text", "report `FORMAT`: text, json, sarif or markdown")
-	fs.StringVar(&r.output, "output", "", "report `FILE` (atomic replacement; default stdout)")
-	fs.Var(&r.reports, "report", "additional `FORMAT=PATH`; repeatable")
+	fs.StringVar(&r.format, flagFormat, "text", "report `FORMAT`: text, json, sarif or markdown")
+	fs.StringVar(&r.output, flagOutput, "", "report `FILE` (atomic replacement; default stdout)")
+	fs.Var(&r.reports, flagReport, "additional `FORMAT=PATH`; repeatable")
 }
 
 func bindScanInputs(fs *flag.FlagSet, r *request) {
-	fs.Func("stdin", "read stdin as relative filename `NAME` for format detection and source coordinates", func(name string) error {
+	fs.Func(flagStdin, "read stdin as relative filename `NAME` for format detection and source coordinates", func(name string) error {
 		if name == "" {
 			return errors.New("stdin requires a relative filename")
 		}
@@ -360,10 +374,10 @@ func bindScanInputs(fs *flag.FlagSet, r *request) {
 
 		return nil
 	})
-	fs.BoolVar(&r.environment, "environment", false, "treat selected local roots as one agent/project environment")
-	fs.Var(&r.skillExcludes, "exclude", "omit matching files within one local skill root; POSIX-path `GLOB`; repeatable")
-	fs.StringVar(&r.revision, "revision", "", "full Git commit `SHA` (40 hexadecimal characters)")
-	fs.StringVar(&r.sha256, "download-sha256", "", "pinned response hash")
+	fs.BoolVar(&r.environment, flagEnvironment, false, "treat selected local roots as one agent/project environment")
+	fs.Var(&r.skillExcludes, flagExclude, "omit matching files within one local skill root; POSIX-path `GLOB`; repeatable")
+	fs.StringVar(&r.revision, flagRevision, "", "full Git commit `SHA` (40 hexadecimal characters)")
+	fs.StringVar(&r.sha256, flagDownloadSHA256, "", "pinned response hash")
 }
 
 func (s stringSetting[T]) String() string {

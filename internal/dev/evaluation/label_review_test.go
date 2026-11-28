@@ -12,15 +12,17 @@ import (
 	"github.com/skarm/scout/internal/dev/evaluation"
 )
 
+const fixtureReviewerID = "fixture-reviewer"
+
 func TestReviewedLabelsBindTheMeasurementAndKeepSourceCorpusUnchanged(t *testing.T) {
 	data, document := labelReviewFixture(t)
 	raw := encodeLabelReview(t, document)
-	review, err := evaluation.ValidateLabelReview(data, raw, []string{"fixture-reviewer"}, time.Now())
+	review, err := evaluation.ValidateLabelReview(data, raw, []string{fixtureReviewerID}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 	r, err := evaluation.MeasureWithOptions(t.Context(), newScanner(t, offlineOptions()), data, evaluation.Options{Split: "holdout", LabelReview: review})
-	if err != nil || !r.Completed || r.CorpusKind != "independent_labelled_corpus" || r.Overall.CompleteNegativeBenign != 1 || r.LabelReview == nil || r.LabelReview.InputKind != "external_unreviewed_corpus" || r.LabelReview.CorpusSHA256 != r.CorpusSHA256 || r.LabelReview.ReviewedCases != 2 || !reflect.DeepEqual(r.LabelReview.Reviewers, []string{"fixture-reviewer"}) {
+	if err != nil || !r.Completed || r.CorpusKind != "independent_labelled_corpus" || r.Overall.CompleteNegativeBenign != 1 || r.LabelReview == nil || r.LabelReview.InputKind != "external_unreviewed_corpus" || r.LabelReview.CorpusSHA256 != r.CorpusSHA256 || r.LabelReview.ReviewedCases != 2 || !reflect.DeepEqual(r.LabelReview.Reviewers, []string{fixtureReviewerID}) {
 		t.Fatalf("review provenance or applied labels lost: report=%+v err=%v", r, err)
 	}
 	zero := 0.0
@@ -37,7 +39,7 @@ func TestReviewedLabelsBindTheMeasurementAndKeepSourceCorpusUnchanged(t *testing
 	}
 	r.LabelReview.Reviewers[0] = "mutated-report"
 	second, err := evaluation.MeasureWithOptions(t.Context(), newScanner(t, offlineOptions()), data, evaluation.Options{Split: "holdout", LabelReview: review})
-	if err != nil || !reflect.DeepEqual(second.LabelReview.Reviewers, []string{"fixture-reviewer"}) {
+	if err != nil || !reflect.DeepEqual(second.LabelReview.Reviewers, []string{fixtureReviewerID}) {
 		t.Fatal("report mutation changed validated reviewer authority", err)
 	}
 	changed := append(slices.Clone(data), '\n')
@@ -49,7 +51,7 @@ func TestReviewedLabelsBindTheMeasurementAndKeepSourceCorpusUnchanged(t *testing
 func TestNonIndependentReviewCannotPromoteExternalData(t *testing.T) {
 	data, document := labelReviewFixture(t)
 	document.Independent = false
-	review, err := evaluation.ValidateLabelReview(data, encodeLabelReview(t, document), []string{"fixture-reviewer"}, time.Now())
+	review, err := evaluation.ValidateLabelReview(data, encodeLabelReview(t, document), []string{fixtureReviewerID}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,12 +91,12 @@ func TestLabelReviewRejectsIncompleteUntrustedAndStaleDecisions(t *testing.T) {
 				t.Fatal(err)
 			}
 			change(&changed)
-			if _, err := evaluation.ValidateLabelReview(data, encodeLabelReview(t, changed), []string{"fixture-reviewer"}, time.Now()); err == nil {
+			if _, err := evaluation.ValidateLabelReview(data, encodeLabelReview(t, changed), []string{fixtureReviewerID}, time.Now()); err == nil {
 				t.Fatal("invalid label review accepted")
 			}
 		})
 	}
-	for _, trusted := range [][]string{nil, {"fixture-reviewer", "fixture-reviewer"}, {"invalid reviewer"}} {
+	for _, trusted := range [][]string{nil, {fixtureReviewerID, fixtureReviewerID}, {"invalid reviewer"}} {
 		if _, err := evaluation.ValidateLabelReview(data, encodeLabelReview(t, document), trusted, time.Now()); err == nil {
 			t.Fatal("reviewer authority was implicit or ambiguous")
 		}
@@ -107,7 +109,7 @@ func TestLabelReviewTemplateCannotPassAsACompletedReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := evaluation.ValidateLabelReview(data, template, []string{"fixture-reviewer"}, time.Now()); err == nil {
+	if _, err := evaluation.ValidateLabelReview(data, template, []string{fixtureReviewerID}, time.Now()); err == nil {
 		t.Fatal("pending template became a completed review")
 	}
 	raw := encodeLabelReview(t, document)
@@ -117,7 +119,7 @@ func TestLabelReviewTemplateCannotPassAsACompletedReview(t *testing.T) {
 		bytes.Replace(raw, []byte(`"independent":true`), []byte(`"independent":null`), 1),
 		append(slices.Clone(raw), []byte(`{}`)...),
 	} {
-		if _, err := evaluation.ValidateLabelReview(data, bad, []string{"fixture-reviewer"}, time.Now()); err == nil {
+		if _, err := evaluation.ValidateLabelReview(data, bad, []string{fixtureReviewerID}, time.Now()); err == nil {
 			t.Fatal("ambiguous label review JSON accepted")
 		}
 	}
@@ -134,7 +136,7 @@ func TestAuthoredCorpusCannotBePromotedToIndependentThroughReview(t *testing.T) 
 		t.Fatal(err)
 	}
 	completeLabelReview(&document)
-	if _, err := evaluation.ValidateLabelReview(data, encodeLabelReview(t, document), []string{"fixture-reviewer"}, time.Now()); err == nil {
+	if _, err := evaluation.ValidateLabelReview(data, encodeLabelReview(t, document), []string{fixtureReviewerID}, time.Now()); err == nil {
 		t.Fatal("an authored regression became an independent holdout")
 	}
 }
@@ -163,7 +165,7 @@ func completeLabelReview(document *evaluation.LabelReviewDocument) {
 	document.Independent = true
 	for i := range document.Reviews {
 		document.Reviews[i].Label = "benign"
-		document.Reviews[i].ReviewerID = "fixture-reviewer"
+		document.Reviews[i].ReviewerID = fixtureReviewerID
 		document.Reviews[i].ReviewedAt = "2026-01-01T00:00:00Z"
 		document.Reviews[i].Rationale = "PRIVATE_RATIONALE synthetic fixture; not an actual independent classification."
 		document.Reviews[i].Evidence = []string{"https://review-evidence.invalid/fixture"}

@@ -147,7 +147,7 @@ func normalizePython(ctx context.Context, text string, root *pythonSyntax) (*Nod
 	n := &pythonNormalizer{ctx: ctx, text: text}
 
 	if root == nil || root.Kind != pyKindModule {
-		return nil, &Failure{Category: "invalid_tree"}
+		return nil, &Failure{Category: codeInvalidTree}
 	}
 
 	ast := n.node(root, 0)
@@ -156,7 +156,7 @@ func normalizePython(ctx context.Context, text string, root *pythonSyntax) (*Nod
 	}
 
 	if n.partial {
-		return ast, &Failure{Category: "unsupported_projection"}
+		return ast, &Failure{Category: CodeUnsupportedProjection}
 	}
 
 	return ast, nil
@@ -207,7 +207,7 @@ func (b *pythonNormalizer) textOf(n *pythonSyntax) string {
 func (b *pythonNormalizer) make(n *pythonSyntax, typ NodeKind) *Node {
 	b.nodes++
 	if b.nodes > maxNodes {
-		b.err = &Failure{Category: "limit"}
+		b.err = &Failure{Category: CodeLimit}
 	}
 
 	return newNode(typ, n.Start, n.End)
@@ -222,12 +222,12 @@ func (b *pythonNormalizer) set(n *Node, key FieldKind, value Value) {
 
 	b.encoded += size
 	if b.encoded > maxOutput {
-		b.err = &Failure{Category: "output_limit"}
+		b.err = &Failure{Category: CodeOutputLimit}
 		return
 	}
 
 	if err := n.set(Field{kind: key, value: value}); err != nil {
-		b.err = &Failure{Category: "invalid_tree"}
+		b.err = &Failure{Category: codeInvalidTree}
 	}
 }
 
@@ -285,12 +285,12 @@ func (b *pythonNormalizer) accept(n *pythonSyntax, depth int) bool {
 	}
 
 	if depth > MaxDepth || n.Start < 0 || n.End < n.Start || n.End > len(b.text) {
-		b.err = &Failure{Category: "limit"}
+		b.err = &Failure{Category: CodeLimit}
 		return false
 	}
 
 	if b.ctx.Err() != nil {
-		b.err = &Failure{Category: "deadline"}
+		b.err = &Failure{Category: CodeDeadline}
 		return false
 	}
 

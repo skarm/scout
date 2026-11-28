@@ -14,6 +14,8 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const categorySQLInjection = "sql-injection"
+
 const (
 	maxGoQueryDepth = 32
 )
@@ -47,7 +49,7 @@ func (goDatabaseCheck) Rule() report.Rule {
 		Title:       "Dynamically constructed SQL reaches a Go query API",
 		Description: "SQL-shaped concatenation or formatting is passed to a query method.",
 		Severity:    report.High,
-		Category:    "sql-injection",
+		Category:    categorySQLInjection,
 		Method:      "go-ast-query-construction",
 		Limitation:  "Bounded same-function assignments and SQL-shaped Query/Exec/Prepare calls, including Context variants. No type checking, cross-file flow, driver semantics or proof of attacker control. Parameters passed separately from a constant query are not interpolation.",
 	}
@@ -95,7 +97,7 @@ func (goTLSCheck) Rule() report.Rule {
 		Title:       "Go TLS configuration disables certificate verification",
 		Description: "A crypto/tls.Config literal explicitly enables InsecureSkipVerify.",
 		Severity:    report.High,
-		Category:    "insecure-transport",
+		Category:    report.CategoryInsecureTransport,
 		Method:      "go-ast-tls-configuration",
 		Limitation:  "Resolved crypto/tls import and literal true in a Config composite only. Custom certificate callbacks may enforce an alternative trust policy; runtime activation is not established.",
 	}

@@ -17,8 +17,10 @@ func InfrastructureMutation(argv []string) bool {
 
 	tool := strings.TrimSuffix(path.Base(strings.ReplaceAll(argv[0], `\`, "/")), ".exe")
 
+	const maxOptionScanArgs = 32
+
 	args := argv[1:]
-	for i := 0; i < len(args) && i < 32; i++ {
+	for i := 0; i < len(args) && i < maxOptionScanArgs; i++ {
 		arg := args[i]
 		if arg == "" {
 			return false

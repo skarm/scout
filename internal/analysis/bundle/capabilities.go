@@ -18,23 +18,23 @@ func (b *bundleAnalysis) observeCallCapabilities(p *bundleProgram, n *bundleNode
 
 	name := callee.name
 	if capabilityExecution(p.language, name) {
-		b.surfaceFact("command_execution", "", p.file, ref)
+		b.surfaceFact(report.CapabilityCommandExecution, "", p.file, ref)
 
 		if literals.InfrastructureMutation(capabilityArgv(p, n, name, args)) {
-			b.surfaceFact("infrastructure_mutation", "", p.file, ref)
+			b.surfaceFact(report.CapabilityInfrastructureMutation, "", p.file, ref)
 		}
 	}
 
 	if capabilityFileWrite(p, n, name, args) {
-		b.surfaceFact("file_write", "", p.file, ref)
+		b.surfaceFact(report.CapabilityFileWrite, "", p.file, ref)
 	}
 
 	if p.language == language.Python && name == "input" {
-		b.surfaceFact("untrusted_input", "", p.file, ref)
+		b.surfaceFact(report.CapabilityUntrustedInput, "", p.file, ref)
 	}
 
 	if capabilityExternalInput(p.language, name) {
-		b.surfaceFact("untrusted_input", "", p.file, ref)
+		b.surfaceFact(report.CapabilityUntrustedInput, "", p.file, ref)
 	}
 }
 

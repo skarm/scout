@@ -22,7 +22,7 @@ func (s *Server) compare(ctx context.Context, raw json.RawMessage) (report.Prepa
 		Previous  string `json:"previous"`
 		Candidate string `json:"candidate"`
 	}
-	if strictParams(raw, &a, "previous", "candidate") != nil {
+	if strictParams(raw, &a, fieldPrevious, fieldCandidate) != nil {
 		return report.PreparedDocument{}, errors.New("invalid arguments")
 	}
 

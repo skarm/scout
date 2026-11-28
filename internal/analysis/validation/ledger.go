@@ -227,7 +227,7 @@ func (l *Ledger) planReferences(references []report.ComponentReference) {
 
 		id := l.add(t)
 		if id != "" {
-			if ref.Status == "resolved" {
+			if ref.Status == report.ReferenceResolved {
 				l.record(id, report.OutcomeCompleted, "captured_reference_only")
 			} else {
 				l.record(id, report.OutcomeUnsupported, "reference_or_dependency_unresolved")

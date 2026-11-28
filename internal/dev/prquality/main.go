@@ -28,7 +28,9 @@ type warning struct {
 }
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	const runTimeout = time.Minute
+
+	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 
 	err := run(ctx, os.Args[1:], os.Stdout)
 

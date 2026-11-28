@@ -27,7 +27,7 @@ func CapturedAddresses(docs []File, extraction report.ExtractionReport) map[stri
 	}
 
 	for _, object := range extraction.Objects {
-		if object.Role == "archive_member" {
+		if object.Role == report.DerivedRoleArchiveMember {
 			addresses[object.File.Path] = Address{Namespace: artifact.ArchiveNamespace(object.ParentPath), Name: object.MemberName}
 		}
 	}

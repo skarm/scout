@@ -65,7 +65,7 @@ func (a triggerCheck) Rule() report.Rule {
 		Title:       titles[a.id],
 		Description: titles[a.id],
 		Severity:    report.Medium,
-		Category:    "trigger-abuse",
+		Category:    categoryTriggerAbuse,
 		Method:      "structured-trigger-analysis",
 		Limitation:  "Adapted upstream TR1-TR3 for root decoded triggers arrays. Declaration or a configuration example does not prove activation by any harness. Short legitimate triggers may match; aliases, nested schemas and unparsed metadata are not inferred.",
 	}

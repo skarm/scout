@@ -20,8 +20,29 @@ import (
 )
 
 const (
+	codeBedrockModelPathMismatch     = "bedrock_model_path_mismatch"
+	codeInvalidBedrockAuth           = "invalid_bedrock_credentials"
+	codeUnexpectedAWSAuth            = "unexpected_aws_credentials"
+	codeUnsupportedMessagesTransport = "unsupported_messages_transport"
+)
+
+const (
+	messagesBlockText       = "text"
+	messagesEnvelopeType    = "message"
+	messagesEndTurn         = "end_turn"
+	fieldAnthropicVersion   = "anthropic_version"
+	anthropicVertexVersion  = "vertex-2023-10-16"
+	anthropicBedrockVersion = "bedrock-2023-05-31"
+)
+
+const (
 	maxAWSAccessKeyIDBytes   = 128
 	maxMessagesContentBlocks = 16
+)
+
+const (
+	headerAnthropicVersion = "Anthropic-Version"
+	anthropicAPIVersion    = "2023-06-01"
 )
 
 // MessagesOptions selects the native Anthropic Messages protocol or its explicit
@@ -58,7 +79,7 @@ func NewMessages(o MessagesOptions) (*MessagesProvider, error) {
 	switch o.Transport {
 	case ProviderAnthropic, ProviderAnthropicProxy, ProviderBedrock:
 	default:
-		return nil, transportError("unsupported_messages_transport")
+		return nil, transportError(codeUnsupportedMessagesTransport)
 	}
 
 	base, e := NewHTTP(o.HTTPOptions)
@@ -85,7 +106,7 @@ func (p *MessagesProvider) Identity() Identity { return p.identity }
 // responses and incomplete or ambiguous envelopes.
 func (p *MessagesProvider) Complete(ctx context.Context, payload []byte) (Completion, error) {
 	if ctx == nil {
-		return Completion{}, transportError("nil_context")
+		return Completion{}, transportError(codeNilContext)
 	}
 
 	if ctx.Err() != nil {
@@ -93,7 +114,7 @@ func (p *MessagesProvider) Complete(ctx context.Context, payload []byte) (Comple
 	}
 
 	if len(payload) > MaxRequestBytes || !json.Valid(payload) {
-		return Completion{}, transportError("invalid_request")
+		return Completion{}, transportError(codeInvalidRequest)
 	}
 	// No tool definitions. Native JSON mode availability differs by model, so the
 	// protocol schema is in the trusted system message and validated locally.
@@ -122,31 +143,31 @@ func (p *MessagesProvider) request(ctx context.Context, payload []byte, system s
 	body := map[string]any{
 		"max_tokens": p.base.tokens,
 		"system":     system,
-		"messages": []any{map[string]any{
-			"role": "user",
-			"content": []any{map[string]string{
-				"type": "text",
-				"text": string(payload),
+		fieldMessages: []any{map[string]any{
+			fieldRole: roleUser,
+			fieldContent: []any{map[string]string{
+				fieldType: messagesBlockText,
+				fieldText: string(payload),
 			}},
 		}},
 	}
 	switch p.options.Transport {
 	case ProviderAnthropic:
-		body["model"] = p.base.model
+		body[fieldModel] = p.base.model
 	case ProviderAnthropicProxy:
-		body["anthropic_version"] = "vertex-2023-10-16"
+		body[fieldAnthropicVersion] = anthropicVertexVersion
 	case ProviderBedrock:
-		body["anthropic_version"] = "bedrock-2023-05-31"
+		body[fieldAnthropicVersion] = anthropicBedrockVersion
 	}
 
 	raw, e := json.Marshal(body)
 	if e != nil {
-		return nil, transportError("request_encoding_failed")
+		return nil, transportError(codeRequestEncodingFailed)
 	}
 
 	req, e := http.NewRequestWithContext(ctx, http.MethodPost, p.base.endpoint, bytes.NewReader(raw))
 	if e != nil {
-		return nil, transportError("request_failed")
+		return nil, transportError(codeRequestFailed)
 	}
 
 	req.Header.Set(netpolicy.HeaderContentType, netpolicy.JSONMediaType)
@@ -160,7 +181,7 @@ func (p *MessagesProvider) request(ctx context.Context, payload []byte, system s
 func (p *MessagesProvider) authenticate(req *http.Request, raw []byte) {
 	switch p.options.Transport {
 	case ProviderAnthropic:
-		req.Header.Set("Anthropic-Version", "2023-06-01")
+		req.Header.Set(headerAnthropicVersion, anthropicAPIVersion)
 
 		if p.base.key != "" {
 			req.Header.Set("X-Api-Key", p.base.key)
@@ -177,19 +198,19 @@ func (p *MessagesProvider) authenticate(req *http.Request, raw []byte) {
 func (o MessagesOptions) validateCredentials() error {
 	if o.Transport != ProviderBedrock {
 		if slices.ContainsFunc([]string{o.Region, o.AccessKeyID, o.SecretAccessKey, o.SessionToken}, func(value string) bool { return value != "" }) {
-			return transportError("unexpected_aws_credentials")
+			return transportError(codeUnexpectedAWSAuth)
 		}
 
 		return nil
 	}
 
 	if o.APIKey != "" || !validAWSRegion(o.Region) || !(len(o.AccessKeyID) >= 8 && textmatch.Token(o.AccessKeyID, maxAWSAccessKeyIDBytes, "")) || !credentialBytes(o.SecretAccessKey, 8) || !credentialBytes(o.SessionToken, 0) {
-		return transportError("invalid_bedrock_credentials")
+		return transportError(codeInvalidBedrockAuth)
 	}
 
 	u, _ := url.Parse(o.Endpoint)
 	if u.Path != "/model/"+o.Model+"/invoke" {
-		return transportError("bedrock_model_path_mismatch")
+		return transportError(codeBedrockModelPathMismatch)
 	}
 
 	return nil
@@ -198,7 +219,7 @@ func (o MessagesOptions) validateCredentials() error {
 func readMessagesUsage(c *Completion, raw []byte, usage *jsonconfig.Node) error {
 	if usage != nil {
 		if aliases(usage, fieldInputTokens, fieldOutputTokens) {
-			return transportError("ambiguous_envelope")
+			return transportError(codeAmbiguousEnvelope)
 		}
 
 		var u struct {
@@ -206,7 +227,7 @@ func readMessagesUsage(c *Completion, raw []byte, usage *jsonconfig.Node) error 
 			Output *int64 `json:"output_tokens"`
 		}
 		if json.Unmarshal(raw[usage.Span.Start:usage.Span.End], &u) != nil {
-			return transportError("invalid_usage")
+			return transportError(codeInvalidUsage)
 		}
 
 		setCompletionUsage(c, u.Input, u.Output)
@@ -254,19 +275,19 @@ func validAWSRegion(s string) bool {
 func decodeMessagesCompletion(ctx context.Context, raw []byte) (Completion, error) {
 	root, e := jsonconfig.Parse(ctx, string(raw))
 	if e != nil {
-		return Completion{}, reviewJSONError(e, transportError("invalid_envelope"))
+		return Completion{}, reviewJSONError(e, transportError(codeInvalidEnvelope))
 	}
 
 	if aliases(root, fieldType, fieldRole, fieldContent, fieldStopReason, fieldModel, fieldUsage, fieldError) {
-		return Completion{}, transportError("ambiguous_envelope")
+		return Completion{}, transportError(codeAmbiguousEnvelope)
 	}
 
 	typ, _ := root.Get(fieldType).Text()
 	role, _ := root.Get(fieldRole).Text()
 
 	stop, _ := root.Get(fieldStopReason).Text()
-	if typ != "message" || role != "assistant" || stop != "end_turn" {
-		return Completion{}, transportError("incomplete_response")
+	if typ != messagesEnvelopeType || role != roleAssistant || stop != messagesEndTurn {
+		return Completion{}, transportError(codeIncompleteResponse)
 	}
 
 	output, err := messagesText(root.Get(fieldContent))
@@ -276,7 +297,7 @@ func decodeMessagesCompletion(ctx context.Context, raw []byte) (Completion, erro
 
 	model, _ := root.Get(fieldModel).Text()
 
-	c := Completion{Output: []byte(output), Model: model, InputTokens: -1, OutputTokens: -1}
+	c := Completion{Output: []byte(output), Model: model, InputTokens: unknownTokenCount, OutputTokens: unknownTokenCount}
 
 	if err := c.ValidateMetadata(); err != nil {
 		return Completion{}, err
@@ -374,21 +395,21 @@ func signBedrock(req *http.Request, payload []byte, o MessagesOptions, now time.
 
 func messagesText(content *jsonconfig.Node) (string, error) {
 	if content == nil || content.Kind != jsonconfig.KindArray || len(content.Elements) == 0 || len(content.Elements) > maxMessagesContentBlocks {
-		return "", transportError("invalid_envelope")
+		return "", transportError(codeInvalidEnvelope)
 	}
 
 	var output strings.Builder
 
 	for _, n := range content.Elements {
 		if aliases(n, fieldType, fieldText) {
-			return "", transportError("ambiguous_envelope")
+			return "", transportError(codeAmbiguousEnvelope)
 		}
 
 		t, _ := n.Get(fieldType).Text()
 
 		s, ok := n.Get(fieldText).Text()
-		if t != "text" || !ok {
-			return "", transportError("tool_call_refused")
+		if t != messagesBlockText || !ok {
+			return "", transportError(codeToolCallRefused)
 		}
 
 		output.WriteString(s)

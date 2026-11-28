@@ -14,6 +14,16 @@ import (
 	"github.com/skarm/scout/internal/dev/releasecheck"
 )
 
+const (
+	flagBinary      = "binary"
+	flagCorpus      = "corpus"
+	flagInput       = "input"
+	flagInspectOnly = "inspect-only"
+	flagManifest    = "manifest"
+	flagOutput      = "output"
+	flagTimeout     = "timeout"
+)
+
 func Run(ctx context.Context, args []string, out, diag io.Writer) int {
 	if len(args) == 0 {
 		return failure(diag, errors.New("usage: scout-dev evaluate|hook-scenarios|corpus collect|corpus review-template|releasecheck|<maintenance-command> [flags]"))
@@ -44,9 +54,9 @@ func failure(w io.Writer, err error) int { _, _ = fmt.Fprintln(w, err); return 2
 func release(ctx context.Context, args []string, out, diag io.Writer) int {
 	fs := flag.NewFlagSet("releasecheck", flag.ContinueOnError)
 	fs.SetOutput(diag)
-	binary := fs.String("binary", "", "trusted Scout build artifact")
+	binary := fs.String(flagBinary, "", "trusted Scout build artifact")
 
-	inspect := fs.Bool("inspect-only", false, "inspect linkage without execution")
+	inspect := fs.Bool(flagInspectOnly, false, "inspect linkage without execution")
 	if err := fs.Parse(args); err != nil {
 		return failure(diag, err)
 	}

@@ -29,6 +29,15 @@ type ExtractionLimits struct {
 	MaxTotalBytes int64 `json:"max_total_bytes"`
 }
 
+const (
+	// DerivedRoleArchiveMember identifies an entry extracted from a container.
+	DerivedRoleArchiveMember = "archive_member"
+	// ExtractorZIP32 identifies the ZIP container extractor.
+	ExtractorZIP32 = "zip32"
+	// ExtractorTar identifies the tar container extractor.
+	ExtractorTar = "tar"
+)
+
 // DerivedObject describes an in-memory child extracted from a captured object.
 // Finding offsets refer to File, not the encoded parent. ParentRange encloses
 // the source representation without implying a byte-for-byte mapping.
@@ -139,15 +148,16 @@ func DefaultExtractionLimits() ExtractionLimits {
 // byte limit below the per-object limit.
 func (l ExtractionLimits) Validate() error {
 	return validateBudgets([]budgetRange{
-		{value: int64(l.MaxDepth), min: 1, max: maxExtractionDepth, message: "extraction depth must be in 1..16"},
-		{value: int64(l.MaxObjects), min: 1, max: maxExtractionObjects, message: "extraction objects must be in 1..4096"},
-		{value: int64(l.MaxEntries), min: 1, max: MaxArtifactEntries, message: "extraction entries must be in 1..100000"},
-		{value: l.MaxObjectBytes, min: 1, max: maxExtractionObjectBytes, message: "extraction object bytes must be in 1..33554432"},
+		{value: int64(l.MaxDepth), min: 1, max: maxExtractionDepth, message: "extraction depth must be in 1..%d", messageArgs: []any{maxExtractionDepth}},
+		{value: int64(l.MaxObjects), min: 1, max: maxExtractionObjects, message: "extraction objects must be in 1..%d", messageArgs: []any{maxExtractionObjects}},
+		{value: int64(l.MaxEntries), min: 1, max: MaxArtifactEntries, message: "extraction entries must be in 1..%d", messageArgs: []any{MaxArtifactEntries}},
+		{value: l.MaxObjectBytes, min: 1, max: maxExtractionObjectBytes, message: "extraction object bytes must be in 1..%d", messageArgs: []any{maxExtractionObjectBytes}},
 		{
-			value:   l.MaxTotalBytes,
-			min:     l.MaxObjectBytes,
-			max:     maxExtractionTotalBytes,
-			message: "extraction total bytes must be >= object bytes and <= 134217728",
+			value:       l.MaxTotalBytes,
+			min:         l.MaxObjectBytes,
+			max:         maxExtractionTotalBytes,
+			message:     "extraction total bytes must be >= object bytes and <= %d",
+			messageArgs: []any{maxExtractionTotalBytes},
 		},
 	})
 }

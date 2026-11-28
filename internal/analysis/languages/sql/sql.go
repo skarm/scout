@@ -13,6 +13,13 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	categoryDestructiveDatabaseOperation = "destructive-database-operation"
+	categoryDatabaseAuthority            = "database-authority"
+	categoryDatabaseExternalIo           = "database-external-io"
+	categoryResourceLimits               = "resource-limits"
+)
+
 type sqlCheck struct{ id string }
 
 const (
@@ -40,13 +47,13 @@ func (a sqlCheck) Rule() report.Rule {
 
 	switch a.id {
 	case ruleSQL001:
-		title, category = "SQL declares destructive or unscoped data modification", "destructive-database-operation"
+		title, category = "SQL declares destructive or unscoped data modification", categoryDestructiveDatabaseOperation
 	case ruleSQL002:
-		title, category = "SQL expands database authority or bypasses row security", "database-authority"
+		title, category = "SQL expands database authority or bypasses row security", categoryDatabaseAuthority
 	case ruleSQL003:
-		title, category = "SQL requests server filesystem or program access", "database-external-io"
+		title, category = "SQL requests server filesystem or program access", categoryDatabaseExternalIo
 	case ruleSQL004:
-		title, category = "SQL disables a database execution limit", "resource-limits"
+		title, category = "SQL disables a database execution limit", categoryResourceLimits
 	}
 
 	severity := report.High

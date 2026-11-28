@@ -22,31 +22,36 @@ var (
 	errFormat = errors.New("unsupported or malformed representation")
 )
 
+const (
+	jsonStringsExtractorID = "json-strings"
+	fallbackObjectName     = "content.bin"
+)
+
 //nolint:gochecknoglobals // Read-only format dispatch and encoding grammar shared by extraction runs.
 var formatExtractors = map[string]struct {
 	id  string
 	run func(*operation) error
 }{
-	"zip": {id: "zip32", run: extractZIP},
-	"jar": {id: "zip32", run: extractZIP},
-	"whl": {id: "zip32", run: extractZIP},
+	"zip": {id: report.ExtractorZIP32, run: extractZIP},
+	"jar": {id: report.ExtractorZIP32, run: extractZIP},
+	"whl": {id: report.ExtractorZIP32, run: extractZIP},
 	"nupkg": {
-		id:  "zip32",
+		id:  report.ExtractorZIP32,
 		run: extractZIP,
 	},
 	"ooxml": {
-		id:  "zip32",
+		id:  report.ExtractorZIP32,
 		run: extractZIP,
 	},
 	"opendocument": {
-		id:  "zip32",
+		id:  report.ExtractorZIP32,
 		run: extractZIP,
 	},
 	"gzip": {id: "gzip", run: extractGZIP},
 	"gz":   {id: "gzip", run: extractGZIP},
 	"tgz":  {id: "gzip", run: extractGZIP},
 	"tar": {
-		id:  "tar",
+		id:  report.ExtractorTar,
 		run: extractTAR,
 	},
 	"png": {
@@ -150,7 +155,7 @@ func (b *builder) expand(parent queued) {
 	// Explicit data URIs are searched in every byte stream, not just text files.
 	// Whole-file Base64 is a bounded candidate, not an accusation of malice.
 	if candidates.json {
-		b.run(parent, "json-strings", extractJSON)
+		b.run(parent, jsonStringsExtractorID, extractJSON)
 
 		if omsCandidate(meta.Path, text) {
 			b.run(parent, "oms-certificate-claims", extractOMSCertificates)
@@ -178,7 +183,7 @@ func extractionCandidatesFor(name, text string, executable bool) extractionCandi
 
 func (b *builder) run(parent queued, id string, fn func(*operation) error) {
 	version := "1"
-	if id == "json-strings" {
+	if id == jsonStringsExtractorID {
 		version = "2"
 	}
 
@@ -236,7 +241,7 @@ func archiveContainersUnverified(extractorID, status string) bool {
 		return true
 	}
 
-	return status != report.OutcomeCompleted && (extractorID == "zip32" || extractorID == "tar" || extractorID == "gzip")
+	return status != report.OutcomeCompleted && (extractorID == report.ExtractorZIP32 || extractorID == report.ExtractorTar || extractorID == "gzip")
 }
 
 // A plain synthetic JSON token cannot be a named package member. It can
@@ -378,14 +383,14 @@ func (o *operation) publish(name string, data []byte, executable bool, region *r
 	// Names remain metadata; no path obtained from an artifact is ever opened.
 	base := path.Base(name)
 	if base == "." || base == "/" || base == "" {
-		base = "content.bin"
+		base = fallbackObjectName
 	}
 
 	virtual := (&url.URL{Scheme: report.ObjectScheme, Host: id, Path: "/" + base}).String()
 	file := artifact.NewFile(virtual, data, executable)
 	// JSON token labels are not filename claims. Preserve this fact through
 	// decoding, but restore actual member names when opening an archive.
-	if o.role != "archive_member" && (o.parent.file.GeneratedName() || descriptor.ExtractorID == "json-strings") {
+	if o.role != report.DerivedRoleArchiveMember && (o.parent.file.GeneratedName() || descriptor.ExtractorID == jsonStringsExtractorID) {
 		file = file.WithGeneratedName()
 	}
 
@@ -456,7 +461,7 @@ func inheritedName(parent, suffix string) string {
 	}
 
 	if n == "" || n == "." {
-		n = "content.bin"
+		n = fallbackObjectName
 	}
 
 	return n

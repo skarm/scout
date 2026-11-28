@@ -15,6 +15,29 @@ import (
 )
 
 const (
+	reasonCapturedFile                        = "captured_file"
+	reasonCapturedHandlerNotRuntimeProof      = "captured_handler_not_runtime_proof"
+	reasonCapturedInlineShell                 = "captured_inline_shell"
+	reasonComplexShellCommand                 = "complex_shell_command"
+	reasonDynamicCommand                      = "dynamic_command"
+	reasonExternalDependencyNotMaterialized   = "external_dependency_not_materialized"
+	reasonInvalidCommandBytes                 = "invalid_command_bytes"
+	reasonMissingComponent                    = "missing_component"
+	reasonMissingOrUnsupportedComponent       = "missing_or_unsupported_component"
+	reasonRemoteBehaviorUnverified            = "remote_behavior_unverified"
+	reasonRemoteImplementationNotScanned      = "remote_implementation_not_scanned"
+	reasonSemanticOrToolResolutionUnavailable = "semantic_or_tool_resolution_unavailable"
+)
+
+const (
+	hookTypeAgent   = "agent"
+	hookTypeCommand = "command"
+	hookTypeHTTP    = "http"
+	hookTypeMCPTool = "mcp_tool"
+	hookTypePrompt  = "prompt"
+)
+
+const (
 	maxHookFindingContexts               = 32
 	reasonInterpreterArgumentsUnverified = "interpreter_arguments_unverified"
 )
@@ -203,20 +226,20 @@ func findingContextAdder(f *report.Finding, truncated *bool) func(report.Compone
 func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) {
 	state := p.b.hooks[e.Meta.Path]
 	if state.Uncertain {
-		p.issue("plugin_hook_disable_unverified", e.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginHookDisableUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 
 	if state.Disabled && p.host == report.HostClaudeCode {
 		return
 	}
 
-	hooks := n.Get("hooks")
+	hooks := n.Get(fieldHooks)
 	if hooks == nil {
 		hooks = n
 	}
 
 	if hooks.Kind != jsonconfig.KindObject {
-		p.issue("plugin_hooks_invalid", e.Meta.Path, "invalid")
+		p.issue(issuePluginHooksInvalid, e.Meta.Path, formatInvalid)
 		return
 	}
 
@@ -233,7 +256,7 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 
 func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation string, eventIndex int) bool {
 	if event.Value.Kind != jsonconfig.KindArray {
-		p.issue("plugin_hooks_invalid", e.Meta.Path, "invalid")
+		p.issue(issuePluginHooksInvalid, e.Meta.Path, formatInvalid)
 		return true
 	}
 
@@ -242,9 +265,9 @@ func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation
 			return false
 		}
 
-		items := group.Get("hooks")
+		items := group.Get(fieldHooks)
 		if items == nil || items.Kind != jsonconfig.KindArray {
-			p.issue("plugin_hooks_invalid", e.Meta.Path, "invalid")
+			p.issue(issuePluginHooksInvalid, e.Meta.Path, formatInvalid)
 			continue
 		}
 
@@ -253,7 +276,7 @@ func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation
 				return false
 			}
 
-			matcher, _ := group.Get("matcher").Text()
+			matcher, _ := group.Get(fieldMatcher).Text()
 			p.hookHandler(e, h, parent, activation, event.Key, matcher, eventIndex, gi, hi)
 		}
 	}
@@ -263,39 +286,39 @@ func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation
 
 func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, event, matcher string, eventIndex, gi, hi int) {
 	s := ref(e, h.Span)
-	id := p.component(report.ComponentHook, e, activation, "configuration", s, fmt.Sprintf("hook:%d:%d:%d", eventIndex, gi, hi))
-	p.b.edge(parent, id, "registers", "configuration", activation, s)
+	id := p.component(report.ComponentHook, e, activation, basisConfiguration, s, fmt.Sprintf("hook:%d:%d:%d", eventIndex, gi, hi))
+	p.b.edge(parent, id, relationRegisters, basisConfiguration, activation, s)
 	// Event/matcher values may be arbitrary or hostile strings. They
 	// remain available by source reference, never copied into diagnostics.
-	kind, _ := h.Get("type").Text()
+	kind, _ := h.Get(fieldType).Text()
 	switch kind {
-	case "command":
+	case hookTypeCommand:
 		p.hookCommand(e, h, id, activation, event, matcher)
-	case "http":
-		p.reference(id, "remote_endpoint", "unresolved", "remote_behavior_unverified", "", s)
-	case "prompt", "agent":
+	case hookTypeHTTP:
+		p.reference(id, referenceKindRemoteEndpoint, report.ReferenceUnresolved, reasonRemoteBehaviorUnverified, "", s)
+	case hookTypePrompt, hookTypeAgent:
 		p.hookPrompt(e, h, id, activation, eventIndex, gi, hi, s)
-	case "mcp_tool":
-		p.reference(id, "hook_behavior", "unresolved", "semantic_or_tool_resolution_unavailable", "", s)
+	case hookTypeMCPTool:
+		p.reference(id, referenceKindHookBehavior, report.ReferenceUnresolved, reasonSemanticOrToolResolutionUnavailable, "", s)
 	default:
-		p.issue("plugin_hook_type_unverified", e.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginHookTypeUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 }
 
 func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event, matcher string) {
-	cmd := h.Get("command")
+	cmd := h.Get(fieldCommand)
 
 	text, ok := cmd.Text()
 	if !ok || strings.TrimSpace(text) == "" {
-		p.issue("plugin_hook_command_invalid", e.Meta.Path, "invalid")
+		p.issue(issuePluginHookCommandInvalid, e.Meta.Path, formatInvalid)
 		return
 	}
 
-	args, valid := stringValues(h.Get("args"))
-	argv := h.Get("args") != nil
+	args, valid := stringValues(h.Get(fieldArgs))
+	argv := h.Get(fieldArgs) != nil
 
 	if !valid {
-		p.issue("plugin_hook_args_invalid", e.Meta.Path, "invalid")
+		p.issue(issuePluginHookArgsInvalid, e.Meta.Path, formatInvalid)
 		return
 	}
 
@@ -314,7 +337,7 @@ func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, matcher, id
 		return true
 	}
 
-	if h.Get("args") != nil {
+	if h.Get(fieldArgs) != nil {
 		return false
 	}
 
@@ -338,7 +361,7 @@ func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, matcher, id
 			for _, traced := range paths {
 				if target := p.ns.entries[traced.Target]; len(traced.Steps) == 1 && target != nil {
 					p.capturedHandler(id, target, activation, s)
-					p.reference(id, "runtime", "unresolved", "runtime_not_materialized", "", s)
+					p.reference(id, referenceKindRuntime, report.ReferenceUnresolved, report.ReferenceReasonRuntimeNotMaterialized, "", s)
 
 					return true
 				}
@@ -350,31 +373,31 @@ func (p *plugin) linkTracedHook(e *entry, h *jsonconfig.Node, event, matcher, id
 }
 
 func (p *plugin) linkInlineHook(e *entry, unit document.Unit, id, activation string, s *report.SourceRef) {
-	child := p.component("handler", e, activation, "inline_shell", ref(e, unit.Span), "inline")
-	p.b.edge(id, child, "invokes", "inline_shell", activation, s)
-	p.reference(id, "handler", "resolved", "captured_inline_shell", child, s)
+	child := p.component(componentHandler, e, activation, basisInlineShell, ref(e, unit.Span), "inline")
+	p.b.edge(id, child, relationInvokes, basisInlineShell, activation, s)
+	p.reference(id, referenceKindHandler, report.ReferenceResolved, reasonCapturedInlineShell, child, s)
 }
 
 func (p *plugin) hookPrompt(e *entry, h *jsonconfig.Node, id, activation string, eventIndex, gi, hi int, s *report.SourceRef) {
-	prompt := h.Get("prompt")
+	prompt := h.Get(fieldPrompt)
 	if text, ok := prompt.Text(); ok && strings.TrimSpace(text) != "" {
-		child := p.component("instruction", e, activation, "hook_payload", ref(e, prompt.Span), fmt.Sprintf("prompt:%d:%d:%d", eventIndex, gi, hi))
-		p.b.edge(id, child, "invokes", "hook_payload", activation, ref(e, prompt.Span))
+		child := p.component(componentInstruction, e, activation, basisHookPayload, ref(e, prompt.Span), fmt.Sprintf("prompt:%d:%d:%d", eventIndex, gi, hi))
+		p.b.edge(id, child, relationInvokes, basisHookPayload, activation, ref(e, prompt.Span))
 	} else {
-		p.issue("plugin_hook_prompt_invalid", e.Meta.Path, "invalid")
+		p.issue(issuePluginHookPromptInvalid, e.Meta.Path, formatInvalid)
 	}
 
-	p.reference(id, "hook_behavior", "unresolved", "semantic_or_tool_resolution_unavailable", "", s)
+	p.reference(id, referenceKindHookBehavior, report.ReferenceUnresolved, reasonSemanticOrToolResolutionUnavailable, "", s)
 }
 
 func (p *plugin) settings(e *entry, n *jsonconfig.Node, parent string) {
 	state := p.b.hooks[e.Meta.Path]
 	if state.Uncertain {
-		p.issue("plugin_hook_disable_unverified", e.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginHookDisableUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 
 	off := state.Disabled
-	if n.Get("hooks") != nil && !off {
+	if n.Get(fieldHooks) != nil && !off {
 		p.hooks(e, n, parent, "unknown")
 	}
 
@@ -385,12 +408,12 @@ func (p *plugin) settings(e *entry, n *jsonconfig.Node, parent string) {
 		}
 
 		if value == nil {
-			p.issue("plugin_settings_command_invalid", e.Meta.Path, "invalid")
+			p.issue(issuePluginSettingsCommandInvalid, e.Meta.Path, formatInvalid)
 			continue
 		}
 
-		id := p.component("settings_command", e, "unknown", "settings", ref(e, value.Span), key)
-		p.b.edge(parent, id, "registers", "settings", "unknown", ref(e, value.Span))
+		id := p.component(componentSettingsCommand, e, activationUnknown, basisSettings, ref(e, value.Span), key)
+		p.b.edge(parent, id, relationRegisters, basisSettings, activationUnknown, ref(e, value.Span))
 		p.settingsCommand(e, value, id)
 	}
 }
@@ -405,12 +428,12 @@ func settingsCommandValue(value *jsonconfig.Node, key string, off bool) (*jsonco
 			return nil, false
 		}
 
-		kind, _ := value.Get("type").Text()
+		kind, _ := value.Get(fieldType).Text()
 		if kind != "command" {
 			return nil, false
 		}
 
-		value = value.Get("command")
+		value = value.Get(fieldCommand)
 	}
 
 	return value, true
@@ -425,10 +448,10 @@ func (p *plugin) settingsCommand(e *entry, value *jsonconfig.Node, id string) {
 		if valid {
 			p.command(id, words[0], words[1:], true, ref(e, value.Span), "unknown", false)
 		} else {
-			p.issue("plugin_settings_command_invalid", e.Meta.Path, "invalid")
+			p.issue(issuePluginSettingsCommandInvalid, e.Meta.Path, formatInvalid)
 		}
 	} else {
-		p.issue("plugin_settings_command_invalid", e.Meta.Path, "invalid")
+		p.issue(issuePluginSettingsCommandInvalid, e.Meta.Path, formatInvalid)
 	}
 }
 
@@ -439,7 +462,7 @@ func (p *plugin) servers(e *entry, n *jsonconfig.Node, kind, parent, activation 
 	}
 
 	if servers.Kind != jsonconfig.KindObject {
-		p.issue("plugin_server_map_invalid", e.Meta.Path, "invalid")
+		p.issue(issuePluginServerMapInvalid, e.Meta.Path, formatInvalid)
 		return
 	}
 
@@ -459,8 +482,8 @@ func (p *plugin) serverMap(e *entry, n *jsonconfig.Node, kind string) *jsonconfi
 		return p.mcpServerMap(e, n)
 	}
 
-	if kind == componentLSPConfig && n.Get("lspServers") != nil {
-		servers = n.Get("lspServers")
+	if kind == componentLSPConfig && n.Get(fieldLSPServers) != nil {
+		servers = n.Get(fieldLSPServers)
 	}
 
 	return servers
@@ -469,9 +492,9 @@ func (p *plugin) serverMap(e *entry, n *jsonconfig.Node, kind string) *jsonconfi
 func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
 	servers := n
 
-	camel, snake := n.Get("mcpServers"), n.Get("mcp_servers")
+	camel, snake := n.Get(fieldMCPServers), n.Get(fieldMCPServersSnake)
 	if camel != nil && snake != nil {
-		p.issue("plugin_mcp_wrappers_ambiguous", e.Meta.Path, "invalid")
+		p.issue(issuePluginMCPWrappersAmbiguous, e.Meta.Path, formatInvalid)
 		return nil
 	}
 
@@ -484,7 +507,7 @@ func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
 	}
 
 	if p.host == report.HostClaudeCode && snake != nil {
-		p.issue("plugin_mcp_wrapper_unverified", e.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginMCPWrapperUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 
 	return servers
@@ -498,42 +521,42 @@ func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activat
 		role = "lsp_server"
 	}
 
-	id := p.component(role, e, activation, "configuration", s, fmt.Sprintf("%s:%d", role, i))
-	p.b.edge(parent, id, "declares", "configuration", activation, s)
+	id := p.component(role, e, activation, basisConfiguration, s, fmt.Sprintf("%s:%d", role, i))
+	p.b.edge(parent, id, relationDeclares, basisConfiguration, activation, s)
 
 	if n.Kind != jsonconfig.KindObject {
-		p.issue("plugin_server_invalid", e.Meta.Path, "invalid")
+		p.issue(issuePluginServerInvalid, e.Meta.Path, formatInvalid)
 		return
 	}
 
-	command := n.Get("command")
+	command := n.Get(fieldCommand)
 
-	url := n.Get("url")
+	url := n.Get(fieldURL)
 	if command != nil && url != nil {
-		p.issue("plugin_server_transport_ambiguous", e.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginServerTransportAmbiguous, e.Meta.Path, report.OutcomePartial)
 	}
 
 	if url != nil {
 		if _, ok := url.Text(); !ok {
-			p.issue("plugin_server_url_invalid", e.Meta.Path, "invalid")
+			p.issue(issuePluginServerURLInvalid, e.Meta.Path, formatInvalid)
 		}
 
-		p.reference(id, "remote_endpoint", "unresolved", "remote_implementation_not_scanned", "", ref(e, url.Span))
+		p.reference(id, referenceKindRemoteEndpoint, report.ReferenceUnresolved, reasonRemoteImplementationNotScanned, "", ref(e, url.Span))
 	}
 
 	if command != nil {
 		p.serverCommand(e, n, id, s, activation)
 	} else if url == nil {
-		p.issue("plugin_server_transport_unverified", e.Meta.Path, report.OutcomePartial)
+		p.issue(issuePluginServerTransportUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 }
 
 func (p *plugin) serverCommand(e *entry, n *jsonconfig.Node, id string, s *report.SourceRef, activation string) {
-	text, ok := n.Get("command").Text()
-	args, valid := stringValues(n.Get("args"))
+	text, ok := n.Get(fieldCommand).Text()
+	args, valid := stringValues(n.Get(fieldArgs))
 
 	if !ok || text == "" || !valid {
-		p.issue("plugin_server_command_invalid", e.Meta.Path, "invalid")
+		p.issue(issuePluginServerCommandInvalid, e.Meta.Path, formatInvalid)
 		return
 	}
 
@@ -545,7 +568,7 @@ func (p *plugin) serverCommand(e *entry, n *jsonconfig.Node, id string, s *repor
 // handler. Relative working directories and environment expansion are unknown.
 func (p *plugin) command(component, text string, args []string, argv bool, s *report.SourceRef, activation string, hook bool) {
 	if strings.ContainsRune(text, 0) {
-		p.reference(component, "command", "unresolved", "invalid_command_bytes", "", s)
+		p.reference(component, referenceKindCommand, report.ReferenceUnresolved, reasonInvalidCommandBytes, "", s)
 		return
 	}
 
@@ -557,7 +580,7 @@ func (p *plugin) command(component, text string, args []string, argv bool, s *re
 
 		command, valid := hooktrace.SimpleShellCommand(tree)
 		if err != nil || !valid {
-			p.reference(component, "command", "unresolved", "complex_shell_command", "", s)
+			p.reference(component, referenceKindCommand, report.ReferenceUnresolved, reasonComplexShellCommand, "", s)
 			return
 		}
 
@@ -566,7 +589,7 @@ func (p *plugin) command(component, text string, args []string, argv bool, s *re
 		for _, word := range command.Words {
 			v, ok := hooktrace.SymbolicWord(word, p.host, hook)
 			if !ok {
-				p.reference(component, "command", "unresolved", "dynamic_command", "", s)
+				p.reference(component, referenceKindCommand, report.ReferenceUnresolved, reasonDynamicCommand, "", s)
 				return
 			}
 
@@ -580,37 +603,37 @@ func (p *plugin) command(component, text string, args []string, argv bool, s *re
 func (p *plugin) resolveCommand(component string, words []string, argv bool, s *report.SourceRef, activation string, hook bool) {
 	candidate, externalRuntime, reason := commandOperand(words)
 	if reason != "" {
-		p.reference(component, "command", "unresolved", reason, "", s)
+		p.reference(component, referenceKindCommand, report.ReferenceUnresolved, reason, "", s)
 		return
 	}
 
 	if externalRuntime {
-		p.reference(component, "runtime", "unresolved", "runtime_not_materialized", "", s)
+		p.reference(component, referenceKindRuntime, report.ReferenceUnresolved, report.ReferenceReasonRuntimeNotMaterialized, "", s)
 	}
 
 	rel, kind, reason := handlerPath(candidate, p.host, argv, hook)
 	if reason != "" {
-		p.reference(component, kind, "unresolved", reason, "", s)
+		p.reference(component, kind, report.ReferenceUnresolved, reason, "", s)
 		return
 	}
 
 	e := p.entry(rel)
 	if e == nil || e.Doc == nil {
-		p.reference(component, "handler", "unresolved", "handler_not_captured", "", s)
+		p.reference(component, referenceKindHandler, report.ReferenceUnresolved, report.ReferenceReasonHandlerNotCaptured, "", s)
 		return
 	}
 
 	p.capturedHandler(component, e, activation, s)
 	// A single source operand cannot attest the rest of go run's build inputs.
 	if externalRuntime {
-		p.issue("handler_dependency_closure_unverified", e.Meta.Path, report.OutcomePartial)
+		p.issue(issueHandlerDependencyClosureUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 }
 
 func (p *plugin) capturedHandler(component string, e *entry, activation string, s *report.SourceRef) {
-	id := p.component("handler", e, activation, "static_reference", whole(e), "handler")
-	p.b.edge(component, id, "invokes", "static_reference", activation, s)
-	p.reference(component, "handler", "resolved", "captured_handler_not_runtime_proof", id, s)
+	id := p.component(componentHandler, e, activation, basisStaticReference, whole(e), "handler")
+	p.b.edge(component, id, relationInvokes, basisStaticReference, activation, s)
+	p.reference(component, referenceKindHandler, report.ReferenceResolved, reasonCapturedHandlerNotRuntimeProof, id, s)
 }
 
 func handlerPath(candidate, host string, argv, hook bool) (string, string, string) {
@@ -622,12 +645,12 @@ func handlerPath(candidate, host string, argv, hook bool) (string, string, strin
 			reason = "working_directory_unknown"
 		}
 
-		return "", "command", reason
+		return "", referenceKindCommand, reason
 	}
 
 	rel, reason := artifactpath.Reference(suffix, false)
 
-	return rel, "handler", reason
+	return rel, referenceKindHandler, reason
 }
 
 func commandOperand(words []string) (string, bool, string) {

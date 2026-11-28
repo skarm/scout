@@ -158,8 +158,13 @@ func savedRoots(s envsnapshot.Snapshot) (map[string]string, error) {
 }
 
 func discoveredRoots(paths []string) (map[string]string, error) {
-	if len(paths) > 32 {
-		return nil, errors.New("discovery yielded more than 32 roots; narrow with --kind, --include-path or --exclude-path")
+	const (
+		rootIDHexChars = 24
+		rootIDPrefix   = "root-"
+	)
+
+	if len(paths) > envsnapshot.MaxRoots {
+		return nil, fmt.Errorf("discovery yielded more than %d roots; narrow with --kind, --include-path or --exclude-path", envsnapshot.MaxRoots)
 	}
 
 	inputs := map[string]string{}
@@ -172,7 +177,7 @@ func discoveredRoots(paths []string) (map[string]string, error) {
 
 		sum := sha256.Sum256([]byte(absolute))
 
-		id := "root-" + hex.EncodeToString(sum[:])[:24]
+		id := rootIDPrefix + hex.EncodeToString(sum[:])[:rootIDHexChars]
 		if _, exists := inputs[id]; exists {
 			return nil, errors.New("duplicate discovered root")
 		}
@@ -230,7 +235,14 @@ func completeDiscovery(ctx context.Context, a discoveryArguments) (discovery.Sna
 }
 
 func savedDiscoveryArguments(a discoveryArguments) ([]string, error) {
-	args := []string{"--agent", a.options.Agent, "--system=" + strconv.FormatBool(a.options.System), "--timeout", a.timeout.String(), "--max-entries", strconv.Itoa(a.options.MaxEntries), "--max-depth", strconv.Itoa(a.options.MaxDepth), "--max-bytes", strconv.FormatInt(a.options.MaxBytes, 10)}
+	args := []string{
+		"--" + flagAgent, a.options.Agent,
+		"--" + flagSystem + "=" + strconv.FormatBool(a.options.System),
+		"--" + flagTimeout, a.timeout.String(),
+		"--" + flagMaxEntries, strconv.Itoa(a.options.MaxEntries),
+		"--" + flagMaxDepth, strconv.Itoa(a.options.MaxDepth),
+		"--" + flagMaxBytes, strconv.FormatInt(a.options.MaxBytes, 10),
+	}
 
 	appendPath := func(flag, path string) error {
 		if path == "" {
@@ -246,43 +258,44 @@ func savedDiscoveryArguments(a discoveryArguments) ([]string, error) {
 
 		return nil
 	}
-	for _, entry := range []struct{ flag, path string }{{"--home", a.options.Home}, {"--codex-home", a.options.CodexHome}, {"--claude-home", a.options.ClaudeHome}} {
+	for _, entry := range []struct{ flag, path string }{{"--" + flagHome, a.options.Home}, {"--" + flagCodexHome, a.options.CodexHome}, {"--" + flagClaudeHome, a.options.ClaudeHome}} {
 		if err := appendPath(entry.flag, entry.path); err != nil {
 			return nil, err
 		}
 	}
 
 	if len(a.options.Projects) == 0 {
-		args = append(args, "--no-project")
+		args = append(args, "--"+flagNoProject)
 	}
 
 	for _, path := range a.options.Projects {
-		if err := appendPath("--project", path); err != nil {
+		if err := appendPath("--"+flagProject, path); err != nil {
 			return nil, err
 		}
 	}
 
 	for _, path := range a.includePaths {
-		if err := appendPath("--include-path", path); err != nil {
+		if err := appendPath("--"+flagIncludePath, path); err != nil {
 			return nil, err
 		}
 	}
 
 	for _, path := range a.excludePaths {
-		if err := appendPath("--exclude-path", path); err != nil {
+		if err := appendPath("--"+flagExcludePath, path); err != nil {
 			return nil, err
 		}
 	}
 
 	for _, kind := range a.kinds {
-		args = append(args, "--kind", kind)
+		args = append(args, "--"+flagKind, kind)
 	}
 
 	return args, nil
 }
 
 func restoreDiscovery(args []string) (discoveryArguments, error) {
-	if len(args) > 256 {
+	const maxSavedDiscoveryArguments = 256
+	if len(args) > maxSavedDiscoveryArguments {
 		return discoveryArguments{}, errors.New("saved discovery arguments exceed limit")
 	}
 

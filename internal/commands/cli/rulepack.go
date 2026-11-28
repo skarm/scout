@@ -10,6 +10,11 @@ import (
 	"github.com/skarm/scout/rulepack"
 )
 
+const (
+	flagID     = "id"
+	flagSHA256 = "sha256"
+)
+
 func rulepackCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if err := ctx.Err(); err != nil {
 		return requestError(err, stderr)
@@ -32,11 +37,11 @@ func rulepackCommand(ctx context.Context, args []string, stdout, stderr io.Write
 func createRulepack(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("rules pack create", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	id := fs.String("id", "", "required package identifier")
-	version := fs.String("version", "", "required package release label")
+	id := fs.String(flagID, "", "required package identifier")
+	version := fs.String(flagVersion, "", "required package release label")
 	yara := fs.String(flagYARA, "", "trusted UTF-8 YARA source file")
 
-	path := fs.String("output", "", "artifact destination; default stdout")
+	path := fs.String(flagOutput, "", "artifact destination; default stdout")
 	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}
@@ -83,7 +88,7 @@ func inspectRulepack(ctx context.Context, args []string, stdout, stderr io.Write
 	fs := flag.NewFlagSet("rules pack inspect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
-	pin := fs.String("sha256", "", "expected lowercase SHA-256 of the entire artifact")
+	pin := fs.String(flagSHA256, "", "expected lowercase SHA-256 of the entire artifact")
 	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}

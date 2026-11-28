@@ -8,6 +8,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/report"
 )
 
 // Observers receive captured syntax for trusted analysis only, never public logs.
@@ -133,6 +134,6 @@ func (a *shellWalk) observeWget(c *shellsyntax.Command, args []shellValue) {
 	}
 
 	if r.remote {
-		a.capability("untrusted_input", c.Span)
+		a.capability(report.CapabilityUntrustedInput, c.Span)
 	}
 }

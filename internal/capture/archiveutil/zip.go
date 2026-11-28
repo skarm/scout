@@ -55,6 +55,8 @@ const (
 	zip64CountSentinel      = 0xffff
 	zipMaxCommentBytes      = 65535
 	zipDescriptorFlag       = 8
+	zipEncryptedFlag        = 1 << 0
+	zipStrongEncryptionFlag = 1 << 6
 )
 
 type zipDirectoryHeader struct {
@@ -151,7 +153,7 @@ func validateZIPEntry(entry *zip.File, names *artifactpath.Namespace, maxPath, m
 }
 
 func validateZIPEncoding(entry *zip.File, directory bool) error {
-	if entry.Flags&(1|64) != 0 {
+	if entry.Flags&(zipEncryptedFlag|zipStrongEncryptionFlag) != 0 {
 		return errors.New("encrypted ZIP entry")
 	}
 

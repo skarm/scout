@@ -16,6 +16,7 @@ import (
 
 const (
 	tarBlockBytes      = 512
+	tarTypeflagOffset  = 156
 	tarBlockPadding    = tarBlockBytes - 1
 	maxMemberPathBytes = 1024
 	maxMemberPathDepth = 32
@@ -43,7 +44,7 @@ func (r contextByteReader) ReadByte() (byte, error) {
 }
 
 func extractZIP(o *operation) error {
-	o.role = "archive_member"
+	o.role = report.DerivedRoleArchiveMember
 	remaining := o.b.limits.MaxEntries - o.b.result.Report.EntriesVisited
 
 	zr, err := archiveutil.OpenZIPWithBudget(o.b.ctx, []byte(o.parent.file.Content()), remaining, maxMemberPathBytes, maxMemberPathDepth, o.entry)
@@ -237,7 +238,7 @@ func extractGZIPMetadata(o *operation, comment string, extra []byte) error {
 // raw header before tar.Reader can consume hidden metadata pseudo-entries. The
 // raw container stays available for rules even when this narrow profile fails.
 func extractTAR(o *operation) error {
-	o.role = "archive_member"
+	o.role = report.DerivedRoleArchiveMember
 	data := o.parent.file.Content()
 	names := artifactpath.Namespace{MaxNodes: o.b.limits.MaxEntries - o.b.result.Report.EntriesVisited}
 
@@ -320,7 +321,7 @@ func tarEndMarker(data string, at int) (bool, error) {
 }
 
 func readTARHeader(data string) (*tar.Header, *tar.Reader, error) {
-	typ := data[156]
+	typ := data[tarTypeflagOffset]
 	if !slices.Contains([]byte{tar.TypeReg, 0, tar.TypeDir}, typ) {
 		return nil, nil, errFormat
 	}

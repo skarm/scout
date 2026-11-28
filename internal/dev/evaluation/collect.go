@@ -17,9 +17,13 @@ import (
 )
 
 const (
-	maxCollectedFiles          = 4096
-	MaxCollectionManifestBytes = 256 << 10
+	maxCollectedFiles                 = 4096
+	maxCollectionLocalPathBytes       = 4096
+	maxCollectedFileBytes       int64 = 1 << 20
+	MaxCollectionManifestBytes        = 256 << 10
 )
+
+const collectionManifestSchema = "scout.corpus-sources/v1"
 
 type CollectionManifest struct {
 	Schema  string           `json:"schema"`
@@ -81,7 +85,7 @@ func (m CollectionManifest) corpus() Corpus {
 }
 
 func (m CollectionManifest) validate() error {
-	if m.Schema != "scout.corpus-sources/v1" {
+	if m.Schema != collectionManifestSchema {
 		return errors.New("unsupported collection manifest schema")
 	}
 
@@ -98,7 +102,7 @@ func (m CollectionManifest) validate() error {
 				return errors.New("collection requires at most 4096 files, each with one source and a lowercase SHA-256 pin")
 			}
 
-			if file.Local != "" && !boundedText(file.Local, 4096) {
+			if file.Local != "" && !boundedText(file.Local, maxCollectionLocalPathBytes) {
 				return errors.New("invalid local collection path")
 			}
 
@@ -148,7 +152,7 @@ func Collect(ctx context.Context, manifest CollectionManifest, base string, down
 				return nil, nil, err
 			}
 
-			limit := min(int64(1<<20), remaining)
+			limit := min(maxCollectedFileBytes, remaining)
 
 			data, local, err := collectFile(ctx, file, base, download, limit)
 			if err != nil {

@@ -161,7 +161,8 @@ func severityFromScore(score float64, v2 bool) report.Severity {
 }
 
 func cvssScore(v severityVector) (float64, bool) {
-	if len(v.Score) > 256 {
+	const maxVectorBytes = 256
+	if len(v.Score) > maxVectorBytes {
 		return 0, false
 	}
 

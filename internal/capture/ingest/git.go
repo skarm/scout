@@ -27,7 +27,7 @@ func ReadGitTree(ctx context.Context, data []byte, limits report.CaptureLimits) 
 		}
 
 		if i == limits.MaxFiles {
-			b.issue("file_count_limit", file.Name, "File count budget exhausted; remaining file contents were not captured.")
+			b.issue(codeFileCountLimit, file.Name, messageFileCountLimit)
 			break
 		}
 

@@ -22,8 +22,18 @@ import (
 )
 
 const (
+	codeChecksumMismatch               = "checksum_mismatch"
+	codeChecksumNotSupportedForGITTree = "checksum_not_supported_for_git_tree"
+	codeEmptyResponse                  = "empty_response"
+	codeGithubRequiresFullCommitSha    = "github_requires_full_commit_sha"
+	codeGithubRequiresRepositoryRoot   = "github_requires_repository_root"
+	codeInvalidGithubURL               = "invalid_github_url"
+	codeRedirectRefused                = "redirect_refused"
+)
+
+const (
 	gitCommitHexBytes      = 40
-	sha256HexBytes         = 64
+	sha256HexBytes         = 2 * sha256.Size
 	downloadUserAgent      = "scout-offline-first-mvp"
 	maxRepositoryPartBytes = 128
 	// MaxDownloadTimeout is the maximum supported download deadline.
@@ -33,6 +43,22 @@ const (
 	maxDownloadBytes       = 128 << 20
 	maxDownloadURLBytes    = 4096
 )
+
+const (
+	codeByteLimit                 = "byte_limit"
+	codeBodyReadFailed            = "body_read_failed"
+	codeInvalidRequest            = "invalid_request"
+	codeNilContext                = "nil_context"
+	codeNetworkPermissionRequired = "network_permission_required"
+)
+
+const (
+	githubHost            = "github.com"
+	gitCloneSuffix        = ".git"
+	repositoryArchiveName = "repository.zip"
+)
+
+const defaultDownloadName = "download.bin"
 
 // Options configures explicitly permitted remote acquisition. Defaults keep
 // network access disabled.
@@ -108,7 +134,7 @@ func ResolveTarget(raw string, o Options) (Target, error) {
 	}
 
 	if !o.Enabled {
-		return Target{}, fail("network_permission_required")
+		return Target{}, fail(codeNetworkPermissionRequired)
 	}
 
 	u, err := parseURL(raw, o.AllowLoopback)
@@ -116,8 +142,8 @@ func ResolveTarget(raw string, o Options) (Target, error) {
 		return Target{}, err
 	}
 
-	t := Target{URL: u.String(), Name: "download.bin", Kind: "https"}
-	if strings.EqualFold(u.Hostname(), "github.com") {
+	t := Target{URL: u.String(), Name: defaultDownloadName, Kind: "https"}
+	if strings.EqualFold(u.Hostname(), githubHost) {
 		if !o.Git && (o.Revision == "" || !o.GitAuth.applies(u)) {
 			return githubTarget(u, o.Revision)
 		}
@@ -127,15 +153,15 @@ func ResolveTarget(raw string, o Options) (Target, error) {
 			return Target{}, err
 		}
 
-		t.URL = "https://github.com/" + owner + "/" + repo + ".git"
+		t.URL = "https://" + githubHost + "/" + owner + "/" + repo + gitCloneSuffix
 	}
 
 	if o.Git || o.Revision != "" {
 		if o.ExpectedSHA256 != "" {
-			return Target{}, fail("checksum_not_supported_for_git_tree")
+			return Target{}, fail(codeChecksumNotSupportedForGITTree)
 		}
 
-		return Target{URL: t.URL, Name: "repository.zip", Kind: KindGitTree, Revision: strings.ToLower(o.Revision)}, nil
+		return Target{URL: t.URL, Name: repositoryArchiveName, Kind: KindGitTree, Revision: strings.ToLower(o.Revision)}, nil
 	}
 
 	name := path.Base(u.Path)
@@ -155,7 +181,7 @@ func PermittedIP(a netip.Addr, loopback bool) bool { return netpolicy.PermittedI
 func Get(ctx context.Context, raw string, o Options) (Payload, error) {
 	var out Payload
 	if ctx == nil {
-		return out, fail("nil_context")
+		return out, fail(codeNilContext)
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -189,10 +215,10 @@ func Get(ctx context.Context, raw string, o Options) (Payload, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.URL, nil)
 	if err != nil {
-		return out, fail("invalid_request")
+		return out, fail(codeInvalidRequest)
 	}
 
-	req.Header.Set("User-Agent", downloadUserAgent)
+	req.Header.Set(netpolicy.HeaderUserAgent, downloadUserAgent)
 	req.Header.Set(netpolicy.HeaderAcceptEncoding, netpolicy.IdentityEncoding)
 
 	data, err := downloadResponse(ctx, req, o)
@@ -238,7 +264,7 @@ func (o Options) Validate() error {
 	}
 
 	if !o.Enabled && o.requiresNetwork() {
-		return fail("network_permission_required")
+		return fail(codeNetworkPermissionRequired)
 	}
 
 	return nil
@@ -254,12 +280,12 @@ func (e *Error) Error() string { return "remote input: " + e.Code }
 
 func (out Payload) capture(data []byte, o Options) (Payload, error) {
 	if len(data) == 0 {
-		return out, fail("empty_response")
+		return out, fail(codeEmptyResponse)
 	}
 
 	digest := hash(data)
 	if o.ExpectedSHA256 != "" && subtle.ConstantTimeCompare([]byte(digest), []byte(strings.ToLower(o.ExpectedSHA256))) != 1 {
-		return out, fail("checksum_mismatch")
+		return out, fail(codeChecksumMismatch)
 	}
 
 	out.Data = data
@@ -274,7 +300,7 @@ func newClient(o Options) (*http.Client, *http.Transport) {
 	client := &http.Client{
 		Transport:     transport,
 		Timeout:       o.Timeout,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return fail("redirect_refused") },
+		CheckRedirect: func(*http.Request, []*http.Request) error { return fail(codeRedirectRefused) },
 	}
 
 	return client, transport
@@ -321,10 +347,10 @@ func githubTarget(u *url.URL, revision string) (Target, error) {
 	}
 
 	if revision == "" {
-		return t, fail("github_requires_full_commit_sha")
+		return t, fail(codeGithubRequiresFullCommitSha)
 	}
 
-	t.Kind, t.Revision, t.Name = "github-archive", strings.ToLower(revision), "repository.zip"
+	t.Kind, t.Revision, t.Name = "github-archive", strings.ToLower(revision), repositoryArchiveName
 	t.URL = "https://codeload.github.com/" + owner + "/" + repo + "/zip/" + t.Revision
 
 	return t, nil
@@ -332,18 +358,18 @@ func githubTarget(u *url.URL, revision string) (Target, error) {
 
 func githubRepository(u *url.URL) (string, string, error) {
 	if u.Port() != "" && u.Port() != "443" {
-		return "", "", fail("invalid_github_url")
+		return "", "", fail(codeInvalidGithubURL)
 	}
 
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	if len(parts) != 2 {
-		return "", "", fail("github_requires_repository_root")
+		return "", "", fail(codeGithubRequiresRepositoryRoot)
 	}
 
-	parts[1] = strings.TrimSuffix(parts[1], ".git")
+	parts[1] = strings.TrimSuffix(parts[1], gitCloneSuffix)
 	for _, p := range parts {
 		if !repoPart(p) {
-			return "", "", fail("invalid_github_url")
+			return "", "", fail(codeInvalidGithubURL)
 		}
 	}
 

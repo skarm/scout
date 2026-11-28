@@ -55,7 +55,7 @@ func (a dependencySignal) Rule() report.Rule {
 		Title:       title,
 		Description: title,
 		Severity:    report.Medium,
-		Category:    "supply-chain",
+		Category:    report.CategorySupplyChain,
 		Method:      "parsed-dependency-name-heuristic",
 		Limitation:  limit,
 	}
@@ -106,7 +106,7 @@ func (a dependencySignal) matchesDependencyName(ecosystem, name string) bool {
 
 func editDistance(a, b string) int {
 	if len(a) > maxDependencyDistanceBytes || len(b) > maxDependencyDistanceBytes {
-		return 65
+		return maxDependencyDistanceBytes + 1
 	}
 
 	prev := make([]int, len(b)+1)

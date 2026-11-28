@@ -109,9 +109,9 @@ func operatorCommand(ctx context.Context, args []string, stdout, stderr io.Write
 
 func informationalCommand(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
-	case "help", "-h", "--help":
+	case "help", "-h", "--" + flagHelp:
 		return fullHelp(stdout)
-	case "version", "--version", "-v":
+	case "version", "--" + flagVersion, "-v":
 		if len(args) != 1 {
 			return usageError(stderr, "version takes no arguments")
 		}

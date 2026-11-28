@@ -14,6 +14,13 @@ import (
 )
 
 const (
+	codeByteLimit                    = "byte_limit"
+	codeDeclarationLimit             = "declaration_limit"
+	codeNilContext                   = "nil_context"
+	codeUnsupportedDeclarationSyntax = "unsupported_declaration_syntax"
+)
+
+const (
 	maxProjectedArrayItems = 8
 )
 
@@ -32,11 +39,11 @@ type declarationProjection struct {
 
 func ParseDeclarations(ctx context.Context, text string) (*File, error) {
 	if ctx == nil {
-		return nil, &Error{Code: "nil_context"}
+		return nil, &Error{Code: codeNilContext}
 	}
 
 	if len(text) > MaxBytes {
-		return nil, &Error{Code: "byte_limit"}
+		return nil, &Error{Code: codeByteLimit}
 	}
 
 	input := text
@@ -63,7 +70,7 @@ func ParseDeclarations(ctx context.Context, text string) (*File, error) {
 	}
 
 	if err != nil || tree == nil {
-		return nil, &Error{Code: "unsupported_declaration_syntax"}
+		return nil, &Error{Code: codeUnsupportedDeclarationSyntax}
 	}
 
 	p := declarationProjection{ctx: ctx, text: text}
@@ -84,7 +91,7 @@ func (r contextReader) Read(p []byte) (int, error) {
 func (p *declarationProjection) step(depth int) bool {
 	p.nodes++
 	if p.err == nil && (depth > MaxDepth || p.nodes > MaxNodes || p.ctx.Err() != nil) {
-		p.err = &Error{Code: "declaration_limit"}
+		p.err = &Error{Code: codeDeclarationLimit}
 	}
 
 	return p.err == nil

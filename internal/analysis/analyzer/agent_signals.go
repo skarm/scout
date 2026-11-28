@@ -18,9 +18,9 @@ func agentRules() []Analyzer {
 
 func buildAgentRules() []Analyzer {
 	return []Analyzer{
-		agentSignal(rulePI002, "Instruction to conceal actions from the user", `(?i)\b(?:do not|don't|never)[\t ]+(?:tell|inform|notify)[\t ]+(?:the[\t ]+)?user\b|(?i:не)[\t ]+(?:сообщай(?:те)?|рассказывай(?:те)?|уведомляй(?:те)?)[\t ]+пользовател(?:ю|я)`, "prompt-injection", "Narrow English/Russian concealment wording only; quotation, legitimate privacy instructions and negation require review."),
-		agentSignal(ruleAG001, "Agent approval or sandbox bypass flag is referenced", `(?:--dangerously-skip-permissions|--dangerously-bypass-approvals-and-sandbox)\b`, "approval-bypass", "A literal flag reference, not proof of invocation. A prohibition or example can match; host restrictions are not evaluated."),
-		agentSignal(ruleAG002, "Claude-style dynamic context command marker", "(?m)(?:^|[\\t ])!`[^`\\r\\n]+`", "preprocessing-execution", "Recognizes a single-line marker, not all Claude preprocessing forms. It can be an example, is not executed, and is not classified as malicious by itself."),
+		agentSignal(rulePI002, "Instruction to conceal actions from the user", `(?i)\b(?:do not|don't|never)[\t ]+(?:tell|inform|notify)[\t ]+(?:the[\t ]+)?user\b|(?i:не)[\t ]+(?:сообщай(?:те)?|рассказывай(?:те)?|уведомляй(?:те)?)[\t ]+пользовател(?:ю|я)`, categoryPromptInjection, "Narrow English/Russian concealment wording only; quotation, legitimate privacy instructions and negation require review."),
+		agentSignal(ruleAG001, "Agent approval or sandbox bypass flag is referenced", `(?:--dangerously-skip-permissions|--dangerously-bypass-approvals-and-sandbox)\b`, report.CategoryApprovalBypass, "A literal flag reference, not proof of invocation. A prohibition or example can match; host restrictions are not evaluated."),
+		agentSignal(ruleAG002, "Claude-style dynamic context command marker", "(?m)(?:^|[\\t ])!`[^`\\r\\n]+`", categoryPreprocessingExecution, "Recognizes a single-line marker, not all Claude preprocessing forms. It can be an example, is not executed, and is not classified as malicious by itself."),
 	}
 }
 

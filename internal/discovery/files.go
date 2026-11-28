@@ -17,6 +17,19 @@ import (
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 )
 
+const (
+	codeByteLimit                      = "byte_limit"
+	codeDepthLimit                     = "depth_limit"
+	codeDirectoryUnreadable            = "directory_unreadable"
+	codeFileChangedOrUnreadable        = "file_changed_or_unreadable"
+	codeFileUnreadable                 = "file_unreadable"
+	codeNonregularRefused              = "nonregular_refused"
+	codeReferencedDirectoryUnavailable = "referenced_directory_unavailable"
+	codeRootUnreadable                 = "root_unreadable"
+	codeSourceChanged                  = "source_changed"
+	codeSymlinkRefused                 = "symlink_refused"
+)
+
 type tree struct {
 	b                  *builder
 	root               *rootfs.Root
@@ -33,7 +46,7 @@ func (b *builder) open(base, agent, scope string, required bool, visit func(*tre
 
 	absolute, err := filepath.Abs(base)
 	if err != nil {
-		b.issue("invalid_root", base)
+		b.issue(codeInvalidRoot, base)
 		return
 	}
 
@@ -43,7 +56,7 @@ func (b *builder) open(base, agent, scope string, required bool, visit func(*tre
 	}
 
 	if err != nil {
-		b.issue("root_unreadable", absolute)
+		b.issue(codeRootUnreadable, absolute)
 		return
 	}
 
@@ -61,7 +74,7 @@ func (b *builder) open(base, agent, scope string, required bool, visit func(*tre
 
 	r, err := rootfs.Open(resolved)
 	if err != nil {
-		b.issue("root_unreadable", resolved)
+		b.issue(codeRootUnreadable, resolved)
 		return
 	}
 
@@ -84,7 +97,7 @@ func (t *tree) read(name string, required bool) []byte {
 	}
 
 	if err != nil {
-		t.b.issue("file_unreadable", absolute)
+		t.b.issue(codeFileUnreadable, absolute)
 		return nil
 	}
 
@@ -92,13 +105,13 @@ func (t *tree) read(name string, required bool) []byte {
 
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() {
-		t.b.issue("nonregular_refused", absolute)
+		t.b.issue(codeNonregularRefused, absolute)
 		return nil
 	}
 
 	limit := min(int64(jsonconfig.MaxBytes), t.b.options.MaxBytes-t.b.bytes)
 	if info.Size() > limit || limit <= 0 {
-		t.b.issue("byte_limit", absolute)
+		t.b.issue(codeByteLimit, absolute)
 		return nil
 	}
 
@@ -108,7 +121,7 @@ func (t *tree) read(name string, required bool) []byte {
 	after, statErr := f.Stat()
 	if err != nil || int64(len(data)) > limit || statErr != nil || !os.SameFile(info, after) ||
 		info.Size() != int64(len(data)) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
-		t.b.issue("file_changed_or_unreadable", absolute)
+		t.b.issue(codeFileChangedOrUnreadable, absolute)
 		return nil
 	}
 
@@ -121,7 +134,7 @@ func (t *tree) read(name string, required bool) []byte {
 	digest := hex.EncodeToString(hash[:])
 	if previous, ok := t.b.sources[absolute]; ok {
 		if previous != digest {
-			t.b.issue("source_changed", absolute)
+			t.b.issue(codeSourceChanged, absolute)
 		}
 	} else {
 		t.b.sources[absolute] = digest
@@ -144,7 +157,7 @@ func (t *tree) entries(name string) []fs.DirEntry {
 	}
 
 	if err != nil {
-		t.b.issue("directory_unreadable", t.absolute(name))
+		t.b.issue(codeDirectoryUnreadable, t.absolute(name))
 		return nil
 	}
 
@@ -152,13 +165,13 @@ func (t *tree) entries(name string) []fs.DirEntry {
 
 	entries, err := f.ReadDir(t.b.options.MaxEntries - t.b.entries + 1)
 	if err != nil && !errors.Is(err, io.EOF) {
-		t.b.issue("directory_unreadable", t.absolute(name))
+		t.b.issue(codeDirectoryUnreadable, t.absolute(name))
 		return nil
 	}
 
 	if len(entries) > t.b.options.MaxEntries-t.b.entries {
 		t.b.stopped = true
-		t.b.issue("entry_limit", t.absolute(name))
+		t.b.issue(codeEntryLimit, t.absolute(name))
 
 		return nil
 	}
@@ -184,7 +197,7 @@ func (t *tree) directory(name string, required bool) bool {
 	}
 
 	if err != nil {
-		t.b.issue("referenced_directory_unavailable", t.absolute(name))
+		t.b.issue(codeReferencedDirectoryUnavailable, t.absolute(name))
 		return false
 	}
 
@@ -192,7 +205,7 @@ func (t *tree) directory(name string, required bool) bool {
 
 	info, err := f.Stat()
 	if err != nil || !info.IsDir() {
-		t.b.issue("referenced_directory_unavailable", t.absolute(name))
+		t.b.issue(codeReferencedDirectoryUnavailable, t.absolute(name))
 		return false
 	}
 
@@ -216,10 +229,10 @@ func (t *tree) walk(name string, depth int, visit func(string) bool) bool {
 		next := path.Join(name, e.Name())
 		switch {
 		case e.Type()&os.ModeSymlink != 0:
-			t.b.issue("symlink_refused", t.absolute(next))
+			t.b.issue(codeSymlinkRefused, t.absolute(next))
 		case e.IsDir() && !slices.Contains([]string{".git", "node_modules", ".venv", "__pycache__"}, e.Name()):
 			if depth >= t.b.options.MaxDepth {
-				t.b.issue("depth_limit", t.absolute(next))
+				t.b.issue(codeDepthLimit, t.absolute(next))
 			} else if t.walk(next, depth+1, visit) {
 				hasFiles = true
 			}

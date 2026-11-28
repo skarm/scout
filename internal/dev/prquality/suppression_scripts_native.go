@@ -19,6 +19,7 @@ import (
 const (
 	maxSuppressionSourceBytes = 1 << 20
 	maxSuppressionNodes       = 65536
+	suppressionParseTimeout   = time.Second
 	maxSuppressionDepth       = 256
 )
 
@@ -49,7 +50,7 @@ func scanScriptSuppressionSyntax(ctx context.Context, lang string, data []byte) 
 		return suppressionSyntax{}, err
 	}
 
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(suppressionParseTimeout)
 
 	tree := treeparse.Parse(ctx, parser, data, deadline)
 	if tree == nil {

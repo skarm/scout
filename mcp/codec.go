@@ -18,14 +18,25 @@ import (
 )
 
 const (
-	fieldJSONRPC   = "jsonrpc"
-	fieldMethod    = "method"
-	fieldID        = "id"
-	fieldParams    = "params"
-	fieldMeta      = "_meta"
-	fieldName      = "name"
-	fieldVersion   = "version"
-	fieldRequestID = "requestId"
+	fieldArguments       = "arguments"
+	fieldCandidate       = "candidate"
+	fieldCapabilities    = "capabilities"
+	fieldClientInfo      = "clientInfo"
+	fieldCursor          = "cursor"
+	fieldID              = "id"
+	fieldInstructions    = "instructions"
+	fieldJSONRPC         = "jsonrpc"
+	fieldListChanged     = "listChanged"
+	fieldMeta            = "_meta"
+	fieldMethod          = "method"
+	fieldName            = "name"
+	fieldParams          = "params"
+	fieldPrevious        = "previous"
+	fieldProtocolVersion = "protocolVersion"
+	fieldRequestID       = "requestId"
+	fieldServerInfo      = "serverInfo"
+	fieldTools           = "tools"
+	fieldVersion         = "version"
 )
 
 const (

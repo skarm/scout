@@ -31,7 +31,7 @@ func (s *Server) tools() []any {
 	}
 
 	out := []any{map[string]any{
-		"name":        toolScanSkill,
+		fieldName:     toolScanSkill,
 		"description": desc,
 		"inputSchema": schema,
 		"annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false},
@@ -47,13 +47,13 @@ func (s *Server) tools() []any {
 		}
 
 		out = append(out, map[string]any{
-			"name":        toolCompareSkills,
+			fieldName:     toolCompareSkills,
 			"description": "Freshly scan two operator-authorized targets and compare evidence; old findings are not auto-approved.",
 			"inputSchema": map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,
-				"required":             []string{"previous", "candidate"},
-				"properties":           map[string]any{"previous": targetSchema, "candidate": targetSchema},
+				"required":             []string{fieldPrevious, fieldCandidate},
+				"properties":           map[string]any{fieldPrevious: targetSchema, fieldCandidate: targetSchema},
 			},
 		})
 	}

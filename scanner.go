@@ -237,7 +237,7 @@ func engineIdentity(options Options, checks Checks, catalog []check.Analyzer, ru
 	})
 	digest := sha256.Sum256(data)
 
-	return report.EngineIdentity{Version: Version(), RulepackDigest: "sha256:" + hex.EncodeToString(digest[:])}
+	return report.EngineIdentity{Version: Version(), RulepackDigest: report.SHA256DigestPrefix + hex.EncodeToString(digest[:])}
 }
 
 func cloneOptions(o Options) Options {

@@ -219,7 +219,8 @@ func hookCleanupTrap(tree *shellsyntax.File, state hookSourceState) hookTrapComm
 }
 
 func hookCleanupOperands(words []*shellsyntax.Word) bool {
-	if len(words) < 3 || len(words) > 11 {
+	const maxCleanupWords = 11
+	if len(words) < 3 || len(words) > maxCleanupWords {
 		return false
 	}
 

@@ -154,7 +154,9 @@ func (s *Server) createHTTPSession() (*session, string, int) {
 		return nil, "", http.StatusTooManyRequests
 	}
 
-	var nonce [24]byte
+	const sessionNonceBytes = 24
+
+	var nonce [sessionNonceBytes]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, "", http.StatusInternalServerError
 	}

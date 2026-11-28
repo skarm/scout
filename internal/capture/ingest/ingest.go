@@ -22,6 +22,11 @@ const (
 	directoryReadBatchSize = 64
 )
 
+const (
+	codeFileCountLimit    = "file_count_limit"
+	messageFileCountLimit = "File count budget exhausted; remaining file contents were not captured."
+)
+
 var errEmpty = errors.New("input contains no files")
 
 type builder struct {
@@ -154,7 +159,7 @@ func (b *builder) issue(code, path, message string) {
 }
 
 func (b *builder) skip(name, kind, code, message string, size int64) {
-	b.skipped = append(b.skipped, report.File{Path: name, Kind: kind, Size: size, Status: "skipped", Reason: code})
+	b.skipped = append(b.skipped, report.File{Path: name, Kind: kind, Size: size, Status: report.CaptureSkipped, Reason: code})
 	b.issue(code, name, message)
 }
 
@@ -336,7 +341,7 @@ func (b *builder) visitEntry(ctx context.Context, root *rootfs.Root, dir string,
 
 	b.fileEntries++
 	if b.fileEntries > b.limits.MaxFiles {
-		b.issue("file_count_limit", name, "File count budget exhausted; remaining file contents were not captured.")
+		b.issue(codeFileCountLimit, name, messageFileCountLimit)
 
 		return true
 	}

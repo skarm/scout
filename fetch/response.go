@@ -9,6 +9,12 @@ import (
 	"github.com/skarm/scout/internal/netpolicy"
 )
 
+const (
+	codeContentEncodingRefused = "content_encoding_refused"
+	codeHTTPStatus             = "http_status"
+	codeRequestFailed          = "request_failed"
+)
+
 // Download and exact API queries share transport admission and bounded reads.
 // Their callers retain the separate payload/checksum and API response policies.
 func downloadResponse(ctx context.Context, req *http.Request, options Options) ([]byte, error) {
@@ -35,11 +41,11 @@ func downloadResponse(ctx context.Context, req *http.Request, options Options) (
 			return nil, context.DeadlineExceeded
 		}
 
-		return nil, fail("body_read_failed")
+		return nil, fail(codeBodyReadFailed)
 	}
 
 	if int64(len(data)) > options.MaxBytes {
-		return nil, fail("byte_limit")
+		return nil, fail(codeByteLimit)
 	}
 
 	return data, nil
@@ -62,20 +68,20 @@ func requestFailure(ctx context.Context, err error) error {
 		return context.DeadlineExceeded
 	}
 
-	return fail("request_failed")
+	return fail(codeRequestFailed)
 }
 
 func validateResponseHeaders(resp *http.Response, maxBytes int64) error {
 	if resp.StatusCode != http.StatusOK {
-		return fail("http_status")
+		return fail(codeHTTPStatus)
 	}
 
 	if !netpolicy.IdentityContentEncoding(resp.Header) {
-		return fail("content_encoding_refused")
+		return fail(codeContentEncodingRefused)
 	}
 
 	if resp.ContentLength > maxBytes {
-		return fail("byte_limit")
+		return fail(codeByteLimit)
 	}
 
 	return nil

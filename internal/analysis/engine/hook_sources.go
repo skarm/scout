@@ -95,7 +95,7 @@ func addHookReferenceGaps(graph report.ComponentGraph, gaps map[string]bool) {
 	}
 
 	for _, reference := range graph.References {
-		if hooks[reference.ComponentID] && reference.Status != "resolved" && reference.Reason != "runtime_not_materialized" {
+		if hooks[reference.ComponentID] && reference.Status != report.ReferenceResolved && reference.Reason != report.ReferenceReasonRuntimeNotMaterialized {
 			gaps["hook_reference_unresolved"] = true
 		}
 	}
@@ -121,7 +121,7 @@ func addShellFileGaps(file report.FileCoverage, doc document.File, gaps map[stri
 	}
 
 	for _, gap := range file.Gaps {
-		if strings.HasPrefix(gap, "generated_shell_") || gap == "report_finding_limit" || gap == "analysis_unit_limit" || gap == "source_map_error" {
+		if strings.HasPrefix(gap, "generated_shell_") || gap == report.GapReportFindingLimit || gap == report.GapAnalysisUnitLimit || gap == report.GapSourceMapError {
 			gaps[gap] = true
 		}
 	}

@@ -11,6 +11,13 @@ import (
 )
 
 const (
+	flagArtifact  = "artifact"
+	flagEnvelope  = "envelope"
+	flagPublicKey = "public-key"
+	flagSubject   = "subject"
+)
+
+const (
 	maxAttestationEnvelopeFileBytes = 256 << 10
 	maxAttestationArtifactFileBytes = 32 << 20
 )
@@ -22,11 +29,11 @@ func attestationCommand(ctx context.Context, args []string, stdout, stderr io.Wr
 
 	fs := flag.NewFlagSet("attestation verify", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	key := fs.String("public-key", "", "explicit trusted PKIX public key PEM outside inspected inputs")
-	envelope := fs.String("envelope", "", "DSSE envelope or OMS bundle")
-	artifact := fs.String("artifact", "", "regular artifact file whose exact bytes must match the signed subject")
+	key := fs.String(flagPublicKey, "", "explicit trusted PKIX public key PEM outside inspected inputs")
+	envelope := fs.String(flagEnvelope, "", "DSSE envelope or OMS bundle")
+	artifact := fs.String(flagArtifact, "", "regular artifact file whose exact bytes must match the signed subject")
 
-	subject := fs.String("subject", "", "exact signed subject name")
+	subject := fs.String(flagSubject, "", "exact signed subject name")
 	if err := parseFlags(fs, args[1:]); err != nil {
 		return requestError(err, stderr)
 	}

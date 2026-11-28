@@ -8,5 +8,5 @@ import (
 
 func pythonAvailable() bool { return false }
 func parsePython(context.Context, string) (*Node, error) {
-	return nil, &Failure{Category: "unavailable"}
+	return nil, &Failure{Category: CodeUnavailable}
 }

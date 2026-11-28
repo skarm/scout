@@ -121,7 +121,7 @@ func (f File) WithHookSourceShell(ctx context.Context) File {
 	preparation := (*filePreparation)(&f)
 
 	if len(f.units)+len(f.shellUnits) >= MaxRegions {
-		preparation.issue("analysis_unit_limit", "Analysis unit budget exhausted; remaining units are unverified.")
+		preparation.issue(report.GapAnalysisUnitLimit, messageAnalysisUnitLimit)
 		return f
 	}
 
@@ -129,7 +129,7 @@ func (f File) WithHookSourceShell(ctx context.Context) File {
 
 	view, err := source.NewView(f.file.Content(), []source.Span{span})
 	if err != nil {
-		preparation.issue("source_map_error", "Source mapping could not be constructed.")
+		preparation.issue(report.GapSourceMapError, messageSourceMapError)
 		return f
 	}
 
@@ -163,12 +163,12 @@ func (f *filePreparation) prepareHookShell(ctx context.Context) {
 
 	view, err := source.NewView(f.file.Content(), []source.Span{span})
 	if err != nil {
-		f.issue("source_map_error", "Source mapping could not be constructed.")
+		f.issue(report.GapSourceMapError, messageSourceMapError)
 		return
 	}
 
 	if len(f.units)+len(f.shellUnits) >= MaxRegions {
-		f.issue("analysis_unit_limit", "Analysis unit budget exhausted; remaining units are unverified.")
+		f.issue(report.GapAnalysisUnitLimit, messageAnalysisUnitLimit)
 		return
 	}
 
@@ -283,7 +283,7 @@ func (f *filePreparation) projectHookString(ctx context.Context, parent source.V
 	}
 
 	if len(f.units)+len(f.shellUnits) >= MaxRegions {
-		f.issue("analysis_unit_limit", "Analysis unit budget exhausted; remaining units are unverified.")
+		f.issue(report.GapAnalysisUnitLimit, messageAnalysisUnitLimit)
 		return false
 	}
 
@@ -494,7 +494,7 @@ func (f *filePreparation) projectHookScript(ctx context.Context, parent source.V
 	}
 
 	if len(f.units)+len(f.shellUnits) >= MaxRegions {
-		f.issue("analysis_unit_limit", "Analysis unit budget exhausted; remaining units are unverified.")
+		f.issue(report.GapAnalysisUnitLimit, messageAnalysisUnitLimit)
 		return
 	}
 

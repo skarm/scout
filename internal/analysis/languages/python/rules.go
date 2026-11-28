@@ -12,6 +12,8 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const categoryPythonExecutionAndDataflow = "python-execution-and-dataflow"
+
 type pythonCheck struct {
 	id    string
 	facts map[string]*pythonFacts
@@ -68,7 +70,7 @@ func (a pythonCheck) Rule() report.Rule {
 		Title:       title,
 		Description: title,
 		Severity:    sev,
-		Category:    "python-execution-and-dataflow",
+		Category:    categoryPythonExecutionAndDataflow,
 		Method:      "python-ast-go-analysis",
 		Limitation:  "Embedded Tree-sitter Python CST projected into bounded Go IR; not CPython AST. Selected aliases, assignments, branches, same-file functions, methods, instance fields and C3 inheritance are modeled. No execution, cross-file/general type inference or proof of intent. Recursive/dynamic calls and complex control flow remain incomplete. Environment values need not be secrets; annotation evaluation timing is unknown.",
 	}

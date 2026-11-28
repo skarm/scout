@@ -12,6 +12,11 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	categoryKnownMaliciousDependency  = "known-malicious-dependency"
+	categoryKnownVulnerableDependency = "known-vulnerable-dependency"
+)
+
 //nolint:gochecknoglobals // Immutable rule template; callers receive deep copies through VulnerabilityRule.
 var vulnerabilityRule = knowledge.WithGuidance(report.Rule{
 	ID:          ruleOSV001,
@@ -19,7 +24,7 @@ var vulnerabilityRule = knowledge.WithGuidance(report.Rule{
 	Title:       "Known vulnerability for an exact declared package coordinate",
 	Description: "The explicitly selected database reported an advisory for the captured exact package version.",
 	Severity:    report.High,
-	Category:    "known-vulnerable-dependency",
+	Category:    categoryKnownVulnerableDependency,
 	Method:      "exact-coordinate-vulnerability-lookup",
 	Limitation:  "Database match is not proof of installation, reachability or exploitability. Range-only and unresolved Go MVS versions are not queried.",
 })
@@ -31,7 +36,7 @@ var maliciousPackageRule = knowledge.WithGuidance(report.Rule{
 	Title:       "Known malicious package at an exact declared coordinate",
 	Description: "An explicitly trusted version-2 cache classifies the captured exact package version as malicious and retains its source and modification time.",
 	Severity:    report.Critical,
-	Category:    "known-malicious-dependency",
+	Category:    categoryKnownMaliciousDependency,
 	Method:      "exact-coordinate-malicious-package-cache",
 	Limitation:  "Operator-supplied provenance is an assertion, not source authentication or proof of installation/execution. Only explicit classified cache records apply; advisory ID prefixes, names and ordinary querybatch responses do not establish malware. Missing/stale coordinates and unresolved versions remain gaps.",
 })

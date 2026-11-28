@@ -24,6 +24,8 @@ const (
 	valueTriggers            = "triggers"
 )
 
+const issueSourceMappingFailed = "source_mapping_failed"
+
 func Collect(ctx context.Context, docs []document.File, host string) report.MetadataReport {
 	r := report.MetadataReport{
 		Files:        []report.MetadataFile{},
@@ -133,7 +135,7 @@ func collectUnit(d document.File, u document.Unit, isSkill bool, host string) re
 		return f
 	}
 
-	f.Status = "parsed_subset"
+	f.Status = report.MetadataParsedSubset
 	collectFields(d, u, t.Root, &f)
 
 	if isSkill && u.Origin == "frontmatter" {
@@ -157,7 +159,7 @@ func collectFields(d document.File, u document.Unit, root *jsonconfig.Node, f *r
 
 		at, e := u.View.Original(m.Value.Span)
 		if e != nil {
-			f.Issues = append(f.Issues, "source_mapping_failed")
+			f.Issues = append(f.Issues, issueSourceMappingFailed)
 			continue
 		}
 

@@ -42,7 +42,7 @@ func (b scriptBackend) Descriptor() Descriptor {
 func (b scriptBackend) Parse(ctx context.Context, v source.View) (any, error) {
 	tree, err := scriptsyntax.Parse(ctx, b.language, v.Text())
 	if errors.Is(err, scriptsyntax.ErrLimit) {
-		err = &Failure{Category: "parser_limit"}
+		err = &Failure{Category: CodeLimit}
 	}
 
 	return tree, err
@@ -61,9 +61,9 @@ func (sqlBackend) Descriptor() Descriptor {
 func (sqlBackend) Parse(ctx context.Context, v source.View) (any, error) {
 	tree, err := sqlsyntax.Parse(ctx, v.Text())
 	if errors.Is(err, sqlsyntax.ErrLimit) {
-		err = &Failure{Category: "parser_limit"}
+		err = &Failure{Category: CodeLimit}
 	} else if err == nil && tree.Limited {
-		err = &Failure{Category: "unsupported_syntax"}
+		err = &Failure{Category: CodeUnsupportedSyntax}
 	}
 
 	return tree, err

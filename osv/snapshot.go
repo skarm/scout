@@ -239,12 +239,12 @@ func (s *Snapshot) lookup(g *queryGroup) ([]ID, string) {
 
 	db, ok := s.ecosystems[ecosystem]
 	if !ok {
-		return nil, "snapshot_unavailable"
+		return nil, statusSnapshotUnavailable
 	}
 
 	version, valid := parseSnapshotVersion(ecosystem, g.q.Version)
 	if !valid {
-		return nil, "snapshot_unknown_version"
+		return nil, statusSnapshotUnknownVersion
 	}
 
 	matches := db.packages[snapshotPackage(ecosystem, g.q.Package.Name)]
@@ -278,7 +278,7 @@ func (s *Snapshot) lookup(g *queryGroup) ([]ID, string) {
 		return ids, report.OutcomeSnapshot
 	}
 
-	return ids, "snapshot_incomplete"
+	return ids, statusSnapshotIncomplete
 }
 
 func lookupSnapshot(ctx context.Context, groups []*queryGroup, db *Snapshot, cached map[coordinateKey]Record, set, fallback func(*queryGroup, string)) {
@@ -293,13 +293,13 @@ func lookupSnapshot(ctx context.Context, groups []*queryGroup, db *Snapshot, cac
 		}
 
 		if _, ok := cached[key(group.q.Package.Ecosystem, group.q.Package.Name, group.q.Version)]; ok {
-			fallback(group, "not_cached")
+			fallback(group, statusNotCached)
 			continue
 		}
 
 		ids, status := db.lookup(group)
 		if !group.appendResults(ids) {
-			status = "result_limit"
+			status = statusResultLimit
 		}
 
 		set(group, status)

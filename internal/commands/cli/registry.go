@@ -12,6 +12,14 @@ import (
 	"github.com/skarm/scout/internal/distribution/registry"
 )
 
+const (
+	flagAllowLoopback = "allow-loopback"
+	flagEndpoint      = "endpoint"
+	flagLatest        = "latest"
+	flagMaxPages      = "max-pages"
+	flagName          = "name"
+)
+
 func registryCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		return usageError(stderr, "registry requires fetch or compare")
@@ -31,15 +39,15 @@ func fetchRegistry(ctx context.Context, args []string, stdout, stderr io.Writer)
 	o := registry.DefaultOptions()
 	fs := flag.NewFlagSet("registry fetch", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&o.Endpoint, "endpoint", o.Endpoint, "explicit registry servers endpoint")
-	fs.StringVar(&o.Name, "name", "", "exact server name; empty captures all records")
-	fs.BoolVar(&o.LatestOnly, "latest", false, "select registry-asserted latest records per name")
-	fs.BoolVar(&o.Download.Enabled, "allow-download", false, "explicitly authorize registry HTTP requests")
-	fs.BoolVar(&o.Download.AllowLoopback, "allow-loopback", false, "allow numeric loopback fixture endpoint")
-	fs.IntVar(&o.MaxPages, "max-pages", o.MaxPages, "maximum registry pages")
-	fs.Int64Var(&o.MaxBytes, "max-bytes", o.MaxBytes, "maximum aggregate response bytes")
+	fs.StringVar(&o.Endpoint, flagEndpoint, o.Endpoint, "explicit registry servers endpoint")
+	fs.StringVar(&o.Name, flagName, "", "exact server name; empty captures all records")
+	fs.BoolVar(&o.LatestOnly, flagLatest, false, "select registry-asserted latest records per name")
+	fs.BoolVar(&o.Download.Enabled, flagAllowDownload, false, "explicitly authorize registry HTTP requests")
+	fs.BoolVar(&o.Download.AllowLoopback, flagAllowLoopback, false, "allow numeric loopback fixture endpoint")
+	fs.IntVar(&o.MaxPages, flagMaxPages, o.MaxPages, "maximum registry pages")
+	fs.Int64Var(&o.MaxBytes, flagMaxBytes, o.MaxBytes, "maximum aggregate response bytes")
 
-	path := fs.String("output", "", "snapshot output file; default stdout")
+	path := fs.String(flagOutput, "", "snapshot output file; default stdout")
 	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}
@@ -72,7 +80,7 @@ func compareRegistry(ctx context.Context, args []string, stdout, stderr io.Write
 	fs := flag.NewFlagSet("registry compare", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
-	path := fs.String("output", "", "comparison output file; default stdout")
+	path := fs.String(flagOutput, "", "comparison output file; default stdout")
 	if err := parseFlags(fs, args); err != nil {
 		return requestError(err, stderr)
 	}

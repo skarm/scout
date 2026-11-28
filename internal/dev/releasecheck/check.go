@@ -37,6 +37,11 @@ const (
 	maxBinarySize          = 512 << 20
 )
 
+const (
+	issueNotExecutable           = "not_executable"
+	issueUnsupportedArchitecture = "unsupported_architecture"
+)
+
 //nolint:gochecknoglobals // Read-only system loader metadata shared by binary inspections.
 var systemLoaders = map[string][]string{
 	"amd64": {"/lib64/ld-linux-x86-64.so.2", "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2", "/lib/ld-musl-x86_64.so.1"},
@@ -413,11 +418,11 @@ func inspectELF(f io.ReaderAt, r *Report) error {
 	case elf.EM_AARCH64:
 		r.Arch = "arm64"
 	default:
-		r.Issues = append(r.Issues, "unsupported_architecture")
+		r.Issues = append(r.Issues, issueUnsupportedArchitecture)
 	}
 
 	if ef.Type != elf.ET_EXEC && ef.Type != elf.ET_DYN {
-		r.Issues = append(r.Issues, "not_executable")
+		r.Issues = append(r.Issues, issueNotExecutable)
 	}
 
 	r.Libraries, r.SearchPaths, e = elfImports(ef)
@@ -465,11 +470,11 @@ func inspectMachO(f io.ReaderAt, r *Report) error {
 	case macho.CpuArm64:
 		r.Arch = "arm64"
 	default:
-		r.Issues = append(r.Issues, "unsupported_architecture")
+		r.Issues = append(r.Issues, issueUnsupportedArchitecture)
 	}
 
 	if mf.Type != macho.TypeExec {
-		r.Issues = append(r.Issues, "not_executable")
+		r.Issues = append(r.Issues, issueNotExecutable)
 	}
 
 	r.Libraries, e = mf.ImportedLibraries()

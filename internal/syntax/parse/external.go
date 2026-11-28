@@ -12,12 +12,12 @@ import (
 
 //nolint:gochecknoglobals // Read-only frontend failure classifications shared by parser projections.
 var frontendFailureCategories = map[string]string{
-	"unavailable":   "backend_unavailable",
-	"ambiguous_key": "ambiguous_configuration",
-	"input_limit":   "parser_limit",
-	"output_limit":  "parser_limit",
-	"limit":         "parser_limit",
-	"deadline":      "parser_limit",
+	frontend.CodeUnavailable:  CodeBackendUnavailable,
+	frontend.CodeAmbiguousKey: codeAmbiguousConfiguration,
+	frontend.CodeInputLimit:   CodeLimit,
+	frontend.CodeOutputLimit:  CodeLimit,
+	frontend.CodeLimit:        CodeLimit,
+	frontend.CodeDeadline:     CodeLimit,
 }
 
 type embeddedBackend struct {
@@ -75,8 +75,8 @@ func (b embeddedBackend) Parse(ctx context.Context, v source.View) (any, error) 
 		}
 
 		var f *frontend.Failure
-		if b.lang == language.Python && r.AST != nil && errors.As(err, &f) && f.Category == "unsupported_projection" {
-			return PythonTree{Root: r.AST, Runtime: r.RuntimeIdentity()}, &Failure{Category: "unsupported_syntax"}
+		if b.lang == language.Python && r.AST != nil && errors.As(err, &f) && f.Category == frontend.CodeUnsupportedProjection {
+			return PythonTree{Root: r.AST, Runtime: r.RuntimeIdentity()}, &Failure{Category: CodeUnsupportedSyntax}
 		}
 
 		return nil, frontendFailure(err)
@@ -93,7 +93,7 @@ func (b embeddedBackend) Parse(ctx context.Context, v source.View) (any, error) 
 func (t PythonTree) RuntimeIdentity() string { return t.Runtime }
 
 func frontendFailure(err error) error {
-	category := "unsupported_syntax"
+	category := CodeUnsupportedSyntax
 
 	if failure, ok := errors.AsType[*frontend.Failure](err); ok {
 		if known := frontendFailureCategories[failure.Category]; known != "" {

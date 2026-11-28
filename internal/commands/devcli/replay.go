@@ -16,6 +16,12 @@ import (
 )
 
 const (
+	flagAnalyzerWorkers = "analyzer-workers"
+	flagCaseTimeout     = "case-timeout"
+	flagWorkers         = "workers"
+)
+
+const (
 	defaultReplayCaseTimeout = 5 * time.Second
 )
 
@@ -80,12 +86,12 @@ func replayCommand(ctx context.Context, args []string, out, diag io.Writer) int 
 func parseReplay(args []string, diag io.Writer) (replayInvocation, error) {
 	fs := flag.NewFlagSet("replay", flag.ContinueOnError)
 	fs.SetOutput(diag)
-	input := fs.String("input", "", "saved captured JSONL or JSONL.gz")
-	destination := fs.String("output", "", "atomic result JSONL destination")
-	workers := fs.Int("workers", 6, "parallel captured inputs, 1..8")
-	timeout := fs.Duration("case-timeout", defaultReplayCaseTimeout, "per input timeout, 1s..1m")
+	input := fs.String(flagInput, "", "saved captured JSONL or JSONL.gz")
+	destination := fs.String(flagOutput, "", "atomic result JSONL destination")
+	workers := fs.Int(flagWorkers, 6, "parallel captured inputs, 1..8")
+	timeout := fs.Duration(flagCaseTimeout, defaultReplayCaseTimeout, "per input timeout, 1s..1m")
 
-	analyzerWorkers := fs.Int("analyzer-workers", 1, "workers in each scan")
+	analyzerWorkers := fs.Int(flagAnalyzerWorkers, 1, "workers in each scan")
 	if err := fs.Parse(args); err != nil {
 		return replayInvocation{}, err
 	}

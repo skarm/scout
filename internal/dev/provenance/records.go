@@ -76,7 +76,9 @@ func scanEvidence(reader io.Reader, accept func([]byte) error) (string, error) {
 	limited := &io.LimitedReader{R: reader, N: maxDecodedBytes + 1}
 	hash := sha256.New()
 	lines := bufio.NewScanner(io.TeeReader(limited, hash))
-	lines.Buffer(make([]byte, 64<<10), maxRecordBytes+1)
+
+	const initialRecordBufferBytes = 64 << 10
+	lines.Buffer(make([]byte, initialRecordBufferBytes), maxRecordBytes+1)
 
 	count := 0
 	for lines.Scan() {

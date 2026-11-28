@@ -1,5 +1,14 @@
 package shellsyntax
 
+const (
+	codeDepthLimit             = "depth_limit"
+	codeExpectedCaseIn         = "expected_case_in"
+	codeExpectedCasePattern    = "expected_case_pattern"
+	codeExpectedCasePatternEnd = "expected_case_pattern_end"
+	codeExpectedCaseSelector   = "expected_case_selector"
+	codeUnsupportedCaseHeader  = "unsupported_case_header"
+)
+
 func (p *parser) commandCase(c *Command) error {
 	_, _ = p.take() // case
 
@@ -9,11 +18,11 @@ func (p *parser) commandCase(c *Command) error {
 	}
 
 	if selector.kind != tokenWord {
-		return p.fail("expected_case_selector")
+		return p.fail(codeExpectedCaseSelector)
 	}
 
 	if caseHeaderHasSubstitution(selector.word) {
-		return p.fail("unsupported_case_header")
+		return p.fail(codeUnsupportedCaseHeader)
 	}
 
 	in, err := p.skipNewlines()
@@ -22,13 +31,13 @@ func (p *parser) commandCase(c *Command) error {
 	}
 
 	if !p.keyword(in, "in") {
-		return p.fail("expected_case_in")
+		return p.fail(codeExpectedCaseIn)
 	}
 
 	_, _ = p.take()
 
 	if p.depth >= MaxDepth {
-		return p.fail("depth_limit")
+		return p.fail(codeDepthLimit)
 	}
 
 	// Keep the same token stream and pending heredocs across arm boundaries.
@@ -91,11 +100,11 @@ func (p *parser) casePatterns() ([]*Word, error) {
 		}
 
 		if pattern.kind != tokenWord {
-			return nil, p.fail("expected_case_pattern")
+			return nil, p.fail(codeExpectedCasePattern)
 		}
 
 		if caseHeaderHasSubstitution(pattern.word) {
-			return nil, p.fail("unsupported_case_header")
+			return nil, p.fail(codeUnsupportedCaseHeader)
 		}
 
 		patterns = append(patterns, pattern.word)
@@ -110,7 +119,7 @@ func (p *parser) casePatterns() ([]*Word, error) {
 			return patterns, nil
 		case Pipe:
 		default:
-			return nil, p.fail("expected_case_pattern_end")
+			return nil, p.fail(codeExpectedCasePatternEnd)
 		}
 	}
 }

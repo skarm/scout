@@ -22,6 +22,8 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const categoryToolPoisoning = "tool-poisoning"
+
 const (
 	maxMetadataOperations = 32768
 	maxMetadataDepth      = 32
@@ -71,7 +73,7 @@ func (a pluginCheck) Rule() report.Rule {
 		Title:       title,
 		Description: title,
 		Severity:    report.Medium,
-		Category:    "tool-poisoning",
+		Category:    categoryToolPoisoning,
 		Method:      "structured-metadata-heuristic",
 		Limitation:  "Adapted TP1-TP3. Parsed metadata only; hidden text, confusables and long descriptions are review signals, not proof of malice. Legitimate defaults can match. Unknown schemas/Unicode scripts remain unverified.",
 	}
@@ -142,7 +144,7 @@ func (a pluginCheck) pluginTextCheck(emit func(*jsonconfig.Node)) func(*jsonconf
 }
 
 func (a pluginCheck) walkMetadata(ctx context.Context, n *jsonconfig.Node, depth int, ops *int, out *check.Result, check func(*jsonconfig.Node, bool, bool), emit func(*jsonconfig.Node)) {
-	for entry := range jsonconfig.Walk(ctx, n, 32-depth, jsonconfig.SourceOrder) {
+	for entry := range jsonconfig.Walk(ctx, n, maxMetadataDepth-depth, jsonconfig.SourceOrder) {
 		if out.Truncated || *ops >= maxMetadataOperations {
 			return
 		}

@@ -105,9 +105,9 @@ func frontmatterEnd(text string) int {
 }
 
 func (a renderCheck) Rule() report.Rule {
-	title, category := "Hidden HTML contains an active instruction", "hidden-instructions"
+	title, category := "Hidden HTML contains an active instruction", report.CategoryHiddenInstructions
 	if a.id == ruleRX001 {
-		title, category = "Rendered URL interpolates sensitive data", "credential-egress"
+		title, category = "Rendered URL interpolates sensitive data", report.CategoryCredentialEgress
 	}
 
 	return report.Rule{

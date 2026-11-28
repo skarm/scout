@@ -7,6 +7,7 @@ import (
 	"github.com/skarm/scout/internal/syntax/language"
 	"github.com/skarm/scout/internal/syntax/shellsyntax"
 	"github.com/skarm/scout/internal/syntax/source"
+	"github.com/skarm/scout/report"
 )
 
 func (a *shellWalk) capability(kind string, span source.Span) {
@@ -30,26 +31,26 @@ func (a *shellWalk) commandCapabilities(c *shellsyntax.Command, name string, arg
 	}
 
 	if literals.InfrastructureMutation(argv) {
-		a.capability("infrastructure_mutation", c.Span)
+		a.capability(report.CapabilityInfrastructureMutation, c.Span)
 	}
 
 	switch name {
 	case "eval", "source", ".":
 		if shellBuiltinCodeOperand(args) {
-			a.capability("command_execution", c.Span)
+			a.capability(report.CapabilityCommandExecution, c.Span)
 		}
 	case "exec":
 		if shellExecCommand(args) {
-			a.capability("command_execution", c.Span)
+			a.capability(report.CapabilityCommandExecution, c.Span)
 		}
 	case language.ExecutableSh, language.ExecutableBash, language.ExecutableDash, language.ExecutableZsh, language.ExecutableKsh:
 		code, stdin := shellExecution(args)
 		if code >= 0 || stdin || shellScriptFile(args).known {
-			a.capability("command_execution", c.Span)
+			a.capability(report.CapabilityCommandExecution, c.Span)
 		}
 	case "python", "python3", "node", "nodejs", "tsx", "ts-node", "perl", "ruby":
 		if len(args) > 0 && args[0].known && (args[0].text == "-c" || args[0].text == "-e" || args[0].text == "--eval" || !strings.HasPrefix(args[0].text, "-")) {
-			a.capability("command_execution", c.Span)
+			a.capability(report.CapabilityCommandExecution, c.Span)
 		}
 	case "rm", "rmdir", "mkdir", "touch", "cp", "mv", "install", "chmod", "chown", "tee":
 		if shellFileHelp(argv[1:]) {
@@ -57,7 +58,7 @@ func (a *shellWalk) commandCapabilities(c *shellsyntax.Command, name string, arg
 		}
 
 		if shellFileOperand(args) {
-			a.capability("file_write", c.Span)
+			a.capability(report.CapabilityFileWrite, c.Span)
 		}
 	case "read":
 		if len(args) > 0 && args[0].known && args[0].text == "--help" {
@@ -65,7 +66,7 @@ func (a *shellWalk) commandCapabilities(c *shellsyntax.Command, name string, arg
 		}
 
 		if !input.fixedInput || !shellReadStdin(args) {
-			a.capability("untrusted_input", c.Span)
+			a.capability(report.CapabilityUntrustedInput, c.Span)
 		}
 	}
 }
@@ -185,7 +186,7 @@ func (a *shellWalk) curlCapabilities(request curlRequest, span source.Span) {
 		return
 	}
 
-	a.capability("untrusted_input", span)
+	a.capability(report.CapabilityUntrustedInput, span)
 
 	for _, target := range request.outputs {
 		if target.known && target.text != "-" {
@@ -196,7 +197,7 @@ func (a *shellWalk) curlCapabilities(request curlRequest, span source.Span) {
 
 func (a *shellWalk) fileCapability(op string, target shellValue, span source.Span) {
 	if a.observeCapability != nil && shellWritesFile(op, target) {
-		a.capability("file_write", span)
+		a.capability(report.CapabilityFileWrite, span)
 	}
 }
 

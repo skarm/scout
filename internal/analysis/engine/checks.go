@@ -122,7 +122,7 @@ func acceptAnalyzerResult(out *outcome, rule report.Rule, doc document.File, res
 		}
 
 		out.diagnostics = append(out.diagnostics, report.Diagnostic{
-			Code:         "finding_limit",
+			Code:         codeFindingLimit,
 			Path:         f.Metadata().Path,
 			Message:      rule.ID + ": additional matches omitted at the finding budget.",
 			AffectsScope: true,

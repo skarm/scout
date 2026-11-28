@@ -12,6 +12,8 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const categorySignatureMatch = "signature-match"
+
 //nolint:gochecknoglobals // Read-only signature category metadata shared by all scan executions.
 var signatureCategoryRule = map[string]int{"malware": 0, "webshell": 1, "cryptominer": 2, "hack_tool": 3, "exploit": 3}
 
@@ -45,7 +47,7 @@ func SignatureRules() []report.Rule {
 			Title:       x.title,
 			Description: x.title,
 			Severity:    severity,
-			Category:    "signature-match",
+			Category:    categorySignatureMatch,
 			Method:      "embedded-yara-x",
 			Limitation:  "Embedded YARA-X engine; native availability is explicit; 27 adapted SkillSpector rules and 8 adapted Cisco compound rules plus optional trusted operator rules. A match is not a verdict about intent; broad tool references/examples can match. Full external corpora are not bundled. Descriptor severity is a maximum; selected builtins use Scout-owned evidence tiers, never source-controlled severity metadata. Python alias/socket refinements use bounded literal spellings, not general scope or object resolution; WASM mining API combinations are Medium capability signals.",
 		})

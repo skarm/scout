@@ -22,6 +22,13 @@ import (
 	"github.com/skarm/scout/report"
 )
 
+const (
+	categoryExcessivePermissions    = "excessive-permissions"
+	categoryExternalSchemaReference = "external-schema-reference"
+	categoryLifecycleExecution      = "lifecycle-execution"
+	categorySensitiveDataRequest    = "sensitive-data-request"
+)
+
 var environmentReference = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*`)
 
 var npmPackageName = regexp.MustCompile(`^(?:@[a-z0-9._-]+/)?[a-z0-9._-]+$`)
@@ -30,38 +37,38 @@ var npmPackageName = regexp.MustCompile(`^(?:@[a-z0-9._-]+/)?[a-z0-9._-]+$`)
 var agentRuleMetadataByID = map[string]agentRuleMetadata{
 	ruleAC001: {
 		title:    "Agent configuration requests permission bypass",
-		category: "approval-bypass",
+		category: report.CategoryApprovalBypass,
 		severity: report.High,
 	},
-	ruleAC002: {title: "Agent configuration declares a broad tool approval", category: "excessive-permissions"},
-	ruleAC003: {title: "Agent lifecycle hook declares command execution", category: "lifecycle-execution", harness: true},
+	ruleAC002: {title: "Agent configuration declares a broad tool approval", category: categoryExcessivePermissions},
+	ruleAC003: {title: "Agent lifecycle hook declares command execution", category: categoryLifecycleExecution, harness: true},
 	ruleSC001: {
 		title:      "MCP launcher package is not pinned to an exact version",
-		category:   "supply-chain",
+		category:   report.CategorySupplyChain,
 		harness:    true,
 		limitation: " Selected direct npx/npm-exec/go-run/uvx/uv-tool/pip/docker/podman argv forms only. Container tags are mutable; only a syntactic SHA256 digest counts as pinned. Exact version text is not package integrity, authenticity or a vulnerability check. Wrappers and arbitrary package managers are not resolved.",
 	},
 	ruleMC001: {
 		title:      "MCP endpoint declares non-loopback plaintext HTTP",
-		category:   "insecure-transport",
+		category:   report.CategoryInsecureTransport,
 		harness:    true,
 		limitation: " URL text only; no DNS, redirects or endpoint access. Loopback exemption is syntactic, not authentication or host trust.",
 	},
 	ruleMC002: {
 		title:      "MCP configuration embeds a credential-like literal",
-		category:   "credential-material",
+		category:   report.CategoryCredentialMaterial,
 		harness:    true,
 		limitation: " Selected env/header names and URL userinfo; literals are not proven live secrets. Runtime interpolation is not evaluated.",
 	},
 	ruleMC003: {
 		title:      "MCP tool schema requests highly sensitive input",
-		category:   "sensitive-data-request",
+		category:   categorySensitiveDataRequest,
 		version:    "5",
 		limitation: " Selected inputSchema property names; legitimate auth tools can also match. readOnlyHint is not treated as a safety guarantee.",
 	},
 	ruleMC004: {
 		title:      "MCP tool schema references an external resource",
-		category:   "external-schema-reference",
+		category:   categoryExternalSchemaReference,
 		version:    "5",
 		limitation: " Selected JSON Schema 2020-12 $ref and initial $dynamicRef resource targets in inputSchema/outputSchema, with fragment-free $id resources scoped to each schema. References to captured embedded resources are local. URIs over 4096 bytes and unsupported or ambiguous resource scopes leave the check incomplete. No URI is fetched, no schema is evaluated, and no client retrieval or SSRF is proven. Custom vocabularies, runtime dynamic scope and anchor/JSON Pointer validity are outside this check.",
 	},
@@ -302,7 +309,7 @@ func (a agentConfigCheck) hookState(f document.File, u document.Unit, root *json
 
 	if !hookpolicy.IsSettings(f.Artifact().Metadata().Path) {
 		for _, scope := range f.ConfigScopes() {
-			if scope.Role == "hook_config" && scope.Host != "" && scope.Host != report.HostClaudeCode {
+			if scope.Role == report.ComponentHookConfig && scope.Host != "" && scope.Host != report.HostClaudeCode {
 				state.Disabled = false
 			}
 		}
@@ -320,7 +327,7 @@ func (a agentConfigCheck) inspectConfigScopes(ctx context.Context, f document.Fi
 
 			n := scopedConfigNode(root, scope.Span, len(f.Artifact().Content()))
 
-			if n != nil && !(a.id == ruleAC003 && scope.Role == "hook_config" && state.Disabled) {
+			if n != nil && !(a.id == ruleAC003 && scope.Role == report.ComponentHookConfig && state.Disabled) {
 				err := a.inspectScope(ctx, n, scope.Role, emit)
 				*mappingErr = errors.Join(*mappingErr, err)
 			}
@@ -583,7 +590,7 @@ func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, 
 		a.inspectServerScope(ctx, n, emit)
 	}
 
-	if role == "hook_config" && a.id == ruleAC003 {
+	if role == report.ComponentHookConfig && a.id == ruleAC003 {
 		if n.Get("hooks") != nil {
 			return a.inspect(ctx, n, emit)
 		}

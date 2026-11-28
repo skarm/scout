@@ -49,11 +49,11 @@ func (a goCheck) Rule() report.Rule {
 
 	switch a.kind {
 	case goShell:
-		r.ID, r.Title, r.Category = ruleGO001, "Go constructs a shell command", "process-execution"
+		r.ID, r.Title, r.Category = ruleGO001, "Go constructs a shell command", report.CategoryProcessExecution
 	case goSensitiveRead:
-		r.ID, r.Title, r.Category = ruleGO002, "Go file API references a sensitive credential path", "credential-access"
+		r.ID, r.Title, r.Category = ruleGO002, "Go file API references a sensitive credential path", report.CategoryCredentialAccess
 	case goDirectHTTP:
-		r.ID, r.Title, r.Category = ruleGO003, "Credential material flows directly into an HTTP body API", "credential-egress"
+		r.ID, r.Title, r.Category = ruleGO003, "Credential material flows directly into an HTTP body API", report.CategoryCredentialEgress
 		r.Severity, r.Method = report.High, "go-ast-direct-flow"
 		r.Limitation += " Direct nested expressions only; legitimate credential exchange can also match. Request construction does not prove transmission or malicious intent."
 	}

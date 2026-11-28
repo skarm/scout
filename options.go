@@ -2,6 +2,7 @@ package scout
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/skarm/scout/fetch"
@@ -457,7 +458,7 @@ func (o Options) validateReview() error {
 
 func (c Concurrency) validate() error {
 	if c.Targets < 1 || c.Targets > maxConcurrency || c.Workers < 1 || c.Workers > maxConcurrency {
-		return errors.New("concurrency must be in 1..32")
+		return fmt.Errorf("concurrency must be in 1..%d", maxConcurrency)
 	}
 
 	return nil

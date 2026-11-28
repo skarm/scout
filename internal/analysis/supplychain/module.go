@@ -33,7 +33,7 @@ const (
 
 func (a moduleCheck) Rule() report.Rule {
 	r := report.Rule{
-		ID: a.id, Version: "1", Severity: report.Medium, Category: "supply-chain", Method: "go-mod-structure",
+		ID: a.id, Version: "1", Severity: report.Medium, Category: report.CategorySupplyChain, Method: "go-mod-structure",
 		Limitation: "Declarations only. No dependency download, checksum verification, vulnerability database or proof of execution. A legitimate local replacement may require review.",
 	}
 	switch a.id {

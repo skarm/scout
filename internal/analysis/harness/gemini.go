@@ -7,21 +7,21 @@ import (
 
 func (p *plugin) discoverGeminiExtension() {
 	manifest := p.object(p.manifest)
-	name, _ := manifest.Get("name").Text()
-	version, _ := manifest.Get("version").Text()
+	name, _ := manifest.Get(fieldName).Text()
+	version, _ := manifest.Get(fieldVersion).Text()
 
 	if !validName(name) || version == "" {
-		p.issue("plugin_hook_manifest_unverified", p.manifestPath(), report.OutcomePartial)
+		p.issue(issuePluginHookManifestUnverified, p.manifestPath(), report.OutcomePartial)
 	}
 
-	p.issue("plugin_loader_semantics_limited", p.manifestPath(), report.OutcomePartial)
+	p.issue(issuePluginLoaderSemanticsLimited, p.manifestPath(), report.OutcomePartial)
 
-	if e := p.entry("hooks/hooks.json"); e != nil {
+	if e := p.entry(defaultHooksPath); e != nil {
 		if p.b.hookTracer != nil && e.Doc != nil {
 			*e.Doc = e.Doc.WithGeminiHookShell(p.b.ctx)
 		}
 
-		p.configFile(e, report.ComponentHookConfig, p.activation, "host_default", whole(e))
+		p.configFile(e, report.ComponentHookConfig, p.activation, selectionHostDefault, whole(e))
 	}
 }
 

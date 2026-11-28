@@ -20,9 +20,9 @@ const (
 func selftest(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("selftest", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	format := fs.String("format", "terminal", "terminal or json")
+	format := fs.String(flagFormat, "terminal", "terminal or json")
 
-	timeout := fs.Duration("timeout", defaultSelftestTimeout, "cooperative total selftest deadline, <=2m")
+	timeout := fs.Duration(flagTimeout, defaultSelftestTimeout, "cooperative total selftest deadline, <=2m")
 	if e := parseFlags(fs, args); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
 			return 0

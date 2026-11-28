@@ -380,13 +380,15 @@ func paddingExcluded(name, text string) bool {
 }
 
 func paddingDuplicateLines(lines []paddingLine, emit func(int, int)) {
+	const minDuplicateLines = 64
+
 	for i := 0; i < len(lines); {
 		j := i + 1
 		for j < len(lines) && lines[j].text == lines[i].text && strings.TrimSpace(lines[i].text) != "" {
 			j++
 		}
 
-		if j-i >= 64 {
+		if j-i >= minDuplicateLines {
 			emit(lines[i].start, lines[j-1].end)
 		}
 

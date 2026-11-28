@@ -51,7 +51,7 @@ func (b *builder) dependencies() {
 		}
 
 		c.Change = observationChange(len(left), len(right), dependencyAbsenceKnown(c.ObjectID, b.old, oldChecks), dependencyAbsenceKnown(c.ObjectID, b.next, newChecks))
-		if c.Change == "unverified" {
+		if c.Change == report.UpdateUnverified {
 			b.issue("dependency_absence_unverified")
 		}
 
@@ -127,19 +127,19 @@ func dependencyAbsenceKnown(id string, x inventory, checks map[string]bool) bool
 func observationChange(before, after int, oldKnown, newKnown bool) string {
 	if before == 0 {
 		if !oldKnown {
-			return "unverified"
+			return report.UpdateUnverified
 		}
 
-		return "added"
+		return changeAdded
 	}
 
 	if after == 0 {
 		if !newKnown {
-			return "unverified"
+			return report.UpdateUnverified
 		}
 
-		return "removed"
+		return changeRemoved
 	}
 
-	return "changed"
+	return changeChanged
 }

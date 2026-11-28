@@ -9,12 +9,8 @@ import (
 	"context"
 
 	"github.com/skarm/scout/internal/analysis/document"
-	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
 )
-
-//nolint:gochecknoglobals // Read-only rule and command classification tables are shared by scans.
-var uncapturedLocalReasons = textmatch.WordSet("handler_not_captured component_not_captured")
 
 type (
 	uninspectedReference struct{ records map[string][]Match }
@@ -30,7 +26,7 @@ func BindGraph(checks []Analyzer, docs []document.File, g report.ComponentGraph)
 	}
 
 	for _, r := range g.References {
-		if r.Source == nil || r.Status != "unresolved" || !uncapturedLocalReasons[r.Reason] {
+		if r.Source == nil || r.Status != report.ReferenceUnresolved || (r.Reason != report.ReferenceReasonHandlerNotCaptured && r.Reason != report.ReferenceReasonComponentNotCaptured) {
 			continue
 		}
 
@@ -62,7 +58,7 @@ func (uninspectedReference) Rule() report.Rule {
 		Title:       "Declared local component was not inspected",
 		Description: "A captured configuration refers to a local component or handler unavailable to inspection.",
 		Severity:    report.High,
-		Category:    "supply-chain",
+		Category:    report.CategorySupplyChain,
 		Method:      "source-bound-component-coverage",
 		Limitation:  "Selected harness local references only. Missing, excluded and unreadable targets cannot be distinguished universally; this is an inspection obligation, not proof of malicious code. All captured directories remain inspected without path exemptions.",
 	}

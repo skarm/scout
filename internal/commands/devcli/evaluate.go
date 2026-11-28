@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"time"
@@ -15,10 +16,26 @@ import (
 )
 
 const (
+	flagAllowSourceUpload    = "allow-source-upload"
+	flagInputUsdPerMillion   = "input-usd-per-million"
+	flagLLMConfig            = "llm-config"
+	flagLabelReview          = "label-review"
+	flagMaxFPR               = "max-fpr"
+	flagMaxIncomplete        = "max-incomplete"
+	flagMinRecall            = "min-recall"
+	flagOutputUsdPerMillion  = "output-usd-per-million"
+	flagProfile              = "profile"
+	flagRequireIndependent   = "require-independent"
+	flagShellHookRoots       = "shell-hook-roots"
+	flagShellHooks           = "shell-hooks"
+	flagSplit                = "split"
+	flagTrustedLabelReviewer = "trusted-label-reviewer"
+)
+
+const (
 	maxEvaluationReviewConfigBytes = 256 << 10
 	defaultEvaluationTimeout       = 2 * time.Minute
 	maxEvaluationTimeout           = 10 * time.Minute
-	maxEvaluationTrustedReviewers  = 32
 )
 
 type evaluationInvocation struct {
@@ -188,30 +205,30 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 	c := evaluationInvocation{}
 	fs := flag.NewFlagSet("evaluate", flag.ContinueOnError)
 	fs.SetOutput(diag)
-	profile := fs.String("profile", "standard", "standard or custom (builtins only); mutually exclusive with --llm-config")
-	fs.DurationVar(&c.timeout, "timeout", defaultEvaluationTimeout, "whole corpus deadline")
-	fs.StringVar(&c.split, "split", "", "measure only train, tune or holdout after validating all splits")
-	fs.BoolVar(&c.shellHooks, "shell-hooks", false, "report targeted signal metrics for shell_hooks cases labelled for eval and generated-script execution")
-	fs.StringVar(&c.shellHookRootsPath, "shell-hook-roots", "", "explicit host, shell-safe plugin path and case IDs to assume for simple hook launches; requires --shell-hooks")
-	fs.StringVar(&c.llmConfig, "llm-config", "", "explicit scout.config/v1 with review provider and scanner settings")
-	fs.StringVar(&c.labelReviewPath, "label-review", "", "separate scout.corpus-review/v1 decisions bound to the exact corpus SHA-256")
-	fs.Func("trusted-label-reviewer", "explicitly trusted reviewer ID for --label-review; repeatable, at most 32", func(id string) error {
-		if id == "" || len(c.trustedLabelReviewers) >= maxEvaluationTrustedReviewers {
-			return errors.New("trusted label reviewers require nonempty IDs and at most 32 values")
+	profile := fs.String(flagProfile, string(scout.Standard), "standard or custom (builtins only); mutually exclusive with --llm-config")
+	fs.DurationVar(&c.timeout, flagTimeout, defaultEvaluationTimeout, "whole corpus deadline")
+	fs.StringVar(&c.split, flagSplit, "", "measure only train, tune or holdout after validating all splits")
+	fs.BoolVar(&c.shellHooks, flagShellHooks, false, "report targeted signal metrics for shell_hooks cases labelled for eval and generated-script execution")
+	fs.StringVar(&c.shellHookRootsPath, flagShellHookRoots, "", "explicit host, shell-safe plugin path and case IDs to assume for simple hook launches; requires --shell-hooks")
+	fs.StringVar(&c.llmConfig, flagLLMConfig, "", "explicit scout.config/v1 with review provider and scanner settings")
+	fs.StringVar(&c.labelReviewPath, flagLabelReview, "", "separate scout.corpus-review/v1 decisions bound to the exact corpus SHA-256")
+	fs.Func(flagTrustedLabelReviewer, fmt.Sprintf("explicitly trusted reviewer ID for --label-review; repeatable, at most %d", evaluation.MaxTrustedLabelReviewers), func(id string) error {
+		if id == "" || len(c.trustedLabelReviewers) >= evaluation.MaxTrustedLabelReviewers {
+			return fmt.Errorf("trusted label reviewers require nonempty IDs and at most %d values", evaluation.MaxTrustedLabelReviewers)
 		}
 
 		c.trustedLabelReviewers = append(c.trustedLabelReviewers, id)
 
 		return nil
 	})
-	fs.BoolVar(&c.allowUpload, "allow-source-upload", false, "allow bounded corpus source excerpts to the configured reviewer")
-	minRecall := fs.Float64("min-recall", 0, "minimum static signal recall in 0..1; an undefined recall fails")
-	maxFPR := fs.Float64("max-fpr", 1, "maximum static false-positive rate in 0..1; an undefined rate fails")
-	maxIncomplete := fs.Int("max-incomplete", 0, "maximum number of incomplete static cases")
-	fs.BoolVar(&c.requirements.RequireIndependent, "require-independent", false, "require validated independent label review from trusted reviewers and an explicitly selected holdout split")
-	input := fs.Float64("input-usd-per-million", 0, "operator-supplied input token price assumption")
+	fs.BoolVar(&c.allowUpload, flagAllowSourceUpload, false, "allow bounded corpus source excerpts to the configured reviewer")
+	minRecall := fs.Float64(flagMinRecall, 0, "minimum static signal recall in 0..1; an undefined recall fails")
+	maxFPR := fs.Float64(flagMaxFPR, 1, "maximum static false-positive rate in 0..1; an undefined rate fails")
+	maxIncomplete := fs.Int(flagMaxIncomplete, 0, "maximum number of incomplete static cases")
+	fs.BoolVar(&c.requirements.RequireIndependent, flagRequireIndependent, false, "require validated independent label review from trusted reviewers and an explicitly selected holdout split")
+	input := fs.Float64(flagInputUsdPerMillion, 0, "operator-supplied input token price assumption")
 
-	output := fs.Float64("output-usd-per-million", 0, "operator-supplied output token price assumption")
+	output := fs.Float64(flagOutputUsdPerMillion, 0, "operator-supplied output token price assumption")
 	if err := fs.Parse(args); err != nil {
 		return c, err
 	}
@@ -220,15 +237,15 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 
 	fs.Visit(func(f *flag.Flag) { present[f.Name] = true })
 
-	if present["min-recall"] {
+	if present[flagMinRecall] {
 		c.requirements.MinRecall = minRecall
 	}
 
-	if present["max-fpr"] {
+	if present[flagMaxFPR] {
 		c.requirements.MaxFalsePositive = maxFPR
 	}
 
-	if present["max-incomplete"] {
+	if present[flagMaxIncomplete] {
 		c.requirements.MaxIncomplete = maxIncomplete
 	}
 
@@ -236,11 +253,11 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 		return c, err
 	}
 
-	if present["shell-hook-roots"] && (!c.shellHooks || c.shellHookRootsPath == "" || c.llmConfig != "") {
+	if present[flagShellHookRoots] && (!c.shellHooks || c.shellHookRootsPath == "" || c.llmConfig != "") {
 		return c, errors.New("--shell-hook-roots requires a file, --shell-hooks and a static profile")
 	}
 
-	if (c.labelReviewPath == "") != (len(c.trustedLabelReviewers) == 0) || present["label-review"] && c.labelReviewPath == "" {
+	if (c.labelReviewPath == "") != (len(c.trustedLabelReviewers) == 0) || present[flagLabelReview] && c.labelReviewPath == "" {
 		return c, errors.New("--label-review and at least one --trusted-label-reviewer must be supplied together")
 	}
 
@@ -248,12 +265,12 @@ func parseEvaluation(args []string, diag io.Writer) (evaluationInvocation, error
 		return c, errors.New("evaluate requires one corpus and bounded timeout")
 	}
 
-	if c.llmConfig != "" && (!c.allowUpload || present["profile"]) || c.llmConfig == "" && c.allowUpload {
+	if c.llmConfig != "" && (!c.allowUpload || present[flagProfile]) || c.llmConfig == "" && c.allowUpload {
 		return c, errors.New("--llm-config requires --allow-source-upload and supplies its own profile")
 	}
 
-	if present["input-usd-per-million"] || present["output-usd-per-million"] {
-		if c.llmConfig == "" || !present["input-usd-per-million"] || !present["output-usd-per-million"] {
+	if present[flagInputUsdPerMillion] || present[flagOutputUsdPerMillion] {
+		if c.llmConfig == "" || !present[flagInputUsdPerMillion] || !present[flagOutputUsdPerMillion] {
 			return c, errors.New("both token prices and --llm-config are required for cost estimation")
 		}
 

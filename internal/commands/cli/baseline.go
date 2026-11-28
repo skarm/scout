@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -12,6 +13,13 @@ import (
 	"github.com/skarm/scout/internal/commands/output"
 	"github.com/skarm/scout/internal/textmatch"
 	"github.com/skarm/scout/report"
+)
+
+const (
+	flagExpires     = "expires"
+	flagFingerprint = "fingerprint"
+	flagFrom        = "from"
+	flagReason      = "reason"
 )
 
 const (
@@ -38,12 +46,12 @@ func parseBaselineArguments(args []string, stderr io.Writer) (baselineArguments,
 	a := baselineArguments{operation: args[0]}
 	fs := flag.NewFlagSet("baseline "+a.operation, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&a.from, "from", "", "validated scout.report/v1 JSON for create; baseline JSON for approve/renew")
-	fs.StringVar(&a.destination, "output", "", "operator baseline destination; optional with --dry-run")
-	fs.StringVar(&a.reason, "reason", "", "operator justification; renew preserves the reason when omitted")
-	fs.StringVar(&a.expiry, "expires", "", "future RFC3339 expiry; renew must extend the selected expiry")
-	fs.Var(&a.fingerprints, "fingerprint", "select an exact finding fingerprint for approve/renew; repeatable; omitted selects all")
-	fs.BoolVar(&a.dryRun, "dry-run", false, "print a JSON change preview without writing a baseline")
+	fs.StringVar(&a.from, flagFrom, "", "validated scout.report/v1 JSON for create; baseline JSON for approve/renew")
+	fs.StringVar(&a.destination, flagOutput, "", "operator baseline destination; optional with --dry-run")
+	fs.StringVar(&a.reason, flagReason, "", "operator justification; renew preserves the reason when omitted")
+	fs.StringVar(&a.expiry, flagExpires, "", "future RFC3339 expiry; renew must extend the selected expiry")
+	fs.Var(&a.fingerprints, flagFingerprint, "select an exact finding fingerprint for approve/renew; repeatable; omitted selects all")
+	fs.BoolVar(&a.dryRun, flagDryRun, false, "print a JSON change preview without writing a baseline")
 
 	if err := parseFlags(fs, args[1:]); err != nil {
 		return a, err
@@ -59,7 +67,7 @@ func parseBaselineArguments(args []string, stderr io.Writer) (baselineArguments,
 
 	seen := make(map[string]bool, len(a.fingerprints))
 	for _, fingerprint := range a.fingerprints {
-		if !textmatch.LowerHex(fingerprint, 64) || seen[fingerprint] {
+		if !textmatch.LowerHex(fingerprint, 2*sha256.Size) || seen[fingerprint] {
 			return a, errors.New("--fingerprint requires unique lowercase SHA-256 fingerprints")
 		}
 
@@ -206,12 +214,14 @@ func createBaseline(raw []byte, options baselineArguments, expires time.Time) (b
 	return d, changes, err
 }
 
+const baselinePreviewSchema = "scout.baseline-preview/v1"
+
 func writeBaselinePreview(w io.Writer, operation string, changes []baselineChange) int {
 	preview := struct {
 		Schema    string           `json:"schema"`
 		Operation string           `json:"operation"`
 		Changes   []baselineChange `json:"changes"`
-	}{Schema: "scout.baseline-preview/v1", Operation: operation, Changes: changes}
+	}{Schema: baselinePreviewSchema, Operation: operation, Changes: changes}
 	if json.NewEncoder(w).Encode(preview) != nil {
 		return 2
 	}

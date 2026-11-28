@@ -13,6 +13,20 @@ import (
 	"github.com/skarm/scout/internal/dev/provenance"
 )
 
+const (
+	flagBefore          = "before"
+	flagComparison      = "comparison"
+	flagCurrentSources  = "current-sources"
+	flagExpectedVersion = "expected-version"
+	flagInputIDsSHA256  = "input-ids-sha256"
+	flagInputMode       = "input-mode"
+	flagInputSHA256     = "input-sha256"
+	flagReleasecheck    = "releasecheck"
+	flagReplay          = "replay"
+	flagRoot            = "root"
+	flagSummary         = "summary"
+)
+
 type provenanceInvocation struct {
 	operation, destination, before, manifest string
 	options                                  provenance.Options
@@ -48,20 +62,20 @@ func parseProvenance(args []string, diag io.Writer) (provenanceInvocation, error
 	c.operation = args[0]
 	fs := flag.NewFlagSet("provenance "+c.operation, flag.ContinueOnError)
 	fs.SetOutput(diag)
-	fs.StringVar(&c.options.Root, "root", ".", "trusted project root")
-	fs.StringVar(&c.destination, "output", "", "atomic evidence destination")
-	fs.StringVar(&c.before, "before", "", "baseline replay")
-	fs.StringVar(&c.options.Input, "input", "", "raw captured input")
-	fs.StringVar(&c.options.Replay, "replay", "", "current replay JSONL or JSONL.gz")
-	fs.StringVar(&c.options.Summary, "summary", "", "replay summary JSON")
-	fs.StringVar(&c.options.Releasecheck, "releasecheck", "", "release acceptance JSON")
-	fs.StringVar(&c.options.Comparison, "comparison", "", "adjudicated comparison JSON")
-	fs.StringVar(&c.manifest, "manifest", "", "provenance manifest")
-	fs.StringVar(&c.verification.Version, "expected-version", "", "optional expected measured build identifier for verification")
-	fs.BoolVar(&c.verification.CurrentSources, "current-sources", false, "also require the current checkout to match the recorded source inventory")
-	mode := fs.String("input-mode", "file", "file or explicitly pinned capture verification")
-	fs.StringVar(&c.verification.InputPin.SHA256, "input-sha256", "", "trusted capture digest for pinned verification")
-	fs.StringVar(&c.verification.IDsSHA256, "input-ids-sha256", "", "trusted sorted capture IDs digest")
+	fs.StringVar(&c.options.Root, flagRoot, ".", "trusted project root")
+	fs.StringVar(&c.destination, flagOutput, "", "atomic evidence destination")
+	fs.StringVar(&c.before, flagBefore, "", "baseline replay")
+	fs.StringVar(&c.options.Input, flagInput, "", "raw captured input")
+	fs.StringVar(&c.options.Replay, flagReplay, "", "current replay JSONL or JSONL.gz")
+	fs.StringVar(&c.options.Summary, flagSummary, "", "replay summary JSON")
+	fs.StringVar(&c.options.Releasecheck, flagReleasecheck, "", "release acceptance JSON")
+	fs.StringVar(&c.options.Comparison, flagComparison, "", "adjudicated comparison JSON")
+	fs.StringVar(&c.manifest, flagManifest, "", "provenance manifest")
+	fs.StringVar(&c.verification.Version, flagExpectedVersion, "", "optional expected measured build identifier for verification")
+	fs.BoolVar(&c.verification.CurrentSources, flagCurrentSources, false, "also require the current checkout to match the recorded source inventory")
+	mode := fs.String(flagInputMode, string(provenance.InputFile), "file or explicitly pinned capture verification")
+	fs.StringVar(&c.verification.InputPin.SHA256, flagInputSHA256, "", "trusted capture digest for pinned verification")
+	fs.StringVar(&c.verification.IDsSHA256, flagInputIDsSHA256, "", "trusted sorted capture IDs digest")
 
 	if err := fs.Parse(args[1:]); err != nil {
 		return c, err

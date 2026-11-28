@@ -8,7 +8,21 @@ import (
 	"strings"
 )
 
-const snapshotURIBaseID = "SCOUTROOT"
+const (
+	sarifFindingPersistent = "persistent"
+	snapshotURIBaseID      = "SCOUTROOT"
+)
+
+const (
+	// SnapshotChangeAdded marks a root present only in the candidate snapshot.
+	SnapshotChangeAdded = "added"
+	// SnapshotChangeRemoved marks a root present only in the reference snapshot.
+	SnapshotChangeRemoved = "removed"
+	// SnapshotChangeModified marks a root whose captured contents changed.
+	SnapshotChangeModified = "modified"
+	// SnapshotChangeUnchanged marks a root present with equal contents on both sides.
+	SnapshotChangeUnchanged = "unchanged"
+)
 
 // SnapshotSARIFRoot identifies the original locations and the sealed report
 // for one root of an environment snapshot comparison.
@@ -40,7 +54,7 @@ func WriteSnapshotComparisonSARIF(w io.Writer, roots []SnapshotSARIFRoot, proper
 	}
 
 	log := sarif{
-		Schema: "https://json.schemastore.org/sarif-2.1.0.json", Version: "2.1.0", Runs: []run{},
+		Schema: sarifSchemaURI, Version: sarifVersion, Runs: []run{},
 	}
 	metadata := make([]snapshotSARIFRoot, 0, len(roots))
 
@@ -58,7 +72,7 @@ func WriteSnapshotComparisonSARIF(w io.Writer, roots []SnapshotSARIFRoot, proper
 			item.Properties["snapshotRootID"] = root.ID
 			item.Properties["snapshotRootChange"] = root.Change
 
-			if root.Change == "removed" || target.Role == "before" {
+			if root.Change == SnapshotChangeRemoved || target.Role == "before" {
 				item.Properties["snapshotSide"] = "reference"
 				applySnapshotURIBase(&item, root.BeforePath, target.Analysis.Artifact.SourceKind)
 				summary.Reference = append(summary.Reference, item)
@@ -99,7 +113,7 @@ func applySnapshotFindingChanges(results *[]result, rootChange string, delta *Up
 	for i := range *results {
 		item := &(*results)[i]
 
-		id, static := item.PartialFingerprints["occurrence/v1"]
+		id, static := item.PartialFingerprints[sarifOccurrenceFingerprint]
 		if !static {
 			continue
 		}
@@ -107,22 +121,22 @@ func applySnapshotFindingChanges(results *[]result, rootChange string, delta *Up
 		change := changes[id]
 		if change == "" {
 			switch {
-			case rootChange == "added":
-				change = "introduced"
+			case rootChange == SnapshotChangeAdded:
+				change = UpdateIntroduced
 			case delta != nil && delta.Completeness == Complete:
-				change = "persistent"
+				change = sarifFindingPersistent
 			default:
-				change = "unverified"
+				change = UpdateUnverified
 			}
 		}
 
 		item.Properties["findingChange"] = change
 		switch change {
-		case "introduced":
+		case UpdateIntroduced:
 			item.BaselineState = "new"
-		case "persistent":
+		case sarifFindingPersistent:
 			item.BaselineState = "unchanged"
-		case "relocated", "context_changed":
+		case UpdateRelocated, UpdateContextChanged:
 			item.BaselineState = "updated"
 		}
 	}

@@ -147,7 +147,7 @@ func (f *Filters) resolve() error {
 	}
 
 	for _, kind := range f.Kinds {
-		if !slices.Contains([]string{"skill", "plugin", "mcp-server", "command"}, kind) {
+		if !slices.Contains([]string{"skill", "plugin", kindMCPServer, "command"}, kind) {
 			return errors.New("kind must be skill, plugin, mcp-server or command")
 		}
 	}

@@ -15,6 +15,19 @@ import (
 )
 
 const (
+	// CodeDuplicateKey identifies a repeated member in a JSON object.
+	CodeDuplicateKey     = "duplicate_key"
+	codeByteLimit        = "byte_limit"
+	codeDepthLimit       = "depth_limit"
+	codeInvalidNodeLimit = "invalid_node_limit"
+	codeInvalidSpan      = "invalid_span"
+	codeInvalidUnicode   = "invalid_unicode"
+	codeNilContext       = "nil_context"
+	codeNodeLimit        = "node_limit"
+	codeTrailingData     = "trailing_data"
+)
+
+const (
 	MaxBytes = 256 << 10
 	MaxDepth = 32
 	MaxNodes = 8192
@@ -61,7 +74,7 @@ func Parse(ctx context.Context, text string) (*Node, error) {
 // allowing trusted callers to choose a bounded node inventory for their schema.
 func ParseWithNodeLimit(ctx context.Context, text string, maxNodes int) (*Node, error) {
 	if ctx == nil {
-		return nil, &Error{Code: "nil_context"}
+		return nil, &Error{Code: codeNilContext}
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -69,15 +82,15 @@ func ParseWithNodeLimit(ctx context.Context, text string, maxNodes int) (*Node, 
 	}
 
 	if maxNodes < 1 || maxNodes > MaxBytes {
-		return nil, &Error{Code: "invalid_node_limit"}
+		return nil, &Error{Code: codeInvalidNodeLimit}
 	}
 
 	if len(text) > MaxBytes {
-		return nil, &Error{Code: "byte_limit"}
+		return nil, &Error{Code: codeByteLimit}
 	}
 
 	if !utf8.ValidString(text) {
-		return nil, &Error{Code: "invalid_unicode"}
+		return nil, &Error{Code: codeInvalidUnicode}
 	}
 
 	r := reader{ctx: ctx, text: text, decoder: json.NewDecoder(strings.NewReader(text)), maxNodes: maxNodes}
@@ -89,7 +102,7 @@ func ParseWithNodeLimit(ctx context.Context, text string, maxNodes int) (*Node, 
 	}
 
 	if _, err = r.decoder.Token(); !errors.Is(err, io.EOF) {
-		return nil, &Error{Code: "trailing_data"}
+		return nil, &Error{Code: codeTrailingData}
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -186,11 +199,11 @@ func (r *reader) token() (json.Token, source.Span, error) {
 
 	span := source.Span{Start: start, End: end}
 	if start >= end || end > len(r.text) {
-		return nil, source.Span{}, &Error{Code: "invalid_span"}
+		return nil, source.Span{}, &Error{Code: codeInvalidSpan}
 	}
 
 	if _, ok := t.(string); ok && !ValidStringUnicode(r.text[start:end]) {
-		return nil, span, &Error{Code: "invalid_unicode"}
+		return nil, span, &Error{Code: codeInvalidUnicode}
 	}
 
 	return t, span, nil
@@ -199,7 +212,7 @@ func (r *reader) token() (json.Token, source.Span, error) {
 func (r *reader) charge() error {
 	r.nodes++
 	if r.nodes > r.maxNodes {
-		return &Error{Code: "node_limit"}
+		return &Error{Code: codeNodeLimit}
 	}
 
 	return nil
@@ -207,7 +220,7 @@ func (r *reader) charge() error {
 
 func (r *reader) value(depth int) (*Node, error) {
 	if depth > MaxDepth {
-		return nil, &Error{Code: "depth_limit"}
+		return nil, &Error{Code: codeDepthLimit}
 	}
 
 	if err := r.charge(); err != nil {
@@ -258,7 +271,7 @@ func (r *reader) object(n *Node, depth int) (*Node, error) {
 		}
 		// Compare decoded keys, including their escaped spellings.
 		if _, duplicate := keys[name]; duplicate {
-			return nil, &Error{Code: "duplicate_key"}
+			return nil, &Error{Code: CodeDuplicateKey}
 		}
 
 		keys[name] = struct{}{}

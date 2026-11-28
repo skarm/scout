@@ -2,6 +2,9 @@
 set -euo pipefail
 export LC_ALL=C
 
+readonly gitlink_mode=160000
+readonly git_sha1_hex_chars=40
+
 if (( $# < 6 )); then
   echo 'Usage: scout-package-review.sh SCOUT PROVIDER PROJECT BASE_SHA HEAD_SHA PACKAGE_PATH [report options]' >&2
   exit 2
@@ -11,7 +14,7 @@ scout=$1 provider=$2 project=$3 base=$4 head=$5 package=$6
 shift 6
 
 is_sha() {
-  [[ ${#1} -eq 40 && "$1" != *[!0-9a-f]* ]]
+  [[ ${#1} -eq git_sha1_hex_chars && "$1" != *[!0-9a-f]* ]]
 }
 
 if ! is_sha "$base" || ! is_sha "$head" || [[ -z "$package" || "$package" == *[!A-Za-z0-9._/-]* ]]; then
@@ -40,7 +43,7 @@ stage_package() {
     exit 2
   fi
   modes=$(git ls-tree -r --format='%(objectmode)' "$revision" -- "$package")
-  if [[ $'\n'"$modes"$'\n' == *$'\n160000\n'* ]]; then
+  if [[ $'\n'"$modes"$'\n' == *$'\n'"$gitlink_mode"$'\n'* ]]; then
     echo 'The package must not contain Git submodules.' >&2
     exit 2
   fi

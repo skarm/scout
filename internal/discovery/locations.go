@@ -11,39 +11,62 @@ import (
 
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+	"github.com/skarm/scout/report"
+)
+
+const (
+	fieldEnabledPlugins = "enabledPlugins"
+	fieldProjects       = "projects"
+)
+
+const (
+	codeAncestorLimit     = "ancestor_limit"
+	codeProjectUnreadable = "project_unreadable"
 )
 
 const (
 	maxDiscoveryAncestorDepth = 64
 )
 
+const (
+	codexHomeDirectory  = ".codex"
+	claudeHomeDirectory = ".claude"
+	claudeGlobalConfig  = ".claude.json"
+	mcpServersField     = "mcpServers"
+	mcpServersPointer   = "/" + mcpServersField
+)
+
+const kindMCPServer = "mcp-server"
+
+const codeInvalidRoot = "invalid_root"
+
 func (b *builder) user() {
-	if b.selects("codex") {
-		b.open(b.options.Home, "codex", "user", true, func(t *tree) {
+	if b.selects(report.HostCodex) {
+		b.open(b.options.Home, report.HostCodex, "user", true, func(t *tree) {
 			t.skills(".agents/skills")
 
 			if b.options.CodexHome == "" {
-				t.codex(".codex")
+				t.codex(codexHomeDirectory)
 			}
 		})
 
 		if b.options.CodexHome != "" {
-			b.open(b.options.CodexHome, "codex", "user", false, func(t *tree) { t.codex(".") })
+			b.open(b.options.CodexHome, report.HostCodex, "user", false, func(t *tree) { t.codex(".") })
 		}
 	}
 
-	if b.selects("claude-code") {
-		b.open(b.options.Home, "claude-code", "user", true, func(t *tree) {
-			t.claudeGlobal(".claude.json")
+	if b.selects(report.HostClaudeCode) {
+		b.open(b.options.Home, report.HostClaudeCode, "user", true, func(t *tree) {
+			t.claudeGlobal(claudeGlobalConfig)
 
 			if b.options.ClaudeHome == "" {
-				t.claude(".claude")
+				t.claude(claudeHomeDirectory)
 			}
 		})
 
 		if b.options.ClaudeHome != "" {
-			b.open(b.options.ClaudeHome, "claude-code", "user", false, func(t *tree) {
-				t.claudeGlobal(".claude.json")
+			b.open(b.options.ClaudeHome, report.HostClaudeCode, "user", false, func(t *tree) {
+				t.claudeGlobal(claudeGlobalConfig)
 				t.claude(".")
 			})
 		}
@@ -77,9 +100,9 @@ func (t *tree) claudeGlobal(name string) {
 		return
 	}
 
-	t.servers(n.Get("mcpServers"), name, "/mcpServers")
+	t.servers(n.Get(mcpServersField), name, mcpServersPointer)
 
-	for _, project := range n.GetOrEmpty("projects").Members {
+	for _, project := range n.GetOrEmpty(fieldProjects).Members {
 		if !filepath.IsAbs(project.Key) || !t.b.selectedProject(project.Key) {
 			continue
 		}
@@ -87,7 +110,7 @@ func (t *tree) claudeGlobal(name string) {
 		local := *t
 		local.scope, local.project = "project", project.Key
 		key := "/projects/" + pointer(project.Key)
-		local.servers(project.Value.Get("mcpServers"), name, key+"/mcpServers")
+		local.servers(project.Value.Get(mcpServersField), name, key+mcpServersPointer)
 
 		for _, field := range []string{"disabledMcpServers", "enabledMcpServers"} {
 			local.mcpEnablement(project.Value.Get(field), name, key+"/"+field, field == "enabledMcpServers")
@@ -111,7 +134,7 @@ func (b *builder) prepareProjects() {
 	for _, selected := range b.options.Projects {
 		absolute, err := filepath.Abs(selected)
 		if err != nil {
-			b.issue("invalid_root", selected)
+			b.issue(codeInvalidRoot, selected)
 			continue
 		}
 
@@ -119,7 +142,7 @@ func (b *builder) prepareProjects() {
 
 		resolved, err := filepath.EvalSymlinks(absolute)
 		if err != nil {
-			b.issue("project_unreadable", absolute)
+			b.issue(codeProjectUnreadable, absolute)
 			continue
 		}
 
@@ -155,7 +178,7 @@ func (b *builder) projects() {
 
 func (b *builder) ancestors(dir string) {
 	for depth := 0; depth < maxDiscoveryAncestorDepth && !b.stopped && b.ctx.Err() == nil; depth++ {
-		for _, agent := range []string{"codex", "claude-code"} {
+		for _, agent := range []string{report.HostCodex, report.HostClaudeCode} {
 			if b.selects(agent) {
 				b.open(dir, agent, "project", true, func(t *tree) { t.projectFiles() })
 			}
@@ -170,7 +193,7 @@ func (b *builder) ancestors(dir string) {
 	}
 
 	if !b.stopped && b.ctx.Err() == nil {
-		b.issue("ancestor_limit", dir)
+		b.issue(codeAncestorLimit, dir)
 	}
 }
 
@@ -181,11 +204,11 @@ func samePath(a, b string) bool {
 
 func (t *tree) projectFiles() {
 	t.project = t.base
-	if t.agent == "codex" {
+	if t.agent == report.HostCodex {
 		t.codexConfig(".codex/config.toml")
 		t.skills(".agents/skills")
 	} else {
-		t.mcpFile(".mcp.json")
+		t.mcpFile(artifact.MCPConfig)
 		t.settings(artifact.ClaudeProjectSettings)
 		t.settings(artifact.ClaudeProjectLocalSettings)
 		t.skills(".claude/skills")
@@ -194,15 +217,15 @@ func (t *tree) projectFiles() {
 }
 
 func (b *builder) system() {
-	if b.selects("codex") {
-		b.open(systemRoot("codex"), "codex", "system", false, func(t *tree) {
+	if b.selects(report.HostCodex) {
+		b.open(systemRoot(report.HostCodex), report.HostCodex, "system", false, func(t *tree) {
 			t.codexConfig("config.toml")
 			t.skills("skills")
 		})
 	}
 
-	if b.selects("claude-code") {
-		b.open(systemRoot("claude-code"), "claude-code", "system", false, func(t *tree) {
+	if b.selects(report.HostClaudeCode) {
+		b.open(systemRoot(report.HostClaudeCode), report.HostClaudeCode, "system", false, func(t *tree) {
 			t.mcpFile("managed-mcp.json")
 			t.settings("managed-settings.json")
 		})
@@ -210,7 +233,7 @@ func (b *builder) system() {
 }
 
 func systemRoot(agent string) string {
-	if agent == "codex" {
+	if agent == report.HostCodex {
 		if runtime.GOOS == "windows" {
 			return `C:\ProgramData\OpenAI\Codex`
 		}
@@ -252,7 +275,7 @@ func (t *tree) commands(root string) {
 
 func (t *tree) settings(source string) {
 	if n := t.config(source, false); n != nil {
-		t.enablement(n.Get("enabledPlugins"), source, "/enabledPlugins", "plugin")
+		t.enablement(n.Get(fieldEnabledPlugins), source, "/"+fieldEnabledPlugins, "plugin")
 
 		for _, key := range []string{"enabledMcpjsonServers", "disabledMcpjsonServers"} {
 			t.mcpEnablement(n.Get(key), source, "/"+key, key == "enabledMcpjsonServers")
@@ -266,7 +289,7 @@ func (t *tree) mcpEnablement(n *jsonconfig.Node, source, key string, enabled boo
 	}
 
 	if n.Kind != jsonconfig.KindArray {
-		t.b.issue("invalid_enablement", t.absolute(source))
+		t.b.issue(codeInvalidEnablement, t.absolute(source))
 		return
 	}
 
@@ -276,9 +299,9 @@ func (t *tree) mcpEnablement(n *jsonconfig.Node, source, key string, enabled boo
 		}
 
 		if value, ok := entry.Text(); ok {
-			t.setting("mcp-server", value, declaredState(enabled), source, key+"/"+strconv.Itoa(i))
+			t.setting(kindMCPServer, value, declaredState(enabled), source, key+"/"+strconv.Itoa(i))
 		} else {
-			t.b.issue("invalid_enablement", t.absolute(source))
+			t.b.issue(codeInvalidEnablement, t.absolute(source))
 		}
 	}
 }
@@ -289,13 +312,13 @@ func (t *tree) enablement(n *jsonconfig.Node, source, key, kind string) {
 	}
 
 	if n.Kind != jsonconfig.KindObject {
-		t.b.issue("invalid_enablement", t.absolute(source))
+		t.b.issue(codeInvalidEnablement, t.absolute(source))
 		return
 	}
 
 	for _, entry := range n.Members {
 		if entry.Value.Kind != jsonconfig.KindBool {
-			t.b.issue("invalid_enablement", t.absolute(source))
+			t.b.issue(codeInvalidEnablement, t.absolute(source))
 			continue
 		}
 

@@ -44,7 +44,7 @@ func (goFlow) Rule() report.Rule {
 		Title:       "Credential values may flow through local variables to an HTTP API",
 		Description: "A bounded local source/assignment/HTTP-argument chain was found.",
 		Severity:    report.High,
-		Category:    "credential-egress",
+		Category:    report.CategoryCredentialEgress,
 		Method:      "go-ast-local-flow",
 		Limitation:  "Intrafunction local variables, selected pure wrappers and conservative if branches only; unknown calls/control flow invalidate tracked bindings. No type checking, cross-file/call graph, general alias analysis or proof of transmission or malicious intent. Legitimate authentication may match.",
 	}

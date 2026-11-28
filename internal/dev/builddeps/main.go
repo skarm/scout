@@ -109,15 +109,15 @@ func libraryFlags(ctx context.Context, env []string) (string, error) {
 
 		return strings.TrimSpace(string(out)), err
 	}
-	if _, err := query("--exact-version="+version, "yara_x_capi"); err != nil {
+	if _, err := query("--exact-version="+version, pkgConfigPackage); err != nil {
 		return "", fmt.Errorf("YARA-X %s C API was not found", version)
 	}
 
-	for _, file := range []struct{ variable, name string }{{variable: "libdir", name: "libyara_x_capi.a"}, {
+	for _, file := range []struct{ variable, name string }{{variable: "libdir", name: staticLibraryName}, {
 		variable: "includedir",
-		name:     "yara_x.h",
+		name:     headerName,
 	}} {
-		dir, err := query("--variable="+file.variable, "yara_x_capi")
+		dir, err := query("--variable="+file.variable, pkgConfigPackage)
 		if err != nil {
 			return "", err
 		}
@@ -127,7 +127,7 @@ func libraryFlags(ctx context.Context, env []string) (string, error) {
 		}
 	}
 
-	return query("--static", "--libs", "yara_x_capi")
+	return query("--static", "--libs", pkgConfigPackage)
 }
 
 func withEnv(env []string, key, value string) []string {

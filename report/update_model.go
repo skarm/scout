@@ -2,6 +2,7 @@ package report
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 	"unicode"
@@ -9,7 +10,8 @@ import (
 
 const (
 	defaultUpdateChanges = 4096
-	maxUpdateChanges     = 20000
+	// MaxUpdateChanges is the ceiling on retained comparison changes.
+	MaxUpdateChanges = 20000
 )
 
 // UpdateOptions limits retained deltas, independently of each scan's input limits.
@@ -115,6 +117,17 @@ type DependencyChange struct {
 	After []Dependency `json:"after"`
 }
 
+const (
+	// UpdateIntroduced identifies a newly observed finding or capability.
+	UpdateIntroduced = "introduced"
+	// UpdateUnverified indicates that coverage is insufficient to classify a difference.
+	UpdateUnverified = "unverified"
+	// UpdateRelocated identifies a finding that moved within its source.
+	UpdateRelocated = "relocated"
+	// UpdateContextChanged identifies a finding whose surrounding context changed.
+	UpdateContextChanged = "context_changed"
+)
+
 // FindingChange never removes findings from either report. not_observed is NOT
 // a claim of remediation; unverified means the relevant candidate check did not
 // complete or the containing object was unavailable.
@@ -219,12 +232,24 @@ const (
 	CapabilityNetwork = "network"
 	// CapabilityDNS covers a selected DNS query.
 	CapabilityDNS = "dns_query"
+	// CapabilitySensitiveRead identifies a read of sensitive data.
+	CapabilitySensitiveRead = "sensitive_read"
+	// CapabilityUntrustedInput identifies consumption of external input.
+	CapabilityUntrustedInput = "untrusted_input"
+	// CapabilityCommandExecution identifies a command execution operation.
+	CapabilityCommandExecution = "command_execution"
+	// CapabilityFileWrite identifies a file mutation.
+	CapabilityFileWrite = "file_write"
+	// CapabilityInfrastructureMutation identifies an infrastructure mutation.
+	CapabilityInfrastructureMutation = "infrastructure_mutation"
 )
+
+const maxCapabilityDestinationBytes = 253
 
 // IsComparedCapability identifies the passive facts exposed by comparisons.
 func IsComparedCapability(kind string) bool {
 	switch kind {
-	case CapabilityNetwork, CapabilityDNS, "sensitive_read", "untrusted_input", "command_execution", "file_write", "infrastructure_mutation",
+	case CapabilityNetwork, CapabilityDNS, CapabilitySensitiveRead, CapabilityUntrustedInput, CapabilityCommandExecution, CapabilityFileWrite, CapabilityInfrastructureMutation,
 		"allowed-tools", "permissions", EnvironmentMCPIdentifier, EnvironmentToolIdentifier:
 		return true
 	default:
@@ -247,7 +272,7 @@ func validateCapabilityDelta(delta UpdateDelta, candidate Artifact) error {
 		return nil
 	}
 
-	if capabilities.Omitted < 0 || capabilities.Omitted > delta.OmittedChanges || len(capabilities.Changes) > maxUpdateChanges {
+	if capabilities.Omitted < 0 || capabilities.Omitted > delta.OmittedChanges || len(capabilities.Changes) > MaxUpdateChanges {
 		return errors.New("invalid capability retention")
 	}
 
@@ -257,12 +282,12 @@ func validateCapabilityDelta(delta UpdateDelta, candidate Artifact) error {
 	}
 
 	for _, change := range capabilities.Changes {
-		if !validCapabilitySource(change, files[change.Source.Path]) || !IsComparedCapability(change.Kind) || len(change.Destination) > 253 ||
+		if !validCapabilitySource(change, files[change.Source.Path]) || !IsComparedCapability(change.Kind) || len(change.Destination) > maxCapabilityDestinationBytes ||
 			!CapabilityHasDestination(change.Kind) && change.Destination != "" {
 			return errors.New("invalid capability source evidence")
 		}
 
-		if change.Status != "introduced" && (change.Status != "unverified" || delta.Completeness == Complete) {
+		if change.Status != UpdateIntroduced && (change.Status != UpdateUnverified || delta.Completeness == Complete) {
 			return errors.New("invalid capability evidence status")
 		}
 	}
@@ -321,8 +346,8 @@ func DefaultUpdateOptions() UpdateOptions { return UpdateOptions{MaxChanges: def
 // Validate checks that MaxChanges is within the supported range of 1 through
 // 20000.
 func (o UpdateOptions) Validate() error {
-	if o.MaxChanges < 1 || o.MaxChanges > maxUpdateChanges {
-		return errors.New("max update changes must be in 1..20000")
+	if o.MaxChanges < 1 || o.MaxChanges > MaxUpdateChanges {
+		return fmt.Errorf("max update changes must be in 1..%d", MaxUpdateChanges)
 	}
 
 	return nil

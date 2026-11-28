@@ -7,6 +7,20 @@ import (
 	"github.com/skarm/scout/internal/syntax/source"
 )
 
+const (
+	codeMissingHeredoc                  = "missing_heredoc"
+	codeTrailingEscape                  = "trailing_escape"
+	codeUnclosedDoubleQuote             = "unclosed_double_quote"
+	codeUnclosedSingleQuote             = "unclosed_single_quote"
+	codeUnclosedSubstitution            = "unclosed_substitution"
+	codeUnexpectedToken                 = "unexpected_token"
+	codeUnsupportedArithmeticExpansion  = "unsupported_arithmetic_expansion"
+	codeUnsupportedBacktickSubstitution = "unsupported_backtick_substitution"
+	codeUnsupportedDollarQuoting        = "unsupported_dollar_quoting"
+	codeUnsupportedOperator             = "unsupported_operator"
+	codeUnsupportedParameterExpansion   = "unsupported_parameter_expansion"
+)
+
 type wordMode byte
 
 const (
@@ -34,7 +48,7 @@ func (p *parser) lex() (token, error) {
 
 	for _, op := range []string{";;&", ";&", "((", "<(", ">("} {
 		if strings.HasPrefix(p.text[p.at:p.end], op) {
-			return token{}, p.fail("unsupported_operator")
+			return token{}, p.fail(codeUnsupportedOperator)
 		}
 	}
 
@@ -56,7 +70,7 @@ func (p *parser) lexWord(start int) (token, error) {
 
 	w.Span.End = p.at
 	if p.at == start {
-		return token{}, p.fail("unexpected_token")
+		return token{}, p.fail(codeUnexpectedToken)
 	}
 
 	return token{kind: tokenWord, word: w, span: w.Span}, nil
@@ -82,7 +96,7 @@ func (p *parser) parts(w *Word, mode wordMode) error {
 	}
 
 	if mode == doubleQuotedWord {
-		return p.fail("unclosed_double_quote")
+		return p.fail(codeUnclosedDoubleQuote)
 	}
 
 	return nil
@@ -102,7 +116,7 @@ func (p *parser) part(w *Word, mode wordMode) error {
 	case '\\':
 		return p.escapedPart(w, mode, start)
 	case '`':
-		return p.fail("unsupported_backtick_substitution")
+		return p.fail(codeUnsupportedBacktickSubstitution)
 	case '$':
 		return p.expansion(w, mode)
 	}
@@ -128,7 +142,7 @@ func (p *parser) singleQuotedPart(w *Word, start int) error {
 
 	n := strings.IndexByte(p.text[p.at:p.end], '\'')
 	if n < 0 {
-		return p.fail("unclosed_single_quote")
+		return p.fail(codeUnclosedSingleQuote)
 	}
 
 	p.at += n + 1
@@ -139,7 +153,7 @@ func (p *parser) singleQuotedPart(w *Word, start int) error {
 func (p *parser) escapedPart(w *Word, mode wordMode, start int) error {
 	p.at++
 	if p.at == p.end {
-		return p.fail("trailing_escape")
+		return p.fail(codeTrailingEscape)
 	}
 
 	next := p.text[p.at]
@@ -210,7 +224,7 @@ func (p *parser) expansion(w *Word, mode wordMode) error {
 			return p.literal(w, start, p.at, "$", quoted)
 		}
 
-		return p.fail("unsupported_dollar_quoting")
+		return p.fail(codeUnsupportedDollarQuoting)
 	}
 
 	if c == '(' {
@@ -223,7 +237,7 @@ func (p *parser) expansion(w *Word, mode wordMode) error {
 func (p *parser) commandSubstitution(w *Word, quoted bool, start int) error {
 	p.at++
 	if p.at < p.end && p.text[p.at] == '(' {
-		return p.fail("unsupported_arithmetic_expansion")
+		return p.fail(codeUnsupportedArithmeticExpansion)
 	}
 
 	q, err := p.child(p.at, p.end)
@@ -238,7 +252,7 @@ func (p *parser) commandSubstitution(w *Word, quoted bool, start int) error {
 
 	closing, err := q.take()
 	if err != nil || closing.kind != tokenCloseParen {
-		return p.fail("unclosed_substitution")
+		return p.fail(codeUnclosedSubstitution)
 	}
 
 	p.at = q.at
@@ -296,7 +310,7 @@ func (p *parser) hereBodies() error {
 		}
 
 		if !found {
-			return p.fail("missing_heredoc")
+			return p.fail(codeMissingHeredoc)
 		}
 
 		body := &Word{Span: source.Span{Start: start, End: end}}
@@ -382,7 +396,7 @@ func (p *parser) bracedParameter(w *Word, quoted bool, start int) error {
 	}
 
 	if p.at == begin || p.at == p.end {
-		return p.fail("unsupported_parameter_expansion")
+		return p.fail(codeUnsupportedParameterExpansion)
 	}
 
 	name := p.text[begin:p.at]
@@ -399,7 +413,7 @@ func (p *parser) bracedParameter(w *Word, quoted bool, start int) error {
 	}
 
 	if p.text[p.at] != '}' {
-		return p.fail("unsupported_parameter_expansion")
+		return p.fail(codeUnsupportedParameterExpansion)
 	}
 
 	p.at++

@@ -23,7 +23,18 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-const maxSavedJSONNodes = 4_000_000
+const (
+	flagCandidate     = "candidate"
+	flagEmpty         = "empty"
+	flagRoot          = "root"
+	flagSaveCandidate = "save-candidate"
+	flagSourceDiff    = "source-diff"
+)
+
+const (
+	maxSavedJSONNodes = 4_000_000
+	maxSavedJSONDepth = 64
+)
 
 type environmentCheckpoint struct {
 	Snapshot   envsnapshot.Snapshot `json:"snapshot"`
@@ -285,7 +296,7 @@ func uniqueJSON(data []byte) error {
 
 	value = func(depth int) error {
 		nodes++
-		if depth > 64 || nodes > maxSavedJSONNodes {
+		if depth > maxSavedJSONDepth || nodes > maxSavedJSONNodes {
 			return errors.New("saved JSON structural limit")
 		}
 
@@ -356,14 +367,14 @@ func parseSnapshotRequest(mode string, args []string, stderr io.Writer, snapshot
 			return
 		}
 
-		fs.StringVar(&snapshotPath, "snapshot", "", "required environment snapshot path (create never replaces it)")
-		fs.Var(&roots, "root", "named local root ID=PATH; repeat for the complete selected environment")
+		fs.StringVar(&snapshotPath, flagSnapshot, "", "required environment snapshot path (create never replaces it)")
+		fs.Var(&roots, flagRoot, "named local root ID=PATH; repeat for the complete selected environment")
 
 		if mode == "compare" {
-			fs.BoolVar(&empty, "empty", false, "explicitly compare against an empty environment")
-			fs.BoolVar(&diff, "source-diff", false, "include bounded source excerpts in change reports; may contain secrets")
-			fs.StringVar(&candidate, "candidate", "", "compare with a second saved environment snapshot")
-			fs.StringVar(&save, "save-candidate", "", "save the checked current bytes to a new snapshot file")
+			fs.BoolVar(&empty, flagEmpty, false, "explicitly compare against an empty environment")
+			fs.BoolVar(&diff, flagSourceDiff, false, "include bounded source excerpts in change reports; may contain secrets")
+			fs.StringVar(&candidate, flagCandidate, "", "compare with a second saved environment snapshot")
+			fs.StringVar(&save, flagSaveCandidate, "", "save the checked current bytes to a new snapshot file")
 		}
 	})
 	if err != nil {
@@ -387,7 +398,7 @@ func parseSnapshotRequest(mode string, args []string, stderr io.Writer, snapshot
 	}
 
 	if len(inputs) > scout.MaxScanTargets || len(inputs) == 0 && mode != "compare" || empty && len(inputs) != 0 {
-		return r, "", nil, errors.New("select 1..32 named roots for creation; compare can reuse the saved selection")
+		return r, "", nil, fmt.Errorf("select 1..%d named roots for creation; compare can reuse the saved selection", scout.MaxScanTargets)
 	}
 
 	if candidate != "" && (len(inputs) != 0 || empty || save != "") {

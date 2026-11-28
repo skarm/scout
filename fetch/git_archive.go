@@ -16,6 +16,17 @@ import (
 )
 
 const (
+	codeGITInvalidBlob              = "git_invalid_blob"
+	codeGITInvalidTree              = "git_invalid_tree"
+	codeGITRevisionNotCommit        = "git_revision_not_commit"
+	codeGITTreeEntryLimit           = "git_tree_entry_limit"
+	codeGITTreeUnavailableOrLimited = "git_tree_unavailable_or_limited"
+	codeGITUnsafeTreePath           = "git_unsafe_tree_path"
+	codeGITUnsupportedTreeEntry     = "git_unsupported_tree_entry"
+	codeGitBlobStreamFailed         = "git_blob_stream_failed"
+)
+
+const (
 	maxGitTreeBytes = 4 << 20
 	maxGitFiles     = 16384
 )
@@ -32,7 +43,7 @@ type gitBuffer struct {
 
 func (b *gitBuffer) Write(data []byte) (int, error) {
 	if int64(len(data)) > b.limit-int64(b.buffer.Len()) {
-		return 0, fail("byte_limit")
+		return 0, fail(codeByteLimit)
 	}
 
 	return b.buffer.Write(data)
@@ -45,7 +56,7 @@ func (r gitWorkspace) archive(ctx context.Context, revision string, limit int64)
 
 	command.Stdout = typeOutput
 	if err := command.Run(); err != nil || typeOutput.buffer.String() != "commit\n" {
-		return nil, gitFailure(ctx, "git_revision_not_commit")
+		return nil, gitFailure(ctx, codeGITRevisionNotCommit)
 	}
 
 	listing := &gitBuffer{limit: min(limit, maxGitTreeBytes)}
@@ -53,7 +64,7 @@ func (r gitWorkspace) archive(ctx context.Context, revision string, limit int64)
 
 	command.Stdout = listing
 	if err := command.Run(); err != nil {
-		return nil, gitFailure(ctx, "git_tree_unavailable_or_limited")
+		return nil, gitFailure(ctx, codeGITTreeUnavailableOrLimited)
 	}
 
 	files, err := parseGitTree(listing.buffer.String())
@@ -71,7 +82,7 @@ func (r gitWorkspace) archive(ctx context.Context, revision string, limit int64)
 	}
 
 	if err := archive.Close(); err != nil {
-		return nil, gitFailure(ctx, "byte_limit")
+		return nil, gitFailure(ctx, codeByteLimit)
 	}
 
 	return output.buffer.Bytes(), nil
@@ -84,7 +95,7 @@ func parseGitTree(listing string) ([]gitFile, error) {
 
 	records, ok := strings.CutSuffix(listing, "\x00")
 	if !ok {
-		return nil, fail("git_invalid_tree")
+		return nil, fail(codeGITInvalidTree)
 	}
 
 	names := artifactpath.Namespace{MaxNodes: maxGitFiles * 2}
@@ -92,14 +103,14 @@ func parseGitTree(listing string) ([]gitFile, error) {
 	var files []gitFile
 	for entry := range strings.SplitSeq(records, "\x00") {
 		if len(files) == maxGitFiles {
-			return nil, fail("git_tree_entry_limit")
+			return nil, fail(codeGITTreeEntryLimit)
 		}
 
 		header, name, ok := strings.Cut(entry, "\t")
 
 		fields := strings.Fields(header)
 		if !ok || len(fields) != 3 || !isHex(fields[2], gitCommitHexBytes) {
-			return nil, fail("git_invalid_tree")
+			return nil, fail(codeGITInvalidTree)
 		}
 
 		mode := fs.FileMode(0o644)
@@ -108,11 +119,11 @@ func parseGitTree(listing string) ([]gitFile, error) {
 		}
 
 		if fields[1] != "blob" || fields[0] != "100644" && fields[0] != "100755" {
-			return nil, fail("git_unsupported_tree_entry")
+			return nil, fail(codeGITUnsupportedTreeEntry)
 		}
 
 		if artifactpath.Validate(name, report.MaxArtifactPathBytes, report.MaxArtifactPathDepth) != nil || names.Add(name, false) != nil {
-			return nil, fail("git_unsafe_tree_path")
+			return nil, fail(codeGITUnsafeTreePath)
 		}
 
 		files = append(files, gitFile{name, fields[2], mode})
@@ -126,19 +137,19 @@ func (r gitWorkspace) writeGitFiles(ctx context.Context, archive *zip.Writer, fi
 
 	input, err := command.StdinPipe()
 	if err != nil {
-		return fail("git_blob_stream_failed")
+		return fail(codeGitBlobStreamFailed)
 	}
 
 	defer func() { _ = input.Close() }()
 
 	output, err := command.StdoutPipe()
 	if err != nil {
-		return fail("git_blob_stream_failed")
+		return fail(codeGitBlobStreamFailed)
 	}
 	defer func() { _ = output.Close() }()
 
 	if err := command.Start(); err != nil {
-		return gitFailure(ctx, "git_blob_stream_failed")
+		return gitFailure(ctx, codeGitBlobStreamFailed)
 	}
 
 	readErr := writeGitBlobStream(archive, files, input, bufio.NewReader(output), limit)
@@ -160,7 +171,7 @@ func (r gitWorkspace) writeGitFiles(ctx context.Context, archive *zip.Writer, fi
 	}
 
 	if waitErr != nil {
-		return gitFailure(ctx, "git_blob_stream_failed")
+		return gitFailure(ctx, codeGitBlobStreamFailed)
 	}
 
 	return nil
@@ -169,7 +180,7 @@ func (r gitWorkspace) writeGitFiles(ctx context.Context, archive *zip.Writer, fi
 func writeGitBlobStream(archive *zip.Writer, files []gitFile, input io.Writer, output *bufio.Reader, limit int64) error {
 	for _, file := range files {
 		if _, err := io.WriteString(input, file.id+"\n"); err != nil {
-			return fail("git_blob_stream_failed")
+			return fail(codeGitBlobStreamFailed)
 		}
 
 		size, err := readGitBlobHeader(output, file.id)
@@ -178,7 +189,7 @@ func writeGitBlobStream(archive *zip.Writer, files []gitFile, input io.Writer, o
 		}
 
 		if size > limit {
-			return fail("byte_limit")
+			return fail(codeByteLimit)
 		}
 
 		limit -= size
@@ -188,7 +199,7 @@ func writeGitBlobStream(archive *zip.Writer, files []gitFile, input io.Writer, o
 
 		entry, writeErr := archive.CreateHeader(header)
 		if writeErr != nil {
-			return fail("byte_limit")
+			return fail(codeByteLimit)
 		}
 
 		if _, err := io.CopyN(entry, output, size); err != nil {
@@ -196,11 +207,11 @@ func writeGitBlobStream(archive *zip.Writer, files []gitFile, input io.Writer, o
 				return typed
 			}
 
-			return fail("git_blob_stream_failed")
+			return fail(codeGitBlobStreamFailed)
 		}
 
 		if next, err := output.ReadByte(); err != nil || next != '\n' {
-			return fail("git_blob_stream_failed")
+			return fail(codeGitBlobStreamFailed)
 		}
 	}
 
@@ -212,12 +223,12 @@ func readGitBlobHeader(output *bufio.Reader, id string) (int64, error) {
 
 	fields := strings.Fields(string(header))
 	if err != nil || len(fields) != 3 || fields[0] != id || fields[1] != "blob" {
-		return 0, fail("git_invalid_blob")
+		return 0, fail(codeGITInvalidBlob)
 	}
 
 	size, err := strconv.ParseInt(fields[2], 10, 64)
 	if err != nil || size < 0 {
-		return 0, fail("git_invalid_blob")
+		return 0, fail(codeGITInvalidBlob)
 	}
 
 	return size, nil

@@ -35,6 +35,12 @@ type candidate struct {
 	files  []entry
 }
 
+const (
+	privateOutputDirectoryMode = 0o700
+	privateOutputFileMode      = 0o600
+	archivedExecutableMode     = 0o755
+)
+
 func targets() []target {
 	return []target{
 		{name: "darwin-arm64", label: "macos-arm64", binary: "scout", extension: ".tar.gz"},
@@ -69,12 +75,12 @@ func packageRelease(version, candidates, output string, allowMissing bool) (err 
 		return errors.New("no native candidates to package")
 	}
 
-	if err = os.MkdirAll(filepath.Dir(output), 0o700); err != nil {
+	if err = os.MkdirAll(filepath.Dir(output), privateOutputDirectoryMode); err != nil {
 		return err
 	}
 
 	// Refuse existing output and remove only this invocation's partial output.
-	if err = os.Mkdir(output, 0o700); err != nil {
+	if err = os.Mkdir(output, privateOutputDirectoryMode); err != nil {
 		return err
 	}
 
@@ -109,7 +115,7 @@ func packageRelease(version, candidates, output string, allowMissing bool) (err 
 		_, _ = fmt.Fprintf(&checksums, "%s  %s\n", sum, name)
 	}
 
-	return os.WriteFile(filepath.Join(output, "SHA256SUMS"), []byte(checksums.String()), 0o600)
+	return os.WriteFile(filepath.Join(output, "SHA256SUMS"), []byte(checksums.String()), privateOutputFileMode)
 }
 
 func validVersion(value string) bool {
@@ -185,7 +191,7 @@ func digest(path string) (string, error) {
 }
 
 func writeTar(path string, files []entry) (err error) {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: creates a fixed archive name in this invocation's new output directory.
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, privateOutputFileMode) //nolint:gosec // G304: creates a fixed archive name in this invocation's new output directory.
 	if err != nil {
 		return err
 	}
@@ -197,7 +203,7 @@ func writeTar(path string, files []entry) (err error) {
 
 	for _, item := range files {
 		// Keep archive bytes stable across downloads with different file metadata.
-		header := tar.Header{Name: item.name, Size: item.info.Size(), Mode: 0o755, Typeflag: tar.TypeReg}
+		header := tar.Header{Name: item.name, Size: item.info.Size(), Mode: archivedExecutableMode, Typeflag: tar.TypeReg}
 
 		if err = archive.WriteHeader(&header); err != nil {
 			return err
@@ -212,7 +218,7 @@ func writeTar(path string, files []entry) (err error) {
 }
 
 func writeZIP(path string, files []entry) (err error) {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: creates a fixed archive name in this invocation's new output directory.
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, privateOutputFileMode) //nolint:gosec // G304: creates a fixed archive name in this invocation's new output directory.
 	if err != nil {
 		return err
 	}
@@ -226,7 +232,7 @@ func writeZIP(path string, files []entry) (err error) {
 			Method:   zip.Deflate,
 			Modified: time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC), // Earliest DOS timestamp.
 		}
-		header.SetMode(0o755)
+		header.SetMode(archivedExecutableMode)
 
 		writer, err := archive.CreateHeader(&header)
 		if err != nil {

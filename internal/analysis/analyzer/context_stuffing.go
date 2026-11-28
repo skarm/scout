@@ -20,6 +20,8 @@ type contextRepetition struct {
 
 const (
 	minContextPayloadBytes = 256
+	maxContextPeriodRunes  = 20
+	minContextRepetitions  = 21
 	textScanCheckBytes     = 4096
 )
 
@@ -37,7 +39,7 @@ func repeatedContext(ctx context.Context, text string, emit func(int, int) bool)
 		offsets = append(offsets, len(text))
 	}
 
-	for period := 2; period <= min(20, len(runes)/21); period++ {
+	for period := 2; period <= min(maxContextPeriodRunes, len(runes)/minContextRepetitions); period++ {
 		repetition := contextRepetition{runes: runes, offsets: offsets, period: period, emit: emit}
 
 		for i := period; i < len(runes); i++ {
@@ -63,7 +65,7 @@ func repeatedContext(ctx context.Context, text string, emit func(int, int) bool)
 }
 
 func (r contextRepetition) flush(end int) bool {
-	if end-r.start < r.period*21 {
+	if end-r.start < r.period*minContextRepetitions {
 		return true
 	}
 

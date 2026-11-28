@@ -8,7 +8,15 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/skarm/scout/report"
 )
+
+const (
+	codeCancelled = "cancelled"
+)
+
+const codeEntryLimit = "entry_limit"
 
 const (
 	defaultEntries = 10000
@@ -19,6 +27,8 @@ const (
 	maxBytes       = 64 << 20
 	maxProjects    = 32
 )
+
+const discoverySchema = "scout.environment/v1"
 
 // Options selects operator-owned roots. Configuration cannot expand these roots.
 type Options struct {
@@ -118,14 +128,14 @@ type builder struct {
 // locations. It never runs commands, contacts MCP servers or loads Scout settings.
 // Operational failures retain a partial Snapshot; invalid options return no inventory.
 func Discover(ctx context.Context, options Options) (Snapshot, error) {
-	if ctx == nil || options.Home == "" || !slices.Contains([]string{"all", "codex", "claude-code"}, options.Agent) ||
+	if ctx == nil || options.Home == "" || !slices.Contains([]string{"all", report.HostCodex, report.HostClaudeCode}, options.Agent) ||
 		options.MaxEntries < 1 || options.MaxEntries > maxEntries || options.MaxDepth < 1 || options.MaxDepth > maxDepth ||
 		options.MaxBytes < 1 || options.MaxBytes > maxBytes || len(options.Projects) > maxProjects {
 		return Snapshot{}, errors.New("invalid discovery options")
 	}
 
 	b := &builder{ctx: ctx, options: options, seen: map[Component]bool{}, sources: map[string]string{}, projectVisits: map[string]bool{}, out: Snapshot{
-		Schema: "scout.environment/v1", Complete: true,
+		Schema: discoverySchema, Complete: true,
 		Components: []Component{}, Sources: []Source{}, Targets: []string{}, Issues: []Issue{}, Enablement: []Enablement{},
 		Limitations: []string{
 			"On-disk declarations only; activation, precedence, approvals and runtime tool availability are not resolved.",
@@ -167,7 +177,7 @@ func (b *builder) step(name string) bool {
 	b.entries++
 	if b.entries > b.options.MaxEntries {
 		b.stopped = true
-		b.issue("entry_limit", name)
+		b.issue(codeEntryLimit, name)
 
 		return false
 	}
@@ -201,7 +211,7 @@ func (b *builder) finish() (Snapshot, error) {
 	slices.Sort(b.out.protectedInputs)
 
 	if err := b.compactTargets(); err != nil {
-		b.issue("cancelled", "")
+		b.issue(codeCancelled, "")
 		return b.out, err
 	}
 

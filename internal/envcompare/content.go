@@ -51,7 +51,7 @@ func (r *Comparison) describeContent(before, after envsnapshot.Snapshot, include
 		previous, candidate := before.Root(root.ID), after.Root(root.ID)
 		root.BeforePath, root.AfterPath = previous.Source, candidate.Source
 
-		if root.Change == "unchanged" {
+		if root.Change == report.SnapshotChangeUnchanged {
 			continue
 		}
 
@@ -143,12 +143,12 @@ func sourceExcerpt(before, after []string, start, end int, byteBudget, lineBudge
 }
 
 func contentExplanation(path, change string) string {
-	if change == "removed" {
+	if change == report.SnapshotChangeRemoved {
 		return "Captured file removed from the selected environment; this does not prove remediation."
 	}
 
 	action := "changed"
-	if change == "added" {
+	if change == report.SnapshotChangeAdded {
 		action = "added"
 	}
 
@@ -186,13 +186,13 @@ func writeSourceExcerpt(b *bytes.Buffer, text string, format report.Format) {
 }
 
 func describeSnapshotFile(path string, b, a envsnapshot.Entry, bok, aok, includeSource bool, byteBudget, lineBudget *int) snapshotContentChange {
-	change := "modified"
+	change := report.SnapshotChangeModified
 	if !bok {
-		change = "added"
+		change = report.SnapshotChangeAdded
 	}
 
 	if !aok {
-		change = "removed"
+		change = report.SnapshotChangeRemoved
 	}
 
 	item := snapshotContentChange{Path: path, Change: change, BeforeBytes: len(b.Data), AfterBytes: len(a.Data), Explanation: contentExplanation(path, change)}

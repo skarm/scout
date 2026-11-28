@@ -9,6 +9,13 @@ import (
 	"strings"
 )
 
+const (
+	sarifSchemaURI             = "https://json.schemastore.org/sarif-" + sarifVersion + ".json"
+	sarifVersion               = "2.1.0"
+	sarifOccurrenceFingerprint = "occurrence/v1"
+	sarifProposalFingerprint   = "semanticProposal/v1"
+)
+
 type (
 	// Explicit types keep SARIF's schema separate from the native JSON contract.
 	sarif struct {
@@ -197,8 +204,8 @@ func toSARIF(r Analysis, evaluation Evaluation) sarif {
 	notes := sarifDiagnostics(r.Diagnostics, files)
 
 	return sarif{
-		Schema:  "https://json.schemastore.org/sarif-2.1.0.json",
-		Version: "2.1.0",
+		Schema:  sarifSchemaURI,
+		Version: sarifVersion,
 		Runs: []run{{
 			Tool: tool{Driver: driver{
 				Name:    "scout",
@@ -480,7 +487,7 @@ func sarifFindings(r Analysis, evaluation Evaluation, files map[string]File) []r
 			Level:               level,
 			Message:             sarifMessage(f.Message),
 			Locations:           []location{{PhysicalLocation: p}},
-			PartialFingerprints: map[string]string{"occurrence/v1": f.ID},
+			PartialFingerprints: map[string]string{sarifOccurrenceFingerprint: f.ID},
 			Properties: map[string]any{
 				"severity":          f.Severity,
 				"category":          f.Category,
@@ -532,7 +539,7 @@ func sarifProposals(semantic SemanticReport) []result {
 			Level:               "warning",
 			Message:             sarifMessage("Model proposal: " + p.Reason + ". Human review required; not a verified static finding."),
 			Locations:           locations,
-			PartialFingerprints: map[string]string{"semanticProposal/v1": p.ID},
+			PartialFingerprints: map[string]string{sarifProposalFingerprint: p.ID},
 			Properties: map[string]any{
 				"method":            "semantic_proposal",
 				"suggestedSeverity": p.SuggestedSeverity,

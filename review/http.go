@@ -21,13 +21,26 @@ import (
 )
 
 const (
+	codeInvalidEndpoint                 = "invalid_endpoint"
+	codeInvalidEndpointOrAuthentication = "invalid_endpoint_or_authentication"
+)
+
+const (
+	roleSystem     = "system"
+	chatFinishStop = "stop"
+)
+
+const (
 	minProviderOutputTokens       = 128
 	minProviderResponseBytes      = 1024
 	maxCompletionModelBytes       = 256
 	maxCompletionFingerprintBytes = 256
+	unknownTokenCount             = -1
 	maxReportedTokens             = 1 << 40
 	maxProviderOutputTokens       = 8192
 )
+
+const chatResponseSchemaName = "scout_review_v4"
 
 // HTTPOptions selects one operator-approved Chat Completions compatible endpoint.
 // No provider discovery, redirects, ambient proxy, CLI authentication or fallback.
@@ -63,6 +76,29 @@ type HTTPProvider struct {
 	maxBytes int
 	identity Identity
 }
+
+const (
+	codeNilContext            = "nil_context"
+	codeRequestEncodingFailed = "request_encoding_failed"
+	codeRequestFailed         = "request_failed"
+	codeAmbiguousEnvelope     = "ambiguous_envelope"
+	codeContentEncoding       = "content_encoding"
+	codeContentType           = "content_type"
+	codeHTTPFailed            = "http_failed"
+	codeHTTPStatus            = "http_status"
+	codeIncompleteResponse    = "incomplete_response"
+	codeInvalidEnvelope       = "invalid_envelope"
+	codeInvalidRequest        = "invalid_request"
+	codeInvalidUsage          = "invalid_usage"
+	codeMetadataLimit         = "metadata_limit"
+	codeProviderError         = "provider_error"
+	codeRedirectRefused       = "redirect_refused"
+	codeRefused               = "refused"
+	codeResponseLimit         = "response_limit"
+	codeResponseReadFailed    = "response_read_failed"
+	codeToolCallRefused       = "tool_call_refused"
+	codeUnexpectedChoices     = "unexpected_choices"
+)
 
 // TransportError carries a bounded transport code and optional HTTP status
 // without raw response text.
@@ -121,11 +157,11 @@ func ErrorCode(err error) string {
 
 	if e, ok := errors.AsType[*TransportError](err); ok {
 		switch e.Code {
-		case "http_status":
+		case codeHTTPStatus:
 			if e.Status >= http.StatusContinue && e.Status <= maxHTTPStatusCode {
 				return "http_status_" + strconv.Itoa(e.Status)
 			}
-		case "redirect_refused", "http_failed", "dns_failed", "connection_failed", "address_not_permitted", "content_type", "content_encoding", "response_limit", "response_read_failed", "invalid_envelope", "ambiguous_envelope", "provider_error", "unexpected_choices", "incomplete_response", "refused", "tool_call_refused", "metadata_limit", "invalid_usage":
+		case codeRedirectRefused, codeHTTPFailed, netpolicy.CodeDNSFailed, netpolicy.CodeConnectionFailed, netpolicy.CodeAddressNotPermitted, codeContentType, codeContentEncoding, codeResponseLimit, codeResponseReadFailed, codeInvalidEnvelope, codeAmbiguousEnvelope, codeProviderError, codeUnexpectedChoices, codeIncompleteResponse, codeRefused, codeToolCallRefused, codeMetadataLimit, codeInvalidUsage:
 			return "transport_" + e.Code
 		}
 	}
@@ -141,7 +177,7 @@ func (p *HTTPProvider) Identity() Identity { return p.identity }
 // completion. It rejects incomplete or ambiguous envelopes.
 func (p *HTTPProvider) Complete(ctx context.Context, payload []byte) (Completion, error) {
 	if ctx == nil {
-		return Completion{}, transportError("nil_context")
+		return Completion{}, transportError(codeNilContext)
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -149,7 +185,7 @@ func (p *HTTPProvider) Complete(ctx context.Context, payload []byte) (Completion
 	}
 
 	if len(payload) > MaxRequestBytes || !json.Valid(payload) {
-		return Completion{}, transportError("invalid_request")
+		return Completion{}, transportError(codeInvalidRequest)
 	}
 
 	system, err := PromptForRequest(ctx, payload)
@@ -158,33 +194,33 @@ func (p *HTTPProvider) Complete(ctx context.Context, payload []byte) (Completion
 	}
 
 	body, err := json.Marshal(map[string]any{
-		"model":                 p.model,
+		fieldModel:              p.model,
 		"store":                 false,
 		"stream":                false,
 		"n":                     1,
 		"tools":                 []any{},
 		"tool_choice":           "none",
 		"max_completion_tokens": p.tokens,
-		"messages": []map[string]string{{"role": "system", "content": system}, {
-			"role":    "user",
-			"content": string(payload),
+		fieldMessages: []map[string]string{{fieldRole: roleSystem, fieldContent: system}, {
+			fieldRole:    roleUser,
+			fieldContent: string(payload),
 		}},
 		"response_format": map[string]any{
-			"type": "json_schema",
+			fieldType: "json_schema",
 			"json_schema": map[string]any{
-				"name":   "scout_review_v4",
+				"name":   chatResponseSchemaName,
 				"strict": true,
 				"schema": ResponseSchema(),
 			},
 		},
 	})
 	if err != nil {
-		return Completion{}, transportError("request_encoding_failed")
+		return Completion{}, transportError(codeRequestEncodingFailed)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return Completion{}, transportError("request_failed")
+		return Completion{}, transportError(codeRequestFailed)
 	}
 
 	req.Header.Set(netpolicy.HeaderContentType, netpolicy.JSONMediaType)
@@ -210,11 +246,11 @@ func (p *HTTPProvider) completeChatRequest(ctx context.Context, req *http.Reques
 // Output byte limits are selected separately by each caller.
 func (c Completion) ValidateMetadata() error {
 	if len(c.Model) > maxCompletionModelBytes || len(c.Fingerprint) > maxCompletionFingerprintBytes {
-		return transportError("metadata_limit")
+		return transportError(codeMetadataLimit)
 	}
 
-	if c.InputTokens < -1 || c.OutputTokens < -1 || c.InputTokens > maxReportedTokens || c.OutputTokens > maxReportedTokens {
-		return transportError("invalid_usage")
+	if c.InputTokens < unknownTokenCount || c.OutputTokens < unknownTokenCount || c.InputTokens > maxReportedTokens || c.OutputTokens > maxReportedTokens {
+		return transportError(codeInvalidUsage)
 	}
 
 	return nil
@@ -236,11 +272,11 @@ func (e *TransportError) Error() string { return "semantic transport: " + e.Code
 
 func (e chatEnvelope) completion() (Completion, error) {
 	if len(e.Error) > 0 && string(e.Error) != "null" {
-		return Completion{}, transportError("provider_error")
+		return Completion{}, transportError(codeProviderError)
 	}
 
 	if len(e.Choices) != 1 || e.Choices[0].Index != 0 {
-		return Completion{}, transportError("unexpected_choices")
+		return Completion{}, transportError(codeUnexpectedChoices)
 	}
 
 	choice := e.Choices[0]
@@ -252,8 +288,8 @@ func (e chatEnvelope) completion() (Completion, error) {
 		Output:       []byte(*choice.Message.Content),
 		Model:        e.Model,
 		Fingerprint:  e.Fingerprint,
-		InputTokens:  -1,
-		OutputTokens: -1,
+		InputTokens:  unknownTokenCount,
+		OutputTokens: unknownTokenCount,
 	}
 
 	if e.Usage != nil {
@@ -264,17 +300,17 @@ func (e chatEnvelope) completion() (Completion, error) {
 }
 
 func (c chatChoice) validate() error {
-	if c.Finish != "stop" || c.Message.Role != "assistant" || c.Message.Content == nil {
-		return transportError("incomplete_response")
+	if c.Finish != chatFinishStop || c.Message.Role != roleAssistant || c.Message.Content == nil {
+		return transportError(codeIncompleteResponse)
 	}
 
 	if c.Message.Refusal != nil && *c.Message.Refusal != "" {
-		return transportError("refused")
+		return transportError(codeRefused)
 	}
 
 	for _, v := range []json.RawMessage{c.Message.Tools, c.Message.Function} {
 		if !slices.Contains([]string{"", "null", "[]"}, string(v)) {
-			return transportError("tool_call_refused")
+			return transportError(codeToolCallRefused)
 		}
 	}
 
@@ -291,7 +327,7 @@ func validateHTTPOptions(o HTTPOptions) (*url.URL, error) {
 	}
 
 	if len(o.Endpoint) > maxProviderEndpointBytes || !credentialBytes(o.APIKey, 0) {
-		return nil, transportError("invalid_endpoint_or_authentication")
+		return nil, transportError(codeInvalidEndpointOrAuthentication)
 	}
 
 	u, err := netpolicy.ParseURL(o.Endpoint, netpolicy.URLPolicy{
@@ -301,8 +337,8 @@ func validateHTTPOptions(o HTTPOptions) (*url.URL, error) {
 	})
 
 	if e, ok := errors.AsType[*netpolicy.Error](err); ok {
-		if e.Code == "invalid_url" || e.Code == "invalid_port" {
-			return nil, transportError("invalid_endpoint")
+		if e.Code == netpolicy.CodeInvalidURL || e.Code == netpolicy.CodeInvalidPort {
+			return nil, transportError(codeInvalidEndpoint)
 		}
 
 		return nil, transportError(e.Code)
@@ -342,7 +378,7 @@ func newHTTPProvider(o HTTPOptions, u *url.URL) (*HTTPProvider, error) {
 	client := &http.Client{
 		Timeout:       o.Timeout,
 		Transport:     tr,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return transportError("redirect_refused") },
+		CheckRedirect: func(*http.Request, []*http.Request) error { return transportError(codeRedirectRefused) },
 	}
 
 	return &HTTPProvider{
@@ -360,17 +396,17 @@ func decodeChatCompletion(ctx context.Context, raw []byte) (Completion, error) {
 	// Reject duplicate/ambiguous JSON and malformed Unicode in the HTTP envelope.
 	root, parseErr := jsonconfig.Parse(ctx, string(raw))
 	if parseErr != nil {
-		return Completion{}, reviewJSONError(parseErr, transportError("invalid_envelope"))
+		return Completion{}, reviewJSONError(parseErr, transportError(codeInvalidEnvelope))
 	}
 	// encoding/json accepts case-insensitive field aliases. Disallow ambiguous
 	// protocol fields even when their spellings differ only by case.
 	if chatEnvelopeAliases(root) {
-		return Completion{}, transportError("ambiguous_envelope")
+		return Completion{}, transportError(codeAmbiguousEnvelope)
 	}
 
 	var envelope chatEnvelope
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return Completion{}, transportError("invalid_envelope")
+		return Completion{}, transportError(codeInvalidEnvelope)
 	}
 
 	c, err := envelope.completion()

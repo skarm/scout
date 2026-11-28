@@ -49,6 +49,8 @@ const (
 	SelectedScope ScopePolicy = "selected"
 )
 
+const gateDigestVersion = "gate-v1"
+
 // Gate is immutable after construction and safe for concurrent evaluations.
 type Gate struct {
 	options Options
@@ -80,7 +82,7 @@ func New(options Options) (*Gate, error) {
 		Version string  `json:"version"`
 		Options Options `json:"options"`
 	}{
-		Version: "gate-v1",
+		Version: gateDigestVersion,
 		Options: options,
 	})
 	if err != nil {
@@ -89,7 +91,7 @@ func New(options Options) (*Gate, error) {
 
 	digest := sha256.Sum256(encoded)
 
-	return &Gate{options: options, digest: "sha256:" + hex.EncodeToString(digest[:])}, nil
+	return &Gate{options: options, digest: report.SHA256DigestPrefix + hex.EncodeToString(digest[:])}, nil
 }
 
 // Code is the machine contract shared by CLI output formats. Invalid documents
@@ -202,7 +204,7 @@ func (g *Gate) evaluatePackageApproval(run report.Run, valid bool, result *gateE
 	for _, target := range run.Targets {
 		artifact := target.Analysis.Artifact
 		if !artifact.InventoryComplete || target.Analysis.External != nil ||
-			!validPolicyDigest("sha256:"+artifact.SnapshotSHA256) || len(artifact.ExcludeGlobs) != 0 ||
+			!validPolicyDigest(report.SHA256DigestPrefix+artifact.SnapshotSHA256) || len(artifact.ExcludeGlobs) != 0 ||
 			artifact.IdentityScope != report.CapturedContentIdentity ||
 			len(artifact.Files) == 0 || !allFilesCaptured(artifact.Files) {
 			result.review("package_approval_unverified")
@@ -320,7 +322,7 @@ func (o Options) normalized() (Options, error) {
 		return Options{}, errors.New("invalid policy ID or blocking threshold")
 	}
 
-	if o.ApprovedSnapshotSHA256 != "" && !validPolicyDigest("sha256:"+o.ApprovedSnapshotSHA256) {
+	if o.ApprovedSnapshotSHA256 != "" && !validPolicyDigest(report.SHA256DigestPrefix+o.ApprovedSnapshotSHA256) {
 		return Options{}, errors.New("approved package SHA-256 must be 64 lowercase hexadecimal digits")
 	}
 
@@ -411,12 +413,11 @@ func admissionCode(state report.State, operation report.Operation, decision repo
 }
 
 func validPolicyDigest(value string) bool {
-	const prefix = "sha256:"
-	if !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+64 {
+	if !strings.HasPrefix(value, report.SHA256DigestPrefix) || len(value) != len(report.SHA256DigestPrefix)+2*sha256.Size {
 		return false
 	}
 
-	hexValue := strings.TrimPrefix(value, prefix)
+	hexValue := strings.TrimPrefix(value, report.SHA256DigestPrefix)
 	_, err := hex.DecodeString(hexValue)
 
 	return err == nil && hexValue == strings.ToLower(hexValue)

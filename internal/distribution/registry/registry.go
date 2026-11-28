@@ -64,6 +64,9 @@ type change struct {
 	BeforeSHA256   string `json:"before_sha256,omitempty"`
 	AfterSHA256    string `json:"after_sha256,omitempty"`
 }
+
+const comparisonSchema = "scout.registry-comparison/v1"
+
 type comparison struct {
 	Schema  string   `json:"schema"`
 	Changes []change `json:"changes"`
@@ -150,7 +153,7 @@ func Fetch(ctx context.Context, o Options) (Snapshot, error) {
 }
 
 func Compare(ctx context.Context, before, after Snapshot) (comparison, error) {
-	out := comparison{Schema: "scout.registry-comparison/v1", Changes: []change{}}
+	out := comparison{Schema: comparisonSchema, Changes: []change{}}
 	if ctx == nil {
 		return out, errors.New("registry comparison requires a context")
 	}

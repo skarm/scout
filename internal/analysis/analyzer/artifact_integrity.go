@@ -78,7 +78,7 @@ func (a integrityCheck) Rule() report.Rule {
 		Title:       title,
 		Description: title,
 		Severity:    severity,
-		Category:    "artifact-integrity",
+		Category:    categoryArtifactIntegrity,
 		Method:      "bounded-artifact-integrity",
 		Limitation:  "Adapted artifact signals, not proof of evasion or malicious intent. Unicode density and mixed-token scripts can have legitimate uses. Author filename/type hints are candidates; scanner-generated JSON labels are not author filename claims. No opaque payload is executed, decompiled or declared safe.",
 	}

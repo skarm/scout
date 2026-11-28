@@ -10,8 +10,11 @@ import (
 )
 
 const (
-	peImportRecordBytes       = 20
-	maxPEImportDirectoryBytes = 64 << 10
+	peImportRecordBytes              = 20
+	peImportNameRVAOffset            = 12
+	peImportNameRVABytes             = 4
+	maxPELibraryNameBytes     uint32 = 256
+	maxPEImportDirectoryBytes        = 64 << 10
 )
 
 func inspectPE(f io.ReaderAt, r *Report) error {
@@ -28,11 +31,11 @@ func inspectPE(f io.ReaderAt, r *Report) error {
 	case pe.IMAGE_FILE_MACHINE_ARM64:
 		r.Arch = "arm64"
 	default:
-		r.Issues = append(r.Issues, "unsupported_architecture")
+		r.Issues = append(r.Issues, issueUnsupportedArchitecture)
 	}
 
 	if file.Characteristics&pe.IMAGE_FILE_EXECUTABLE_IMAGE == 0 || file.Characteristics&pe.IMAGE_FILE_DLL != 0 {
-		r.Issues = append(r.Issues, "not_executable")
+		r.Issues = append(r.Issues, issueNotExecutable)
 	}
 
 	header, ok := file.OptionalHeader.(*pe.OptionalHeader64)
@@ -74,7 +77,7 @@ func peImports(file *pe.File, directory pe.DataDirectory) ([]string, error) {
 			return libraries, nil
 		}
 
-		name, err := peLibraryName(file, binary.LittleEndian.Uint32(descriptor[12:16]))
+		name, err := peLibraryName(file, binary.LittleEndian.Uint32(descriptor[peImportNameRVAOffset:peImportNameRVAOffset+peImportNameRVABytes]))
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +91,7 @@ func peImports(file *pe.File, directory pe.DataDirectory) ([]string, error) {
 func peLibraryName(file *pe.File, address uint32) (string, error) {
 	var name strings.Builder
 
-	for offset := range uint32(256) {
+	for offset := range maxPELibraryNameBytes {
 		if address == 0 || address+offset < address {
 			break
 		}

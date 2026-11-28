@@ -18,7 +18,7 @@ const (
 func hookScenarios(ctx context.Context, args []string, out, diag io.Writer) int {
 	fs := flag.NewFlagSet("hook-scenarios", flag.ContinueOnError)
 	fs.SetOutput(diag)
-	corpus := fs.String("corpus", "", "pinned expanded Shell hook corpus")
+	corpus := fs.String(flagCorpus, "", "pinned expanded Shell hook corpus")
 
 	if err := fs.Parse(args); err != nil {
 		return failure(diag, err)

@@ -9,7 +9,9 @@ import (
 
 // MaxSnapshotBytes bounds saved snapshots including the local envelope and
 // page receipts, which are additional to the raw response byte budget.
-const MaxSnapshotBytes = maxResponseBytes + (32 << 10)
+const MaxSnapshotBytes = maxResponseBytes + snapshotEnvelopeAllowance
+
+const snapshotEnvelopeAllowance = 32 << 10
 
 // EncodeSnapshot preserves the JSON record bytes received from the registry.
 // Re-escaping a record can grow it beyond the comparison parser's limit.
