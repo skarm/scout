@@ -1,5 +1,5 @@
-// Package archiveutil validates archive structure without extracting to disk.
-package archiveutil
+// Package artifactpath validates portable artifact paths and bounds namespace metadata.
+package artifactpath
 
 import (
 	"errors"
@@ -26,10 +26,10 @@ type pathNode struct {
 	explicit  bool
 }
 
-// ValidatePath applies one conservative path policy on every OS. ZIP names are
-// rejected, never cleaned into a different path. Backslashes and Windows device
-// names are rejected even on Linux. Unicode normalization is NOT implemented.
-func ValidatePath(name string, maxBytes, maxDepth int) error {
+// Validate checks a relative artifact path against portable naming and size rules.
+// It checks the original spelling and rejects backslashes, Windows device names
+// and ambiguous components on every platform.
+func Validate(name string, maxBytes, maxDepth int) error {
 	if len(name) > maxBytes || !utf8.ValidString(name) || !fs.ValidPath(name) || name == "." {
 		return errors.New("invalid or overlong relative path")
 	}

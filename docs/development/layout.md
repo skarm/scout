@@ -7,6 +7,7 @@ Scout uses one Go module. Public packages are `scout`, `report`, `policy`, `base
 
 - `cmd/scout` and `cmd/scout-dev` are the public and developer entry points.
 - `internal/capture` builds the inventory. `internal/syntax` parses captured sources and owns their coordinates.
+- `internal/artifactpath` checks portable relative paths and namespace collisions across capture, Git fetch and evaluation.
 - `internal/analysis` orchestrates checks and limits. `internal/signatures` owns native signature checks.
 - `internal/commands` owns CLI parsing, configuration and output. `internal/discovery` inventories installed components.
 - `internal/distribution` owns integration exports, registry snapshots and attestation checks.
@@ -22,6 +23,9 @@ coordinates belong to `internal/syntax`. Language packages export
 Shared checks belong to `analyzer`, facts to `check`, and quotas to `analysisbudget`.
 Consumers use check contracts directly from `check`. Filename-based display
 surfaces live in `syntax/filetype`; they never grant trust or suppress checks.
+
+`internal/dev/hookscenario` interprets pinned fixture scripts under finite command
+models. `internal/analysis/harness` traces installed hook declarations during a scan.
 
 `environment/surface.go` owns the passive fact inputs for joint environment
 analysis. `bundle/surface.go` implements their collection from prepared documents.

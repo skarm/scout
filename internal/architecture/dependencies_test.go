@@ -88,6 +88,7 @@ func TestPackageDependencyBoundaries(t *testing.T) {
 		root      string
 		forbidden []string
 	}{
+		{root: "fetch", forbidden: []string{"internal/capture"}},
 		{
 			root:      "osv",
 			forbidden: []string{"internal/syntax/frontend", "internal/signatures", "internal/analysis/dependencies", "internal/analysis/document", "internal/syntax/parse"},
@@ -165,7 +166,7 @@ func TestCaptureDoesNotDependOnAnalysisOrCommands(t *testing.T) {
 	for _, name := range productionPackages(t, "internal/capture") {
 		t.Run(name, func(t *testing.T) {
 			for imported := range localDependencies(t, name, map[string]bool{}) {
-				allowed := []string{"internal/buildinfo", "internal/capture", "internal/syntax", "internal/netpolicy", "internal/textmatch", "fetch", "report"}
+				allowed := []string{"internal/artifactpath", "internal/buildinfo", "internal/capture", "internal/syntax", "internal/netpolicy", "internal/textmatch", "fetch", "report"}
 				if !slices.ContainsFunc(allowed, func(prefix string) bool { return withinPackage(imported, prefix) }) {
 					t.Errorf("capture package %s depends on higher-level package %s", name, imported)
 				}

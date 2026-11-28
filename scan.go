@@ -12,6 +12,7 @@ import (
 	"github.com/skarm/scout/internal/analysis/environment"
 	"github.com/skarm/scout/internal/analysis/semantic"
 	"github.com/skarm/scout/internal/analysis/update"
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/capture/external"
 	"github.com/skarm/scout/internal/capture/ingest"
@@ -120,7 +121,7 @@ func (s *Scanner) validateTargets(ctx context.Context, targets []Target) error {
 		}
 
 		if target.kind == readerTarget {
-			if err := ingest.ValidatePath(target.name, s.options.Limits.Capture.MaxPathBytes, s.options.Limits.Capture.MaxDepth); err != nil {
+			if err := artifactpath.Validate(target.name, s.options.Limits.Capture.MaxPathBytes, s.options.Limits.Capture.MaxDepth); err != nil {
 				return &Error{Code: "invalid_reader_name", Cause: errors.Join(ErrInvalidInput, err)}
 			}
 		}
@@ -519,7 +520,7 @@ func capture(ctx context.Context, target Target, options Options) (artifact.Snap
 }
 
 func captureReader(ctx context.Context, target Target, c CaptureLimits) (artifact.Snapshot, *fetch.Provenance, error) {
-	if err := ingest.ValidatePath(target.name, c.MaxPathBytes, c.MaxDepth); err != nil {
+	if err := artifactpath.Validate(target.name, c.MaxPathBytes, c.MaxDepth); err != nil {
 		return artifact.Snapshot{}, nil, err
 	}
 
@@ -604,7 +605,7 @@ func captureRemote(ctx context.Context, target Target, options Options) (artifac
 		return snapshot, &payload.Source, err
 	}
 
-	if err := ingest.ValidatePath(payload.Name, options.Limits.Capture.MaxPathBytes, options.Limits.Capture.MaxDepth); err != nil {
+	if err := artifactpath.Validate(payload.Name, options.Limits.Capture.MaxPathBytes, options.Limits.Capture.MaxDepth); err != nil {
 		payload.Source.Status = "rejected_path"
 		return artifact.Snapshot{}, &payload.Source, err
 	}

@@ -11,5 +11,13 @@ type (
 )
 
 func Rules() []analyzer {
-	return []analyzer{goCheck{kind: goShell}, goCheck{kind: goSensitiveRead}, goCheck{kind: goDirectHTTP}, goFlow{}, goDatabaseCheck{}, goTLSCheck{}}
+	return append(FlowRules(), DatabaseAndTLSRules()...)
+}
+
+func FlowRules() []analyzer {
+	return []analyzer{goCheck{kind: goShell}, goCheck{kind: goSensitiveRead}, goCheck{kind: goDirectHTTP}, goFlow{}}
+}
+
+func DatabaseAndTLSRules() []analyzer {
+	return []analyzer{goDatabaseCheck{}, goTLSCheck{}}
 }

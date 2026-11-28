@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/capture/archiveutil"
 	"github.com/skarm/scout/report"
 )
@@ -215,7 +216,7 @@ func gzipMemberName(o *operation, gz *gzip.Reader) string {
 	}
 
 	if gz.Name != "" {
-		if err := archiveutil.ValidatePath(gz.Name, maxMemberPathBytes, maxMemberPathDepth); err != nil {
+		if err := artifactpath.Validate(gz.Name, maxMemberPathBytes, maxMemberPathDepth); err != nil {
 			o.issue("gzip_name_untrusted", "Gzip filename is unsafe or ambiguous; a synthetic name was used.")
 		} else {
 			name = gz.Name
@@ -238,7 +239,7 @@ func extractGZIPMetadata(o *operation, comment string, extra []byte) error {
 func extractTAR(o *operation) error {
 	o.role = "archive_member"
 	data := o.parent.file.Content()
-	names := archiveutil.Namespace{MaxNodes: o.b.limits.MaxEntries - o.b.result.Report.EntriesVisited}
+	names := artifactpath.Namespace{MaxNodes: o.b.limits.MaxEntries - o.b.result.Report.EntriesVisited}
 
 	at := 0
 	for at < len(data) {
@@ -257,7 +258,7 @@ func extractTAR(o *operation) error {
 	return io.ErrUnexpectedEOF
 }
 
-func extractTARMember(o *operation, names *archiveutil.Namespace, data string, at int) (int, bool, error) {
+func extractTARMember(o *operation, names *artifactpath.Namespace, data string, at int) (int, bool, error) {
 	if err := o.b.ctx.Err(); err != nil {
 		return at, false, err
 	}
@@ -281,7 +282,7 @@ func extractTARMember(o *operation, names *archiveutil.Namespace, data string, a
 	}
 
 	name := strings.TrimSuffix(hdr.Name, "/")
-	if err := archiveutil.ValidatePath(name, maxMemberPathBytes, maxMemberPathDepth); err != nil {
+	if err := artifactpath.Validate(name, maxMemberPathBytes, maxMemberPathDepth); err != nil {
 		return at, false, err
 	}
 

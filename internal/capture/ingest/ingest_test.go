@@ -18,53 +18,6 @@ import (
 	"github.com/skarm/scout/report"
 )
 
-func TestPortablePaths(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		ok   bool
-	}{
-		{name: "SKILL.md", ok: true},
-		{name: "скрипты/a.txt", ok: true},
-		{name: ".git/config", ok: true},
-		{name: "__pycache__/a.pyc", ok: true},
-		{name: "", ok: false},
-		{name: ".", ok: false},
-		{name: "..", ok: false},
-		{name: "../a", ok: false},
-		{name: "/etc/passwd", ok: false},
-		{name: "C:/x", ok: false},
-		{name: `a\..\b`, ok: false},
-		{name: "a//b", ok: false},
-		{name: "a/./b", ok: false},
-		{name: "a/../b", ok: false},
-		{name: "NUL.txt", ok: false},
-		{name: "con", ok: false},
-		{name: "COM1.txt", ok: false},
-		{name: "LPT¹", ok: false},
-		{name: "a. ", ok: false},
-		{name: " a", ok: false},
-		{name: "a/b.", ok: false},
-		{name: "x:y", ok: false},
-		{name: "a\x00", ok: false},
-		{name: "\xff", ok: false},
-		{name: "a\u202e.md", ok: false},
-	} {
-		name := tc.name
-		if name == "" {
-			name = "empty_path"
-		}
-		t.Run(name, func(t *testing.T) {
-			err := ingest.ValidatePath(tc.name, 1024, 32)
-			if (err == nil) != tc.ok {
-				t.Fatalf("ok=%v: %v", tc.ok, err)
-			}
-		})
-	}
-	if ingest.ValidatePath("aaa", 2, 32) == nil || ingest.ValidatePath("a/b", 1024, 1) == nil {
-		t.Fatal("budget ignored")
-	}
-}
-
 func TestZIPValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -228,18 +181,6 @@ func TestDirectoryLimits(t *testing.T) {
 			}
 		})
 	}
-}
-
-func FuzzValidatePath(f *testing.F) {
-	for _, s := range []string{"SKILL.md", "../x", "NUL", "a\x00", "__pycache__/x.pyc"} {
-		f.Add(s)
-	}
-	f.Fuzz(func(t *testing.T, s string) {
-		if len(s) > 8192 {
-			t.Skip()
-		}
-		_ = ingest.ValidatePath(s, 1024, 32)
-	})
 }
 
 func FuzzZIPNoPanic(f *testing.F) {

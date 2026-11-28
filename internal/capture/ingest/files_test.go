@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/capture/ingest"
 	"github.com/skarm/scout/report"
 )
@@ -38,7 +39,7 @@ func TestSelectedFilesCaptureExactBytesAndEnforceBounds(t *testing.T) {
 			t.Fatal(target)
 		}
 	}
-	if err := ingest.ValidatePath("CON.txt", limits.MaxPathBytes, limits.MaxDepth); err == nil {
+	if err := artifactpath.Validate("CON.txt", limits.MaxPathBytes, limits.MaxDepth); err == nil {
 		t.Fatal("reserved device name accepted")
 	}
 	// Windows reserves CON even with an extension; it cannot be a file fixture.

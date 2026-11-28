@@ -16,8 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/skarm/scout/internal/capture/archiveutil"
-	"github.com/skarm/scout/internal/capture/ingest"
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/capture/rootfs"
 )
 
@@ -81,7 +80,7 @@ func ValidID(s string) bool {
 		}
 	}
 
-	return ingest.ValidatePath(s, 64, 1) == nil
+	return artifactpath.Validate(s, 64, 1) == nil
 }
 
 // CaptureError identifies the location and reason for a failed capture.
@@ -270,7 +269,7 @@ func validateCapturePath(id, path, name string) error {
 		return captureLimit("path_depth_limit", "snapshot path too deep", id, path, "components", int64(depth), maxDepth)
 	}
 
-	if err := ingest.ValidatePath(name, maxPath, maxDepth); err != nil {
+	if err := artifactpath.Validate(name, maxPath, maxDepth); err != nil {
 		return atPath("invalid_entry_path", id, path, err)
 	}
 
@@ -504,13 +503,13 @@ func captureDirectory(ctx context.Context, fs *rootfs.Root, f *os.File, info os.
 
 func validateEntries(r Root, count, total *int) error {
 	names := map[string]bool{}
-	namespace := archiveutil.Namespace{MaxNodes: maxEntries}
+	namespace := artifactpath.Namespace{MaxNodes: maxEntries}
 
 	for _, e := range r.Entries {
 		*count++
 
 		*total += len(e.Data)
-		if *count > maxEntries || *total > maxContent || len(e.Data) > maxFile || ingest.ValidatePath(e.Path, maxPath, maxDepth) != nil {
+		if *count > maxEntries || *total > maxContent || len(e.Data) > maxFile || artifactpath.Validate(e.Path, maxPath, maxDepth) != nil {
 			return errors.New("invalid snapshot entry or limit")
 		}
 

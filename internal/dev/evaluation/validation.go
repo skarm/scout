@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/skarm/scout/internal/capture/archiveutil"
+	"github.com/skarm/scout/internal/artifactpath"
 )
 
 const (
@@ -124,7 +124,7 @@ func boundedText(text string, limit int) bool {
 // Keep the same file namespace on Unix and Windows, including reserved device
 // names, alternate streams and case-insensitive directory aliases.
 func portablePath(name string) bool {
-	if archiveutil.ValidatePath(name, maxCasePathBytes, MaxPackageDepth) != nil || strings.ContainsFunc(name, func(r rune) bool { return r < 32 || r > 126 }) {
+	if artifactpath.Validate(name, maxCasePathBytes, MaxPackageDepth) != nil || strings.ContainsFunc(name, func(r rune) bool { return r < 32 || r > 126 }) {
 		return false
 	}
 
@@ -138,7 +138,7 @@ func portablePath(name string) bool {
 }
 
 func validateFiles(files []File) error {
-	namespace := archiveutil.Namespace{MaxNodes: MaxPackageEntries}
+	namespace := artifactpath.Namespace{MaxNodes: MaxPackageEntries}
 
 	for _, file := range files {
 		if !portablePath(file.Path) {

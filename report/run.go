@@ -227,15 +227,24 @@ func (d Document) scopeSuppressions() (Document, error) {
 		return d, nil
 	}
 
-	targets := make(map[string]map[string]struct{})
+	targets := make(map[string]map[string]struct{}, len(d.Evaluation.Suppressed))
+	for _, approval := range d.Evaluation.Suppressed {
+		targets[approval.FindingID] = nil
+	}
 
 	for _, target := range d.Run.Targets {
 		for _, finding := range target.Analysis.Findings {
-			if targets[finding.ID] == nil {
-				targets[finding.ID] = make(map[string]struct{})
+			matched, tracked := targets[finding.ID]
+			if !tracked {
+				continue
 			}
 
-			targets[finding.ID][target.ID] = struct{}{}
+			if matched == nil {
+				matched = make(map[string]struct{})
+				targets[finding.ID] = matched
+			}
+
+			matched[target.ID] = struct{}{}
 		}
 	}
 

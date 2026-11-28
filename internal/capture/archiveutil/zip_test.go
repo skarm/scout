@@ -84,37 +84,6 @@ func TestZIPEntryCallbackAndArguments(t *testing.T) {
 	}
 }
 
-func TestNamespace(t *testing.T) {
-	for _, tc := range []struct {
-		a, b string
-		dir  bool
-	}{
-		{a: "a", b: "A", dir: false}, {a: "K", b: "k", dir: false}, {a: "a", b: "a/b", dir: false}, {
-			a:   "a/b",
-			b:   "a",
-			dir: false,
-		}, {
-			a:   "a",
-			b:   "a",
-			dir: true,
-		},
-	} {
-		t.Run(tc.a+"/"+tc.b, func(t *testing.T) {
-			n := archiveutil.Namespace{MaxNodes: 10}
-			if e := n.Add(tc.a, tc.dir); e != nil {
-				t.Fatal(e)
-			}
-			if n.Add(tc.b, tc.dir) == nil {
-				t.Fatal("namespace conflict accepted")
-			}
-		})
-	}
-	n := archiveutil.Namespace{MaxNodes: 1}
-	if n.Add("a/b", false) == nil {
-		t.Fatal("implied directories unbounded")
-	}
-}
-
 func makeZIP(t testing.TB, names, contents []string) []byte {
 	t.Helper()
 	var b bytes.Buffer

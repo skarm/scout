@@ -6,12 +6,9 @@ import (
 	"errors"
 	"flag"
 	"io"
-	"slices"
 	"time"
 
-	"github.com/skarm/scout/internal/analysis/hookscenario"
 	"github.com/skarm/scout/internal/dev/evaluation"
-	"github.com/skarm/scout/report"
 )
 
 const (
@@ -48,9 +45,7 @@ func hookScenarios(ctx context.Context, args []string, out, diag io.Writer) int 
 		return failure(diag, err)
 	}
 
-	if slices.ContainsFunc(result.Scenarios, func(item hookscenario.Result) bool {
-		return item.Coverage.Completeness != report.Complete
-	}) {
+	if !result.Complete() {
 		return 1
 	}
 

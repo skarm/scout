@@ -20,8 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/skarm/scout"
-	"github.com/skarm/scout/internal/capture/archiveutil"
-	"github.com/skarm/scout/internal/capture/ingest"
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/dev/replaywire"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/policy"
@@ -309,12 +308,12 @@ func prepareRecord(id string, files []encodedFile, limits scout.Limits) record {
 		return value
 	}
 
-	names := archiveutil.Namespace{MaxNodes: min(limits.Capture.MaxEntries, limits.MaxCaptureEntries)}
+	names := artifactpath.Namespace{MaxNodes: min(limits.Capture.MaxEntries, limits.MaxCaptureEntries)}
 
 	var total int64
 
 	for _, file := range files {
-		if ingest.ValidatePath(file.name, limits.Capture.MaxPathBytes, limits.Capture.MaxDepth) != nil || names.Add(file.name, false) != nil {
+		if artifactpath.Validate(file.name, limits.Capture.MaxPathBytes, limits.Capture.MaxDepth) != nil || names.Add(file.name, false) != nil {
 			value.rejection = "unsupported captured path"
 			return value
 		}
@@ -597,7 +596,7 @@ func writeCapturedFile(directory string, file capturedFile) error {
 		mode = 0o700
 	}
 
-	// Captured names pass ingest.ValidatePath before materialization in this private staging directory.
+	// Captured names pass artifactpath.Validate before materialization in this private staging directory.
 	out, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode) //nolint:gosec // G304: admitted local path within a fresh private staging directory.
 	if err != nil {
 		return err

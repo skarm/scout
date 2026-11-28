@@ -1,5 +1,5 @@
 //nolint:testpackage // Differential oracle covers the private Windows device grammar, including superscript digits.
-package archiveutil
+package artifactpath
 
 import (
 	"regexp"

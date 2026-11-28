@@ -1,3 +1,4 @@
+// Package archiveutil validates bounded ZIP archives without extracting files.
 package archiveutil
 
 import (
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/report"
 )
 
@@ -92,7 +94,7 @@ func OpenZIPWithBudget(ctx context.Context, data []byte, maxEntries, maxPath, ma
 		return nil, err
 	}
 
-	names := Namespace{MaxNodes: maxEntries}
+	names := artifactpath.Namespace{MaxNodes: maxEntries}
 
 	for _, entry := range zr.File {
 		if err := ctx.Err(); err != nil {
@@ -129,9 +131,9 @@ func validateZIPArguments(ctx context.Context, maxEntries, maxPath, maxDepth int
 	return nil
 }
 
-func validateZIPEntry(entry *zip.File, names *Namespace, maxPath, maxDepth int) error {
+func validateZIPEntry(entry *zip.File, names *artifactpath.Namespace, maxPath, maxDepth int) error {
 	name := strings.TrimSuffix(entry.Name, "/")
-	if err := ValidatePath(name, maxPath, maxDepth); err != nil {
+	if err := artifactpath.Validate(name, maxPath, maxDepth); err != nil {
 		return errors.New("unsafe ZIP path")
 	}
 

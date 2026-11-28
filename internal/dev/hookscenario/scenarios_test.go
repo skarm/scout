@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/skarm/scout/internal/analysis/hookscenario"
+	"github.com/skarm/scout/internal/dev/hookscenario"
 	"github.com/skarm/scout/report"
 )
 

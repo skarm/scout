@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/skarm/scout/internal/capture/archiveutil"
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/report"
 )
 
@@ -87,7 +87,7 @@ func parseGitTree(listing string) ([]gitFile, error) {
 		return nil, fail("git_invalid_tree")
 	}
 
-	names := archiveutil.Namespace{MaxNodes: maxGitFiles * 2}
+	names := artifactpath.Namespace{MaxNodes: maxGitFiles * 2}
 
 	var files []gitFile
 	for entry := range strings.SplitSeq(records, "\x00") {
@@ -111,7 +111,7 @@ func parseGitTree(listing string) ([]gitFile, error) {
 			return nil, fail("git_unsupported_tree_entry")
 		}
 
-		if archiveutil.ValidatePath(name, report.MaxArtifactPathBytes, report.MaxArtifactPathDepth) != nil || names.Add(name, false) != nil {
+		if artifactpath.Validate(name, report.MaxArtifactPathBytes, report.MaxArtifactPathDepth) != nil || names.Add(name, false) != nil {
 			return nil, fail("git_unsafe_tree_path")
 		}
 

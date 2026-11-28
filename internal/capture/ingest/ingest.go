@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/skarm/scout/internal/capture/archiveutil"
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/capture/rootfs"
 	"github.com/skarm/scout/internal/syntax/filetype"
@@ -33,7 +33,7 @@ type builder struct {
 	consumed        int64
 	entries         int
 	fileEntries     int
-	names           archiveutil.Namespace
+	names           artifactpath.Namespace
 	exclusions      SkillExclusions
 	skillScopeError error
 }
@@ -76,7 +76,7 @@ func readPath(ctx context.Context, target string, limits report.CaptureLimits) (
 }
 
 func newBuilder(l report.CaptureLimits) *builder {
-	return &builder{limits: l, complete: true, names: archiveutil.Namespace{MaxNodes: l.MaxEntries}}
+	return &builder{limits: l, complete: true, names: artifactpath.Namespace{MaxNodes: l.MaxEntries}}
 }
 
 func inspectInput(target string) (os.FileInfo, error) {
@@ -104,7 +104,7 @@ func readFile(ctx context.Context, target string, info os.FileInfo, limits repor
 		}
 
 		name := filepath.Base(target)
-		if err := ValidatePath(name, limits.MaxPathBytes, limits.MaxDepth); err != nil {
+		if err := artifactpath.Validate(name, limits.MaxPathBytes, limits.MaxDepth); err != nil {
 			return artifact.Snapshot{}, fmt.Errorf("invalid input filename: %w", err)
 		}
 		// Preserve the exact container, including metadata and padding. Member
@@ -115,7 +115,7 @@ func readFile(ctx context.Context, target string, info os.FileInfo, limits repor
 	b := newBuilder(limits)
 
 	name := filepath.Base(target)
-	if err := ValidatePath(name, limits.MaxPathBytes, limits.MaxDepth); err != nil {
+	if err := artifactpath.Validate(name, limits.MaxPathBytes, limits.MaxDepth); err != nil {
 		return artifact.Snapshot{}, fmt.Errorf("invalid input filename: %w", err)
 	}
 
@@ -352,7 +352,7 @@ func (b *builder) visitEntry(ctx context.Context, root *rootfs.Root, dir string,
 }
 
 func (b *builder) inventoryEntry(name string, directory bool) bool {
-	if err := ValidatePath(name, b.limits.MaxPathBytes, b.limits.MaxDepth); err != nil {
+	if err := artifactpath.Validate(name, b.limits.MaxPathBytes, b.limits.MaxDepth); err != nil {
 		b.skip(name, "unknown", "invalid_path", "Entry has an unsupported or ambiguous path; descendants were not visited.", -1)
 		return false
 	}

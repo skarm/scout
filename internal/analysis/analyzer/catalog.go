@@ -27,15 +27,14 @@ func NewCatalog(selection Selection) Catalog {
 	catalog.base = append(catalog.base, providerTokenRules()...)
 	catalog.base = append(catalog.base, opaque{}, moduleCheck{id: ruleSC002}, moduleCheck{id: ruleSC003})
 	catalog.base = append(catalog.base, rendertext.Rules()...)
-	// Preserve the established order: Go database/TLS checks follow SQL.
-	goRules := golang.Rules()
-	catalog.base = append(catalog.base, goRules[:4]...)
+	catalog.base = append(catalog.base, golang.FlowRules()...)
 	catalog.base = append(catalog.base, shell.Rules()...)
 	catalog.base = append(catalog.base, agentRules()...)
 	catalog.base = append(catalog.base, instructionRules()...)
 	catalog.base = append(catalog.base, javascript.Rules()...)
 	catalog.base = append(catalog.base, sql.Rules()...)
-	catalog.base = append(catalog.base, goRules[4:]...)
+	// Preserve the established order: Go database/TLS checks follow SQL.
+	catalog.base = append(catalog.base, golang.DatabaseAndTLSRules()...)
 	catalog.base = append(catalog.base, bundle.Rules()...)
 	catalog.base = append(catalog.base, artifactIntegrityRules()...)
 
