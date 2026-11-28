@@ -49,6 +49,17 @@ func InstructionFile(host, kind, name string) bool {
 		return ext == ".toml"
 	}
 
+	if host == report.HostQwenCode {
+		switch kind {
+		case "command":
+			return ext == ".md" || ext == ".toml"
+		case "agent":
+			return ext == ".md" || ext == ".yaml" || ext == ".yml"
+		case "workflow":
+			return path.Ext(name) == ".js"
+		}
+	}
+
 	if host == report.HostGrokCLI && kind == "workflow" {
 		return ext == ".rhai"
 	}

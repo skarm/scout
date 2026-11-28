@@ -354,7 +354,7 @@ func bindCommon(fs *flag.FlagSet, r *request) {
 	fs.BoolVar(&r.settings.Policy.AllowGlobs, flagAllowBaselineGlobs, r.settings.Policy.AllowGlobs, "permit broad approvals")
 	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, flagFailOn, "minimum blocking `SEVERITY`: info, low, medium, high or critical")
 	fs.Var(stringSetting[policy.ScopePolicy]{value: &r.settings.Policy.Scope}, flagScope, "coverage `POLICY`: conservative (default) or selected")
-	fs.StringVar(&r.settings.Scanner.Harness.Host, flagHarness, r.settings.Scanner.Harness.Host, "`HOST` interpretation: auto, claude-code, codex, cursor, copilot-cli, opencode, gemini-cli, openclaw, grok-cli, deepseek-harness, zcode or agent-skills")
+	fs.StringVar(&r.settings.Scanner.Harness.Host, flagHarness, r.settings.Scanner.Harness.Host, "`HOST` interpretation: auto, claude-code, codex, cursor, copilot-cli, opencode, gemini-cli, openclaw, grok-cli, deepseek-harness, zcode, qwen-code or agent-skills")
 	fs.IntVar(&r.settings.Scanner.Concurrency.Workers, flagWorkers, r.settings.Scanner.Concurrency.Workers, "analyzer workers shared across targets (1..32)")
 	fs.IntVar(&r.settings.Scanner.Concurrency.Targets, flagTargetWorkers, r.settings.Scanner.Concurrency.Targets, "concurrent targets (1..32)")
 	fs.DurationVar(&r.settings.Scanner.Limits.Timeout, flagTimeout, r.settings.Scanner.Limits.Timeout, "whole operation timeout")

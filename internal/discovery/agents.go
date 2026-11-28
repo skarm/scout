@@ -159,6 +159,26 @@ var agentLayouts = []agentLayout{
 			{"AGENTS.md", (*tree).geminiContext},
 		},
 	},
+	{
+		id: report.HostQwenCode, label: "Qwen Code", homeFlag: "qwen-home", homeEnv: "QWEN_HOME",
+		homeOverride: func(o *Options) *string { return &o.QwenHome },
+		user:         []location{{".agents/skills", (*tree).qwenSkills}, {agentconfig.QwenContext, (*tree).geminiContext}},
+		defaultHome:  []location{{artifact.QwenDirectory, (*tree).qwenUser}},
+		relocated:    []location{{".", (*tree).qwenUser}},
+		project: []location{
+			{artifact.QwenDirectory, (*tree).qwenDirectory},
+			{artifact.MCPConfig, (*tree).qwenMCP},
+			{artifact.QwenLSP, (*tree).qwenLSP},
+			{"AGENTS.md", (*tree).geminiContext},
+			{agentconfig.QwenContext, (*tree).geminiContext},
+			{".agents/skills", (*tree).qwenSkills},
+		},
+		system: []location{
+			{artifact.QwenSettings, (*tree).qwenSettings},
+			{artifact.QwenSystemDefaults, (*tree).qwenSettings},
+		},
+		systemDefault: "/etc/qwen-code", systemDarwin: "/Library/Application Support/QwenCode", systemWindows: `C:\ProgramData\qwen-code`,
+	},
 }
 
 // AgentSelectors returns the discovery selectors in CLI help order.

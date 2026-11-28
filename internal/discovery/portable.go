@@ -48,7 +48,7 @@ func (t *tree) portablePlugin(dir, file string, manifest *jsonconfig.Node, versi
 
 	plugin.portableMCP(path.Join(dir, agentplugins.MCPFile), version)
 
-	if version == agentplugins.V1_1 {
+	if version == agentplugins.V1_1 && t.agent != report.HostQwenCode {
 		plugin.portableHooks(dir, version)
 	}
 
@@ -76,6 +76,10 @@ func (t *tree) portableMCP(file string, version agentplugins.Version) {
 
 		if !agentplugins.ValidMCPServer(member.Value) {
 			t.b.issue(codeInvalidMCPConfig, t.absolute(file))
+			continue
+		}
+
+		if t.agent == report.HostQwenCode && agentconfig.QwenPortableSSE(member.Value) {
 			continue
 		}
 

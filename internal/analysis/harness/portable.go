@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/skarm/scout/internal/agentconfig"
 	"github.com/skarm/scout/internal/agentplugins"
 	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/capture/artifact"
@@ -52,7 +53,7 @@ func (p *plugin) discoverPortable() {
 
 	p.portableMCP()
 
-	if p.portable == agentplugins.V1_1 {
+	if p.portable == agentplugins.V1_1 && p.host != report.HostQwenCode {
 		p.portableHooks()
 	}
 
@@ -64,7 +65,9 @@ func (p *plugin) discoverPortable() {
 		p.portableCopilot()
 	}
 
-	p.discoverHostConfigs()
+	if p.host != report.HostQwenCode {
+		p.discoverHostConfigs()
+	}
 }
 
 func (p *plugin) portableMCP() {
@@ -88,6 +91,10 @@ func (p *plugin) portableMCP() {
 
 		if !agentplugins.ValidMCPServer(member.Value) {
 			p.issue(issuePortableMCPServerInvalid, e.Meta.Path, report.OutcomePartial)
+			continue
+		}
+
+		if p.host == report.HostQwenCode && agentconfig.QwenPortableSSE(member.Value) {
 			continue
 		}
 

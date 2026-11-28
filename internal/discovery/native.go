@@ -136,7 +136,7 @@ func (t *tree) instructions(root, kind string) {
 			file := path.Join(dir, entry.Name())
 			if entry.Type().IsRegular() && agentconfig.InstructionFile(t.agent, kind, file) && t.read(file, true) != nil {
 				name := strings.TrimSuffix(entry.Name(), path.Ext(entry.Name()))
-				if t.agent == report.HostGeminiCLI && kind == "command" {
+				if (t.agent == report.HostGeminiCLI || t.agent == report.HostQwenCode) && kind == "command" {
 					name = strings.ReplaceAll(strings.TrimSuffix(strings.TrimPrefix(file, root+"/"), path.Ext(file)), "/", ":")
 				}
 

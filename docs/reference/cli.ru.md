@@ -82,10 +82,10 @@ scout version
 
 ## Обнаружение окружения
 
-`scout discover` выводит инвентарь Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness и ZCode. Флаг `--scan` передаёт найденные
+`scout discover` выводит инвентарь Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode и Qwen Code. Флаг `--scan` передаёт найденные
 корни существующему Scanner. См. [расположения, формат и ограничения](../user/discovery.ru.md).
 
-- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode` (`-a`): агент; по умолчанию `all`.
+- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code` (`-a`): агент; по умолчанию `all`.
 - `--home DIR`: домашний каталог; по умолчанию каталог текущего пользователя.
 - `--codex-home DIR`, `--claude-home DIR`, `--cursor-home DIR`, `--copilot-home DIR`, `--opencode-home DIR`: явные каталоги конфигурации агентов.
   Без `--home` учитываются `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса.
@@ -94,6 +94,7 @@ scout version
 - `--grok-home DIR` указывает непосредственно на каталог конфигурации Grok. Без `--home` учитывается `GROK_HOME`.
 - `--deepseek-home DIR` указывает непосредственно на каталог DeepSeek Harness. Без `--home` учитывается `DSH_HOME`.
 - `--zcode-home DIR` указывает непосредственно на каталог ZCode, по умолчанию `~/.zcode`.
+- `--qwen-home DIR` указывает непосредственно на каталог Qwen Code. По умолчанию используется `QWEN_HOME` или `~/.qwen`. При явном `--home` переменная окружения игнорируется.
 - `--project DIR`: повторяемый выбранный проект; по умолчанию текущий каталог.
 - `--no-project`: исключить проекты; по умолчанию `false`.
 - `--system[=BOOL]`: известные системные расположения; по умолчанию `true`.
@@ -108,7 +109,7 @@ scout version
   задаются после `--`. Флаги инвентаря `--format`/`--output` в этом режиме отвергаются.
 - `--snapshot FILE` (`-s`) сохраняет найденное окружение. Выберите одного агента
   и передайте флаги сканирования после `--`.
-- `--kind skill|plugin|mcp-server|command|hook|agent|rule|tool|lsp-server|workflow` (`-k`): повторяемый выбор типа компонентов;
+- `--kind skill|plugin|mcp-server|command|hook|agent|rule|tool|lsp-server|workflow|channel` (`-k`): повторяемый выбор типа компонентов;
   без фильтра сохраняются исходные сгруппированные корни.
 - `--include-path PATH`: повторяемое пересечение с найденными корнями; пути вне
   инвентаря не добавляются.
@@ -136,7 +137,7 @@ scout version
   reviewer; `custom` допускает явный выбор проверок. Aliases CLI: `extended` =
   `standard`, `semantic` = `review`, `basic` = `custom` со всеми отключёнными
   необязательными статическими проверками.
-- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|agent-skills`: интерпретация деклараций агентов
+- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code|agent-skills`: интерпретация деклараций агентов
   и плагинов; по умолчанию `auto`.
 - `--stdin NAME` (`-i`) читает один вход из stdin. Укажите относительное имя файла,
   например `SKILL.md`, для определения формата и координат исходников.

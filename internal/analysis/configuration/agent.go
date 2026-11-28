@@ -323,7 +323,7 @@ func (a agentConfigCheck) hookState(f document.File, u document.Unit, root *json
 			continue
 		}
 
-		if scope.Host == report.HostGeminiCLI || scope.Host == report.HostGrokCLI || scope.Host == report.HostZCode {
+		if scope.Host == report.HostGeminiCLI || scope.Host == report.HostGrokCLI || scope.Host == report.HostZCode || scope.Host == report.HostQwenCode {
 			return hookpolicy.State{}
 		}
 
@@ -449,7 +449,7 @@ func inspectCommandHooks(ctx context.Context, hooks *jsonconfig.Node, host strin
 			return
 		}
 
-		if host == report.HostGrokCLI && !hookevent.Grok(event.Key) {
+		if (host == report.HostGrokCLI || host == report.HostQwenCode) && !hookevent.ForHost(host, event.Key) {
 			continue
 		}
 
@@ -535,8 +535,8 @@ func (a agentConfigCheck) serverWithHost(server *jsonconfig.Node, host string, e
 	case ruleMC001:
 		inspectPlaintextServer(server.Get("url"), emit)
 
-		if host == report.HostGeminiCLI {
-			inspectPlaintextServer(server.Get(agentconfig.GeminiHTTPURL), emit)
+		if host == report.HostGeminiCLI || host == report.HostQwenCode {
+			inspectPlaintextServer(server.Get(agentconfig.StreamableHTTPURL), emit)
 		}
 	case ruleMC002:
 		inspectServerCredentials(server, host, emit)
@@ -602,8 +602,8 @@ func inspectServerCredentials(server *jsonconfig.Node, host string, emit func(so
 
 	inspectURLCredential(server.Get("url"), emit)
 
-	if host == report.HostGeminiCLI {
-		inspectURLCredential(server.Get(agentconfig.GeminiHTTPURL), emit)
+	if host == report.HostGeminiCLI || host == report.HostQwenCode {
+		inspectURLCredential(server.Get(agentconfig.StreamableHTTPURL), emit)
 	}
 }
 
@@ -688,7 +688,7 @@ func (a agentConfigCheck) inspectDeepSeekServers(ctx context.Context, n *jsoncon
 
 func nativeGroupedHookScope(f document.File, u document.Unit) bool {
 	return u.Origin == "file" && slices.ContainsFunc(f.ConfigScopes(), func(scope document.ConfigScope) bool {
-		return scope.Role == report.ComponentHookConfig && (scope.Host == report.HostZCode ||
+		return scope.Role == report.ComponentHookConfig && (scope.Host == report.HostZCode || scope.Host == report.HostQwenCode ||
 			scope.Host == report.HostGrokCLI && scope.Span == u.Span)
 	})
 }

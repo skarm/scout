@@ -2,7 +2,7 @@
 
 [English](discovery.md) · Русский
 
-`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness и ZCode перед проверкой
+`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode и Qwen Code перед проверкой
 их файлов. Команда читает конфигурации и манифесты без запуска MCP-серверов,
 выполнения команд, подстановки переменных окружения из файлов и сетевых запросов.
 
@@ -300,3 +300,24 @@ scout discover --agent codex --kind skill \
 в эту команду не входит.
 
 [Навыки Codex](https://developers.openai.com/codex/skills) · [Упаковка плагинов Codex](https://developers.openai.com/plugins/build/plugins) · [Области MCP в Claude](https://code.claude.com/docs/en/mcp) · [Навыки Claude](https://code.claude.com/docs/en/skills) · [Манифесты плагинов Claude](https://code.claude.com/docs/en/plugins-reference)
+
+### Qwen Code
+
+`discover --agent qwen-code` находит пользовательский и проектный
+`.qwen/settings.json`, проектные `.mcp.json` и `.lsp.json`, а при включённом
+системном поиске и стандартные системные настройки. Каталог пользователя
+задают `--qwen-home` или `QWEN_HOME`. Scout собирает объявления MCP-серверов и
+групповых хуков, команды Markdown и TOML, субагентов, правила, навыки первого
+уровня из `.qwen/skills` и `.agents/skills`, JavaScript-сценарии и стандартные
+файлы инструкций.
+[Настройки Qwen Code](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/settings/) · [Хуки Qwen Code](https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks/) · [Навыки Qwen Code](https://qwenlm.github.io/qwen-code-docs/en/users/features/skills/)
+
+Scout читает нативные `qwen-extension.json` и переносимые пакеты Agent Plugins v1
+в пользовательском каталоге расширений. Нативный пакет может объявлять
+MCP-серверы, хуки и LSP-серверы во встроенном или отдельном файле, контекст,
+команды, субагентов, навыки, сценарии и точки входа каналов. Для отдельного
+файла настроек или переносимого пакета вне структуры каталогов Qwen Code
+используйте `scout scan --harness qwen-code PATH`. Сканирование фиксирует
+декларации в захваченных файлах. Действующие разрешения, состояние установки
+расширений, окружение процесса и внешние пути зависят от среды выполнения.
+[Формат расширений Qwen Code](https://qwenlm.github.io/qwen-code-docs/en/users/extension/introduction/) · [Agent Plugins v1 в Qwen Code](https://qwenlm.github.io/qwen-code-docs/en/users/extension/agent-plugins/)

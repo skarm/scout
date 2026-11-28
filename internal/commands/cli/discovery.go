@@ -147,7 +147,7 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 	fs.StringVar(&a.output, flagOutput, "", "inventory destination outside selected configuration locations; default stdout")
 	fs.StringVar(&a.snapshot, flagSnapshot, "", "save discovered environment and inspection; scanner flags follow --")
 	fs.BoolVar(&a.scan, flagScan, false, "scan discovered roots; pass ordinary scan flags after --")
-	fs.Var(&a.kinds, flagKind, "select skill, plugin, mcp-server, lsp-server, command, hook, agent, rule, tool or workflow scan roots; repeatable")
+	fs.Var(&a.kinds, flagKind, "select skill, plugin, mcp-server, lsp-server, command, hook, agent, rule, tool, workflow or channel scan roots; repeatable")
 	fs.Var(&a.includePaths, flagIncludePath, "narrow discovered scan roots to this path; repeatable; cannot expand discovery")
 	fs.Var(&a.excludePaths, flagExcludePath, "omit scan roots overlapping this path; repeatable; use --kind for component-level roots")
 
@@ -244,7 +244,7 @@ func (r *request) useDiscoveryHarness(agent string) {
 	}
 
 	switch agent {
-	case report.HostCursor, report.HostCopilotCLI, report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw, report.HostGrokCLI, report.HostDeepSeekHarness, report.HostZCode:
+	case report.HostCursor, report.HostCopilotCLI, report.HostOpenCode, report.HostGeminiCLI, report.HostOpenClaw, report.HostGrokCLI, report.HostDeepSeekHarness, report.HostZCode, report.HostQwenCode:
 		r.settings.Scanner.Harness.Host = agent
 	}
 }

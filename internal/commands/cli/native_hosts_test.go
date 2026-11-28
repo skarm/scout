@@ -90,6 +90,22 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 			updated: `{"hooks":{"enabled":true,"events":{"Stop":[{"hooks":[{"type":"process","command":"printf","args":["after"]}]}]}}}`,
 			kind:    "hook", name: "Stop", key: "/hooks/events/Stop/0/hooks/0", state: "unknown",
 		},
+		{
+			host: report.HostQwenCode, config: ".qwen/settings.json", userConfig: true,
+			initial: "\ufeff" + `{// Personal Qwen settings.
+				"mcpServers":{"example":{"httpUrl":"https://example.invalid/old"}}
+			}`,
+			updated: "\ufeff" + `{// Personal Qwen settings.
+				"mcpServers":{"example":{"httpUrl":"https://example.invalid/new"}}
+			}`,
+			kind: "mcp-server", name: "example", key: "/mcpServers/example", state: "unknown",
+		},
+		{
+			host: report.HostQwenCode, config: ".qwen/settings.json",
+			initial: `{"hooks":{"InstructionsLoaded":[{"hooks":[{"type":"command","command":"printf before"}]}]}}`,
+			updated: `{"hooks":{"InstructionsLoaded":[{"hooks":[{"type":"command","command":"printf after"}]}]}}`,
+			kind:    "hook", name: "InstructionsLoaded", key: "/hooks/InstructionsLoaded/0/hooks/0", state: "unknown",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.host, func(t *testing.T) {
@@ -235,6 +251,7 @@ func TestNativeInstalledPluginsAndSharedSkills(t *testing.T) {
 		"grok-cli/skill/shared":              "unknown",
 		"deepseek-harness/skill/shared":      "unknown",
 		"zcode/skill/shared":                 "unknown",
+		"qwen-code/skill/shared":             "unknown",
 	}
 	sharedTargets := 0
 	for _, target := range inventory.Targets {

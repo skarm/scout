@@ -101,11 +101,11 @@ func (t *tree) grokHookGroups(n *jsonconfig.Node, file, key string) {
 			continue
 		}
 
-		t.grokHookItems(event, file, key+"/"+pointer(event.Key))
+		t.groupedHookItems(event, file, key+"/"+pointer(event.Key), func(n *jsonconfig.Node) bool { return agentconfig.GrokHookTarget(n) != nil })
 	}
 }
 
-func (t *tree) grokHookItems(event jsonconfig.Member, file, key string) {
+func (t *tree) groupedHookItems(event jsonconfig.Member, file, key string, valid func(*jsonconfig.Node) bool) {
 	for i, group := range event.Value.Elements {
 		if !t.b.step(t.absolute(file)) {
 			return
@@ -122,7 +122,7 @@ func (t *tree) grokHookItems(event jsonconfig.Member, file, key string) {
 				return
 			}
 
-			if agentconfig.GrokHookTarget(handler) == nil {
+			if !valid(handler) {
 				t.b.issue(codeInvalidPluginHooks, t.absolute(file))
 				continue
 			}

@@ -227,7 +227,7 @@ func findingContextAdder(f *report.Finding, truncated *bool) func(report.Compone
 
 func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) {
 	state := p.b.hooks[e.Meta.Path]
-	if state.Uncertain && p.host != report.HostGeminiCLI && p.host != report.HostGrokCLI {
+	if state.Uncertain && p.host != report.HostGeminiCLI && p.host != report.HostGrokCLI && p.host != report.HostQwenCode {
 		p.issue(issuePluginHookDisableUnverified, e.Meta.Path, report.OutcomePartial)
 	}
 
@@ -236,7 +236,7 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 	}
 
 	hooks := n.Get(fieldHooks)
-	if hooks == nil && p.host != report.HostGeminiCLI {
+	if hooks == nil && p.host != report.HostGeminiCLI && (p.host != report.HostQwenCode || !p.nativeWorkspace && e != p.manifest) {
 		hooks = n
 	}
 
@@ -250,7 +250,7 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 			return
 		}
 
-		if p.host == report.HostGeminiCLI && p.nativeWorkspace && agentconfig.GeminiHookSetting(event.Key) {
+		if (p.host == report.HostGeminiCLI && p.nativeWorkspace || p.host == report.HostQwenCode) && agentconfig.HookSetting(event.Key) {
 			continue
 		}
 
@@ -261,7 +261,7 @@ func (p *plugin) hooks(e *entry, n *jsonconfig.Node, parent, activation string) 
 }
 
 func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation string, eventIndex int) bool {
-	if p.host == report.HostGeminiCLI && !hookevent.Gemini(event.Key) || p.host == report.HostGrokCLI && !hookevent.Grok(event.Key) {
+	if !hookevent.ForHost(p.host, event.Key) {
 		p.issue(issuePluginHookEventUnverified, e.Meta.Path, report.OutcomePartial)
 		return true
 	}
@@ -296,7 +296,7 @@ func (p *plugin) hookEvent(e *entry, event jsonconfig.Member, parent, activation
 }
 
 func (p *plugin) hookHandler(e *entry, h *jsonconfig.Node, parent, activation, event, matcher string, eventIndex, gi, hi int) {
-	if p.host == report.HostGrokCLI && agentconfig.GrokHookTarget(h) == nil {
+	if p.host == report.HostGrokCLI && agentconfig.GrokHookTarget(h) == nil || p.host == report.HostQwenCode && !agentconfig.QwenHookValid(h) {
 		p.issue(issuePluginHookTypeUnverified, e.Meta.Path, report.OutcomePartial)
 		return
 	}
@@ -336,6 +336,17 @@ func (p *plugin) hookCommand(e *entry, h *jsonconfig.Node, id, activation, event
 	}
 
 	s := ref(e, h.Span)
+	if p.host == report.HostQwenCode {
+		if shell, _ := h.Get("shell").Text(); shell != "" && shell != "bash" {
+			p.reference(id, referenceKindHookBehavior, report.ReferenceUnresolved, reasonSemanticOrToolResolutionUnavailable, "", s)
+			return
+		}
+
+		p.command(id, text, nil, false, s, activation, true)
+
+		return
+	}
+
 	if p.host == report.HostGrokCLI {
 		p.grokHookCommand(e, id, text, activation, s)
 		return
@@ -512,7 +523,8 @@ func (p *plugin) serverMap(e *entry, n *jsonconfig.Node, kind string) *jsonconfi
 		return p.mcpServerMap(e, n)
 	}
 
-	if kind == componentLSPConfig && n.Get(fieldLSPServers) != nil {
+	if kind == componentLSPConfig && n.Get(fieldLSPServers) != nil &&
+		(p.host != report.HostQwenCode || e == p.manifest && !p.nativeWorkspace) {
 		servers = n.Get(fieldLSPServers)
 	}
 
@@ -520,6 +532,10 @@ func (p *plugin) serverMap(e *entry, n *jsonconfig.Node, kind string) *jsonconfi
 }
 
 func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
+	if p.host == report.HostQwenCode {
+		return n.Get(fieldMCPServers)
+	}
+
 	if p.host == report.HostZCode && p.nativeWorkspace {
 		if servers := agentconfig.ZCodeMCP(n); servers != nil {
 			return servers
@@ -571,11 +587,15 @@ func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activat
 		return
 	}
 
+	if p.host == report.HostQwenCode && kind == componentLSPConfig && p.qwenLSPSocket(e, n, id) {
+		return
+	}
+
 	command := n.Get(fieldCommand)
 
 	endpoints := []*jsonconfig.Node{n.Get(fieldURL)}
-	if p.host == report.HostGeminiCLI {
-		endpoints = append(endpoints, n.Get(agentconfig.GeminiHTTPURL))
+	if p.host == report.HostGeminiCLI || p.host == report.HostQwenCode {
+		endpoints = append(endpoints, n.Get(agentconfig.StreamableHTTPURL))
 	}
 
 	remote := p.serverEndpoints(e, id, endpoints)
@@ -600,7 +620,7 @@ func (p *plugin) serverEndpoints(e *entry, id string, endpoints []*jsonconfig.No
 
 		count++
 
-		if value, ok := endpoint.Text(); (!ok || p.host == report.HostGeminiCLI && strings.TrimSpace(value) == "") &&
+		if value, ok := endpoint.Text(); (!ok || (p.host == report.HostGeminiCLI || p.host == report.HostQwenCode) && strings.TrimSpace(value) == "") &&
 			!(p.host == report.HostDeepSeekHarness && endpoint.Kind == jsonconfig.KindExpression) {
 			p.issue(issuePluginServerURLInvalid, e.Meta.Path, formatInvalid)
 		}
@@ -723,7 +743,7 @@ func (p *plugin) handlerPath(candidate string, argv, hook bool) (string, string,
 	}
 
 	if argv && !hook && !rooted {
-		suffix, rooted = p.geminiMCPOperand(candidate)
+		suffix, rooted = p.extensionMCPOperand(candidate)
 	}
 
 	if !rooted {

@@ -17,6 +17,16 @@ func ParseWithComments(ctx context.Context, text string) (*Node, error) {
 	return parseCommentedJSON(ctx, text, false)
 }
 
+// ParseWithCommentsAndBOM also accepts an initial UTF-8 BOM. Masking the
+// marker preserves original byte offsets.
+func ParseWithCommentsAndBOM(ctx context.Context, text string) (*Node, error) {
+	if body, ok := strings.CutPrefix(text, "\ufeff"); ok {
+		text = "   " + body
+	}
+
+	return ParseWithComments(ctx, text)
+}
+
 func parseCommentedJSON(ctx context.Context, text string, trailingCommas bool) (*Node, error) {
 	if ctx == nil {
 		return nil, &Error{Code: codeNilContext}

@@ -101,7 +101,7 @@ func (t *tree) geminiHooks(hooks *jsonconfig.Node, file string, settings bool) {
 			return
 		}
 
-		if settings && agentconfig.GeminiHookSetting(event.Key) {
+		if settings && agentconfig.HookSetting(event.Key) {
 			continue
 		}
 
@@ -167,7 +167,7 @@ func (t *tree) geminiExtension(dir string) {
 	name, _ := n.Get(fieldName).Text()
 
 	version, _ := n.Get("version").Text()
-	if !agentconfig.ValidGeminiExtension(name, version) {
+	if !agentconfig.ValidNamedExtension(name, version) {
 		t.b.issue(codeInvalidPluginManifest, t.absolute(file))
 		return
 	}
@@ -178,7 +178,7 @@ func (t *tree) geminiExtension(dir string) {
 	extension.b.target(t.absolute(dir))
 
 	extension.servers(n.Get(mcpServersField), file, mcpServersPointer)
-	extension.geminiExtensionContexts(dir, file, n.Get(agentconfig.GeminiContextField))
+	extension.extensionContexts(dir, file, n.Get(agentconfig.ExtensionContextField), agentconfig.GeminiContext)
 	extension.geminiInstructions(dir)
 	extension.geminiSkills(path.Join(dir, "skills"))
 
@@ -202,9 +202,9 @@ func (t *tree) geminiContextFile(file string, required bool) {
 	}
 }
 
-func (t *tree) geminiExtensionContexts(dir, file string, n *jsonconfig.Node) {
+func (t *tree) extensionContexts(dir, file string, n *jsonconfig.Node, fallback string) {
 	if n == nil {
-		t.geminiContext(path.Join(dir, agentconfig.GeminiContext))
+		t.geminiContext(path.Join(dir, fallback))
 		return
 	}
 

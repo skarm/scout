@@ -119,6 +119,11 @@ func (p *plugin) discover() {
 		return
 	}
 
+	if p.host == report.HostQwenCode {
+		p.discoverQwenExtension()
+		return
+	}
+
 	if p.host == report.HostZCode {
 		p.discoverZCodePackage()
 		return
@@ -368,7 +373,7 @@ func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.Sour
 			return
 		}
 
-		if p.host == report.HostZCode && kind == report.ComponentSkill && nestedComponent(kind, key, name) {
+		if p.excludeNestedComponent(kind, key, name) {
 			continue
 		}
 
@@ -388,12 +393,24 @@ func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.Sour
 	}
 }
 
+func (p *plugin) excludeNestedComponent(kind, key, dir string) bool {
+	switch p.host {
+	case report.HostZCode:
+		return kind == report.ComponentSkill && nestedComponent(kind, key, dir)
+	case report.HostQwenCode:
+		return (kind == report.ComponentSkill || kind == componentWorkflow) && nestedComponent(kind, key, dir) ||
+			kind == report.ComponentSkill && (path.Dir(key) == dir || key == dir)
+	default:
+		return false
+	}
+}
+
 func (p *plugin) componentFileMatches(kind, key string) bool {
 	switch kind {
 	case report.ComponentSkill:
 		return path.Base(key) == artifact.SkillManifest
 	case componentWorkflow:
-		return p.host != report.HostGrokCLI || agentconfig.InstructionFile(p.host, kind, key)
+		return p.host != report.HostGrokCLI && p.host != report.HostQwenCode || agentconfig.InstructionFile(p.host, kind, key)
 	default:
 		return agentconfig.InstructionFile(p.host, kind, key)
 	}
@@ -403,7 +420,8 @@ func (p *plugin) selectedFile(key, name, kind, activation, basis string, s *repo
 	e := p.ns.entries[key]
 	effective := activation
 
-	supportsNested := p.host == report.HostGeminiCLI && kind == componentCommand ||
+	supportsNested := (p.host == report.HostGeminiCLI || p.host == report.HostQwenCode) && kind == componentCommand ||
+		p.host == report.HostQwenCode && kind == componentRule ||
 		p.host == report.HostOpenClaw && kind == report.ComponentSkill
 	if !supportsNested && nestedComponent(kind, key, name) {
 		if effective != activationInactiveForProfile {

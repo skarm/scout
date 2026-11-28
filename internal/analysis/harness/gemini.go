@@ -29,14 +29,14 @@ func (p *plugin) discoverGeminiExtension() {
 	name, _ := manifest.Get(fieldName).Text()
 	version, _ := manifest.Get(fieldVersion).Text()
 
-	if !agentconfig.ValidGeminiExtension(name, version) {
+	if !agentconfig.ValidNamedExtension(name, version) {
 		p.issue(issuePluginHookManifestUnverified, p.manifestPath(), report.OutcomePartial)
 	}
 
 	p.issue(issuePluginLoaderSemanticsLimited, p.manifestPath(), report.OutcomePartial)
 	p.geminiMCP(p.manifest, manifest)
 	p.geminiAssets(".")
-	p.geminiContexts(manifest.Get(agentconfig.GeminiContextField))
+	p.extensionContexts(manifest.Get(agentconfig.ExtensionContextField), agentconfig.GeminiContext)
 
 	if e := p.entry(defaultHooksPath); e != nil {
 		p.geminiHookFile(e)
@@ -44,8 +44,8 @@ func (p *plugin) discoverGeminiExtension() {
 }
 
 func (p *plugin) geminiWorkspace() {
-	p.geminiContext(agentconfig.GeminiContext, nil)
-	p.geminiContext(path.Join(artifact.GeminiDirectory, agentconfig.GeminiContext), nil)
+	p.extensionContext(agentconfig.GeminiContext, nil)
+	p.extensionContext(path.Join(artifact.GeminiDirectory, agentconfig.GeminiContext), nil)
 	p.geminiAssets(artifact.GeminiDirectory)
 	p.geminiSettingsFile(p.entry(path.Join(artifact.GeminiDirectory, artifact.GeminiSettings)))
 
@@ -103,9 +103,9 @@ func (p *plugin) geminiAssets(dir string) {
 	}
 }
 
-func (p *plugin) geminiContexts(n *jsonconfig.Node) {
+func (p *plugin) extensionContexts(n *jsonconfig.Node, fallback string) {
 	if n == nil {
-		p.geminiContext(agentconfig.GeminiContext, nil)
+		p.extensionContext(fallback, nil)
 		return
 	}
 
@@ -123,13 +123,18 @@ func (p *plugin) geminiContexts(n *jsonconfig.Node) {
 			continue
 		}
 
-		p.geminiContext(rel, s)
+		p.extensionContext(rel, s)
 	}
 }
 
-func (p *plugin) geminiContext(name string, declaration *report.SourceRef) {
+func (p *plugin) extensionContext(name string, declaration *report.SourceRef) {
 	if e := p.entry(name); e != nil {
-		id := p.component(componentRule, e, p.activation, basisConfiguration, whole(e), "gemini-context")
+		salt := "qwen-context"
+		if p.host == report.HostGeminiCLI {
+			salt = "gemini-context"
+		}
+
+		id := p.component(componentRule, e, p.activation, basisConfiguration, whole(e), salt)
 		if declaration != nil {
 			p.b.edge(p.rootNode, id, relationDeclares, basisManifest, p.activation, declaration)
 		}
@@ -138,12 +143,19 @@ func (p *plugin) geminiContext(name string, declaration *report.SourceRef) {
 	}
 }
 
-func (p *plugin) geminiMCPOperand(candidate string) (string, bool) {
-	if p.host == report.HostGeminiCLI && !p.nativeWorkspace {
-		return strings.CutPrefix(candidate, agentconfig.GeminiExtensionPath+"/")
+func (p *plugin) extensionMCPOperand(candidate string) (string, bool) {
+	if p.nativeWorkspace || p.portable != "" {
+		return "", false
 	}
 
-	return "", false
+	switch p.host {
+	case report.HostGeminiCLI:
+		return strings.CutPrefix(candidate, agentconfig.ExtensionPath+"/")
+	case report.HostQwenCode:
+		return agentconfig.QwenExtensionOperand(candidate)
+	default:
+		return "", false
+	}
 }
 
 func (p *plugin) linkGeminiHandler(paths []hooktrace.Path, id, activation string, s *report.SourceRef) bool {

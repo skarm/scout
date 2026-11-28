@@ -28,4 +28,7 @@ const (
 	HostDeepSeekHarness = "deepseek-harness"
 	// HostZCode identifies Z.ai ZCode runtime and plugin declarations.
 	HostZCode = "zcode"
+
+	// HostQwenCode identifies Qwen Code workspaces and extensions.
+	HostQwenCode = "qwen-code"
 )

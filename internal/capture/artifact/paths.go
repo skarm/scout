@@ -41,6 +41,10 @@ const (
 	DeepSeekPatch              = "cordis.patch.yml"
 	DeepSeekSettings           = "settings.yaml"
 	DeepSeekProfiles           = "profiles"
+	QwenDirectory              = ".qwen"
+	QwenSettings               = "settings.json"
+	QwenLSP                    = ".lsp.json"
+	QwenSystemDefaults         = "system-defaults.json"
 	ZCodeDirectory             = ".zcode"
 	ZCodeConfig                = "config.json"
 	ZCodeRootConfig            = "zcode.json"
@@ -132,6 +136,29 @@ func ArchiveNamespace(parent string) string {
 	}
 
 	return parent
+}
+
+// QwenSettingsRoot recognizes workspace or system settings, or an explicitly
+// selected standalone settings file.
+func QwenSettingsRoot(name, host string) (string, bool) {
+	dir, file := path.Split(name)
+
+	dir = path.Clean(dir)
+	if file == QwenSettings && path.Base(dir) == QwenDirectory {
+		return path.Dir(dir), true
+	}
+
+	if file != QwenSettings && file != QwenSystemDefaults {
+		return "", false
+	}
+
+	for _, system := range []string{"/etc/qwen-code", "/Library/Application Support/QwenCode", "/ProgramData/qwen-code"} {
+		if strings.HasSuffix("/"+dir, system) {
+			return dir, true
+		}
+	}
+
+	return dir, dir == "." && host == report.HostQwenCode
 }
 
 // ArchiveParentPath recovers the captured parent of an archive namespace.

@@ -2,7 +2,7 @@
 
 English · [Русский](discovery.ru.md)
 
-`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness and ZCode declarations before
+`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode, and Qwen Code declarations before
 scanning their files. It reads configuration and manifests without starting MCP
 servers, running commands, expanding environment variables from files or making
 network requests.
@@ -294,3 +294,23 @@ of those locations or compatibility with every host version. No tool description
 are fetched from running servers. Snapshot comparison is not part of this command.
 
 [Codex skills](https://developers.openai.com/codex/skills) · [Codex plugin packaging](https://developers.openai.com/plugins/build/plugins) · [Claude MCP scopes](https://code.claude.com/docs/en/mcp) · [Claude skills](https://code.claude.com/docs/en/skills) · [Claude plugin manifests](https://code.claude.com/docs/en/plugins-reference)
+
+### Qwen Code
+
+Use `discover --agent qwen-code` for the user and project `.qwen/settings.json`,
+project `.mcp.json` and `.lsp.json`, and the standard system settings when system
+discovery is enabled. `--qwen-home` or `QWEN_HOME` selects the user configuration
+directory. Scout inventories MCP servers and grouped hooks, Markdown and TOML
+commands, subagents, rules, direct-child skills in `.qwen/skills` and
+`.agents/skills`, JavaScript workflows, and the default instruction files.
+[Qwen Code settings](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/settings/) · [Qwen Code hooks](https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks/) · [Qwen Code skills](https://qwenlm.github.io/qwen-code-docs/en/users/features/skills/)
+
+Scout reads native `qwen-extension.json` and portable Agent Plugins v1 packages
+in the user extension directory. Native packages can declare inline MCP
+servers, inline or file-based hooks and LSP servers, context, commands,
+subagents, skills, workflows, and channel entry points. Use
+`scout scan --harness qwen-code PATH` for a standalone settings file or a
+portable package outside the Qwen Code directory layout. The scan records
+captured declarations. Effective approvals, extension installation state,
+process environment, and external paths require runtime context.
+[Qwen Code extension format](https://qwenlm.github.io/qwen-code-docs/en/users/extension/introduction/) · [Qwen Code Agent Plugins v1](https://qwenlm.github.io/qwen-code-docs/en/users/extension/agent-plugins/)

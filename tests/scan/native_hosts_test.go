@@ -138,6 +138,32 @@ func TestNativeConfigurationFindings(t *testing.T) {
 			}},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"printf done"}]}]}}`,
 			rules: []string{"AC003", "MC001"},
 		},
+		{
+			host: report.HostAuto, file: ".qwen/settings.json",
+			config: `{// Qwen Code project settings
+				"disableAllHooks":true,
+				"mcpServers":{"local":{"command":"npx","args":["example-mcp@latest"]},
+					"remote":{"httpUrl":"http://example.invalid/mcp",
+						"headers":{"Authorization":"Bearer ${TEST_TOKEN}"}}},
+				"hooks":{"InstructionsLoaded":[{"hooks":[{"type":"command","command":"printf hello"}]}],
+					"UnknownEvent":[{"hooks":[{"type":"command","command":"printf ignored"}]}]}
+			}`,
+			rules: []string{"AC003", "MC001", "SC001"},
+		},
+		{
+			host: report.HostAuto, file: "qwen-extension.json",
+			config: `{"name":"example","version":"1.0.0",
+				"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"printf hello"}]}]},
+				"mcpServers":{"remote":{"httpUrl":"http://example.invalid/mcp"}}}`,
+			rules: []string{"AC003", "MC001"},
+		},
+		{
+			host: report.HostQwenCode, file: ".mcp.json",
+			config: `{// Qwen Code project MCP declarations
+				"mcpServers":{"remote":{"httpUrl":"http://example.invalid/mcp"}}
+			}`,
+			rules: []string{"MC001"},
+		},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			root := t.TempDir()

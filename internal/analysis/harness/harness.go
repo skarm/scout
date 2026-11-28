@@ -300,6 +300,8 @@ func (s *candidateSet) addFile(ns *namespace, name, host string) {
 		if c, ok := pluginCandidate(ns, name, host); ok {
 			s.add(c)
 		}
+	case agentconfig.QwenManifest:
+		s.add(candidate{ns: ns, root: path.Dir(name), host: report.HostQwenCode, manifest: name})
 	case agentconfig.GeminiManifest:
 		s.add(candidate{ns: ns, root: path.Dir(name), host: report.HostGeminiCLI, manifest: name})
 	case artifact.OpenClawManifest:
@@ -321,6 +323,10 @@ func (s *candidateSet) addFile(ns *namespace, name, host string) {
 	}
 
 	if c, ok := zcodeWorkspaceCandidate(ns, name, host); ok {
+		s.add(c)
+	}
+
+	if c, ok := qwenWorkspaceCandidate(ns, name, host); ok {
 		s.add(c)
 	}
 
@@ -629,6 +635,15 @@ func pluginCandidate(ns *namespace, name, requestedHost string) (candidate, bool
 	root, host := manifestLayout(name)
 
 	c := candidate{ns: ns, root: root, host: host, manifest: name}
+	if host == "unknown" && qwenPluginProfile(ns, root, requestedHost) {
+		c.portable = agentplugins.ManifestVersion(capturedJSON(ns.entries[name]))
+		if c.portable != "" {
+			c.host = report.HostQwenCode
+
+			return c, ns.entries[path.Join(root, agentconfig.QwenManifest)] == nil
+		}
+	}
+
 	if zcodePluginProfile(ns, root, host, requestedHost) {
 		c.host = report.HostZCode
 		return c, name == zcodeManifest(ns, root)

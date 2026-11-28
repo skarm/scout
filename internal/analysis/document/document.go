@@ -406,6 +406,8 @@ func (f *filePreparation) unitBackend(lang, origin string) (parse.Backend, bool)
 			backend = parse.WithJSON5(backend)
 		case strings.EqualFold(path.Ext(name), ".jsonc"):
 			backend = parse.WithJSONComments(backend, true)
+		case f.qwenJSONWithComments():
+			backend = parse.WithJSONCommentsAndBOM(backend)
 		default:
 			if _, gemini := artifact.GeminiSettingsRoot(f.file.Metadata().Path, f.budget.host); gemini {
 				backend = parse.WithJSONComments(backend, false)
@@ -414,6 +416,13 @@ func (f *filePreparation) unitBackend(lang, origin string) (parse.Backend, bool)
 	}
 
 	return backend, supported
+}
+
+func (f *filePreparation) qwenJSONWithComments() bool {
+	name, host := f.hostConfigName, f.budget.host
+	_, settings := artifact.QwenSettingsRoot(name, host)
+
+	return settings || host == report.HostQwenCode && path.Base(name) == artifact.MCPConfig
 }
 
 func (f *filePreparation) parseWith(ctx context.Context, unit Unit, backend parse.Backend) (result Unit) {
