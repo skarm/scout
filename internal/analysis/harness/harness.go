@@ -296,7 +296,7 @@ func (b *builder) candidates(host string) []candidate {
 
 func (s *candidateSet) addFile(ns *namespace, name, host string) {
 	switch path.Base(name) {
-	case agentplugins.ManifestFile:
+	case agentplugins.ManifestFile, artifact.KimiPluginManifest:
 		if c, ok := pluginCandidate(ns, name, host); ok {
 			s.add(c)
 		}
@@ -323,6 +323,10 @@ func (s *candidateSet) addFile(ns *namespace, name, host string) {
 	}
 
 	if c, ok := zcodeWorkspaceCandidate(ns, name, host); ok {
+		s.add(c)
+	}
+
+	if c, ok := kimiWorkspaceCandidate(ns, name, host); ok {
 		s.add(c)
 	}
 
@@ -635,6 +639,10 @@ func pluginCandidate(ns *namespace, name, requestedHost string) (candidate, bool
 	root, host := manifestLayout(name)
 
 	c := candidate{ns: ns, root: root, host: host, manifest: name}
+	if host == report.HostKimiCode {
+		return c, name == kimiManifest(ns, root)
+	}
+
 	if host == "unknown" && qwenPluginProfile(ns, root, requestedHost) {
 		c.portable = agentplugins.ManifestVersion(capturedJSON(ns.entries[name]))
 		if c.portable != "" {
@@ -771,7 +779,7 @@ func (p *plugin) object(e *entry) *jsonconfig.Node {
 	}
 
 	for _, u := range e.Doc.Units() {
-		if u.Origin == "file" && (u.Language == language.JSON || p.host == report.HostGrokCLI && u.Language == language.TOML) {
+		if u.Origin == "file" && (u.Language == language.JSON || (p.host == report.HostGrokCLI || p.host == report.HostKimiCode) && u.Language == language.TOML) {
 			return p.jsonObject(e, u)
 		}
 	}

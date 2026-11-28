@@ -31,4 +31,7 @@ const (
 
 	// HostQwenCode identifies Qwen Code workspaces and extensions.
 	HostQwenCode = "qwen-code"
+
+	// HostKimiCode identifies Kimi Code workspaces and plugins.
+	HostKimiCode = "kimi-code"
 )

@@ -41,6 +41,14 @@ const (
 	DeepSeekPatch              = "cordis.patch.yml"
 	DeepSeekSettings           = "settings.yaml"
 	DeepSeekProfiles           = "profiles"
+	KimiDirectory              = ".kimi-code"
+	KimiLegacyDirectory        = ".kimi"
+	KimiConfig                 = "config.toml"
+	KimiMCP                    = "mcp.json"
+	KimiPluginManifest         = "kimi.plugin.json"
+	KimiPluginDotManifest      = ".kimi-plugin/plugin.json"
+	KimiInstallIndex           = "plugins/installed.json"
+	KimiManagedPlugins         = "plugins/managed"
 	QwenDirectory              = ".qwen"
 	QwenSettings               = "settings.json"
 	QwenLSP                    = ".lsp.json"
@@ -138,6 +146,22 @@ func ArchiveNamespace(parent string) string {
 	return parent
 }
 
+// KimiTOMLRoot identifies Kimi home layouts and explicitly selected standalone
+// configuration by the complete filename.
+func KimiTOMLRoot(name, host string) (string, bool) {
+	if path.Base(name) != KimiConfig {
+		return "", false
+	}
+
+	dir := path.Dir(name)
+	switch path.Base(dir) {
+	case KimiDirectory, KimiLegacyDirectory:
+		return dir, true
+	default:
+		return dir, dir == "." && host == report.HostKimiCode
+	}
+}
+
 // QwenSettingsRoot recognizes workspace or system settings, or an explicitly
 // selected standalone settings file.
 func QwenSettingsRoot(name, host string) (string, bool) {
@@ -189,6 +213,8 @@ func NativePluginManifest(name string) (root, host string) {
 		{CopilotGitHubManifest, report.HostCopilotCLI},
 		{GrokPluginManifest, report.HostGrokCLI},
 		{ZCodePluginManifest, report.HostZCode},
+		{KimiPluginManifest, report.HostKimiCode},
+		{KimiPluginDotManifest, report.HostKimiCode},
 	} {
 		if name == candidate.file {
 			return ".", candidate.host

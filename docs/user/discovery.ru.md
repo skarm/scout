@@ -2,7 +2,7 @@
 
 [English](discovery.md) · Русский
 
-`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode и Qwen Code перед проверкой
+`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode, Qwen Code и Kimi Code перед проверкой
 их файлов. Команда читает конфигурации и манифесты без запуска MCP-серверов,
 выполнения команд, подстановки переменных окружения из файлов и сетевых запросов.
 
@@ -321,3 +321,22 @@ MCP-серверы, хуки и LSP-серверы во встроенном и�
 декларации в захваченных файлах. Действующие разрешения, состояние установки
 расширений, окружение процесса и внешние пути зависят от среды выполнения.
 [Формат расширений Qwen Code](https://qwenlm.github.io/qwen-code-docs/en/users/extension/introduction/) · [Agent Plugins v1 в Qwen Code](https://qwenlm.github.io/qwen-code-docs/en/users/extension/agent-plugins/)
+
+### Kimi Code
+
+`discover --agent kimi-code` находит пользовательские хуки в
+`~/.kimi-code/config.toml`, пользовательские и проектные `.kimi-code/mcp.json`,
+инструкции, навыки и субагентов в каталогах Kimi и общих каталогах `.agents`.
+Каталог данных задают `--kimi-home` или `KIMI_CODE_HOME`. По умолчанию Scout
+также читает хуки, настройки MCP и навыки предыдущего CLI в `~/.kimi`.
+Для отдельного файла конфигурации используйте `scout scan --harness kimi-code PATH`.
+[Каталоги Kimi Code](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/configuration/data-locations.md) · [Хуки](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/customization/hooks.md) · [MCP](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/customization/mcp.md)
+
+Scout читает состояние плагинов из `plugins/installed.json` и находит
+зарегистрированные пакеты внутри `plugins/managed` выбранного каталога.
+Поддерживаются `kimi.plugin.json` и `.kimi-plugin/plugin.json` с объявлениями
+MCP-серверов, хуков, команд, субагентов, навыков и инструкций к промпту.
+Сканирование фиксирует декларации и связи с захваченными обработчиками.
+Эффективные настройки, удалённые окружения, дополнительные каталоги поиска
+и активация плагинов зависят от среды выполнения.
+[Манифест плагина Kimi](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/customization/plugins.md)

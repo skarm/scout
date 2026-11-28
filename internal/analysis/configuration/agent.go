@@ -206,7 +206,7 @@ func (a agentConfigCheck) Rule() report.Rule {
 		version = "4"
 	}
 
-	limitation := "Supported configuration shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. General YAML and TOML use explicitly selected trusted parsers. Native Grok TOML and DeepSeek Cordis YAML are supported in core. TOML evidence covers the whole unit." + metadata.limitation
+	limitation := "Supported configuration shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. General YAML and TOML use explicitly selected trusted parsers. Native Grok and Kimi Code TOML and DeepSeek Cordis YAML are supported in core. TOML evidence covers the whole unit." + metadata.limitation
 	if metadata.harness {
 		limitation += " Includes harness-linked inline/custom-path config objects without assuming activation."
 	}
@@ -273,8 +273,8 @@ func (a agentConfigCheck) inspectConfigUnit(ctx context.Context, f document.File
 	actualHook := u.Origin == "file" && (hookpolicy.IsSettings(f.Artifact().Metadata().Path) || path.Base(f.Artifact().Metadata().Path) == "hooks.json")
 	skipHook := a.id == ruleAC003 && (nativeGroupedHookScope(f, u) || state.Disabled && actualHook)
 
-	skipCredentials := a.id == ruleMC002 && zcodeMCPScoped(f, u)
-	if !skipHook && !skipCredentials {
+	skipServers := a.id == ruleMC002 && zcodeMCPScoped(f, u) || serverConfigRules[a.id] && kimiMCPScoped(f, u)
+	if !skipHook && !skipServers {
 		err := a.inspect(ctx, root, emit)
 		*mappingErr = errors.Join(*mappingErr, err)
 	}
@@ -531,9 +531,13 @@ func (a agentConfigCheck) serverWithHost(server *jsonconfig.Node, host string, e
 
 	switch a.id {
 	case ruleSC001:
-		inspectLauncherServer(server, emit)
+		if host != report.HostKimiCode || agentconfig.KimiMCPTransport(server) == "stdio" {
+			inspectLauncherServer(server, emit)
+		}
 	case ruleMC001:
-		inspectPlaintextServer(server.Get("url"), emit)
+		if host != report.HostKimiCode || agentconfig.KimiMCPTransport(server) == "http" || agentconfig.KimiMCPTransport(server) == "sse" {
+			inspectPlaintextServer(server.Get("url"), emit)
+		}
 
 		if host == report.HostGeminiCLI || host == report.HostQwenCode {
 			inspectPlaintextServer(server.Get(agentconfig.StreamableHTTPURL), emit)
@@ -659,6 +663,8 @@ func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, 
 			return inspectNativeHookScope(ctx, n, scope.Host, emit)
 		case report.HostZCode:
 			return inspectZCodeHooks(ctx, n, emit)
+		case report.HostKimiCode:
+			return inspectKimiHooks(ctx, n, emit)
 		}
 
 		hooks := n.Get("hooks")
@@ -699,6 +705,31 @@ func zcodeMCPScoped(f document.File, u document.Unit) bool {
 	})
 }
 
+func kimiMCPScoped(f document.File, u document.Unit) bool {
+	return u.Origin == "file" && slices.ContainsFunc(f.ConfigScopes(), func(scope document.ConfigScope) bool {
+		return scope.Role == report.ComponentMCPConfig && scope.Host == report.HostKimiCode
+	})
+}
+
+func inspectKimiHooks(ctx context.Context, n *jsonconfig.Node, emit func(source.Span)) error {
+	hooks := n.Get("hooks")
+	if hooks == nil {
+		return nil
+	}
+
+	for _, hook := range hooks.Elements {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		if command := agentconfig.KimiHookCommand(hook); command != nil {
+			emit(command.Span)
+		}
+	}
+
+	return nil
+}
+
 func inspectZCodeHooks(ctx context.Context, n *jsonconfig.Node, emit func(source.Span)) error {
 	for hook := range agentconfig.ZCodeHooks(n) {
 		if err := ctx.Err(); err != nil {
@@ -736,6 +767,14 @@ func inspectNativeHookScope(ctx context.Context, n *jsonconfig.Node, host string
 
 func (a agentConfigCheck) inspectServerScope(ctx context.Context, n *jsonconfig.Node, host string, emit func(source.Span)) {
 	maps := serverWrappers(n)
+	if host == report.HostKimiCode {
+		if servers := n.Get("mcpServers"); servers != nil {
+			maps = []*jsonconfig.Node{servers}
+		} else {
+			return
+		}
+	}
+
 	if v := agentconfig.ZCodeMCP(n); host == report.HostZCode && v != nil {
 		maps = []*jsonconfig.Node{v}
 	}

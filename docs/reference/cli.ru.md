@@ -82,10 +82,10 @@ scout version
 
 ## Обнаружение окружения
 
-`scout discover` выводит инвентарь Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode и Qwen Code. Флаг `--scan` передаёт найденные
+`scout discover` выводит инвентарь Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode, Qwen Code и Kimi Code. Флаг `--scan` передаёт найденные
 корни существующему Scanner. См. [расположения, формат и ограничения](../user/discovery.ru.md).
 
-- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code` (`-a`): агент; по умолчанию `all`.
+- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code|kimi-code` (`-a`): агент; по умолчанию `all`.
 - `--home DIR`: домашний каталог; по умолчанию каталог текущего пользователя.
 - `--codex-home DIR`, `--claude-home DIR`, `--cursor-home DIR`, `--copilot-home DIR`, `--opencode-home DIR`: явные каталоги конфигурации агентов.
   Без `--home` учитываются `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса.
@@ -95,6 +95,7 @@ scout version
 - `--deepseek-home DIR` указывает непосредственно на каталог DeepSeek Harness. Без `--home` учитывается `DSH_HOME`.
 - `--zcode-home DIR` указывает непосредственно на каталог ZCode, по умолчанию `~/.zcode`.
 - `--qwen-home DIR` указывает непосредственно на каталог Qwen Code. По умолчанию используется `QWEN_HOME` или `~/.qwen`. При явном `--home` переменная окружения игнорируется.
+- `--kimi-home DIR` указывает на каталог данных Kimi Code. По умолчанию используется `KIMI_CODE_HOME` или `~/.kimi-code`. При явном `--home` переменная окружения игнорируется.
 - `--project DIR`: повторяемый выбранный проект; по умолчанию текущий каталог.
 - `--no-project`: исключить проекты; по умолчанию `false`.
 - `--system[=BOOL]`: известные системные расположения; по умолчанию `true`.
@@ -137,7 +138,7 @@ scout version
   reviewer; `custom` допускает явный выбор проверок. Aliases CLI: `extended` =
   `standard`, `semantic` = `review`, `basic` = `custom` со всеми отключёнными
   необязательными статическими проверками.
-- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code|agent-skills`: интерпретация деклараций агентов
+- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code|kimi-code|agent-skills`: интерпретация деклараций агентов
   и плагинов; по умолчанию `auto`.
 - `--stdin NAME` (`-i`) читает один вход из stdin. Укажите относительное имя файла,
   например `SKILL.md`, для определения формата и координат исходников.

@@ -57,7 +57,10 @@ func (b *builder) user() {
 
 func (t *tree) readLocations(locations []location) {
 	for _, item := range locations {
-		item.read(t, item.path)
+		// A nil reader protects an alternate path handled by another location.
+		if item.read != nil {
+			item.read(t, item.path)
+		}
 	}
 }
 

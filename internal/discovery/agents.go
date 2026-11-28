@@ -179,6 +179,19 @@ var agentLayouts = []agentLayout{
 		},
 		systemDefault: "/etc/qwen-code", systemDarwin: "/Library/Application Support/QwenCode", systemWindows: `C:\ProgramData\qwen-code`,
 	},
+	{
+		id: report.HostKimiCode, label: "Kimi Code", homeFlag: "kimi-home", homeEnv: "KIMI_CODE_HOME",
+		homeOverride: func(o *Options) *string { return &o.KimiHome },
+		user:         []location{{".agents", (*tree).kimiUserShared}},
+		defaultHome:  []location{{artifact.KimiDirectory, (*tree).kimiUser}, {artifact.KimiLegacyDirectory, (*tree).kimiLegacyHome}},
+		relocated:    []location{{".", (*tree).kimiUser}},
+		project: []location{
+			{artifact.KimiDirectory, (*tree).kimiProject},
+			{".agents", (*tree).kimiShared},
+			{"AGENTS.md", (*tree).kimiProjectInstructions},
+			{"agents.md", nil},
+		},
+	},
 }
 
 // AgentSelectors returns the discovery selectors in CLI help order.

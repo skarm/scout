@@ -2,7 +2,7 @@
 
 English · [Русский](discovery.ru.md)
 
-`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode, and Qwen Code declarations before
+`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode, Qwen Code, and Kimi Code declarations before
 scanning their files. It reads configuration and manifests without starting MCP
 servers, running commands, expanding environment variables from files or making
 network requests.
@@ -314,3 +314,23 @@ portable package outside the Qwen Code directory layout. The scan records
 captured declarations. Effective approvals, extension installation state,
 process environment, and external paths require runtime context.
 [Qwen Code extension format](https://qwenlm.github.io/qwen-code-docs/en/users/extension/introduction/) · [Qwen Code Agent Plugins v1](https://qwenlm.github.io/qwen-code-docs/en/users/extension/agent-plugins/)
+
+### Kimi Code
+
+Use `discover --agent kimi-code` to inventory user hooks in
+`~/.kimi-code/config.toml`, user and project `.kimi-code/mcp.json`, instructions,
+skills and custom agents under the Kimi and shared `.agents` directories.
+`--kimi-home` or `KIMI_CODE_HOME` selects the user data directory. The default
+search also recognizes `~/.kimi` hooks, MCP settings and skills from the
+earlier CLI. Use `scout scan --harness kimi-code PATH` for a standalone
+configuration file.
+[Kimi data locations](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/configuration/data-locations.md) · [Hooks](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/customization/hooks.md) · [MCP](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/customization/mcp.md)
+
+Scout reads installed plugin state from `plugins/installed.json` and
+materializes registered packages under the selected home's `plugins/managed`
+directory. It recognizes `kimi.plugin.json` and `.kimi-plugin/plugin.json`,
+including declared MCP servers, hooks, commands, agents, skills and prompt
+contributions. The scan records declarations and links to contained captured
+handlers. Loading user settings, remote environments, custom search directories,
+and extension activation require runtime context.
+[Kimi plugin manifest](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/customization/plugins.md)

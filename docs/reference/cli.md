@@ -82,10 +82,10 @@ Stdin accepts one named input and cannot be mixed with positional targets.
 
 ## Environment discovery
 
-`scout discover` inventories Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode, and Qwen Code. `--scan` passes discovered
+`scout discover` inventories Codex, Claude Code, Cursor, GitHub Copilot CLI, OpenCode, Gemini CLI, OpenClaw, Grok CLI, DeepSeek Harness, ZCode, Qwen Code, and Kimi Code. `--scan` passes discovered
 roots to the existing Scanner. See [locations, format and limits](../user/discovery.md).
 
-- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code` (`-a`): agent; default `all`.
+- `--agent all|codex|claude-code|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code|kimi-code` (`-a`): agent; default `all`.
 - `--home DIR`: selected user home; default current user's home.
 - `--codex-home DIR`, `--claude-home DIR`, `--cursor-home DIR`, `--copilot-home DIR`, `--opencode-home DIR`: explicit agent configuration directories.
   Without `--home`, process `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are honored.
@@ -95,6 +95,7 @@ roots to the existing Scanner. See [locations, format and limits](../user/discov
 - `--deepseek-home DIR` selects the DeepSeek Harness home directly. Without `--home`, Scout honors `DSH_HOME`.
 - `--zcode-home DIR` selects the ZCode configuration directory directly. The default is `~/.zcode`.
 - `--qwen-home DIR` selects the Qwen Code configuration directory directly. It defaults to `QWEN_HOME` or `~/.qwen`. An explicit `--home` ignores the environment override.
+- `--kimi-home DIR` selects the Kimi Code data directory. It defaults to `KIMI_CODE_HOME` or `~/.kimi-code`. An explicit `--home` ignores the environment override.
 - `--project DIR`: repeatable selected project; default current directory.
 - `--no-project`: omit projects; default `false`.
 - `--system[=BOOL]`: known system locations; default `true`.
@@ -136,7 +137,7 @@ report and exit code. Declaration states do not establish component activation.
   `standard` selects all static checks; `review` also requires a configured reviewer;
   `custom` permits explicit check selection. CLI aliases: `extended` = `standard`,
   `semantic` = `review`, `basic` = `custom` with all optional static checks disabled.
-- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code|agent-skills`: interpretation of agent/plugin
+- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|openclaw|grok-cli|deepseek-harness|zcode|qwen-code|kimi-code|agent-skills`: interpretation of agent/plugin
   declarations; default `auto`.
 - `--stdin NAME` (`-i`): read one input from stdin. Use a relative filename such as
   `SKILL.md` for format detection and source coordinates. Omit positional inputs.

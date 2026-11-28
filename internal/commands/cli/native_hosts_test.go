@@ -106,6 +106,18 @@ func TestNativeDiscoveryScanAndSnapshot(t *testing.T) {
 			updated: `{"hooks":{"InstructionsLoaded":[{"hooks":[{"type":"command","command":"printf after"}]}]}}`,
 			kind:    "hook", name: "InstructionsLoaded", key: "/hooks/InstructionsLoaded/0/hooks/0", state: "unknown",
 		},
+		{
+			host: report.HostKimiCode, config: ".kimi-code/config.toml", userConfig: true,
+			initial: "[[hooks]]\nevent = \"SessionHeartbeat\"\ncommand = \"printf before\"\n",
+			updated: "[[hooks]]\nevent = \"SessionHeartbeat\"\ncommand = \"printf after\"\n",
+			kind:    "hook", name: "SessionHeartbeat", key: "/hooks/0", state: "unknown",
+		},
+		{
+			host: report.HostKimiCode, config: ".kimi-code/mcp.json",
+			initial: `{"mcpServers":{"example":{"transport":"sse","url":"https://example.invalid/old","enabled":false}}}`,
+			updated: `{"mcpServers":{"example":{"transport":"sse","url":"https://example.invalid/new","enabled":false}}}`,
+			kind:    "mcp-server", name: "example", key: "/mcpServers/example", state: "disabled",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.host, func(t *testing.T) {
@@ -252,6 +264,7 @@ func TestNativeInstalledPluginsAndSharedSkills(t *testing.T) {
 		"deepseek-harness/skill/shared":      "unknown",
 		"zcode/skill/shared":                 "unknown",
 		"qwen-code/skill/shared":             "unknown",
+		"kimi-code/skill/shared":             "unknown",
 	}
 	sharedTargets := 0
 	for _, target := range inventory.Targets {

@@ -44,6 +44,10 @@ var pluginRootParameters = map[string]string{
 const codexHookRootAlias = "CLAUDE_PLUGIN_ROOT"
 
 func rootParameter(host, name string, hook bool) bool {
+	if host == report.HostKimiCode {
+		return hook && name == "KIMI_PLUGIN_ROOT"
+	}
+
 	if host == report.HostZCode {
 		return name == "ZCODE_PLUGIN_ROOT"
 	}

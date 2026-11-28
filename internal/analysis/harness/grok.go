@@ -197,7 +197,7 @@ func (p *plugin) grokHookCommand(e *entry, id, command, activation string, s *re
 	p.commandFrom(id, command, nil, false, s, activation, !p.nativeWorkspace, dir)
 }
 
-func grokRelativeExecutable(dir, name string) (string, bool) {
+func packageRelativeExecutable(dir, name string) (string, bool) {
 	if strings.HasPrefix(name, "/") || !strings.Contains(name, "/") || strings.ContainsAny(name, "\\:\x00\r\n\t$~*?[]{}") {
 		return "", false
 	}

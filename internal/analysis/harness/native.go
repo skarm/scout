@@ -202,6 +202,8 @@ func (p *plugin) discoverNativeWorkspace() {
 		p.zcodeWorkspace()
 	case report.HostQwenCode:
 		p.qwenWorkspace()
+	case report.HostKimiCode:
+		p.kimiWorkspace()
 	}
 }
 

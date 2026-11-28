@@ -532,7 +532,7 @@ func (p *plugin) serverMap(e *entry, n *jsonconfig.Node, kind string) *jsonconfi
 }
 
 func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
-	if p.host == report.HostQwenCode {
+	if p.host == report.HostQwenCode || p.host == report.HostKimiCode {
 		return n.Get(fieldMCPServers)
 	}
 
@@ -566,7 +566,7 @@ func (p *plugin) mcpServerMap(e *entry, n *jsonconfig.Node) *jsonconfig.Node {
 }
 
 func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activation string, i int) {
-	if (p.host == report.HostGrokCLI || p.host == report.HostZCode) && kind == report.ComponentMCPConfig {
+	if (p.host == report.HostGrokCLI || p.host == report.HostZCode || p.host == report.HostKimiCode) && kind == report.ComponentMCPConfig {
 		if enabled := n.Get("enabled"); enabled != nil && enabled.Kind == jsonconfig.KindBool && !enabled.Bool {
 			activation = activationInactiveForProfile
 		}
@@ -584,6 +584,11 @@ func (p *plugin) serverEntry(e *entry, n *jsonconfig.Node, kind, parent, activat
 
 	if n.Kind != jsonconfig.KindObject {
 		p.issue(issuePluginServerInvalid, e.Meta.Path, formatInvalid)
+		return
+	}
+
+	if p.host == report.HostKimiCode && kind == report.ComponentMCPConfig {
+		p.kimiServer(e, n, id, activation, s)
 		return
 	}
 
@@ -642,6 +647,11 @@ func (p *plugin) serverCommand(e *entry, n *jsonconfig.Node, id string, s *repor
 
 	if !ok || text == "" || !valid {
 		p.issue(issuePluginServerCommandInvalid, e.Meta.Path, formatInvalid)
+		return
+	}
+
+	if p.host == report.HostKimiCode {
+		p.kimiServerCommand(e, n, id, text, args, s, activation)
 		return
 	}
 
@@ -706,8 +716,8 @@ func (p *plugin) resolveCommand(component string, words []string, argv bool, s *
 	}
 
 	rel, kind, reason := p.handlerPath(candidate, argv, hook)
-	if relativeDir != "" && candidate == words[0] && reason != "" {
-		if local, ok := grokRelativeExecutable(relativeDir, candidate); ok {
+	if relativeDir != "" && reason != "" && (candidate == words[0] || p.host == report.HostKimiCode && strings.HasPrefix(candidate, "./")) {
+		if local, ok := packageRelativeExecutable(relativeDir, candidate); ok {
 			rel, kind, reason = local, referenceKindHandler, ""
 		}
 	}

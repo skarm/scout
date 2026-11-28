@@ -119,6 +119,11 @@ func (p *plugin) discover() {
 		return
 	}
 
+	if p.host == report.HostKimiCode {
+		p.discoverKimiPlugin()
+		return
+	}
+
 	if p.host == report.HostQwenCode {
 		p.discoverQwenExtension()
 		return
@@ -422,6 +427,7 @@ func (p *plugin) selectedFile(key, name, kind, activation, basis string, s *repo
 
 	supportsNested := (p.host == report.HostGeminiCLI || p.host == report.HostQwenCode) && kind == componentCommand ||
 		p.host == report.HostQwenCode && kind == componentRule ||
+		p.host == report.HostKimiCode && (kind == componentCommand || kind == componentAgent || kind == report.ComponentSkill) ||
 		p.host == report.HostOpenClaw && kind == report.ComponentSkill
 	if !supportsNested && nestedComponent(kind, key, name) {
 		if effective != activationInactiveForProfile {
@@ -571,6 +577,8 @@ func (p *plugin) inspectConfig(e *entry, n *jsonconfig.Node, kind, parent, activ
 	switch kind {
 	case report.ComponentHookConfig:
 		switch p.host {
+		case report.HostKimiCode:
+			p.kimiHooks(e, n, parent, activation)
 		case report.HostCursor, report.HostCopilotCLI:
 			p.nativeHooks(e, n, parent, activation)
 		case report.HostZCode:

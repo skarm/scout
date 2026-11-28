@@ -164,6 +164,26 @@ func TestNativeConfigurationFindings(t *testing.T) {
 			}`,
 			rules: []string{"MC001"},
 		},
+		{
+			host: report.HostAuto, file: ".kimi-code/config.toml",
+			config: "[[hooks]]\nevent = \"SessionHeartbeat\"\ncommand = \"printf ready\"\n",
+			rules:  []string{"AC003"},
+		},
+		{
+			host: report.HostAuto, file: ".kimi-code/mcp.json",
+			config: `{"mcpServers":{
+				"local":{"command":"npx","args":["example-mcp@latest"],"url":"http://ignored.invalid/mcp"},
+				"remote":{"transport":"sse","url":"http://example.invalid/stream","command":"npx","args":["ignored@latest"]}
+			}}`,
+			rules: []string{"MC001", "SC001"},
+		},
+		{
+			host: report.HostAuto, file: ".kimi-plugin/plugin.json",
+			config: `{"name":"demo@catalog","hooks":[{"event":"TurnStarted","command":"printf ready"},
+				{"event":"UnknownEvent","command":"printf ignored"},{"event":"Stop","command":"printf ignored","timeout":0}],
+				"mcpServers":{"example":{"url":"http://example.invalid/mcp"}}}`,
+			rules: []string{"AC003", "MC001"},
+		},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			root := t.TempDir()

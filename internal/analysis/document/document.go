@@ -394,7 +394,10 @@ func (f *filePreparation) unitBackend(lang, origin string) (parse.Backend, bool)
 	}
 
 	if !supported && lang == language.TOML {
-		if _, grok := artifact.GrokTOMLRoot(f.hostConfigName, f.budget.host); grok {
+		_, grok := artifact.GrokTOMLRoot(f.hostConfigName, f.budget.host)
+
+		_, kimi := artifact.KimiTOMLRoot(f.hostConfigName, f.budget.host)
+		if grok || kimi {
 			backend, supported = parse.NativeTOML(), true
 		}
 	}

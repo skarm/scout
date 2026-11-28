@@ -135,17 +135,28 @@ func (t *tree) instructions(root, kind string) {
 		for _, entry := range t.entries(dir) {
 			file := path.Join(dir, entry.Name())
 			if entry.Type().IsRegular() && agentconfig.InstructionFile(t.agent, kind, file) && t.read(file, true) != nil {
-				name := strings.TrimSuffix(entry.Name(), path.Ext(entry.Name()))
-				if (t.agent == report.HostGeminiCLI || t.agent == report.HostQwenCode) && kind == "command" {
-					name = strings.ReplaceAll(strings.TrimSuffix(strings.TrimPrefix(file, root+"/"), path.Ext(file)), "/", ":")
-				}
-
-				t.component(kind, name, file, file, "", "unknown")
+				t.component(kind, instructionName(t.agent, kind, root, file), file, file, "", "unknown")
 			}
 		}
 
 		return false
 	})
+}
+
+func instructionName(host, kind, root, file string) string {
+	name := strings.TrimSuffix(file, path.Ext(file))
+	if kind == "command" {
+		relative := strings.TrimPrefix(name, root+"/")
+
+		switch host {
+		case report.HostGeminiCLI, report.HostQwenCode:
+			return strings.ReplaceAll(relative, "/", ":")
+		case report.HostKimiCode:
+			return relative
+		}
+	}
+
+	return path.Base(name)
 }
 
 func (t *tree) openCodeDirectory(base string) {
