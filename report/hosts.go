@@ -12,4 +12,6 @@ const (
 	HostGeminiCLI = "gemini-cli"
 	// HostAgentSkills identifies agent-skills.
 	HostAgentSkills = "agent-skills"
+	// HostAgentPlugins identifies host-independent portable plugin interpretation.
+	HostAgentPlugins = "agent-plugins"
 )

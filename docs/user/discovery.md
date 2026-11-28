@@ -59,8 +59,12 @@ configuration directories. Explicit `--home` disables these implicit overrides;
 `~/.claude.json` and the relocated `.claude.json` are both inventoried when present.
 
 Compatibility plugin manifests can add contained skill directories and inline or
-file-based MCP maps. Paths must stay within the plugin. Portable Codex packages
-use fixed `skills/` and `mcp.json`; compatibility declarations do not redirect them.
+file-based MCP maps. Paths must stay within the plugin. Scout reads Agent Plugins
+1.0 and 1.1 packages in the Codex cache from root `plugin.json`, immediate
+`skills/<name>/SKILL.md` declarations, and root `mcp.json`. Version 1.1 also
+uses root `hooks.json`. Each component configuration must declare the manifest's
+schema version. Package scans use the inline `extensions.com.openai` object for
+Codex settings when present and consult `.codex-plugin/plugin.json` as a fallback.
 Marketplace catalogs are not searched as installed plugin packages.
 
 Claude plugins can omit `.claude-plugin/plugin.json`. Their default `skills/` and
@@ -111,10 +115,11 @@ scout discover --agent codex --kind skill \
   --scan -- --format markdown
 ```
 
-`--kind` accepts `skill`, `plugin`, `mcp-server` and `command`; it and the path
+`--kind` accepts `skill`, `plugin`, `mcp-server`, `command` and `hook`; it and the path
 filters are repeatable, with at most 32 values each. Includes intersect known roots
 and cannot add outside inputs. Excludes omit whole overlapping roots; use a kind
 filter to select individual components instead of a broad skills/cache directory.
+The `hook` kind selects packages containing portable hooks so the scan can resolve their handlers.
 Existing path aliases follow the filesystem's case and Unicode comparison rules.
 Missing suffixes retain resolved symlink ancestors; other path-resolution errors
 reject the selection, including dangling or cyclic links.

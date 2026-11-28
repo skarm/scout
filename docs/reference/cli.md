@@ -103,7 +103,7 @@ roots to the existing Scanner. See [locations, format and limits](../user/discov
   Inventory `--format`/`--output` flags are rejected in this mode.
 - `--snapshot FILE` (`-s`) saves the discovered environment. Select one agent
   and pass scan flags after `--`.
-- `--kind skill|plugin|mcp-server|command` (`-k`): repeatable component-type selection;
+- `--kind skill|plugin|mcp-server|command|hook` (`-k`): repeatable component-type selection;
   unset selects the original grouped scan roots.
 - `--include-path PATH`: repeatable intersection with discovered scan roots;
   cannot add paths outside the inventory.

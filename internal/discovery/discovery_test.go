@@ -99,7 +99,7 @@ func TestPortablePluginAndAncestorBoundary(t *testing.T) {
 	write(t, project, ".agents/skills/inherited/SKILL.md", "Inherited")
 	write(t, home, ".codex/plugins/cache/m/p/1/plugin.json", `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"portable","extensions":{"com.openai":{"skills":"./ignored"}}}`)
 	write(t, home, ".codex/plugins/cache/m/p/1/skills/portable-skill/SKILL.md", "Portable")
-	write(t, home, ".codex/plugins/cache/m/p/1/mcp.json", `{"mcpServers":{"portable-server":{"type":"streamable-http","url":"https://example.invalid"}}}`)
+	write(t, home, ".codex/plugins/cache/m/p/1/mcp.json", `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"portable-server":{"type":"streamable-http","url":"https://example.invalid"}}}`)
 	write(t, home, ".codex/plugins/cache/m/p/1/ignored/should-not-load/SKILL.md", "Ignored overlay")
 	write(t, home, ".codex/plugins/marketplaces/catalog/.codex-plugin/plugin.json", `{"name":"not-installed"}`)
 	o := options(home)
@@ -130,6 +130,44 @@ func TestPortablePluginAndAncestorBoundary(t *testing.T) {
 				t.Fatalf("redundant scan target: %q inside %q", child, parent)
 			}
 		}
+	}
+}
+
+func TestPortablePluginDiscoveryGaps(t *testing.T) {
+	const plugin = ".codex/plugins/cache/m/p/1/"
+	home := canonicalTemp(t)
+	write(t, home, plugin+"plugin.json", `{"$schema":"https://agent-plugins.org/schemas/1.1.0/plugin.schema.json","name":"portable"}`)
+	write(t, home, plugin+"mcp.json", `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"wrong-version":{"type":"stdio","command":"example"}}}`)
+	write(t, home, plugin+"hooks.json", `{"$schema":"https://agent-plugins.org/schemas/1.1.0/hooks.schema.json","hooks":{"SessionStart":[{"command":"../outside"},{"command":"./check"}]}}`)
+	write(t, home, plugin+"skills/visible/SKILL.md", "Test skill.")
+	o := options(home)
+	o.Agent = "codex"
+	result, err := discovery.Discover(context.Background(), o)
+	if err != nil || result.Complete || len(result.Issues) != 2 {
+		t.Fatalf("expected two coverage gaps: %v, %+v", err, result.Issues)
+	}
+	kinds := make([]string, 0, len(result.Components))
+	for _, c := range result.Components {
+		kinds = append(kinds, c.Kind+":"+c.Name)
+		if c.Kind == "hook" && c.Key != "/hooks/SessionStart/1" {
+			t.Errorf("wrong handler source key: %+v", c)
+		}
+	}
+	slices.Sort(kinds)
+	if !slices.Equal(kinds, []string{"hook:SessionStart", "plugin:portable", "skill:visible"}) {
+		t.Fatalf("unexpected declarations after invalid entries: %v", kinds)
+	}
+	selected, err := discovery.Select(context.Background(), result, discovery.Filters{Kinds: []string{"hook"}})
+	if want := filepath.Join(home, filepath.FromSlash(plugin)); err != nil || !slices.Equal(selected.Targets, []string{want}) {
+		t.Fatalf("hook selection lost its package context: %v, %v", err, selected.Targets)
+	}
+
+	write(t, home, plugin+"plugin.json", `{"$schema":"https://agent-plugins.org/schemas/9.0.0/plugin.schema.json","name":"portable"}`)
+	write(t, home, plugin+".codex-plugin/plugin.json", `{"name":"compat"}`)
+	result, err = discovery.Discover(context.Background(), o)
+	if err != nil || result.Complete || len(result.Components) != 0 || len(result.Issues) != 1 ||
+		result.Issues[0].Code != "unsupported_plugin_manifest" {
+		t.Fatalf("unknown schema should retain a gap without using the fallback: %v, %+v", err, result)
 	}
 }
 

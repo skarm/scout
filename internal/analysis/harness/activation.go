@@ -560,6 +560,11 @@ func (p *plugin) serverCommand(e *entry, n *jsonconfig.Node, id string, s *repor
 		return
 	}
 
+	if p.portable != "" {
+		p.portableCommand(id, text, args, s, activation)
+		return
+	}
+
 	p.command(id, text, args, true, s, activation, false)
 }
 

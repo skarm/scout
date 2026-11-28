@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/skarm/scout/internal/agentplugins"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/report"
@@ -20,7 +21,6 @@ const (
 	fieldName            = "name"
 	fieldPath            = "path"
 	fieldPlugins         = "plugins"
-	fieldSchema          = "$schema"
 	fieldSkills          = "skills"
 )
 
@@ -155,7 +155,7 @@ func (t *tree) plugins(root string) {
 }
 
 func (t *tree) pluginAt(dir string) bool {
-	for _, relative := range []string{"plugin.json", artifact.CodexPluginManifest, artifact.ClaudePluginManifest} {
+	for _, relative := range []string{agentplugins.ManifestFile, artifact.CodexPluginManifest, artifact.ClaudePluginManifest} {
 		if t.agent == report.HostClaudeCode && relative != artifact.ClaudePluginManifest {
 			continue
 		}
@@ -167,14 +167,13 @@ func (t *tree) pluginAt(dir string) bool {
 			continue
 		}
 
-		portable := relative == "plugin.json"
-		if portable && !strings.HasPrefix(n.GetOrEmpty(fieldSchema).String, "https://agent-plugins.org/schemas/") {
-			continue
-		}
+		if relative == agentplugins.ManifestFile {
+			if v := agentplugins.ManifestVersion(n); v != "" {
+				t.portablePlugin(dir, file, n, v)
+				return true
+			}
 
-		if portable && n.GetOrEmpty(fieldSchema).String != "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json" {
-			t.b.issue(codeUnsupportedPluginManifest, t.absolute(file))
-			return true
+			continue
 		}
 
 		name, ok := n.Get(fieldName).Text()
@@ -188,13 +187,9 @@ func (t *tree) pluginAt(dir string) bool {
 		plugin.component("plugin", name, dir, file, "", "unknown")
 		plugin.pluginSkills(dir, n.Get(fieldSkills))
 
-		if portable {
-			plugin.mcpFile(path.Join(dir, "mcp.json"))
-		} else {
-			plugin.mcpFile(path.Join(dir, artifact.MCPConfig))
-			plugin.pluginPaths(n.Get(fieldSkills), dir, file, "/"+fieldSkills, true)
-			plugin.pluginPaths(n.Get(mcpServersField), dir, file, mcpServersPointer, false)
-		}
+		plugin.mcpFile(path.Join(dir, artifact.MCPConfig))
+		plugin.pluginPaths(n.Get(fieldSkills), dir, file, "/"+fieldSkills, true)
+		plugin.pluginPaths(n.Get(mcpServersField), dir, file, mcpServersPointer, false)
 
 		return true
 	}

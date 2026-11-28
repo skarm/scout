@@ -50,7 +50,7 @@ discover:
   --output, -o FILE          Inventory destination (default: stdout).
   --scan                     Scan discovered roots; ordinary scan flags follow --.
   --snapshot, -s FILE        Save discovered environment; requires one --agent; scan flags follow --.
-  --kind, -k KIND            Select skill, plugin, mcp-server or command roots; repeatable.
+  --kind, -k KIND            Select skill, plugin, mcp-server, command or hook roots; repeatable.
   --include-path PATH        Narrow discovered roots; repeatable; cannot expand discovery.
   --exclude-path PATH        Omit overlapping roots; repeatable; use --kind for precision.
   Explicit --home ignores process CODEX_HOME/CLAUDE_CONFIG_DIR overrides.

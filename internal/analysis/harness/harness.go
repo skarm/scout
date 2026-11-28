@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/skarm/scout/internal/agentplugins"
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hookpolicy"
@@ -128,6 +129,7 @@ type candidate struct {
 	ns                   *namespace
 	root, host, manifest string
 	projectSettings      bool
+	portable             agentplugins.Version
 }
 type plugin struct {
 	manifest                   *entry
@@ -138,6 +140,7 @@ type plugin struct {
 	processedConfigs           map[string]bool
 	rootNode                   string
 	projectSettings            bool
+	portable                   agentplugins.Version
 }
 
 type candidateSet struct {
@@ -264,13 +267,14 @@ func (b *builder) candidates(host string) []candidate {
 			}
 
 			switch path.Base(name) {
-			case "plugin.json":
-				root, loader := manifestLayout(name)
-				set.add(ns, root, loader, name)
+			case agentplugins.ManifestFile:
+				if c, ok := pluginCandidate(ns, name, host); ok {
+					set.add(c)
+				}
 
 				found = true
 			case "gemini-extension.json":
-				set.add(ns, path.Dir(name), report.HostGeminiCLI, name)
+				set.add(candidate{ns: ns, root: path.Dir(name), host: report.HostGeminiCLI, manifest: name})
 			}
 
 			b.marketplace(ns, name)
@@ -278,7 +282,7 @@ func (b *builder) candidates(host string) []candidate {
 		// Manifestless Claude plugins require explicit caller intent. Auto cannot
 		// distinguish a plugin directory from an arbitrary repository with hooks.
 		if !found && !b.containerCollection(ns) && slices.Contains([]string{report.HostClaudeCode, report.HostCodex}, host) {
-			set.add(ns, ".", host, "")
+			set.add(candidate{ns: ns, root: ".", host: host})
 		}
 
 		if host == report.HostAuto {
@@ -309,12 +313,7 @@ func (s *candidateSet) addProjectHookSettings(ns *namespace) {
 			continue
 		}
 
-		count := len(s.values)
-		s.add(ns, path.Dir(dir), report.HostClaudeCode, "")
-
-		if len(s.values) > count {
-			s.values[count].projectSettings = true
-		}
+		s.add(candidate{ns: ns, root: path.Dir(dir), host: report.HostClaudeCode, projectSettings: true})
 	}
 }
 
@@ -457,7 +456,7 @@ func (b *builder) plugin(c candidate) *plugin {
 	id := identity("plugin-v1", c.ns.id, c.root, c.host)
 	activation := activationUnknown
 
-	if b.r.RequestedHost != report.HostAuto && c.host != "unknown" {
+	if b.r.RequestedHost != report.HostAuto && c.host != "unknown" && c.host != report.HostAgentPlugins {
 		if b.r.RequestedHost == c.host {
 			activation = activationConditional
 		} else {
@@ -484,11 +483,18 @@ func (b *builder) plugin(c candidate) *plugin {
 		index:            len(b.r.Plugins),
 		processedConfigs: map[string]bool{},
 		projectSettings:  c.projectSettings,
+		portable:         c.portable,
 	}
 
 	adapter, kind := c.host+"-layout-subset", "plugin"
+	contract := "docs-2026-10-26-subset"
+
 	if c.projectSettings {
 		adapter, kind = c.host+"-project-settings-subset", "host_project"
+	}
+
+	if c.portable != "" {
+		adapter, contract = "agent-plugins-subset", "agent-plugins-"+string(c.portable)
 	}
 
 	b.r.Plugins = append(b.r.Plugins, report.PluginInterpretation{
@@ -499,7 +505,7 @@ func (b *builder) plugin(c candidate) *plugin {
 		Manifests:      manifests,
 		AdapterID:      adapter,
 		AdapterVersion: version,
-		Contract:       "docs-2026-10-26-subset",
+		Contract:       contract,
 		FormatStatus:   report.OutcomePartial,
 		Activation:     activation,
 		Assumptions:    []string{"No host binary/version, trust grants or installation are evaluated; only closed captured Claude hook-disable precedence is modeled.", "Paths are resolved only against this package namespace; external configuration is not read."},
@@ -555,8 +561,8 @@ func (b *builder) containerCollection(ns *namespace) bool {
 	return false
 }
 
-func (s *candidateSet) add(ns *namespace, root, host, manifest string) {
-	key := ns.id + "\x00" + root + "\x00" + host
+func (s *candidateSet) add(c candidate) {
+	key := c.ns.id + "\x00" + c.root + "\x00" + c.host
 	if s.seen[key] {
 		return
 	}
@@ -567,7 +573,46 @@ func (s *candidateSet) add(ns *namespace, root, host, manifest string) {
 		return
 	}
 
-	s.values = append(s.values, candidate{ns: ns, root: root, host: host, manifest: manifest})
+	s.values = append(s.values, c)
+}
+
+func pluginCandidate(ns *namespace, name, requestedHost string) (candidate, bool) {
+	root, host := manifestLayout(name)
+
+	c := candidate{ns: ns, root: root, host: host, manifest: name}
+	if host == report.HostCodex {
+		// The Codex compatibility manifest belongs to the same portable package.
+		return c, agentplugins.ManifestVersion(capturedJSON(ns.entries[path.Join(root, agentplugins.ManifestFile)])) == ""
+	}
+
+	if host != "unknown" {
+		return c, true
+	}
+
+	manifest := capturedJSON(ns.entries[name])
+
+	c.portable = agentplugins.ManifestVersion(manifest)
+	if c.portable != "" {
+		c.host = report.HostAgentPlugins
+		if requestedHost == report.HostCodex || agentplugins.OpenAISettings(manifest) != nil ||
+			ns.entries[path.Join(root, artifact.CodexPluginManifest)] != nil {
+			c.host = report.HostCodex
+		}
+	}
+
+	return c, true
+}
+
+func capturedJSON(e *entry) *jsonconfig.Node {
+	if e != nil && e.Doc != nil {
+		for _, u := range e.Doc.Units() {
+			if tree, ok := u.Tree.(parse.JSONTree); u.Origin == "file" && ok {
+				return tree.Root
+			}
+		}
+	}
+
+	return nil
 }
 
 func manifestLayout(name string) (string, string) {

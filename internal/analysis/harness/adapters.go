@@ -98,6 +98,11 @@ func (p *plugin) discover() {
 		return
 	}
 
+	if p.portable != "" {
+		p.discoverPortable()
+		return
+	}
+
 	var root *jsonconfig.Node
 	if p.manifest != nil {
 		root = p.object(p.manifest)
@@ -401,8 +406,10 @@ func nestedComponent(kind, key, name string) bool {
 }
 
 func (p *plugin) configs(field, defaultName, kind string, root *jsonconfig.Node) {
-	n := root.Get(field)
+	p.configsFrom(field, defaultName, kind, p.manifest, root.Get(field))
+}
 
+func (p *plugin) configsFrom(field, defaultName, kind string, source *entry, n *jsonconfig.Node) {
 	def := p.entry(defaultName)
 	if def != nil {
 		activation := p.defaultConfigActivation(def, n, kind)
@@ -419,14 +426,14 @@ func (p *plugin) configs(field, defaultName, kind string, root *jsonconfig.Node)
 			return
 		}
 
-		s := ref(p.manifest, item.Span)
+		s := ref(source, item.Span)
 		if raw, ok := item.Text(); ok {
 			p.declaredConfigFile(raw, kind, s)
 		} else if item.Kind == jsonconfig.KindObject {
-			id := p.component(kind, p.manifest, p.activation, basisManifest, s, fmt.Sprintf("%s:inline:%d", field, i))
-			p.inspectConfig(p.manifest, item, kind, id, p.activation)
+			id := p.component(kind, source, p.activation, basisManifest, s, fmt.Sprintf("%s:inline:%d", field, i))
+			p.inspectConfig(source, item, kind, id, p.activation)
 		} else {
-			p.issue(issuePluginConfigShapeInvalid, p.manifestPath(), formatInvalid)
+			p.issue(issuePluginConfigShapeInvalid, source.Meta.Path, formatInvalid)
 		}
 	}
 }
