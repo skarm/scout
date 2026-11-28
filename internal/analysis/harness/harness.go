@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/skarm/scout/internal/agentconfig"
 	"github.com/skarm/scout/internal/agentplugins"
 	"github.com/skarm/scout/internal/analysis/analysisbudget"
 	"github.com/skarm/scout/internal/analysis/document"
@@ -129,6 +130,7 @@ type candidate struct {
 	ns                   *namespace
 	root, host, manifest string
 	projectSettings      bool
+	nativeWorkspace      bool
 	portable             agentplugins.Version
 }
 type plugin struct {
@@ -140,6 +142,7 @@ type plugin struct {
 	processedConfigs           map[string]bool
 	rootNode                   string
 	projectSettings            bool
+	nativeWorkspace            bool
 	portable                   agentplugins.Version
 }
 
@@ -278,6 +281,10 @@ func (b *builder) candidates(host string) []candidate {
 			}
 
 			b.marketplace(ns, name)
+
+			if c, ok := nativeWorkspaceCandidate(ns, name, host); ok {
+				set.add(c)
+			}
 		}
 		// Manifestless Claude plugins require explicit caller intent. Auto cannot
 		// distinguish a plugin directory from an arbitrary repository with hooks.
@@ -454,6 +461,10 @@ func (b *builder) edge(from, to, relation, basis, activation string, s *report.S
 
 func (b *builder) plugin(c candidate) *plugin {
 	id := identity("plugin-v1", c.ns.id, c.root, c.host)
+	if c.nativeWorkspace {
+		id = identity("project-v1", c.ns.id, c.root, c.host)
+	}
+
 	activation := activationUnknown
 
 	if b.r.RequestedHost != report.HostAuto && c.host != "unknown" && c.host != report.HostAgentPlugins {
@@ -483,13 +494,14 @@ func (b *builder) plugin(c candidate) *plugin {
 		index:            len(b.r.Plugins),
 		processedConfigs: map[string]bool{},
 		projectSettings:  c.projectSettings,
+		nativeWorkspace:  c.nativeWorkspace,
 		portable:         c.portable,
 	}
 
 	adapter, kind := c.host+"-layout-subset", "plugin"
 	contract := "docs-2026-10-26-subset"
 
-	if c.projectSettings {
+	if c.projectSettings || c.nativeWorkspace {
 		adapter, kind = c.host+"-project-settings-subset", "host_project"
 	}
 
@@ -563,6 +575,10 @@ func (b *builder) containerCollection(ns *namespace) bool {
 
 func (s *candidateSet) add(c candidate) {
 	key := c.ns.id + "\x00" + c.root + "\x00" + c.host
+	if c.nativeWorkspace {
+		key += "\x00workspace"
+	}
+
 	if s.seen[key] {
 		return
 	}
@@ -585,6 +601,19 @@ func pluginCandidate(ns *namespace, name, requestedHost string) (candidate, bool
 		return c, agentplugins.ManifestVersion(capturedJSON(ns.entries[path.Join(root, agentplugins.ManifestFile)])) == ""
 	}
 
+	if host == report.HostCopilotCLI || requestedHost == report.HostCopilotCLI || copilotMarker(ns, root) {
+		if host == "unknown" || host == report.HostCopilotCLI || host == report.HostClaudeCode {
+			c.host = report.HostCopilotCLI
+			c.portable = agentplugins.ManifestVersion(capturedJSON(ns.entries[name]))
+
+			return c, name == copilotManifest(ns, root)
+		}
+	}
+
+	if host == report.HostCursor && agentplugins.ManifestVersion(capturedJSON(ns.entries[path.Join(root, agentplugins.ManifestFile)])) != "" {
+		return c, false
+	}
+
 	if host != "unknown" {
 		return c, true
 	}
@@ -594,13 +623,33 @@ func pluginCandidate(ns *namespace, name, requestedHost string) (candidate, bool
 	c.portable = agentplugins.ManifestVersion(manifest)
 	if c.portable != "" {
 		c.host = report.HostAgentPlugins
-		if requestedHost == report.HostCodex || agentplugins.OpenAISettings(manifest) != nil ||
+		if requestedHost == report.HostCursor || ns.entries[path.Join(root, artifact.CursorPluginManifest)] != nil {
+			c.host = report.HostCursor
+		} else if requestedHost == report.HostCodex || agentplugins.OpenAISettings(manifest) != nil ||
 			ns.entries[path.Join(root, artifact.CodexPluginManifest)] != nil {
 			c.host = report.HostCodex
 		}
 	}
 
 	return c, true
+}
+
+func copilotMarker(ns *namespace, root string) bool {
+	return ns.entries[path.Join(root, artifact.CopilotPluginManifest)] != nil || ns.entries[path.Join(root, artifact.CopilotGitHubManifest)] != nil
+}
+
+func copilotManifest(ns *namespace, root string) string {
+	if name := path.Join(root, agentplugins.ManifestFile); agentplugins.ManifestVersion(capturedJSON(ns.entries[name])) != "" {
+		return name
+	}
+
+	for _, legacy := range agentconfig.CopilotLegacyManifests() {
+		if name := path.Join(root, legacy); ns.entries[name] != nil {
+			return name
+		}
+	}
+
+	return ""
 }
 
 func capturedJSON(e *entry) *jsonconfig.Node {
@@ -616,15 +665,11 @@ func capturedJSON(e *entry) *jsonconfig.Node {
 }
 
 func manifestLayout(name string) (string, string) {
-	dir := path.Dir(name)
-	switch path.Base(dir) {
-	case ".claude-plugin":
-		return path.Dir(dir), report.HostClaudeCode
-	case ".codex-plugin":
-		return path.Dir(dir), report.HostCodex
-	default:
-		return dir, "unknown"
+	if root, host := artifact.NativePluginManifest(name); host != "" {
+		return root, host
 	}
+
+	return path.Dir(name), "unknown"
 }
 
 func candidateLess(a, c candidate) bool {
@@ -636,7 +681,11 @@ func candidateLess(a, c candidate) bool {
 		return a.root < c.root
 	}
 
-	return a.host < c.host
+	if a.host != c.host {
+		return a.host < c.host
+	}
+
+	return !a.nativeWorkspace && c.nativeWorkspace
 }
 
 func (p *plugin) issue(code, file, status string) {

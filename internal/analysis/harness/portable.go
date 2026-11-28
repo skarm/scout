@@ -60,6 +60,10 @@ func (p *plugin) discoverPortable() {
 		p.portableCodex(manifest)
 	}
 
+	if p.host == report.HostCopilotCLI && p.portable == agentplugins.V1_0 {
+		p.portableCopilot()
+	}
+
 	p.discoverHostConfigs()
 }
 

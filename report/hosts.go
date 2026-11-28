@@ -14,4 +14,10 @@ const (
 	HostAgentSkills = "agent-skills"
 	// HostAgentPlugins identifies host-independent portable plugin interpretation.
 	HostAgentPlugins = "agent-plugins"
+	// HostCursor identifies Cursor plugin and workspace declarations.
+	HostCursor = "cursor"
+	// HostCopilotCLI identifies GitHub Copilot CLI declarations.
+	HostCopilotCLI = "copilot-cli"
+	// HostOpenCode identifies OpenCode configuration and extensions.
+	HostOpenCode = "opencode"
 )

@@ -97,6 +97,7 @@ var aliases = map[string]string{
 	DependencyManifest:       DependencyManifest,
 	"md":                     Markdown,
 	"markdown":               Markdown,
+	"mdc":                    Markdown,
 	"mdown":                  Markdown,
 	"txt":                    Text,
 	"text":                   Text,

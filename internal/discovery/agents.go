@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"slices"
 
+	"github.com/skarm/scout/internal/agentconfig"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/report"
 )
@@ -49,6 +50,43 @@ var agentLayouts = []agentLayout{
 		project:       []location{{artifact.MCPConfig, (*tree).mcpFile}, {claudeHomeDirectory, (*tree).claudeProject}},
 		system:        []location{{"managed-mcp.json", (*tree).mcpFile}, {"managed-settings.json", (*tree).settings}},
 		systemDefault: "/etc/claude-code", systemDarwin: "/Library/Application Support/ClaudeCode", systemWindows: `C:\Program Files\ClaudeCode`,
+	},
+	{
+		id: report.HostCursor, label: "Cursor", homeFlag: "cursor-home", homeEnv: "CURSOR_CONFIG_DIR",
+		homeOverride:  func(o *Options) *string { return &o.CursorHome },
+		user:          []location{{".agents/skills", (*tree).skills}},
+		defaultHome:   location{agentconfig.CursorDirectory, (*tree).cursorUser},
+		relocated:     []location{{".", (*tree).cursorUser}},
+		project:       []location{{agentconfig.CursorDirectory, (*tree).cursorConfig}, {".agents/skills", (*tree).skills}},
+		system:        []location{{"hooks.json", (*tree).nativeHooks}},
+		systemDefault: "/etc/cursor", systemDarwin: "/Library/Application Support/Cursor", systemWindows: `C:\ProgramData\Cursor`,
+	},
+	{
+		id: report.HostCopilotCLI, label: "Copilot CLI", homeFlag: "copilot-home", homeEnv: "COPILOT_HOME",
+		homeOverride: func(o *Options) *string { return &o.CopilotHome },
+		defaultHome:  location{agentconfig.CopilotDirectory, (*tree).copilotUser},
+		relocated:    []location{{".", (*tree).copilotUser}},
+		project: []location{
+			{artifact.MCPConfig, (*tree).copilotMCP},
+			{agentconfig.CopilotProjectMCP, (*tree).copilotMCP},
+			{agentconfig.CopilotProjectHooks, (*tree).copilotHooks},
+			{agentconfig.CopilotProjectSettings, (*tree).copilotSettings},
+			{agentconfig.CopilotProjectLocalSettings, (*tree).copilotSettings},
+			{".github/skills", (*tree).skills},
+			{".github/agents", (*tree).agents},
+			{".agents/skills", (*tree).skills},
+			{".claude/skills", (*tree).skills},
+		},
+	},
+	{
+		id: report.HostOpenCode, label: "OpenCode", homeFlag: "opencode-home", homeEnv: "OPENCODE_CONFIG_DIR",
+		homeOverride:  func(o *Options) *string { return &o.OpenCodeHome },
+		user:          []location{{".agents/skills", (*tree).skills}, {".claude/skills", (*tree).skills}},
+		defaultHome:   location{".config/opencode", (*tree).openCodeDirectory},
+		relocated:     []location{{".", (*tree).openCodeDirectory}},
+		project:       []location{{agentconfig.OpenCodeConfig, (*tree).openCodeConfig}, {agentconfig.OpenCodeConfigJSONC, (*tree).openCodeConfig}, {agentconfig.OpenCodeDirectory, (*tree).openCodeDirectory}, {".agents/skills", (*tree).skills}, {".claude/skills", (*tree).skills}},
+		system:        []location{{".", (*tree).openCodeDirectory}},
+		systemDefault: "/etc/opencode", systemDarwin: "/Library/Application Support/opencode", systemWindows: `C:\ProgramData\opencode`,
 	},
 }
 

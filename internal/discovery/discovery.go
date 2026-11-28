@@ -31,6 +31,8 @@ const discoverySchema = "scout.environment/v1"
 // Options selects operator-owned roots. Configuration cannot expand these roots.
 type Options struct {
 	Home, CodexHome, ClaudeHome string
+	CursorHome, CopilotHome     string
+	OpenCodeHome                string
 	Agent                       string
 	Projects                    []string
 	System                      bool

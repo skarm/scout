@@ -2,7 +2,7 @@
 
 [English](discovery.md) · Русский
 
-`scout discover` находит локальные декларации Codex и Claude Code перед проверкой
+`scout discover` находит локальные декларации Codex, Claude Code, Cursor, GitHub Copilot CLI и OpenCode перед проверкой
 их файлов. Команда читает конфигурации и манифесты без запуска MCP-серверов,
 выполнения команд, подстановки переменных окружения из файлов и сетевых запросов.
 
@@ -53,9 +53,33 @@ scout discover --home /review/home --system=false --no-project --format json
   `/Library/Application Support/ClaudeCode` на macOS, `/etc/claude-code` на Linux
   или `C:\Program Files\ClaudeCode` на Windows.
 
+Для Cursor Scout читает MCP и хуки жизненного цикла в `~/.cursor` и проектной
+`.cursor`, а также находит правила, агентов, команды и навыки. Пакеты в
+`~/.cursor/plugins/local` и `plugins/cache` могут объявлять компоненты через
+`.cursor-plugin/plugin.json`. Scout также читает системный файл хуков в известном
+для платформы каталоге. [Справочник плагинов Cursor](https://cursor.com/docs/reference/plugins) · [Хуки Cursor](https://cursor.com/docs/hooks)
+
+Для GitHub Copilot CLI Scout читает `~/.copilot/mcp-config.json`, находит
+пользовательские навыки и агентов, а также пакеты в `~/.copilot/installed-plugins`.
+Проектные `.mcp.json` и `.github/mcp.json` могут содержать как обёртку, так и
+плоскую карту MCP. Scout читает проектные и пользовательские файлы хуков и встроенные хуки в
+известных файлах настроек Copilot, включая команды оболочки и вызов через `exec`, находит агентов и навыки в `.github` и учитывает
+прежние пути манифестов плагинов и каталог `com.github.copilot` в Agent Plugins 1.0.
+[Справочник плагинов Copilot CLI](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
+
+Для OpenCode Scout читает `opencode.json` и `opencode.jsonc` в корне проекта,
+проектной `.opencode`, `~/.config/opencode` и известных системных каталогах.
+В инвентарь входят MCP-серверы с массивом аргументов и явным отключением в обеих
+версиях формата, ссылки на плагины, локальные плагины и инструменты на JavaScript
+или TypeScript, агенты, команды и навыки. Scout пропускает управляемые настройки
+macOS и не загружает внешние зависимости.
+[Конфигурация OpenCode](https://opencode.ai/docs/config/) · [MCP в OpenCode](https://opencode.ai/docs/mcp-servers/)
+
 Переменные `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса сканирования могут менять
 каталоги конфигурации. Явный `--home` отключает эти неявные переопределения;
-`--codex-home` и `--claude-home` выбирают каталоги явно. Прежний `~/.claude.json`
+`--codex-home` и `--claude-home` выбирают каталоги явно. Для остальных
+клиентов используются `CURSOR_CONFIG_DIR`, `COPILOT_HOME` и `OPENCODE_CONFIG_DIR`
+и соответствующие флаги `--cursor-home`, `--copilot-home` и `--opencode-home`. Прежний `~/.claude.json`
 и перенесённый `.claude.json` включаются в инвентарь, если существуют оба.
 
 Совместимые манифесты плагинов могут добавлять внутренние каталоги навыков и
@@ -75,6 +99,11 @@ MCP-конфигурации, встроенные либо указанные �
 из захваченного стандартного компонента.
 
 ## Инвентарь и результаты сканирования
+
+При прямом сканировании каталога Scout распознаёт известные нативные пути.
+Для отдельного `hooks.json`, `mcp.json` или `.mcp.json` укажите
+`--harness cursor` или `--harness copilot-cli` в зависимости от формата. При сканировании и записи
+снимка через `discover` по умолчанию используется единственный выбранный агент.
 
 JSON использует `scout.environment/v1`. Компоненты сохраняют агента, тип, область,
 путь, конфигурацию-источник, ключ в форме JSON Pointer, где он применим, и локально
@@ -117,7 +146,7 @@ scout discover --agent codex --kind skill \
   --scan -- --format markdown
 ```
 
-`--kind` принимает `skill`, `plugin`, `mcp-server`, `command` и `hook`. Он и фильтры путей
+`--kind` принимает `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule` и `tool`. Он и фильтры путей
 повторяемы, до 32 значений каждого. Включение пересекается с известными корнями
 и не добавляет внешние входы. Исключение удаляет целые пересекающиеся корни;
 для выбора отдельных компонентов вместо общего каталога навыков/кеша задайте тип.

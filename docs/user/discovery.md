@@ -2,7 +2,7 @@
 
 English · [Русский](discovery.ru.md)
 
-`scout discover` inventories local Codex and Claude Code declarations before
+`scout discover` inventories local Codex, Claude Code, Cursor, GitHub Copilot CLI and OpenCode declarations before
 scanning their files. It reads configuration and manifests without starting MCP
 servers, running commands, expanding environment variables from files or making
 network requests.
@@ -53,9 +53,34 @@ Claude Code locations:
   `/Library/Application Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux,
   or `C:\Program Files\ClaudeCode` on Windows.
 
+Cursor discovery reads MCP and flat lifecycle hooks under `~/.cursor` and
+project `.cursor`, and inventories rules, agents, commands and skills. Installed
+packages under `~/.cursor/plugins/local` and `plugins/cache` can declare components
+through `.cursor-plugin/plugin.json`. Scout also reads the system hooks file in
+the known platform directory. [Cursor plugin reference](https://cursor.com/docs/reference/plugins) · [Cursor hooks](https://cursor.com/docs/hooks)
+
+GitHub Copilot CLI discovery reads `~/.copilot/mcp-config.json`, user skills and
+agents, and packages under `~/.copilot/installed-plugins`. Project MCP maps in
+`.mcp.json` and `.github/mcp.json` can be wrapped or bare. Scout reads
+project and user hook files and inline hooks in known Copilot settings, including
+shell fields and direct `exec` declarations,
+and inventories `.github/agents` and `.github/skills`. It recognizes the legacy
+plugin manifest locations and the Agent Plugins 1.0 `com.github.copilot`
+component directory. [Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
+
+OpenCode discovery reads `opencode.json` and `opencode.jsonc` in project roots,
+project `.opencode`, `~/.config/opencode` and known system directories. Scout
+reads MCP argv, explicit disabled settings in both MCP layouts, configured
+plugin references and captured local JavaScript/TypeScript plugins and tools.
+The inventory also includes agents, commands and skills. Scout does not fetch
+plugin dependencies or read managed macOS preferences.
+[OpenCode configuration](https://opencode.ai/docs/config/) · [OpenCode MCP](https://opencode.ai/docs/mcp-servers/)
+
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` from the scanning process can relocate their
 configuration directories. Explicit `--home` disables these implicit overrides;
-`--codex-home` and `--claude-home` select replacements explicitly. Claude's legacy
+`--codex-home` and `--claude-home` select replacements explicitly. The other
+clients use `CURSOR_CONFIG_DIR`, `COPILOT_HOME` and `OPENCODE_CONFIG_DIR` with
+the corresponding `--cursor-home`, `--copilot-home` and `--opencode-home` flags. Claude's legacy
 `~/.claude.json` and the relocated `.claude.json` are both inventoried when present.
 
 Compatibility plugin manifests can add contained skill directories and inline or
@@ -75,6 +100,11 @@ For packages without a manifest, the directory supplies the candidate plugin nam
 and a captured default component supplies its source reference.
 
 ## Inventory and scan results
+
+Direct directory scans recognize known native paths. When scanning a
+standalone `hooks.json`, `mcp.json` or `.mcp.json`, use `--harness cursor` or
+`--harness copilot-cli` to select the intended format. Discovery-driven scans and snapshots
+carry the single selected native agent into scanning by default.
 
 JSON uses `scout.environment/v1`. Components record agent, kind, scope, path,
 source configuration, JSON-pointer-style key where applicable, and local declared
@@ -115,7 +145,7 @@ scout discover --agent codex --kind skill \
   --scan -- --format markdown
 ```
 
-`--kind` accepts `skill`, `plugin`, `mcp-server`, `command` and `hook`; it and the path
+`--kind` accepts `skill`, `plugin`, `mcp-server`, `command`, `hook`, `agent`, `rule` and `tool`; it and the path
 filters are repeatable, with at most 32 values each. Includes intersect known roots
 and cannot add outside inputs. Excludes omit whole overlapping roots; use a kind
 filter to select individual components instead of a broad skills/cache directory.

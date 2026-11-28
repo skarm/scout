@@ -63,7 +63,7 @@ var bundleSpecs = map[string]bundleSpec{
 			asset: "assets/shared/adapters.mjs",
 		}},
 	},
-	"opencode": {
+	report.HostOpenCode: {
 		skillPrefix: ".opencode/skills/",
 		assets: []bundleAsset{{
 			path:  ".opencode/package.json",
@@ -136,7 +136,7 @@ type skillBundleCollector struct {
 
 // Names returns a fresh list; callers cannot modify subsequent exports.
 func Names() []string {
-	return []string{"agent-skill", report.HostClaudeCode, report.HostCodex, "pi", "opencode", bundleReviewMaterials}
+	return []string{"agent-skill", report.HostClaudeCode, report.HostCodex, "pi", report.HostOpenCode, bundleReviewMaterials}
 }
 
 // Files returns a detached standalone bundle with English and Russian

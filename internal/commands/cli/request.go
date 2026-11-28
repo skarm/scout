@@ -75,6 +75,7 @@ type request struct {
 	grants                          configfile.Grants
 	followExternal                  bool
 	environment                     bool
+	harnessExplicit                 bool
 	snapshotCandidate, snapshotSave string
 	snapshotEmpty                   bool
 	snapshotSourceDiff              bool
@@ -202,6 +203,7 @@ func (p argvPatch) resolve(settings configfile.Settings, lookupEnv func(string) 
 
 	r.settings = settings
 	p.applySettings(&r.settings)
+	r.harnessExplicit = p.present[flagHarness]
 
 	if p.present[flagPRHead] || p.present[flagPRPath] || p.present[flagPRProvider] {
 		if err := r.configurePR(p.present[flagFormat]); err != nil {
@@ -352,7 +354,7 @@ func bindCommon(fs *flag.FlagSet, r *request) {
 	fs.BoolVar(&r.settings.Policy.AllowGlobs, flagAllowBaselineGlobs, r.settings.Policy.AllowGlobs, "permit broad approvals")
 	fs.Var(stringSetting[report.Severity]{value: &r.settings.Policy.FailAt}, flagFailOn, "minimum blocking `SEVERITY`: info, low, medium, high or critical")
 	fs.Var(stringSetting[policy.ScopePolicy]{value: &r.settings.Policy.Scope}, flagScope, "coverage `POLICY`: conservative (default) or selected")
-	fs.StringVar(&r.settings.Scanner.Harness.Host, flagHarness, r.settings.Scanner.Harness.Host, "`HOST` interpretation: auto, claude-code, codex, gemini-cli or agent-skills")
+	fs.StringVar(&r.settings.Scanner.Harness.Host, flagHarness, r.settings.Scanner.Harness.Host, "`HOST` interpretation: auto, claude-code, codex, cursor, copilot-cli, opencode, gemini-cli or agent-skills")
 	fs.IntVar(&r.settings.Scanner.Concurrency.Workers, flagWorkers, r.settings.Scanner.Concurrency.Workers, "analyzer workers shared across targets (1..32)")
 	fs.IntVar(&r.settings.Scanner.Concurrency.Targets, flagTargetWorkers, r.settings.Scanner.Concurrency.Targets, "concurrent targets (1..32)")
 	fs.DurationVar(&r.settings.Scanner.Limits.Timeout, flagTimeout, r.settings.Scanner.Limits.Timeout, "whole operation timeout")

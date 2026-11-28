@@ -147,7 +147,7 @@ func parseDiscoveryArguments(args []string, stderr io.Writer) (discoveryArgument
 	fs.StringVar(&a.output, flagOutput, "", "inventory destination outside selected configuration locations; default stdout")
 	fs.StringVar(&a.snapshot, flagSnapshot, "", "save discovered environment and inspection; scanner flags follow --")
 	fs.BoolVar(&a.scan, flagScan, false, "scan discovered roots; pass ordinary scan flags after --")
-	fs.Var(&a.kinds, flagKind, "select skill, plugin, mcp-server, command or hook scan roots; repeatable")
+	fs.Var(&a.kinds, flagKind, "select skill, plugin, mcp-server, command, hook, agent, rule or tool scan roots; repeatable")
 	fs.Var(&a.includePaths, flagIncludePath, "narrow discovered scan roots to this path; repeatable; cannot expand discovery")
 	fs.Var(&a.excludePaths, flagExcludePath, "omit scan roots overlapping this path; repeatable; use --kind for component-level roots")
 
@@ -228,6 +228,7 @@ func scanDiscovered(ctx context.Context, a discoveryArguments, snapshot discover
 
 	r.targets = snapshot.Targets
 	r.publicationInputs = snapshot.ProtectedInputs()
+	r.useDiscoveryHarness(a.options.Agent)
 
 	targets, err := r.scanTargets(nil)
 	if err != nil {
@@ -235,6 +236,17 @@ func scanDiscovered(ctx context.Context, a discoveryArguments, snapshot discover
 	}
 
 	return executeRequest(ctx, r, targets, report.ScanOperation, stdout, stderr)
+}
+
+func (r *request) useDiscoveryHarness(agent string) {
+	if r.harnessExplicit || r.settings.Scanner.Harness.Host != report.HostAuto {
+		return
+	}
+
+	switch agent {
+	case report.HostCursor, report.HostCopilotCLI, report.HostOpenCode:
+		r.settings.Scanner.Harness.Host = agent
+	}
 }
 
 func writeInventory(w io.Writer, snapshot discovery.Snapshot, format string) error {

@@ -82,12 +82,12 @@ scout version
 
 ## Обнаружение окружения
 
-`scout discover` выводит инвентарь Codex и Claude Code; `--scan` передаёт найденные
+`scout discover` выводит инвентарь Codex, Claude Code, Cursor, GitHub Copilot CLI и OpenCode; `--scan` передаёт найденные
 корни существующему Scanner. См. [расположения, формат и ограничения](../user/discovery.ru.md).
 
-- `--agent all|codex|claude-code` (`-a`): агент; по умолчанию `all`.
+- `--agent all|codex|claude-code|cursor|copilot-cli|opencode` (`-a`): агент; по умолчанию `all`.
 - `--home DIR`: домашний каталог; по умолчанию каталог текущего пользователя.
-- `--codex-home DIR`, `--claude-home DIR`: явные каталоги конфигурации агентов.
+- `--codex-home DIR`, `--claude-home DIR`, `--cursor-home DIR`, `--copilot-home DIR`, `--opencode-home DIR`: явные каталоги конфигурации агентов.
   Без `--home` учитываются `CODEX_HOME` и `CLAUDE_CONFIG_DIR` процесса.
 - `--project DIR`: повторяемый выбранный проект; по умолчанию текущий каталог.
 - `--no-project`: исключить проекты; по умолчанию `false`.
@@ -103,7 +103,7 @@ scout version
   задаются после `--`. Флаги инвентаря `--format`/`--output` в этом режиме отвергаются.
 - `--snapshot FILE` (`-s`) сохраняет найденное окружение. Выберите одного агента
   и передайте флаги сканирования после `--`.
-- `--kind skill|plugin|mcp-server|command|hook` (`-k`): повторяемый выбор типа компонентов;
+- `--kind skill|plugin|mcp-server|command|hook|agent|rule|tool` (`-k`): повторяемый выбор типа компонентов;
   без фильтра сохраняются исходные сгруппированные корни.
 - `--include-path PATH`: повторяемое пересечение с найденными корнями; пути вне
   инвентаря не добавляются.
@@ -131,7 +131,7 @@ scout version
   reviewer; `custom` допускает явный выбор проверок. Aliases CLI: `extended` =
   `standard`, `semantic` = `review`, `basic` = `custom` со всеми отключёнными
   необязательными статическими проверками.
-- `--harness auto|claude-code|codex|gemini-cli|agent-skills`: интерпретация деклараций агентов
+- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|agent-skills`: интерпретация деклараций агентов
   и плагинов; по умолчанию `auto`.
 - `--stdin NAME` (`-i`) читает один вход из stdin. Укажите относительное имя файла,
   например `SKILL.md`, для определения формата и координат исходников.

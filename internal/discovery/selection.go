@@ -147,8 +147,8 @@ func (f *Filters) resolve(boundRoots map[string]string) error {
 	}
 
 	for _, kind := range f.Kinds {
-		if !slices.Contains([]string{"skill", "plugin", kindMCPServer, "command", kindHook}, kind) {
-			return errors.New("kind must be skill, plugin, mcp-server, command or hook")
+		if !slices.Contains([]string{"skill", "plugin", kindMCPServer, "command", kindHook, kindAgent, kindRule, kindTool}, kind) {
+			return errors.New("kind must be skill, plugin, mcp-server, command, hook, agent, rule or tool")
 		}
 	}
 

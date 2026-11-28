@@ -66,7 +66,7 @@ func (run *execution) buildAnalysis() {
 		},
 		Limitations: []string{
 			"Skills and harness plugin static MVP: instruction signals, selected agent/MCP JSON configuration risks, and supporting Go/Shell checks; not a general SAST or install attestation.",
-			"Versioned Claude/Codex layout subsets, no runtime-loader compatibility claim. Optional semantic review is advisory; install attestation is not implemented.",
+			"Versioned agent layout subsets describe captured declarations only. Optional semantic review is advisory; install attestation is not implemented.",
 			"All captured byte streams receive raw literal checks. NUL, invalid UTF-8, hidden paths and names do not exempt content.",
 			"Language/signature hints are non-authoritative. Go AST, bounded SQL tokens and Shell syntax are built in. Native builds include JavaScript/TypeScript Tree-sitter syntax and bounded local flow; core builds retain explicit gaps. Optional Python syntax uses Tree-sitter and a limited analysis IR, not CPython AST. PowerShell has no AST backend.",
 			"Markdown is one embedded container, not the scan boundary. Its envelope parser is not full CommonMark; optional real YAML/TOML parsers preserve explicitly stated limitations.",

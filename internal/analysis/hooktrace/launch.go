@@ -35,14 +35,18 @@ func RootedSuffix(value, host string, argv, hook bool) (string, bool) {
 }
 
 //nolint:gochecknoglobals // Read-only root parameter grammar for supported hosts.
-var pluginRootParameters = map[string]string{report.HostClaudeCode: "CLAUDE_PLUGIN_ROOT", report.HostCodex: "PLUGIN_ROOT"}
+var pluginRootParameters = map[string]string{
+	report.HostClaudeCode: "CLAUDE_PLUGIN_ROOT", report.HostCodex: "PLUGIN_ROOT",
+	report.HostCursor: "CURSOR_PLUGIN_ROOT", report.HostCopilotCLI: "PLUGIN_ROOT",
+}
 
 // Codex exports this compatibility name for commands of installed plugin hooks.
 const codexHookRootAlias = "CLAUDE_PLUGIN_ROOT"
 
 func rootParameter(host, name string, hook bool) bool {
 	return name != "" && (name == pluginRootParameters[host] ||
-		hook && host == report.HostCodex && name == codexHookRootAlias)
+		name == codexHookRootAlias && (hook && host == report.HostCodex || host == report.HostCursor || host == report.HostCopilotCLI) ||
+		host == report.HostCopilotCLI && name == "COPILOT_PLUGIN_ROOT")
 }
 
 // A literal data-emitting Bash builtin is the handler itself. No handler

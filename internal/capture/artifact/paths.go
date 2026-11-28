@@ -15,6 +15,9 @@ const (
 	MCPConfig                  = ".mcp.json"
 	ClaudePluginManifest       = ".claude-plugin/plugin.json"
 	CodexPluginManifest        = ".codex-plugin/plugin.json"
+	CursorPluginManifest       = ".cursor-plugin/plugin.json"
+	CopilotPluginManifest      = ".plugin/plugin.json"
+	CopilotGitHubManifest      = ".github/plugin/plugin.json"
 	ClaudeSettings             = "settings.json"
 	ClaudeLocalSettings        = "settings.local.json"
 	ClaudeProjectSettings      = ".claude/" + ClaudeSettings
@@ -48,15 +51,31 @@ func ArchiveParentPath(namespace string) (string, bool) {
 	}
 }
 
-// PluginManifestRoot identifies a Claude or Codex manifest by whole path components.
+// PluginManifestRoot identifies a native manifest by whole path components.
 func PluginManifestRoot(name string) (string, bool) {
-	for _, manifest := range []string{ClaudePluginManifest, CodexPluginManifest} {
-		if name == manifest || strings.HasSuffix(name, "/"+manifest) {
-			return path.Dir(path.Dir(name)), true
+	root, host := NativePluginManifest(name)
+	return root, host != ""
+}
+
+// NativePluginManifest identifies an unambiguous host-specific manifest path.
+func NativePluginManifest(name string) (root, host string) {
+	for _, candidate := range []struct{ file, host string }{
+		{ClaudePluginManifest, report.HostClaudeCode},
+		{CodexPluginManifest, report.HostCodex},
+		{CursorPluginManifest, report.HostCursor},
+		{CopilotPluginManifest, report.HostCopilotCLI},
+		{CopilotGitHubManifest, report.HostCopilotCLI},
+	} {
+		if name == candidate.file {
+			return ".", candidate.host
+		}
+
+		if root, ok := strings.CutSuffix(name, "/"+candidate.file); ok {
+			return root, candidate.host
 		}
 	}
 
-	return "", false
+	return "", ""
 }
 
 // BaseName returns the captured name, decoding the URI representation of an extracted object.

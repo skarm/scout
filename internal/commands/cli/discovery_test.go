@@ -18,8 +18,8 @@ import (
 func TestDiscoverInventoryAndOrdinaryScan(t *testing.T) {
 	home := t.TempDir()
 	file := discoverySkill(t, home, "skill", "---\nname: skill\ndescription: Format plain text.\n---\nFormat the provided text.\n")
-	args := make([]string, 0, 7)
-	args = append(args, "discover", "--home", home, "--system=false", "--no-project")
+	args := make([]string, 0, 9)
+	args = append(args, "discover", "--agent", report.HostCodex, "--home", home, "--system=false", "--no-project")
 	var out, diagnostics bytes.Buffer
 	if code := cli.Run(context.Background(), append(args, "--format", "json"), &out, &diagnostics); code != 0 {
 		t.Fatalf("inventory failed: code=%d diagnostics=%s output=%s", code, &diagnostics, &out)

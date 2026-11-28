@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/skarm/scout/internal/agentconfig"
 	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
@@ -81,6 +82,11 @@ var manifestFieldKinds = map[string]string{
 }
 
 func (p *plugin) discover() {
+	if p.nativeWorkspace {
+		p.discoverNativeWorkspace()
+		return
+	}
+
 	if p.projectSettings {
 		p.discoverHostConfig(artifact.ClaudeProjectSettings)
 		p.discoverHostConfig(artifact.ClaudeProjectLocalSettings)
@@ -100,6 +106,11 @@ func (p *plugin) discover() {
 
 	if p.portable != "" {
 		p.discoverPortable()
+		return
+	}
+
+	if p.host == report.HostCursor || p.host == report.HostCopilotCLI {
+		p.discoverNativePackage()
 		return
 	}
 
@@ -324,7 +335,11 @@ func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.Sour
 		activation = p.activation
 	}
 
-	rel, reason := artifactpath.Reference(raw, required)
+	rel, reason := artifactpath.Reference(raw, required && !p.nativePaths())
+	if required && rel == "." && p.nativePaths() {
+		reason = reasonMissingOrUnsupportedComponent
+	}
+
 	if reason != "" {
 		p.reference(p.rootNode, referenceKindComponentPath, report.ReferenceUnresolved, reason, "", s)
 		return
@@ -338,7 +353,7 @@ func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.Sour
 			return
 		}
 
-		match := componentFileMatches(kind, key)
+		match := p.componentFileMatches(kind, key)
 
 		if !match {
 			continue
@@ -354,14 +369,14 @@ func (p *plugin) selectFiles(raw, kind, activation, basis string, s *report.Sour
 	}
 }
 
-func componentFileMatches(kind, key string) bool {
+func (p *plugin) componentFileMatches(kind, key string) bool {
 	switch kind {
 	case report.ComponentSkill:
 		return path.Base(key) == artifact.SkillManifest
 	case "workflow":
 		return true
 	default:
-		return strings.EqualFold(path.Ext(key), ".md")
+		return agentconfig.InstructionFile(p.host, kind, key)
 	}
 }
 
@@ -439,7 +454,7 @@ func (p *plugin) configsFrom(field, defaultName, kind string, source *entry, n *
 }
 
 func (p *plugin) declaredConfigFile(raw, kind string, s *report.SourceRef) {
-	rel, reason := artifactpath.Reference(raw, true)
+	rel, reason := artifactpath.Reference(raw, !p.nativePaths())
 	if reason != "" {
 		p.reference(p.rootNode, referenceKindComponentPath, report.ReferenceUnresolved, reason, "", s)
 		return
@@ -472,7 +487,7 @@ func (p *plugin) defaultConfigActivation(def *entry, n *jsonconfig.Node, kind st
 	}
 
 	if n != nil {
-		if p.host == report.HostCodex {
+		if p.host == report.HostCodex || p.host == report.HostCursor {
 			activation = activationInactiveForProfile
 		} else {
 			activation = activationUnknown
@@ -512,7 +527,11 @@ func (p *plugin) configFile(e *entry, kind, activation, basis string, s *report.
 func (p *plugin) inspectConfig(e *entry, n *jsonconfig.Node, kind, parent, activation string) {
 	switch kind {
 	case report.ComponentHookConfig:
-		p.hooks(e, n, parent, activation)
+		if p.host == report.HostCursor || p.host == report.HostCopilotCLI {
+			p.nativeHooks(e, n, parent, activation)
+		} else {
+			p.hooks(e, n, parent, activation)
+		}
 	case report.ComponentMCPConfig, componentLSPConfig:
 		p.servers(e, n, kind, parent, activation)
 	default:

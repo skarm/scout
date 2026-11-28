@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/skarm/scout/internal/agentconfig"
 	"github.com/skarm/scout/internal/agentplugins"
+	"github.com/skarm/scout/internal/artifactpath"
 	"github.com/skarm/scout/internal/capture/artifact"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
 	"github.com/skarm/scout/report"
@@ -57,7 +59,12 @@ func (t *tree) config(name string, required bool) *jsonconfig.Node {
 		}
 	}
 
-	n, err := jsonconfig.Parse(t.b.ctx, string(data))
+	decode := jsonconfig.Parse
+	if strings.EqualFold(path.Ext(name), ".jsonc") {
+		decode = jsonconfig.ParseJSONC
+	}
+
+	n, err := decode(t.b.ctx, string(data))
 	if err != nil || n.Kind != jsonconfig.KindObject {
 		t.b.issue(codeInvalidConfig, t.absolute(name))
 		return nil
@@ -79,6 +86,10 @@ func (t *tree) servers(n *jsonconfig.Node, source, key string) {
 	for _, entry := range n.Members {
 		if !t.b.step(t.absolute(source)) {
 			return
+		}
+
+		if t.agent == report.HostCopilotCLI && key == "" && entry.Key == "$schema" && entry.Value.Kind == jsonconfig.KindString {
+			continue
 		}
 
 		if entry.Value.Kind != jsonconfig.KindObject {
@@ -155,23 +166,27 @@ func (t *tree) plugins(root string) {
 }
 
 func (t *tree) pluginAt(dir string) bool {
-	for _, relative := range []string{agentplugins.ManifestFile, artifact.CodexPluginManifest, artifact.ClaudePluginManifest} {
-		if t.agent == report.HostClaudeCode && relative != artifact.ClaudePluginManifest {
-			continue
-		}
+	var plain *jsonconfig.Node
 
+	for i, relative := range pluginManifests(t.agent) {
 		file := path.Join(dir, relative)
 
-		n := t.config(file, false)
+		n := plain
+		if relative != agentplugins.ManifestFile || i == 0 {
+			n = t.config(file, false)
+		}
+
 		if n == nil {
 			continue
 		}
 
-		if relative == agentplugins.ManifestFile {
+		if relative == agentplugins.ManifestFile && i == 0 {
 			if v := agentplugins.ManifestVersion(n); v != "" {
 				t.portablePlugin(dir, file, n, v)
 				return true
 			}
+
+			plain = n
 
 			continue
 		}
@@ -187,9 +202,8 @@ func (t *tree) pluginAt(dir string) bool {
 		plugin.component("plugin", name, dir, file, "", "unknown")
 		plugin.pluginSkills(dir, n.Get(fieldSkills))
 
-		plugin.mcpFile(path.Join(dir, artifact.MCPConfig))
 		plugin.pluginPaths(n.Get(fieldSkills), dir, file, "/"+fieldSkills, true)
-		plugin.pluginPaths(n.Get(mcpServersField), dir, file, mcpServersPointer, false)
+		plugin.pluginConfigs(dir, file, n)
 
 		return true
 	}
@@ -197,9 +211,24 @@ func (t *tree) pluginAt(dir string) bool {
 	return false
 }
 
+func pluginManifests(host string) []string {
+	switch host {
+	case report.HostClaudeCode:
+		return []string{artifact.ClaudePluginManifest}
+	case report.HostCursor:
+		return []string{agentplugins.ManifestFile, artifact.CursorPluginManifest}
+	case report.HostCopilotCLI:
+		return append([]string{agentplugins.ManifestFile}, agentconfig.CopilotLegacyManifests()...)
+	case report.HostOpenCode:
+		return nil
+	default:
+		return []string{agentplugins.ManifestFile, artifact.CodexPluginManifest, artifact.ClaudePluginManifest}
+	}
+}
+
 func (t *tree) pluginSkills(dir string, declared *jsonconfig.Node) {
 	root := path.Join(dir, "skills")
-	if t.agent == report.HostClaudeCode && declared == nil && !t.directory(root, false) {
+	if (t.agent == report.HostClaudeCode || t.agent == report.HostCopilotCLI) && declared == nil && !t.directory(root, false) {
 		t.skill(dir, t.plugin)
 		return
 	}
@@ -263,6 +292,8 @@ func (t *tree) pluginPaths(n *jsonconfig.Node, dir, source, key string, skills b
 	case jsonconfig.KindObject:
 		if skills {
 			t.b.issue(codeUnsupportedPluginReference, t.absolute(source))
+		} else if t.agent == report.HostCursor || t.agent == report.HostCopilotCLI {
+			t.wrappedOrBareServers(n, source, key)
 		} else {
 			t.servers(n, source, key)
 		}
@@ -274,6 +305,16 @@ func (t *tree) pluginPaths(n *jsonconfig.Node, dir, source, key string, skills b
 }
 
 func (t *tree) pluginPath(value, dir, source string, skills bool) {
+	if (t.agent == report.HostCursor || t.agent == report.HostCopilotCLI) && !strings.HasPrefix(value, "./") {
+		rel, reason := artifactpath.Reference(value, false)
+		if reason != "" {
+			t.b.issue(codeExternalPluginReference, t.absolute(source))
+			return
+		}
+
+		value = "./" + rel
+	}
+
 	if value != "." && !strings.HasPrefix(value, "./") || strings.Contains(value, "\\") || strings.ContainsRune(value, 0) ||
 		slicesContainParent(value) {
 		t.b.issue(codeExternalPluginReference, t.absolute(source))

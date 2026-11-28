@@ -5,8 +5,10 @@ import (
 	"path"
 	"strconv"
 
+	"github.com/skarm/scout/internal/agentconfig"
 	"github.com/skarm/scout/internal/agentplugins"
 	"github.com/skarm/scout/internal/syntax/jsonconfig"
+	"github.com/skarm/scout/report"
 )
 
 const (
@@ -48,6 +50,10 @@ func (t *tree) portablePlugin(dir, file string, manifest *jsonconfig.Node, versi
 
 	if version == agentplugins.V1_1 {
 		plugin.portableHooks(dir, version)
+	}
+
+	if t.agent == report.HostCopilotCLI && version == agentplugins.V1_0 {
+		plugin.portableCopilot(path.Join(dir, agentconfig.CopilotExtension))
 	}
 }
 

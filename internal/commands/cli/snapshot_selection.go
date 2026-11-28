@@ -46,28 +46,24 @@ func resolveSnapshotSelection(ctx context.Context, mode, path string, r *request
 	}
 
 	if r.snapshotCandidate != "" {
-		candidate, err := readEnvironmentCheckpoint(r.snapshotCandidate, nil)
-		if err != nil {
-			return out, fmt.Errorf("candidate snapshot: %w", err)
-		}
-
-		// Archived source paths are metadata. Only the explicitly supplied
-		// checkpoint files are inputs in this mode.
-		out.candidate = &candidate.Snapshot
-
-		r.publicationInputs = append(r.publicationInputs, r.snapshotCandidate)
-
-		return out, nil
+		err := out.selectArchivedCandidate(r)
+		return out, err
 	}
 
 	// Explicit roots and --empty override saved discovery; no ambient context is merged.
 	if len(inputs) == 0 && !r.snapshotEmpty {
 		if saved := out.checkpoint.Discovery; saved != nil {
-			inventory, err := completeDiscovery(ctx, saved)
+			a, err := restoreDiscovery(saved.Arguments)
 			if err != nil {
 				return out, err
 			}
 
+			inventory, err := completeDiscovery(ctx, &a, saved.RootBindings)
+			if err != nil {
+				return out, err
+			}
+
+			r.useDiscoveryHarness(a.options.Agent)
 			r.publicationInputs = append(r.publicationInputs, inventory.ProtectedInputs()...)
 			inventory.Targets = replayedDiscoveryTargets(inventory)
 
@@ -101,6 +97,42 @@ func resolveSnapshotSelection(ctx context.Context, mode, path string, r *request
 	}
 
 	return out, nil
+}
+
+func (s *snapshotSelection) selectArchivedCandidate(r *request) error {
+	candidate, err := readEnvironmentCheckpoint(r.snapshotCandidate, nil)
+	if err != nil {
+		return fmt.Errorf("candidate snapshot: %w", err)
+	}
+
+	// Archived source paths are metadata. Only the explicitly supplied
+	// checkpoint files are inputs in this mode.
+	s.candidate = &candidate.Snapshot
+
+	if host := capturedDiscoveryHarness(s.checkpoint); host != "" && host == capturedDiscoveryHarness(candidate) {
+		r.useDiscoveryHarness(host)
+	}
+
+	r.publicationInputs = append(r.publicationInputs, r.snapshotCandidate)
+
+	return nil
+}
+
+func capturedDiscoveryHarness(checkpoint environmentCheckpoint) string {
+	if checkpoint.Discovery == nil || len(checkpoint.Inspection.Run.Targets) == 0 {
+		return ""
+	}
+
+	targets := checkpoint.Inspection.Run.Targets
+	host := targets[0].Analysis.Components.RequestedHost
+
+	for _, target := range targets[1:] {
+		if target.Analysis.Components.RequestedHost != host {
+			return ""
+		}
+	}
+
+	return host
 }
 
 func replayedDiscoveryTargets(inventory discovery.Snapshot) []string {
@@ -204,6 +236,7 @@ func snapshotDiscovered(ctx context.Context, a discoveryArguments, inventory dis
 	}
 
 	r.publicationInputs = inventory.ProtectedInputs()
+	r.useDiscoveryHarness(a.options.Agent)
 
 	plan, err := savedDiscoveryArguments(a)
 	if err != nil {
@@ -217,14 +250,9 @@ func (a *discoveryArguments) pinRoots(saved []discovery.RootBinding) ([]discover
 	return a.options.PinRoots(saved, append(slices.Clone(a.includePaths), a.excludePaths...)...)
 }
 
-func completeDiscovery(ctx context.Context, saved *checkpointDiscovery) (discovery.Snapshot, error) {
-	a, err := restoreDiscovery(saved.Arguments)
-	if err != nil {
-		return discovery.Snapshot{}, err
-	}
-
-	if saved.RootBindings != nil {
-		if _, err := a.pinRoots(saved.RootBindings); err != nil {
+func completeDiscovery(ctx context.Context, a *discoveryArguments, bindings []discovery.RootBinding) (discovery.Snapshot, error) {
+	if bindings != nil {
+		if _, err := a.pinRoots(bindings); err != nil {
 			return discovery.Snapshot{}, err
 		}
 	}

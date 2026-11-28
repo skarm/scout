@@ -7,6 +7,7 @@ import (
 	"context"
 	"go/ast"
 	"go/token"
+	"path"
 	"slices"
 	"strings"
 
@@ -345,6 +346,10 @@ func (f *filePreparation) parseUnit(ctx context.Context, lang, origin string, sp
 	unit = Unit{Language: lang, Origin: origin, Span: span, View: view, Status: report.OutcomeUnsupported}
 
 	backend, supported := f.registry.Lookup(lang)
+	if lang == language.JSON && origin == "file" && strings.EqualFold(path.Ext(f.file.BaseName()), ".jsonc") {
+		backend = parse.WithJSONComments(backend)
+	}
+
 	if !supported || !f.admitUnit(ctx, backend.Descriptor(), &unit) {
 		return unit
 	}

@@ -471,6 +471,10 @@ func (p *plugin) servers(e *entry, n *jsonconfig.Node, kind, parent, activation 
 			return
 		}
 
+		if p.host == report.HostCopilotCLI && m.Key == "$schema" && m.Value.Kind == jsonconfig.KindString {
+			continue
+		}
+
 		p.serverEntry(e, m.Value, kind, parent, activation, i)
 	}
 }

@@ -12,8 +12,7 @@ const (
 // HarnessOptions is trusted caller configuration, never read from the artifact.
 // Host selects an interpretation, not a whitelist of files to scan.
 type HarnessOptions struct {
-	// Host selects auto, claude-code, codex, gemini-cli or agent-skills. The empty value
-	// selects auto.
+	// Host selects the interpretation of captured declarations. The empty value selects auto.
 	Host string `json:"host"`
 	// ShellHookRoot optionally supplies a root for simple hook command templates.
 	ShellHookRoot ShellHookRoot `json:"shell_hook_root,omitzero"`
@@ -316,9 +315,9 @@ type ValidationReport struct {
 // interpretation.
 func (o HarnessOptions) Validate() error {
 	switch o.Host {
-	case "", HostAuto, HostClaudeCode, HostCodex, HostGeminiCLI, HostAgentSkills:
+	case "", HostAuto, HostClaudeCode, HostCodex, HostGeminiCLI, HostAgentSkills, HostCursor, HostCopilotCLI, HostOpenCode:
 	default:
-		return errors.New("harness must be auto, claude-code, codex, gemini-cli or agent-skills")
+		return errors.New("harness must be auto, claude-code, codex, gemini-cli, agent-skills, cursor, copilot-cli or opencode")
 	}
 
 	if o.ShellHookRoot != (ShellHookRoot{}) {

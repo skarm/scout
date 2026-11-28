@@ -82,12 +82,12 @@ Stdin accepts one named input and cannot be mixed with positional targets.
 
 ## Environment discovery
 
-`scout discover` inventories Codex and Claude Code; `--scan` passes discovered
+`scout discover` inventories Codex, Claude Code, Cursor, GitHub Copilot CLI and OpenCode; `--scan` passes discovered
 roots to the existing Scanner. See [locations, format and limits](../user/discovery.md).
 
-- `--agent all|codex|claude-code` (`-a`): agent; default `all`.
+- `--agent all|codex|claude-code|cursor|copilot-cli|opencode` (`-a`): agent; default `all`.
 - `--home DIR`: selected user home; default current user's home.
-- `--codex-home DIR`, `--claude-home DIR`: explicit agent configuration directories.
+- `--codex-home DIR`, `--claude-home DIR`, `--cursor-home DIR`, `--copilot-home DIR`, `--opencode-home DIR`: explicit agent configuration directories.
   Without `--home`, process `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are honored.
 - `--project DIR`: repeatable selected project; default current directory.
 - `--no-project`: omit projects; default `false`.
@@ -103,7 +103,7 @@ roots to the existing Scanner. See [locations, format and limits](../user/discov
   Inventory `--format`/`--output` flags are rejected in this mode.
 - `--snapshot FILE` (`-s`) saves the discovered environment. Select one agent
   and pass scan flags after `--`.
-- `--kind skill|plugin|mcp-server|command|hook` (`-k`): repeatable component-type selection;
+- `--kind skill|plugin|mcp-server|command|hook|agent|rule|tool` (`-k`): repeatable component-type selection;
   unset selects the original grouped scan roots.
 - `--include-path PATH`: repeatable intersection with discovered scan roots;
   cannot add paths outside the inventory.
@@ -130,7 +130,7 @@ report and exit code. Declaration states do not establish component activation.
   `standard` selects all static checks; `review` also requires a configured reviewer;
   `custom` permits explicit check selection. CLI aliases: `extended` = `standard`,
   `semantic` = `review`, `basic` = `custom` with all optional static checks disabled.
-- `--harness auto|claude-code|codex|gemini-cli|agent-skills`: interpretation of agent/plugin
+- `--harness auto|claude-code|codex|cursor|copilot-cli|opencode|gemini-cli|agent-skills`: interpretation of agent/plugin
   declarations; default `auto`.
 - `--stdin NAME` (`-i`): read one input from stdin. Use a relative filename such as
   `SKILL.md` for format detection and source coordinates. Omit positional inputs.

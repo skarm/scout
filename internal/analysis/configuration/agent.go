@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/skarm/scout/internal/agentconfig"
 	"github.com/skarm/scout/internal/analysis/check"
 	"github.com/skarm/scout/internal/analysis/document"
 	"github.com/skarm/scout/internal/analysis/hookpolicy"
@@ -30,6 +31,8 @@ const (
 )
 
 var environmentReference = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*`)
+
+var openCodeEnvironmentReference = regexp.MustCompile(`\{env:[A-Za-z_][A-Za-z0-9_]*\}`)
 
 var npmPackageName = regexp.MustCompile(`^(?:@[a-z0-9._-]+/)?[a-z0-9._-]+$`)
 
@@ -198,7 +201,7 @@ func (a agentConfigCheck) Rule() report.Rule {
 		version = "4"
 	}
 
-	limitation := "Strict bounded JSON and supported field shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. YAML/TOML require an explicitly selected trusted parser; TOML positions cover the whole unit." + metadata.limitation
+	limitation := "Bounded JSON and JSONC with supported field shapes only. A declaration is not proof of runtime activation, compromise or effective host permissions. Hook disables use a closed captured Claude settings.local-before-settings subset; external settings and other precedence remain unknown. YAML/TOML require an explicitly selected trusted parser; TOML positions cover the whole unit." + metadata.limitation
 	if metadata.harness {
 		limitation += " Includes harness-linked inline/custom-path config objects without assuming activation."
 	}
@@ -328,7 +331,7 @@ func (a agentConfigCheck) inspectConfigScopes(ctx context.Context, f document.Fi
 			n := scopedConfigNode(root, scope.Span, len(f.Artifact().Content()))
 
 			if n != nil && !(a.id == ruleAC003 && scope.Role == report.ComponentHookConfig && state.Disabled) {
-				err := a.inspectScope(ctx, n, scope.Role, emit)
+				err := a.inspectScope(ctx, n, scope, emit)
 				*mappingErr = errors.Join(*mappingErr, err)
 			}
 		}
@@ -500,6 +503,10 @@ func (a agentConfigCheck) inspectServers(ctx context.Context, root *jsonconfig.N
 }
 
 func (a agentConfigCheck) server(server *jsonconfig.Node, emit func(source.Span)) {
+	a.serverWithHost(server, "", emit)
+}
+
+func (a agentConfigCheck) serverWithHost(server *jsonconfig.Node, host string, emit func(source.Span)) {
 	if server == nil || server.Kind != jsonconfig.KindObject {
 		return
 	}
@@ -510,7 +517,7 @@ func (a agentConfigCheck) server(server *jsonconfig.Node, emit func(source.Span)
 	case ruleMC001:
 		inspectPlaintextServer(server.Get("url"), emit)
 	case ruleMC002:
-		inspectServerCredentials(server, emit)
+		inspectServerCredentials(server, host, emit)
 	}
 }
 
@@ -542,7 +549,7 @@ func inspectPlaintextServer(n *jsonconfig.Node, emit func(source.Span)) {
 	}
 }
 
-func inspectServerCredentials(server *jsonconfig.Node, emit func(source.Span)) {
+func inspectServerCredentials(server *jsonconfig.Node, host string, emit func(source.Span)) {
 	for _, field := range []string{"env", "headers", "http_headers"} {
 		container := server.Get(field)
 		if container == nil || container.Kind != jsonconfig.KindObject {
@@ -554,7 +561,12 @@ func inspectServerCredentials(server *jsonconfig.Node, emit func(source.Span)) {
 				continue
 			}
 
-			if text, ok := m.Value.Text(); ok && credentialLiteral(text) {
+			text, ok := m.Value.Text()
+			if host == report.HostOpenCode {
+				text = openCodeEnvironmentReference.ReplaceAllString(text, "")
+			}
+
+			if ok && credentialLiteral(text) {
 				emit(m.Value.Span)
 			}
 		}
@@ -581,16 +593,30 @@ func inspectURLCredential(n *jsonconfig.Node, emit func(source.Span)) {
 
 // Scoped trees retain ORIGINAL source spans; only a wrapper role is supplied by
 // discovery. This is not execution or trust in configuration field contents.
-func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, role string, emit func(source.Span)) error {
+func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, scope document.ConfigScope, emit func(source.Span)) error {
 	if n.Kind != jsonconfig.KindObject {
 		return nil
 	}
 
-	if role == "mcp_config" && serverConfigRules[a.id] {
-		a.inspectServerScope(ctx, n, emit)
+	if scope.Role == report.ComponentMCPConfig && serverConfigRules[a.id] {
+		if scope.Host == report.HostOpenCode {
+			for _, item := range n.Members {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+
+				a.serverWithHost(agentconfig.OpenCodeForMCPChecks(item.Value), report.HostOpenCode, emit)
+			}
+		} else {
+			a.inspectServerScope(ctx, n, emit)
+		}
 	}
 
-	if role == report.ComponentHookConfig && a.id == ruleAC003 {
+	if scope.Role == report.ComponentHookConfig && a.id == ruleAC003 {
+		if scope.Host == report.HostCursor || scope.Host == report.HostCopilotCLI {
+			return inspectNativeHookScope(ctx, n, scope.Host, emit)
+		}
+
 		if n.Get("hooks") != nil {
 			return a.inspect(ctx, n, emit)
 		}
@@ -598,6 +624,27 @@ func (a agentConfigCheck) inspectScope(ctx context.Context, n *jsonconfig.Node, 
 		wrapper := &jsonconfig.Node{Kind: jsonconfig.KindObject, Members: []jsonconfig.Member{{Key: "hooks", Value: n}}}
 
 		return a.inspect(ctx, wrapper, emit)
+	}
+
+	return nil
+}
+
+func inspectNativeHookScope(ctx context.Context, n *jsonconfig.Node, host string, emit func(source.Span)) error {
+	hooks := n.Get("hooks")
+	if hooks == nil {
+		hooks = n
+	}
+
+	for _, event := range hooks.Members {
+		for _, handler := range event.Value.Elements {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			for _, run := range agentconfig.HookRuns(host, handler) {
+				emit(run.Value.Span)
+			}
+		}
 	}
 
 	return nil

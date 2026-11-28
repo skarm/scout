@@ -245,7 +245,17 @@ type JSONTree struct {
 // parsed tree.
 func (t JSONTree) RuntimeIdentity() string { return t.Runtime }
 
-type jsonBackend struct{}
+type jsonBackend struct{ comments bool }
+
+// WithJSONComments selects JSONC for a file explicitly identified as JSONC.
+// A caller-supplied JSON backend retains its own format policy.
+func WithJSONComments(backend Backend) Backend {
+	if _, ok := backend.(jsonBackend); ok {
+		return jsonBackend{comments: true}
+	}
+
+	return backend
+}
 
 func (jsonBackend) Descriptor() Descriptor {
 	return Descriptor{
@@ -257,8 +267,13 @@ func (jsonBackend) Descriptor() Descriptor {
 	}
 }
 
-func (jsonBackend) Parse(ctx context.Context, v source.View) (any, error) {
-	root, err := jsonconfig.Parse(ctx, v.Text())
+func (b jsonBackend) Parse(ctx context.Context, v source.View) (any, error) {
+	decode, runtime := jsonconfig.Parse, ""
+	if b.comments {
+		decode, runtime = jsonconfig.ParseJSONC, "jsonc"
+	}
+
+	root, err := decode(ctx, v.Text())
 	if err != nil {
 		if e, ok := errors.AsType[*jsonconfig.Error](err); ok {
 			if strings.HasSuffix(e.Code, "_limit") {
@@ -273,7 +288,7 @@ func (jsonBackend) Parse(ctx context.Context, v source.View) (any, error) {
 		return nil, err
 	}
 
-	return JSONTree{Root: root, Format: language.JSON}, nil
+	return JSONTree{Root: root, Format: language.JSON, Runtime: runtime}, nil
 }
 
 // GoModTree is parsed from captured bytes, without go list, module resolution,
